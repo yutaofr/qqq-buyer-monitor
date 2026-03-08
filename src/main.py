@@ -105,7 +105,7 @@ def _run(args: argparse.Namespace) -> None:
     if args.json:
         print(to_json(result))
     else:
-        print_signal(result)
+        print_signal(result, use_color=not args.no_color)
 
     # Persist
     if not args.no_save:
@@ -133,6 +133,7 @@ def main() -> None:
     )
     parser.add_argument("--json", action="store_true", help="Output JSON report")
     parser.add_argument("--no-save", action="store_true", help="Skip saving to DB")
+    parser.add_argument("--no-color", action="store_true", help="Disable ANSI color output (useful for Discord/logs)")
     parser.add_argument(
         "--history", type=int, metavar="N",
         help="Print last N signal records and exit"
