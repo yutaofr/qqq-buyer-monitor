@@ -22,7 +22,7 @@ logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # Constants
-START_DATE = "2022-01-01"
+START_DATE = "1999-03-10"  # QQQ inception date
 END_DATE = "2025-12-31"
 
 
@@ -201,7 +201,7 @@ def run_backtest() -> None:
     trigger_y = [p for p, s in zip(prices, signals) if s[0] == Signal.TRIGGERED]
     plt.scatter(trigger_x, trigger_y, color="green", label="TRIGGERED", marker="^", s=80, zorder=5)
 
-    plt.title("QQQ Buy-Signal Monitor Backtest (with synthetic Tier-2 VPVR Put Wall)")
+    plt.title("QQQ Buy-Signal Monitor Backtest (1999-2025, with synthetic Tier-2 VPVR Put Wall)")
     plt.xlabel("Date")
     plt.ylabel("QQQ Price")
     plt.legend()
