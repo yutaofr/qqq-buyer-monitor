@@ -30,7 +30,12 @@ def _fmt_flag(flag: bool) -> str:
     return "✓" if flag else "✗"
 
 
-def print_signal(result: SignalResult, use_color: bool = True) -> None:  # noqa: FBT001
+def print_signal(
+    result: SignalResult,
+    use_color: bool = True,
+    compact: bool = False,
+    consecutive_days: int = 1,
+) -> None:
     """Print a formatted signal summary to stdout."""
     c = lambda code: code if use_color else ""  # noqa: E731
     r = c(_RESET)
@@ -47,6 +52,13 @@ def print_signal(result: SignalResult, use_color: bool = True) -> None:  # noqa:
         f"  │  {result.date}  │  {header_label}"
     )
     print(f"{c(_CYAN)}╠{border}╣{r}")
+    
+    if compact:
+        msg = f"🔕 【报告折叠】连续第 {consecutive_days} 天 {label}。当前得分 {result.final_score}，收盘价 ${result.price:.2f}。为防信号疲劳，已折叠详细输出。"
+        print(f"{c(_CYAN)}║{r}  {msg}")
+        print(f"{c(_CYAN)}╚{border}╝{r}\n")
+        return
+
     print(f"{c(_CYAN)}║{r}  QQQ 收盘价: {c(_BOLD)}${result.price:.2f}{r}")
     print(f"{c(_CYAN)}║{r}")
 

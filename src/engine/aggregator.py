@@ -25,6 +25,7 @@ def aggregate(
     price: float,
     tier1: Tier1Result,
     tier2: Tier2Result,
+    prev_signal: Signal | None = None,
 ) -> SignalResult:
     """
     Combine Tier-1 and Tier-2 results into a final SignalResult.
@@ -40,17 +41,27 @@ def aggregate(
     """
     final_score = tier1.score + tier2.adjustment
 
+    # ── Hysteresis / Schmitt Trigger Thresholds ──────────────────────────────
+    is_prev_triggered = prev_signal == Signal.TRIGGERED
+    is_prev_watch = prev_signal in (Signal.WATCH, Signal.TRIGGERED)
+    
+    current_triggered_thresh = 65 if is_prev_triggered else TRIGGERED_THRESHOLD
+    current_watch_thresh = 35 if is_prev_watch else WATCH_THRESHOLD
+
     # ── Three-state logic with hard veto ─────────────────────────────────────
     # Put-wall hard veto: support_broken blocks TRIGGERED only.
     # PRD §4.3: "最高只能输出 '观察'", so WATCH is still valid when support_broken.
-    if final_score >= TRIGGERED_THRESHOLD and not tier2.support_broken:
+    if final_score >= current_triggered_thresh and not tier2.support_broken:
         signal = Signal.TRIGGERED
-    elif final_score >= WATCH_THRESHOLD:
+    elif final_score >= current_watch_thresh:
         signal = Signal.WATCH
     else:
         signal = Signal.NO_SIGNAL
 
-    explanation = _build_explanation(signal, tier1, tier2, final_score)
+    explanation = _build_explanation(
+        signal, tier1, tier2, final_score,
+        current_triggered_thresh, current_watch_thresh
+    )
 
     return SignalResult(
         date=market_date,
@@ -68,6 +79,8 @@ def _build_explanation(
     tier1: Tier1Result,
     tier2: Tier2Result,
     final_score: int,
+    trigger_thresh: int,
+    watch_thresh: int,
 ) -> str:
     """Generate a Chinese-language explanation of the signal rationale."""
     parts: list[str] = []
@@ -112,11 +125,15 @@ def _build_explanation(
             )
 
     # Final verdict
+    hysteresis_note = ""
+    if trigger_thresh < TRIGGERED_THRESHOLD or watch_thresh < WATCH_THRESHOLD:
+        hysteresis_note = "（已触发滞后干预机制，维持近期连贯状态）"
+        
     if signal == Signal.TRIGGERED:
-        parts.append("综合判断：触发买点，性价比较高。")
+        parts.append(f"综合判断：触发买点，性价比较高{hysteresis_note}。")
     elif signal == Signal.WATCH:
-        parts.append("综合判断：进入观察区，等待更多信号确认后再入场。")
+        parts.append(f"综合判断：进入观察区，等待更多信号确认后再入场{hysteresis_note}。")
     else:
-        parts.append("综合判断：条件尚未满足，无买点信号。")
+        parts.append(f"综合判断：条件尚未满足，无买点信号{hysteresis_note}。")
 
     return "。".join(parts) + "。"

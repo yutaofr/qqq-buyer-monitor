@@ -29,7 +29,7 @@ def _run(args: argparse.Namespace) -> None:
     from src.collector.fear_greed import fetch_fear_greed
     from src.collector.options import fetch_options_chain
     from src.collector.breadth import fetch_breadth
-    from src.models import MarketData
+    from src.models import MarketData, Signal
     from src.engine.tier1 import calculate_tier1
     from src.engine.tier2 import calculate_tier2
     from src.engine.aggregator import aggregate
@@ -97,15 +97,50 @@ def _run(args: argparse.Namespace) -> None:
     )
 
     logger.info("Running signal engines…")
+    
+    # ── Hysteresis & Notification Muting ─────────────────────────────────────
+    from src.store.db import load_history
+    try:
+        history = load_history(n=5)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to load history for hysteresis: %s", exc)
+        history = []
+        
+    prev_signal = None
+    if history:
+        try:
+            prev_signal = Signal(history[0]["signal"])
+        except ValueError:
+            pass
+
     tier1 = calculate_tier1(market_data)
     tier2 = calculate_tier2(market_data.price, market_data.options_df)
-    result = aggregate(market_data.date, market_data.price, tier1, tier2)
+    result = aggregate(market_data.date, market_data.price, tier1, tier2, prev_signal=prev_signal)
+
+    consecutive_days = 1
+    if history and result.signal.value == history[0]["signal"]:
+        for rec in history:
+            if rec["signal"] == result.signal.value:
+                consecutive_days += 1
+            else:
+                break
+                
+    compact_mode = False
+    if result.signal == Signal.NO_SIGNAL and consecutive_days >= 3:
+        compact_mode = True
+    elif result.signal in (Signal.WATCH, Signal.TRIGGERED) and consecutive_days >= 4:
+        compact_mode = True
 
     # Output
     if args.json:
         print(to_json(result))
     else:
-        print_signal(result, use_color=not args.no_color)
+        print_signal(
+            result, 
+            use_color=not args.no_color, 
+            compact=compact_mode, 
+            consecutive_days=consecutive_days
+        )
 
     # Persist
     if not args.no_save:
