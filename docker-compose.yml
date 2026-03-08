@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    volumes:
+      - ./data:/app/data
+    environment:
+      - QQQ_DB_PATH=/app/data/signals.db
+    command: python -m src.main
+
+  test:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - QQQ_DB_PATH=/tmp/test_signals.db
+    command: pytest tests/ -v --tb=short

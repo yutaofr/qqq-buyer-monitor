@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qqq-monitor"
+version = "0.1.0"
+description = "QQQ buy-signal monitor with options wall confirmation layer"
+requires-python = ">=3.12"
+dependencies = [
+    "yfinance>=0.2.50",
+    "requests>=2.32",
+    "beautifulsoup4>=4.12",
+    "numpy>=1.26",
+    "scipy>=1.13",
+    "pandas>=2.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-mock>=3.14",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+qqq-monitor = "src.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
