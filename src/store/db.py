@@ -260,4 +260,6 @@ def _to_json_dict(result: SignalResult) -> dict:
             "call_wall_distance_pct": _float(t2.call_wall_distance_pct),
         },
         "explanation": result.explanation,
+        "pe_source": result.pe_source,
+        "erp": _float(result.erp),
     }
