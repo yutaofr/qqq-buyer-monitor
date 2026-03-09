@@ -83,7 +83,7 @@ def load_history(n: int = 30, path: str = DEFAULT_DB_PATH) -> list[dict]:
     """Return the most recent n signal records as raw dicts."""
     if not Path(path).exists():
         return []
-    conn = sqlite3.connect(path)
+    conn = init_db(path)
     rows = conn.execute(
         "SELECT json_blob FROM signals ORDER BY date DESC LIMIT ?", (n,)
     ).fetchall()
@@ -101,7 +101,7 @@ def get_historical_series(days: int = 60, path: str = DEFAULT_DB_PATH) -> pd.Dat
         
     cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
     
-    conn = sqlite3.connect(path)
+    conn = init_db(path)
     rows = conn.execute(
         "SELECT json_blob FROM signals WHERE date >= ? ORDER BY date ASC", (cutoff_date,)
     ).fetchall()
@@ -142,7 +142,7 @@ def save_macro_state(
     path: str = DEFAULT_DB_PATH,
 ) -> None:
     """Save the latest low-frequency macro variables."""
-    conn = sqlite3.connect(path)
+    conn = init_db(path)
     conn.execute(
         """
         INSERT OR REPLACE INTO macro_states (date, credit_spread, trailing_pe, forward_pe)
@@ -159,7 +159,7 @@ def load_latest_macro_state(path: str = DEFAULT_DB_PATH) -> dict | None:
     """Return the most recent macro state dict."""
     if not Path(path).exists():
         return None
-    conn = sqlite3.connect(path)
+    conn = init_db(path)
     row = conn.execute(
         "SELECT date, credit_spread, trailing_pe, forward_pe FROM macro_states ORDER BY date DESC LIMIT 1"
     ).fetchone()
