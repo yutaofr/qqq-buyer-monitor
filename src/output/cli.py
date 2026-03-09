@@ -90,34 +90,33 @@ def print_signal(
 
     print(f"{c(_CYAN)}║{r}")
 
-    # ── Tier 1.5: 背离与估值 ──────────────────────────────────────────────
-    val_b = getattr(t1, "valuation_bonus", 0)
-    div_b = getattr(t1, "divergence_bonus", 0)
-    fcf_b = getattr(t1, "fcf_bonus", 0)
-    if val_b != 0 or div_b != 0 or fcf_b != 0:
-        print(f"{c(_CYAN)}║{r}  {c(_BOLD)}── 附加分: 估值与背离红利 ─────────────────────{r}")
-        if val_b > 0:
-            print(f"{c(_CYAN)}║{r}  🟢 估值优势 (Forward PE): {c(_GREEN)}+{val_b}{r}")
-        elif val_b < 0:
-            print(f"{c(_CYAN)}║{r}  🔴 估值偏高 (Forward PE): {c(_RED)}{val_b}{r}")
-            
-        if fcf_b > 0:
-            print(f"{c(_CYAN)}║{r}  💰 现金流深蹲 (FCF Yield): {c(_GREEN)}+{fcf_b}{r}")
-            
-        if div_b > 0:
-            flags = getattr(t1, "divergence_flags", {})
-            mapping = {
-                "price_breadth": "📈 市场广度背离",
-                "price_vix": "😱 恐慌指数背离",
-                "price_rsi": "⚡ RSI 动能背离",
-                "price_revision": "📊 盈利预期背离"
-            }
-            active_labels = [label for key, label in mapping.items() if flags.get(key)]
-            for label in active_labels:
-                print(f"{c(_CYAN)}║{r}  {label}")
-            print(f"{c(_CYAN)}║{r}  🔥 底部背离总红利: {c(_GREEN)}+{div_b}{r}")
-            
-        print(f"{c(_CYAN)}║{r}")
+    # ── Tier 1.5: 宏观环境与背离红利 ───────────────────────────────────────────────
+    print(f"{c(_CYAN)}║{r}  {c(_BOLD)}── Tier 1.5: 环境判别与背离 ─────────────────────────{r}")
+    
+    val_b = t1.valuation_bonus
+    fcf_b = t1.fcf_bonus
+    div_b = t1.divergence_bonus
+
+    # 1. Macro & Valuation Details
+    us10y_str = f"{t1.us10y:.2f}%" if t1.us10y else "N/A"
+    fpe = t1.forward_pe or 0.0
+    fcf_y = t1.fcf_yield or 0.0
+    
+    print(f"{c(_CYAN)}║{r}  美债收益 (US10Y): {us10y_str}  │ 远期 PE: {fpe:.1f} → {val_b:+d}")
+    print(f"{c(_CYAN)}║{r}  现金收益 (FCF): {fcf_y*100:.1f}%  → {fcf_b:+d}")
+    
+    # 2. Divergence Checks
+    flags = t1.divergence_flags
+    def div_row(key, label):
+        status = "🔥 [触发]" if flags.get(key) else "⚪ [未见]"
+        return f"{c(_CYAN)}║{r}  {status} {label}"
+
+    print(div_row("price_breadth", "市场广度背离"))
+    print(div_row("price_vix", "恐慌指数背离"))
+    print(div_row("price_rsi", "动能 RSI 背离"))
+    print(div_row("price_revision", "盈利预期背离"))
+    print(f"{c(_CYAN)}║{r}  背离红利总得分: {c(_GREEN)}+{div_b}{r}")
+    print(f"{c(_CYAN)}║{r}")
 
     # ── Tier 2 ────────────────────────────────────────────────────────────
     t2 = result.tier2

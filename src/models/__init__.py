@@ -71,6 +71,8 @@ class Tier1Result:
     fcf_bonus: int = 0
     trailing_pe: Optional[float] = None
     forward_pe: Optional[float] = None
+    fcf_yield: Optional[float] = None
+    us10y: Optional[float] = None
     
     # v2.0 Divergence additions
     divergence_bonus: int = 0

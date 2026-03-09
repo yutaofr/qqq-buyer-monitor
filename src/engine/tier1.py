@@ -174,6 +174,8 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         fcf_bonus=fcf_bonus,
         trailing_pe=getattr(data, 'trailing_pe', None),
         forward_pe=getattr(data, 'forward_pe', None),
+        fcf_yield=getattr(data, 'fcf_yield', None),
+        us10y=getattr(data, 'us10y', None),
         divergence_bonus=divergence_bonus,
         divergence_flags=divergence_flags,
     )
