@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from src.models import MarketData, SignalDetail, Tier1Result
 from src.engine.divergence import check_divergences
-from src.engine.fundamentals import calculate_valuation_weight
+from src.engine.fundamentals import calculate_valuation_weight, calculate_fcf_bonus
 
 # ── Gradient thresholds (low, high) ──────────────────────────────────────────
 # Signal 1: 52-week high drawdown  (higher = more bullish)
@@ -135,13 +135,20 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
     divergence_bonus = 0
     divergence_flags = {}
     if getattr(data, 'history_window', None) is not None and not data.history_window.empty:
-        div_res = check_divergences(data.price, data.vix, float(data.pct_above_50d), data.history_window)
+        div_res = check_divergences(
+            data.price, 
+            data.vix, 
+            float(data.pct_above_50d), 
+            data.history_window,
+            getattr(data, 'earnings_revisions_breadth', None)
+        )
         divergence_bonus = div_res.get("bonus_score", 0)
         total += divergence_bonus
         divergence_flags = {
             "price_breadth": div_res.get("price_breadth", False),
             "price_vix": div_res.get("price_vix", False),
             "price_rsi": div_res.get("price_rsi", False),
+            "price_revision": div_res.get("price_revision", False),
         }
 
     # v3.0 Calculate Valuation Bonus
@@ -150,6 +157,11 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         # If we had a deep history of PE, we'd pass it here. For MVP, we use static thresholds in fundamentals.py
         valuation_bonus = calculate_valuation_weight(data.forward_pe, None)
         total += valuation_bonus
+        
+    fcf_bonus = 0
+    if getattr(data, 'fcf_yield', None) is not None:
+        fcf_bonus = calculate_fcf_bonus(data.fcf_yield)
+        total += fcf_bonus
 
     return Tier1Result(
         score=total,
@@ -159,6 +171,7 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         fear_greed=s4,
         breadth=s5,
         valuation_bonus=valuation_bonus,
+        fcf_bonus=fcf_bonus,
         divergence_bonus=divergence_bonus,
         divergence_flags=divergence_flags,
     )

@@ -21,3 +21,24 @@ def check_macro_regime(credit_spread: float | None) -> bool:
         return True
         
     return False
+
+def check_erp_regime(forward_pe: float | None, us10y: float | None) -> str:
+    """
+    Calculate Equity Risk Premium (ERP = 1/Forward PE - US10Y).
+    Returns 'Defense' if ERP < 1%, 'Aggressive' if ERP > 5%, Default is 'Normal'.
+    """
+    if forward_pe is None or us10y is None or forward_pe <= 0:
+        return "Normal"
+        
+    # Note: US10Y is in percentage (e.g. 4.25 for 4.25%)
+    earnings_yield = (1.0 / forward_pe) * 100.0
+    erp = earnings_yield - us10y
+    
+    if erp < 1.0:
+        logger.warning("🛡️ TIER-0 ERP REGIME: Defense mode active (ERP = %.2f%%). Risk premium too low.", erp)
+        return "Defense"
+    elif erp > 5.0:
+        logger.info("💎 TIER-0 ERP REGIME: Aggressive mode active (ERP = %.2f%%). Outstanding historical value.", erp)
+        return "Aggressive"
+        
+    return "Normal"

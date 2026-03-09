@@ -64,3 +64,17 @@ def calculate_valuation_weight(current_pe: float | None, hist_pe_series: pd.Seri
         return -10
         
     return 0
+
+def calculate_fcf_bonus(fcf_yield: float | None) -> int:
+    """
+    Calculate a bonus score for Tier 1 based on absolute FCF Yield.
+    If FCF Yield > 4.5%, return +15.
+    """
+    if fcf_yield is None:
+        return 0
+        
+    if fcf_yield > 4.5:
+        logger.info("💰 FCF VALUATION BASELINE: Asset is extremely cheap (FCF Yield = %.2f%%). Granting +15 bonus.", fcf_yield)
+        return 15
+        
+    return 0

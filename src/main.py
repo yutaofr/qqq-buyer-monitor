@@ -30,6 +30,7 @@ def _run(args: argparse.Namespace) -> None:
     from src.collector.options import fetch_options_chain
     from src.collector.breadth import fetch_breadth
     from src.collector.macro import fetch_credit_spread
+    from src.collector.macro_v3 import fetch_us10y, fetch_fcf_yield, fetch_earnings_revisions_breadth
     from src.collector.fundamentals import fetch_forward_pe
     from src.models import MarketData, Signal
     from src.engine.tier1 import calculate_tier1
@@ -82,10 +83,13 @@ def _run(args: argparse.Namespace) -> None:
         errors.append(f"Breadth: {exc}")
         breadth = {"adv_dec_ratio": 0.6, "pct_above_50d": 0.40}
 
-    # Macro & Fundamentals (v2.0)
+    # Macro & Fundamentals (v2.0 & v3.0)
     logger.info("Fetching macro & fundamental data…")
     credit_spread = None
     forward_pe = None
+    us10y = None
+    fcf_yield = None
+    earnings_revisions_breadth = None
     macro_state = load_latest_macro_state()
     
     try:
@@ -101,11 +105,25 @@ def _run(args: argparse.Namespace) -> None:
         logger.warning("Fundamentals fetch failed: %s", exc)
         errors.append(f"Fundamentals: {exc}")
         
+    try:
+        us10y = fetch_us10y()
+        fcf_yield = fetch_fcf_yield()
+        earnings_revisions_breadth = fetch_earnings_revisions_breadth()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("v3.0 Macro fetch failed: %s", exc)
+        errors.append(f"Macro_v3: {exc}")
+        
     # Use cached state if fetch failed
     if credit_spread is None and macro_state:
         credit_spread = macro_state.get("credit_spread")
     if forward_pe is None and macro_state:
-        forward_pe = macro_state.get("trailing_pe") # Keep using trailing
+        forward_pe = macro_state.get("trailing_pe")
+    if us10y is None and macro_state:
+        us10y = macro_state.get("us10y")
+    if fcf_yield is None and macro_state:
+        fcf_yield = macro_state.get("fcf_yield")
+    if earnings_revisions_breadth is None and macro_state:
+        earnings_revisions_breadth = macro_state.get("earnings_revisions_breadth")
         
     # History Window (Epic 2)
     history_window = None
@@ -130,6 +148,9 @@ def _run(args: argparse.Namespace) -> None:
         options_df=options_df,
         credit_spread=credit_spread,
         forward_pe=forward_pe,
+        us10y=us10y,
+        fcf_yield=fcf_yield,
+        earnings_revisions_breadth=earnings_revisions_breadth,
         history_window=history_window,
     )
 
@@ -158,7 +179,9 @@ def _run(args: argparse.Namespace) -> None:
         tier1, 
         tier2, 
         prev_signal=prev_signal,
-        credit_spread=market_data.credit_spread
+        credit_spread=market_data.credit_spread,
+        forward_pe=market_data.forward_pe,
+        us10y=market_data.us10y
     )
 
     consecutive_days = 1

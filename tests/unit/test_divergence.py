@@ -78,3 +78,35 @@ def test_check_divergences_exception_handling():
     res = check_divergences(100.0, 20.0, 0.5, df)
     
     assert res["bonus_score"] == 0
+
+def test_check_divergences_price_revision():
+    # Length > 15
+    prices = np.concatenate([np.linspace(150, 100, 15), [110.0, 105.0]])
+    df = pd.DataFrame({
+        "price": prices,
+        "vix": [20.0] * 17,
+        "breadth": [0.5] * 17
+    })
+    
+    # Under low (100.0), Revision Breadth is 60.0 (>50%)
+    res = check_divergences(
+        current_price=95.0, 
+        current_vix=25.0, 
+        current_breadth=0.5, 
+        df=df,
+        current_revision_breadth=60.0
+    )
+    
+    assert res["price_revision"] is True
+    # Initial is 20 points
+    assert res["bonus_score"] >= 20
+    
+    # Under low, Revision Breadth is 40.0 (<50%) -> No divergence
+    res2 = check_divergences(
+        current_price=95.0, 
+        current_vix=25.0, 
+        current_breadth=0.5, 
+        df=df,
+        current_revision_breadth=40.0
+    )
+    assert res2["price_revision"] is False

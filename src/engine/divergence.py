@@ -19,15 +19,23 @@ def _calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     # Optional: Wilder's smoothing for more accuracy, but simple rolling mean is often acceptable for basic divergence
     return rsi
 
-def check_divergences(current_price: float, current_vix: float, current_breadth: float, df: pd.DataFrame | None) -> dict:
+def check_divergences(
+    current_price: float, 
+    current_vix: float, 
+    current_breadth: float, 
+    df: pd.DataFrame | None,
+    current_revision_breadth: float | None = None
+) -> dict:
     """
     Check for technical divergences between current data and recent historical minimums.
+    Also checks for Earnings Revision Divergence (v3.0).
     Returns a dict with boolean flags and a total divergence bonus score.
     """
     result = {
         "price_breadth": False,
         "price_vix": False,
         "price_rsi": False,
+        "price_revision": False,
         "bonus_score": 0
     }
     
@@ -73,6 +81,14 @@ def check_divergences(current_price: float, current_vix: float, current_breadth:
                     logger.info("🔥 Price-RSI Divergence detected! RSI making higher lows.")
                     result["price_rsi"] = True
                     result["bonus_score"] += 5
+                    
+            # --- Epic 4: Fundamental Earnings Revision Divergence ---
+            if current_revision_breadth is not None:
+                # If price is at low, but analysts are upwardly revising earnings on net (>50%)
+                if current_revision_breadth > 50.0:
+                    logger.info("🌟 FUNDAMENTAL DIVERGENCE: Price at new low, but Earnings Revisions > 50%% (%.1f%%). Strong Buy!", current_revision_breadth)
+                    result["price_revision"] = True
+                    result["bonus_score"] += 20
                     
     except Exception as exc:
         logger.warning("Failed to calculate divergences: %s", exc)

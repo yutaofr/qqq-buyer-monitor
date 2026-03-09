@@ -36,7 +36,10 @@ CREATE TABLE IF NOT EXISTS macro_states (
     date TEXT PRIMARY KEY,
     credit_spread REAL,
     trailing_pe REAL,
-    forward_pe REAL
+    forward_pe REAL,
+    us10y REAL,
+    fcf_yield REAL,
+    earnings_revisions_breadth REAL
 );
 """
 
@@ -47,6 +50,14 @@ def init_db(path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.execute(CREATE_TABLE_SQL)
     conn.execute(CREATE_MACRO_TABLE_SQL)
+    
+    # v3.0 migrations for existing DB
+    for col in ["us10y", "fcf_yield", "earnings_revisions_breadth"]:
+        try:
+            conn.execute(f"ALTER TABLE macro_states ADD COLUMN {col} REAL")
+        except sqlite3.OperationalError:
+            pass
+            
     conn.commit()
     logger.debug("DB initialised at %s", db_path)
     return conn
@@ -139,16 +150,33 @@ def save_macro_state(
     credit_spread: float | None = None,
     trailing_pe: float | None = None,
     forward_pe: float | None = None,
+    us10y: float | None = None,
+    fcf_yield: float | None = None,
+    earnings_revisions_breadth: float | None = None,
     path: str = DEFAULT_DB_PATH,
 ) -> None:
     """Save the latest low-frequency macro variables."""
     conn = init_db(path)
     conn.execute(
         """
-        INSERT OR REPLACE INTO macro_states (date, credit_spread, trailing_pe, forward_pe)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO macro_states (
+            date, credit_spread, trailing_pe, forward_pe, 
+            us10y, fcf_yield, earnings_revisions_breadth
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(date) DO UPDATE SET
+            credit_spread = COALESCE(excluded.credit_spread, macro_states.credit_spread),
+            trailing_pe = COALESCE(excluded.trailing_pe, macro_states.trailing_pe),
+            forward_pe = COALESCE(excluded.forward_pe, macro_states.forward_pe),
+            us10y = COALESCE(excluded.us10y, macro_states.us10y),
+            fcf_yield = COALESCE(excluded.fcf_yield, macro_states.fcf_yield),
+            earnings_revisions_breadth = COALESCE(excluded.earnings_revisions_breadth, macro_states.earnings_revisions_breadth)
         """,
-        (record_date.isoformat(), credit_spread, trailing_pe, forward_pe)
+        (
+            record_date.isoformat(), 
+            credit_spread, trailing_pe, forward_pe,
+            us10y, fcf_yield, earnings_revisions_breadth
+        )
     )
     conn.commit()
     conn.close()
@@ -161,7 +189,7 @@ def load_latest_macro_state(path: str = DEFAULT_DB_PATH) -> dict | None:
         return None
     conn = init_db(path)
     row = conn.execute(
-        "SELECT date, credit_spread, trailing_pe, forward_pe FROM macro_states ORDER BY date DESC LIMIT 1"
+        "SELECT date, credit_spread, trailing_pe, forward_pe, us10y, fcf_yield, earnings_revisions_breadth FROM macro_states ORDER BY date DESC LIMIT 1"
     ).fetchone()
     conn.close()
     if row:
@@ -170,6 +198,9 @@ def load_latest_macro_state(path: str = DEFAULT_DB_PATH) -> dict | None:
             "credit_spread": row[1],
             "trailing_pe": row[2],
             "forward_pe": row[3],
+            "us10y": row[4],
+            "fcf_yield": row[5],
+            "earnings_revisions_breadth": row[6],
         }
     return None
 
@@ -204,6 +235,7 @@ def _to_json_dict(result: SignalResult) -> dict:
         "tier1": {
             "score": t1.score,
             "valuation_bonus": getattr(t1, "valuation_bonus", 0),
+            "fcf_bonus": getattr(t1, "fcf_bonus", 0),
             "divergence_bonus": getattr(t1, "divergence_bonus", 0),
             "divergence_flags": getattr(t1, "divergence_flags", {}),
             "details": {

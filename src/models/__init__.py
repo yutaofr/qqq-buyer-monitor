@@ -31,6 +31,9 @@ class MarketData:
     credit_spread: Optional[float] = None
     trailing_pe: Optional[float] = None
     forward_pe: Optional[float] = None
+    us10y: Optional[float] = None
+    fcf_yield: Optional[float] = None
+    earnings_revisions_breadth: Optional[float] = None
     options_df: Optional[pd.DataFrame] = field(default=None, repr=False)
     # options_df columns: strike, expiration, option_type ('call'/'put'),
     #   openInterest, impliedVolatility, gamma, gamma_source ('yfinance'/'bs')
@@ -62,8 +65,9 @@ class Tier1Result:
     fear_greed: SignalDetail
     breadth: SignalDetail
     
-    # v3.0 Valuation
+    # v3.0 Valuation & FCF
     valuation_bonus: int = 0
+    fcf_bonus: int = 0
     
     # v2.0 Divergence additions
     divergence_bonus: int = 0

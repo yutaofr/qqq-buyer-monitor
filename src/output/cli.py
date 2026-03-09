@@ -89,12 +89,16 @@ def print_signal(
     # ── Tier 1.5: 背离与估值 ──────────────────────────────────────────────
     val_b = getattr(t1, "valuation_bonus", 0)
     div_b = getattr(t1, "divergence_bonus", 0)
-    if val_b != 0 or div_b != 0:
-        print(f"{c(_CYAN)}║{r}  {c(_BOLD)}── 附加分: 背离与估值 ───────────────────────{r}")
+    fcf_b = getattr(t1, "fcf_bonus", 0)
+    if val_b != 0 or div_b != 0 or fcf_b != 0:
+        print(f"{c(_CYAN)}║{r}  {c(_BOLD)}── 附加分: 估值与背离红利 ─────────────────────{r}")
         if val_b > 0:
             print(f"{c(_CYAN)}║{r}  🟢 估值优势 (Forward PE): {c(_GREEN)}+{val_b}{r}")
         elif val_b < 0:
             print(f"{c(_CYAN)}║{r}  🔴 估值偏高 (Forward PE): {c(_RED)}{val_b}{r}")
+            
+        if fcf_b > 0:
+            print(f"{c(_CYAN)}║{r}  💰 现金流深蹲 (FCF Yield): {c(_GREEN)}+{fcf_b}{r}")
             
         if div_b > 0:
             flags = getattr(t1, "divergence_flags", {})

@@ -52,3 +52,10 @@ def test_calculate_valuation_weight_absolute_fallback():
     assert calculate_valuation_weight(EXPENSIVE_PE_THRESHOLD + 1.0, None) == -10
     
     assert calculate_valuation_weight(25.0, None) == 0
+
+def test_calculate_fcf_bonus():
+    from src.engine.fundamentals import calculate_fcf_bonus
+    assert calculate_fcf_bonus(None) == 0
+    assert calculate_fcf_bonus(3.0) == 0
+    assert calculate_fcf_bonus(4.5) == 0
+    assert calculate_fcf_bonus(4.6) == 15

@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import date
 
 from src.models import Signal, SignalResult, Tier1Result, Tier2Result
-from src.engine.tier0_macro import check_macro_regime
+from src.engine.tier0_macro import check_macro_regime, check_erp_regime
 
 TRIGGERED_THRESHOLD = 70
 WATCH_THRESHOLD = 40
@@ -28,6 +28,8 @@ def aggregate(
     tier2: Tier2Result,
     prev_signal: Signal | None = None,
     credit_spread: float | None = None,
+    forward_pe: float | None = None,
+    us10y: float | None = None,
 ) -> SignalResult:
     """
     Combine Tier-1 and Tier-2 results into a final SignalResult.
@@ -52,6 +54,12 @@ def aggregate(
 
     # ── Tier-0 Macro Veto ────────────────────────────────────────────────────
     is_macro_crisis = check_macro_regime(credit_spread)
+    erp_regime = check_erp_regime(forward_pe, us10y)
+    
+    if erp_regime == "Defense":
+        current_triggered_thresh = 85
+    elif erp_regime == "Aggressive" and current_triggered_thresh == TRIGGERED_THRESHOLD:
+        current_triggered_thresh = 60 # Easier to trigger in a generational bottom
 
     # ── Three-state logic with hard vetoes ───────────────────────────────────
     # Macro crisis blocks all buys.
@@ -67,7 +75,7 @@ def aggregate(
 
     explanation = _build_explanation(
         signal, tier1, tier2, final_score,
-        current_triggered_thresh, current_watch_thresh, is_macro_crisis
+        current_triggered_thresh, current_watch_thresh, is_macro_crisis, erp_regime
     )
 
     return SignalResult(
@@ -89,6 +97,7 @@ def _build_explanation(
     trigger_thresh: int,
     watch_thresh: int,
     is_macro_crisis: bool = False,
+    erp_regime: str = "Normal"
 ) -> str:
     """Generate a Chinese-language explanation of the signal rationale."""
     parts: list[str] = []
@@ -137,13 +146,19 @@ def _build_explanation(
     if trigger_thresh < TRIGGERED_THRESHOLD or watch_thresh < WATCH_THRESHOLD:
         hysteresis_note = "（已触发滞后干预机制，维持近期连贯状态）"
         
+    erp_note = ""
+    if erp_regime == "Defense":
+        erp_note = " 🛡️ [防守模式]: 股权风险溢价极低，触发门槛大幅提高。"
+    elif erp_regime == "Aggressive":
+        erp_note = " 💎 [百年一遇]: 股权风险溢价极高，触发绝佳长线击球区！"
+
     if is_macro_crisis:
         parts.append("🚨 综合判断：虽然技术面可能提示加仓，但当前信用利差爆表，触发宏观流动性危机熔断，系统强制切断一切买入信号！")
     elif signal == Signal.TRIGGERED:
-        parts.append(f"综合判断：触发买点，性价比较高{hysteresis_note}。")
+        parts.append(f"综合判断：触发买点，性价比较高{hysteresis_note}。{erp_note}")
     elif signal == Signal.WATCH:
-        parts.append(f"综合判断：进入观察区，等待更多信号确认后再入场{hysteresis_note}。")
+        parts.append(f"综合判断：进入观察区，等待更多信号确认后再入场{hysteresis_note}。{erp_note}")
     else:
-        parts.append(f"综合判断：条件尚未满足，无买点信号{hysteresis_note}。")
+        parts.append(f"综合判断：条件尚未满足，无买点信号{hysteresis_note}。{erp_note}")
 
     return "。".join(parts) + "。"
