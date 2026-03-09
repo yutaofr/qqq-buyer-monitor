@@ -10,6 +10,7 @@ import pandas as pd
 
 
 class Signal(str, Enum):
+    STRONG_BUY = "STRONG_BUY"
     TRIGGERED = "TRIGGERED"
     WATCH = "WATCH"
     NO_SIGNAL = "NO_SIGNAL"

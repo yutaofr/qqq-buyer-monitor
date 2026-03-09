@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 # Constants
 START_DATE = "1999-03-10"  # QQQ inception date
-END_DATE = "2025-12-31"
+END_DATE = date.today().strftime("%Y-%m-%d")
+
 
 
 def run_backtest() -> None:

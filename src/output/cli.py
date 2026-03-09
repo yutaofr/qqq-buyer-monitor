@@ -8,10 +8,12 @@ _GREEN = "\033[92m"
 _YELLOW = "\033[93m"
 _RED = "\033[91m"
 _CYAN = "\033[96m"
+_PURPLE = "\033[95m"
 _BOLD = "\033[1m"
 _RESET = "\033[0m"
 
 _SIGNAL_STYLE = {
+    Signal.STRONG_BUY: (_PURPLE, "🌟 强烈买入 (STRONG BUY)"),
     Signal.TRIGGERED: (_GREEN, "✅ 触发 (TRIGGERED)"),
     Signal.WATCH: (_YELLOW, "👀 观察 (WATCH)"),
     Signal.NO_SIGNAL: (_RED, "❌ 未触发 (NO_SIGNAL)"),
@@ -132,7 +134,17 @@ def print_signal(
     print(f"{c(_CYAN)}║{r}")
 
     # ── Final ─────────────────────────────────────────────────────────────
-    score_color = c(_GREEN) if result.final_score >= 70 else (c(_YELLOW) if result.final_score >= 40 else c(_RED))
+    sig_code = result.signal
+    score_p = result.final_score
+    if sig_code == Signal.STRONG_BUY:
+        score_color = c(_PURPLE)
+    elif score_p >= 70:
+        score_color = c(_GREEN)
+    elif score_p >= 40:
+        score_color = c(_YELLOW)
+    else:
+        score_color = c(_RED)
+
     print(
         f"{c(_CYAN)}║{r}  {c(_BOLD)}── 最终得分: {score_color}{result.final_score}{r}{c(_BOLD)}"
         f"  状态: {header_label} ────{r}"

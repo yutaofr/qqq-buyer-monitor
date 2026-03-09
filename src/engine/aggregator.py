@@ -73,6 +73,14 @@ def aggregate(
     else:
         signal = Signal.NO_SIGNAL
 
+    # Upgrade to STRONG_BUY if Revision Divergence exists and we are in TRIGGERED state
+    if (
+        signal == Signal.TRIGGERED 
+        and not tier2.support_broken 
+        and tier1.divergence_flags.get("price_revision")
+    ):
+        signal = Signal.STRONG_BUY
+
     explanation = _build_explanation(
         signal, tier1, tier2, final_score,
         current_triggered_thresh, current_watch_thresh, is_macro_crisis, erp_regime
@@ -154,6 +162,10 @@ def _build_explanation(
 
     if is_macro_crisis:
         parts.append("🚨 综合判断：虽然技术面可能提示加仓，但当前信用利差爆表，触发宏观流动性危机熔断，系统强制切断一切买入信号！")
+    elif signal == Signal.STRONG_BUY:
+        parts.append(
+            f"🔥 🌟 综合判断：触发【强烈买入】(STRONG BUY) 核心信号！价格由于基本面底背离（分析师上修）展现出罕见的逆势强度{hysteresis_note}。{erp_note}"
+        )
     elif signal == Signal.TRIGGERED:
         parts.append(f"综合判断：触发买点，性价比较高{hysteresis_note}。{erp_note}")
     elif signal == Signal.WATCH:
