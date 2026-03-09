@@ -151,3 +151,50 @@ class TestTotalScore:
             + result.breadth.points
         )
         assert result.score == expected
+
+class TestBonuses:
+    def test_valuation_bonus_applied(self):
+        # Base score 0 because everything is neutral
+        # forward_pe=20.0 (Cheap absolute < 22) -> valuation_bonus = 10
+        data = _make_data(forward_pe=20.0)
+        result = calculate_tier1(data)
+        assert result.valuation_bonus == 10
+        assert result.score == 10
+
+    def test_fcf_bonus_applied(self):
+        # Base score 0
+        # fcf_yield=5.0% (>4.5%) -> fcf_bonus = +15
+        data = _make_data(fcf_yield=5.0)
+        result = calculate_tier1(data)
+        assert result.fcf_bonus == 15
+        assert result.score == 15
+        
+    def test_divergence_bonus_applied(self, mocker):
+        # Mocking check_divergences to return +20 for revision divergence
+        mocker.patch("src.engine.tier1.check_divergences", return_value={"bonus_score": 20, "price_revision": True})
+        
+        import pandas as pd
+        data = _make_data(history_window=pd.DataFrame({"dummy": [1]}), earnings_revisions_breadth=60.0)
+        result = calculate_tier1(data)
+        
+        assert result.divergence_bonus == 20
+        assert result.divergence_flags["price_revision"] is True
+        assert result.score == 20
+
+    def test_all_bonuses_combined(self, mocker):
+        mocker.patch("src.engine.tier1.check_divergences", return_value={"bonus_score": 15, "price_vix": True})
+        import pandas as pd
+        
+        data = _make_data(
+            forward_pe=35.0, # expensive -> -10
+            fcf_yield=5.0, # deep value -> +15
+            history_window=pd.DataFrame({"dummy": [1]}) # divergence -> +15
+        )
+        
+        result = calculate_tier1(data)
+        
+        assert result.valuation_bonus == -10
+        assert result.fcf_bonus == 15
+        assert result.divergence_bonus == 15
+        # Total base score = 0, + (15 - 10 + 15) = 20
+        assert result.score == 20

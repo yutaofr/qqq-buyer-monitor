@@ -144,3 +144,43 @@ class TestScoreAndExplanation:
         result = aggregate(d, 412.35, t1, t2)
         assert result.date == d
         assert result.price == 412.35
+
+# ── Macro Veto & ERP Regime tests ─────────────────────────────────────────────
+class TestMacroAndERPRegimes:
+    def test_macro_veto_prevents_triggered(self):
+        t1 = _tier1(100)
+        t2 = _tier2()
+        # Even with max score, macro veto overrides (threshold is 500 bps)
+        result = aggregate(date(2026, 3, 8), 410.0, t1, t2, credit_spread=600.0)
+        assert result.signal != Signal.TRIGGERED
+        assert "流动性危机" in result.explanation
+
+    def test_erp_defense_mode_raises_threshold(self):
+        # ERP < 1% -> Defense mode (Threshold 85)
+        # Score 75 is normally TRIGGERED (75 >= 70), but in Defense it should be WATCH
+        t1 = _tier1(75)
+        t2 = _tier2()
+        # forward_pe=25, us10y=4.0 -> EY=4%, ERP=0% (Defense)
+        result = aggregate(date(2026, 3, 8), 410.0, t1, t2, forward_pe=25.0, us10y=4.0)
+        assert result.signal == Signal.WATCH
+        assert "[防守模式]" in result.explanation
+
+    def test_erp_aggressive_mode_lowers_threshold(self):
+        # ERP > 5% -> Aggressive mode (Threshold 65)
+        # Score 65 is normally WATCH (<70), but in Aggressive it should be TRIGGERED
+        t1 = _tier1(65)
+        t2 = _tier2()
+        # forward_pe=14.28, us10y=1.0 -> EY=7.0%, ERP=6.0% (Aggressive)
+        result = aggregate(date(2026, 3, 8), 410.0, t1, t2, forward_pe=14.28, us10y=1.0)
+        assert result.signal == Signal.TRIGGERED
+        assert "[百年一遇]" in result.explanation
+
+    def test_erp_normal_mode(self):
+        # ERP between 1% and 5% -> Normal mode (Threshold 70)
+        t1 = _tier1(70)
+        t2 = _tier2()
+        # forward_pe=20, us10y=3.0 -> EY=5.0%, ERP=2.0% (Normal)
+        result = aggregate(date(2026, 3, 8), 410.0, t1, t2, forward_pe=20.0, us10y=3.0)
+        assert result.signal == Signal.TRIGGERED
+        assert "[防守模式]" not in result.explanation
+        assert "[百年一遇]" not in result.explanation
