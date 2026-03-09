@@ -30,6 +30,9 @@ class MarketData:
     options_df: Optional[pd.DataFrame] = field(default=None, repr=False)
     # options_df columns: strike, expiration, option_type ('call'/'put'),
     #   openInterest, impliedVolatility, gamma, gamma_source ('yfinance'/'bs')
+    
+    # v2.0 Divergence historical data (prices, vix, breadth)
+    history_window: Optional[pd.DataFrame] = field(default=None, repr=False)
 
 
 @dataclass

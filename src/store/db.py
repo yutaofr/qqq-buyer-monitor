@@ -5,7 +5,8 @@ import json
 import logging
 import os
 import sqlite3
-from datetime import date
+import pandas as pd
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from src.models import (
@@ -30,6 +31,14 @@ CREATE TABLE IF NOT EXISTS signals (
 );
 """
 
+CREATE_MACRO_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS macro_states (
+    date TEXT PRIMARY KEY,
+    credit_spread REAL,
+    trailing_pe REAL,
+    forward_pe REAL
+);
+"""
 
 def init_db(path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     """Initialise (or open) the SQLite database and create the table."""
@@ -37,6 +46,7 @@ def init_db(path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     conn.execute(CREATE_TABLE_SQL)
+    conn.execute(CREATE_MACRO_TABLE_SQL)
     conn.commit()
     logger.debug("DB initialised at %s", db_path)
     return conn
@@ -79,6 +89,89 @@ def load_history(n: int = 30, path: str = DEFAULT_DB_PATH) -> list[dict]:
     ).fetchall()
     conn.close()
     return [json.loads(row[0]) for row in rows]
+
+
+def get_historical_series(days: int = 60, path: str = DEFAULT_DB_PATH) -> pd.DataFrame | None:
+    """
+    Return a pandas DataFrame of the last `days` records from the DB.
+    Extracts date, price, vix, and breadth for divergence calculations.
+    """
+    if not Path(path).exists():
+        return None
+        
+    cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    
+    conn = sqlite3.connect(path)
+    rows = conn.execute(
+        "SELECT json_blob FROM signals WHERE date >= ? ORDER BY date ASC", (cutoff_date,)
+    ).fetchall()
+    conn.close()
+    
+    if not rows:
+        return None
+        
+    data = []
+    for row in rows:
+        d = json.loads(row[0])
+        tier1 = d.get("tier1", {}).get("details", {})
+        
+        # Extract scalar values safely
+        vix_val = tier1.get("vix", {}).get("value")
+        breadth_val = tier1.get("breadth", {}).get("value")
+        
+        data.append({
+            "date": pd.to_datetime(d["date"]),
+            "price": d["price"],
+            "vix": vix_val,
+            "breadth": breadth_val,
+            "signal": d.get("signal")
+        })
+        
+    df = pd.DataFrame(data)
+    if not df.empty:
+        df.set_index("date", inplace=True)
+        return df
+    return None
+
+
+def save_macro_state(
+    record_date: date,
+    credit_spread: float | None = None,
+    trailing_pe: float | None = None,
+    forward_pe: float | None = None,
+    path: str = DEFAULT_DB_PATH,
+) -> None:
+    """Save the latest low-frequency macro variables."""
+    conn = sqlite3.connect(path)
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO macro_states (date, credit_spread, trailing_pe, forward_pe)
+        VALUES (?, ?, ?, ?)
+        """,
+        (record_date.isoformat(), credit_spread, trailing_pe, forward_pe)
+    )
+    conn.commit()
+    conn.close()
+    logger.debug("Saved macro state for %s", record_date.isoformat())
+
+
+def load_latest_macro_state(path: str = DEFAULT_DB_PATH) -> dict | None:
+    """Return the most recent macro state dict."""
+    if not Path(path).exists():
+        return None
+    conn = sqlite3.connect(path)
+    row = conn.execute(
+        "SELECT date, credit_spread, trailing_pe, forward_pe FROM macro_states ORDER BY date DESC LIMIT 1"
+    ).fetchone()
+    conn.close()
+    if row:
+        return {
+            "date": row[0],
+            "credit_spread": row[1],
+            "trailing_pe": row[2],
+            "forward_pe": row[3],
+        }
+    return None
 
 
 def _to_json_dict(result: SignalResult) -> dict:
