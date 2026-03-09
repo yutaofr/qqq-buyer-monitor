@@ -91,6 +91,8 @@ def run_backtest() -> None:
         else: pct_50 = 0.40
         
         # Build MarketData
+        lookback_df_60 = df[df.index <= dt].tail(60).copy()
+        
         mdata = MarketData(
             date=dt.date(),
             price=float(row["Close"]),
@@ -100,7 +102,14 @@ def run_backtest() -> None:
             fear_greed=int(fg_synthetic),
             adv_dec_ratio=0.5, # Neutral fallback for breadth ratio in backtest
             pct_above_50d=pct_50,
-            options_df=None # Tier 2 is disabled for historical backtest due to lack of historical option metrics
+            options_df=None, # Tier 2 is disabled for historical backtest due to lack of historical option metrics
+            credit_spread=None,
+            forward_pe=None,
+            history_window=pd.DataFrame({
+                "price": lookback_df_60["Close"],
+                "vix": lookback_df_60["VIX"],
+                "breadth": 0.5 
+            })
         )
         
         t1 = calculate_tier1(mdata)

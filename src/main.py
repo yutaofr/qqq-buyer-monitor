@@ -29,13 +29,15 @@ def _run(args: argparse.Namespace) -> None:
     from src.collector.fear_greed import fetch_fear_greed
     from src.collector.options import fetch_options_chain
     from src.collector.breadth import fetch_breadth
+    from src.collector.macro import fetch_credit_spread
+    from src.collector.fundamentals import fetch_forward_pe
     from src.models import MarketData, Signal
     from src.engine.tier1 import calculate_tier1
     from src.engine.tier2 import calculate_tier2
     from src.engine.aggregator import aggregate
     from src.output.cli import print_signal
     from src.output.report import to_json
-    from src.store.db import save_signal
+    from src.store.db import save_signal, get_historical_series, load_latest_macro_state, save_macro_state
 
     logger.info("Fetching market data…")
 
@@ -80,6 +82,38 @@ def _run(args: argparse.Namespace) -> None:
         errors.append(f"Breadth: {exc}")
         breadth = {"adv_dec_ratio": 0.6, "pct_above_50d": 0.40}
 
+    # Macro & Fundamentals (v2.0)
+    logger.info("Fetching macro & fundamental data…")
+    credit_spread = None
+    forward_pe = None
+    macro_state = load_latest_macro_state()
+    
+    try:
+        credit_spread = fetch_credit_spread()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Credit spread fetch failed: %s", exc)
+        errors.append(f"Macro: {exc}")
+        
+    try:
+        pe_dict = fetch_forward_pe()
+        forward_pe = pe_dict.get("trailing_pe") # Use trailing if forward isn't available
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Fundamentals fetch failed: %s", exc)
+        errors.append(f"Fundamentals: {exc}")
+        
+    # Use cached state if fetch failed
+    if credit_spread is None and macro_state:
+        credit_spread = macro_state.get("credit_spread")
+    if forward_pe is None and macro_state:
+        forward_pe = macro_state.get("trailing_pe") # Keep using trailing
+        
+    # History Window (Epic 2)
+    history_window = None
+    try:
+        history_window = get_historical_series(days=60)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to load history window for divergence checks: %s", exc)
+
     if errors:
         logger.warning("Some data sources failed (degraded mode): %s", errors)
 
@@ -94,6 +128,9 @@ def _run(args: argparse.Namespace) -> None:
         adv_dec_ratio=breadth["adv_dec_ratio"],
         pct_above_50d=breadth["pct_above_50d"],
         options_df=options_df,
+        credit_spread=credit_spread,
+        forward_pe=forward_pe,
+        history_window=history_window,
     )
 
     logger.info("Running signal engines…")
@@ -115,7 +152,14 @@ def _run(args: argparse.Namespace) -> None:
 
     tier1 = calculate_tier1(market_data)
     tier2 = calculate_tier2(market_data.price, market_data.options_df)
-    result = aggregate(market_data.date, market_data.price, tier1, tier2, prev_signal=prev_signal)
+    result = aggregate(
+        market_data.date, 
+        market_data.price, 
+        tier1, 
+        tier2, 
+        prev_signal=prev_signal,
+        credit_spread=market_data.credit_spread
+    )
 
     consecutive_days = 1
     if history and result.signal.value == history[0]["signal"]:
@@ -145,7 +189,14 @@ def _run(args: argparse.Namespace) -> None:
     # Persist
     if not args.no_save:
         save_signal(result)
-        logger.info("Signal saved to DB.")
+        # Update macro state cache
+        if market_data.credit_spread is not None or market_data.forward_pe is not None:
+            save_macro_state(
+                record_date=market_data.date,
+                credit_spread=market_data.credit_spread,
+                trailing_pe=market_data.forward_pe, # We store it in trailing_pe column since that's what we got
+            )
+        logger.info("Signal and macro states saved to DB.")
 
 
 def _history(args: argparse.Namespace) -> None:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from src.models import MarketData, SignalDetail, Tier1Result
 from src.engine.divergence import check_divergences
+from src.engine.fundamentals import calculate_valuation_weight
 
 # ── Gradient thresholds (low, high) ──────────────────────────────────────────
 # Signal 1: 52-week high drawdown  (higher = more bullish)
@@ -143,6 +144,13 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
             "price_rsi": div_res.get("price_rsi", False),
         }
 
+    # v3.0 Calculate Valuation Bonus
+    valuation_bonus = 0
+    if getattr(data, 'forward_pe', None) is not None:
+        # If we had a deep history of PE, we'd pass it here. For MVP, we use static thresholds in fundamentals.py
+        valuation_bonus = calculate_valuation_weight(data.forward_pe, None)
+        total += valuation_bonus
+
     return Tier1Result(
         score=total,
         drawdown_52w=s1,
@@ -150,6 +158,7 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         vix=s3,
         fear_greed=s4,
         breadth=s5,
+        valuation_bonus=valuation_bonus,
         divergence_bonus=divergence_bonus,
         divergence_flags=divergence_flags,
     )

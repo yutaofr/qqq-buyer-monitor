@@ -203,6 +203,9 @@ def _to_json_dict(result: SignalResult) -> dict:
         "final_score": result.final_score,
         "tier1": {
             "score": t1.score,
+            "valuation_bonus": getattr(t1, "valuation_bonus", 0),
+            "divergence_bonus": getattr(t1, "divergence_bonus", 0),
+            "divergence_flags": getattr(t1, "divergence_flags", {}),
             "details": {
                 "drawdown_52w": detail_to_dict(t1.drawdown_52w),
                 "ma200_deviation": detail_to_dict(t1.ma200_deviation),

@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import date
 
 from src.models import Signal, SignalResult, Tier1Result, Tier2Result
+from src.engine.tier0_macro import check_macro_regime
 
 TRIGGERED_THRESHOLD = 70
 WATCH_THRESHOLD = 40
@@ -26,6 +27,7 @@ def aggregate(
     tier1: Tier1Result,
     tier2: Tier2Result,
     prev_signal: Signal | None = None,
+    credit_spread: float | None = None,
 ) -> SignalResult:
     """
     Combine Tier-1 and Tier-2 results into a final SignalResult.
@@ -48,10 +50,15 @@ def aggregate(
     current_triggered_thresh = 65 if is_prev_triggered else TRIGGERED_THRESHOLD
     current_watch_thresh = 35 if is_prev_watch else WATCH_THRESHOLD
 
-    # ── Three-state logic with hard veto ─────────────────────────────────────
-    # Put-wall hard veto: support_broken blocks TRIGGERED only.
-    # PRD §4.3: "最高只能输出 '观察'", so WATCH is still valid when support_broken.
-    if final_score >= current_triggered_thresh and not tier2.support_broken:
+    # ── Tier-0 Macro Veto ────────────────────────────────────────────────────
+    is_macro_crisis = check_macro_regime(credit_spread)
+
+    # ── Three-state logic with hard vetoes ───────────────────────────────────
+    # Macro crisis blocks all buys.
+    # Put-wall hard veto blocks TRIGGERED only.
+    if is_macro_crisis:
+        signal = Signal.NO_SIGNAL
+    elif final_score >= current_triggered_thresh and not tier2.support_broken:
         signal = Signal.TRIGGERED
     elif final_score >= current_watch_thresh:
         signal = Signal.WATCH
@@ -60,7 +67,7 @@ def aggregate(
 
     explanation = _build_explanation(
         signal, tier1, tier2, final_score,
-        current_triggered_thresh, current_watch_thresh
+        current_triggered_thresh, current_watch_thresh, is_macro_crisis
     )
 
     return SignalResult(
@@ -81,6 +88,7 @@ def _build_explanation(
     final_score: int,
     trigger_thresh: int,
     watch_thresh: int,
+    is_macro_crisis: bool = False,
 ) -> str:
     """Generate a Chinese-language explanation of the signal rationale."""
     parts: list[str] = []
@@ -129,7 +137,9 @@ def _build_explanation(
     if trigger_thresh < TRIGGERED_THRESHOLD or watch_thresh < WATCH_THRESHOLD:
         hysteresis_note = "（已触发滞后干预机制，维持近期连贯状态）"
         
-    if signal == Signal.TRIGGERED:
+    if is_macro_crisis:
+        parts.append("🚨 综合判断：虽然技术面可能提示加仓，但当前信用利差爆表，触发宏观流动性危机熔断，系统强制切断一切买入信号！")
+    elif signal == Signal.TRIGGERED:
         parts.append(f"综合判断：触发买点，性价比较高{hysteresis_note}。")
     elif signal == Signal.WATCH:
         parts.append(f"综合判断：进入观察区，等待更多信号确认后再入场{hysteresis_note}。")

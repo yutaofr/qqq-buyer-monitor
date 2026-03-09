@@ -86,6 +86,23 @@ def print_signal(
 
     print(f"{c(_CYAN)}║{r}")
 
+    # ── Tier 1.5: 背离与估值 ──────────────────────────────────────────────
+    val_b = getattr(t1, "valuation_bonus", 0)
+    div_b = getattr(t1, "divergence_bonus", 0)
+    if val_b != 0 or div_b != 0:
+        print(f"{c(_CYAN)}║{r}  {c(_BOLD)}── 附加分: 背离与估值 ───────────────────────{r}")
+        if val_b > 0:
+            print(f"{c(_CYAN)}║{r}  🟢 估值优势 (Forward PE): {c(_GREEN)}+{val_b}{r}")
+        elif val_b < 0:
+            print(f"{c(_CYAN)}║{r}  🔴 估值偏高 (Forward PE): {c(_RED)}{val_b}{r}")
+            
+        if div_b > 0:
+            flags = getattr(t1, "divergence_flags", {})
+            active_divs = [k.replace("price_", "") for k, v in flags.items() if v]
+            print(f"{c(_CYAN)}║{r}  🔥 底部背离红利 ({', '.join(active_divs)}): {c(_GREEN)}+{div_b}{r}")
+            
+        print(f"{c(_CYAN)}║{r}")
+
     # ── Tier 2 ────────────────────────────────────────────────────────────
     t2 = result.tier2
     adj_color = c(_GREEN) if t2.adjustment > 0 else c(_RED)

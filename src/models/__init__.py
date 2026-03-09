@@ -27,6 +27,10 @@ class MarketData:
     fear_greed: int  # CNN Fear & Greed index (0-100)
     adv_dec_ratio: float  # NYSE Advance/Decline ratio
     pct_above_50d: float  # Fraction of NYSE stocks above 50-day MA (0-1)
+    # v3.0 Macro & Fundamentals
+    credit_spread: Optional[float] = None
+    trailing_pe: Optional[float] = None
+    forward_pe: Optional[float] = None
     options_df: Optional[pd.DataFrame] = field(default=None, repr=False)
     # options_df columns: strike, expiration, option_type ('call'/'put'),
     #   openInterest, impliedVolatility, gamma, gamma_source ('yfinance'/'bs')
@@ -57,6 +61,9 @@ class Tier1Result:
     vix: SignalDetail
     fear_greed: SignalDetail
     breadth: SignalDetail
+    
+    # v3.0 Valuation
+    valuation_bonus: int = 0
     
     # v2.0 Divergence additions
     divergence_bonus: int = 0
