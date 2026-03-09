@@ -54,7 +54,8 @@ docker-compose up --build test
 - **情绪指数**: CNN Money API
 
 ### 核心亮点
-- **Strong Buy 升级机制**: 仅当 Tier-1 触发、ERP 处于健康模式、且分析师 **Earnings Revisions** 出现明显底背离时，信号才会升级为紫色 `STRONG_BUY`。
+- **Strong Buy 升级机制**: 仅当 Tier-1 触发、ERP 处于健康模式、且出现**重大底背离**（如市场广度、VIX 或分析师盈利预期上修）时，信号才会升级为紫色 `STRONG_BUY`。
+- **四重背离模型**: 系统集成技术面 (Breadth, VIX, RSI) 与基本面 (Revision) 四个维度的背离监测，寻找价格与宏观/微观参与度的终极分歧。
 - **2026 回测洞察**: 2026 年初 QQQ 的多次 5-6% 回调被系统识别为“非结构性恐慌/非深度折扣”，在保持 **NO_SIGNAL** 状态下成功规避了多次震荡，体现了极高的保守可靠性。
 
 ## 📄 开源协议

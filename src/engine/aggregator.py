@@ -73,11 +73,18 @@ def aggregate(
     else:
         signal = Signal.NO_SIGNAL
 
-    # Upgrade to STRONG_BUY if Revision Divergence exists and we are in TRIGGERED state
+    # Upgrade to STRONG_BUY if any major Divergence exists and we are in TRIGGERED state
+    # Major divergences: Revision (Fundamental), Breadth (Technical), or VIX (Technical)
+    has_major_div = (
+        tier1.divergence_flags.get("price_revision") or
+        tier1.divergence_flags.get("price_breadth") or
+        tier1.divergence_flags.get("price_vix")
+    )
+    
     if (
         signal == Signal.TRIGGERED 
         and not tier2.support_broken 
-        and tier1.divergence_flags.get("price_revision")
+        and has_major_div
     ):
         signal = Signal.STRONG_BUY
 
@@ -163,8 +170,15 @@ def _build_explanation(
     if is_macro_crisis:
         parts.append("🚨 综合判断：虽然技术面可能提示加仓，但当前信用利差爆表，触发宏观流动性危机熔断，系统强制切断一切买入信号！")
     elif signal == Signal.STRONG_BUY:
+        div_reasons = []
+        if tier1.divergence_flags.get("price_revision"): div_reasons.append("基本面上修")
+        if tier1.divergence_flags.get("price_breadth"): div_reasons.append("市场广度提升")
+        if tier1.divergence_flags.get("price_vix"): div_reasons.append("恐慌情绪衰减")
+        if tier1.divergence_flags.get("price_rsi"): div_reasons.append("动能底背离")
+        
+        div_str = " + ".join(div_reasons) if div_reasons else "多重背离确认"
         parts.append(
-            f"🔥 🌟 综合判断：触发【强烈买入】(STRONG BUY) 核心信号！价格由于基本面底背离（分析师上修）展现出罕见的逆势强度{hysteresis_note}。{erp_note}"
+            f"🔥 🌟 综合判断：触发【强烈买入】(STRONG BUY) 核心信号！价格由于底背离（{div_str}）展现出罕见的逆势强度{hysteresis_note}。{erp_note}"
         )
     elif signal == Signal.TRIGGERED:
         parts.append(f"综合判断：触发买点，性价比较高{hysteresis_note}。{erp_note}")
