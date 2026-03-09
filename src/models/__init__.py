@@ -69,6 +69,8 @@ class Tier1Result:
     # v3.0 Valuation & FCF
     valuation_bonus: int = 0
     fcf_bonus: int = 0
+    trailing_pe: Optional[float] = None
+    forward_pe: Optional[float] = None
     
     # v2.0 Divergence additions
     divergence_bonus: int = 0

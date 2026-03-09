@@ -62,10 +62,12 @@ def print_signal(
         return
 
     print(f"{c(_CYAN)}║{r}  QQQ 收盘价: {c(_BOLD)}${result.price:.2f}{r}")
-    print(f"{c(_CYAN)}║{r}")
-
-    # ── Tier 1 ────────────────────────────────────────────────────────────
+    
     t1 = result.tier1
+    pe_str = f"PE: {t1.trailing_pe:.1f}" if t1.trailing_pe else "PE: N/A"
+    fpe_str = f"Forward PE: {t1.forward_pe:.1f}" if t1.forward_pe else "Forward PE: N/A"
+    print(f"{c(_CYAN)}║{r}  {pe_str}  │  {fpe_str}")
+    print(f"{c(_CYAN)}║{r}")
     print(
         f"{c(_CYAN)}║{r}  {c(_BOLD)}── Tier 1: 现货与情绪 ─────────────── 得分: {t1.score}/100 ──{r}"
     )
