@@ -93,6 +93,12 @@ def aggregate(
         current_triggered_thresh, current_watch_thresh, is_macro_crisis, erp_regime
     )
 
+    # Calculate final ERP value for reporting
+    erp_val = None
+    if forward_pe and us10y and forward_pe > 0:
+        earnings_yield = 1.0 / forward_pe
+        erp_val = (earnings_yield * 100) - us10y
+
     return SignalResult(
         date=market_date,
         price=price,
@@ -101,6 +107,8 @@ def aggregate(
         tier1=tier1,
         tier2=tier2,
         explanation=explanation,
+        pe_source=tier1.pe_source,
+        erp=erp_val
     )
 
 

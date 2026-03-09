@@ -35,6 +35,7 @@ class MarketData:
     us10y: Optional[float] = None
     fcf_yield: Optional[float] = None
     earnings_revisions_breadth: Optional[float] = None
+    pe_source: str = "yfinance"
     options_df: Optional[pd.DataFrame] = field(default=None, repr=False)
     # options_df columns: strike, expiration, option_type ('call'/'put'),
     #   openInterest, impliedVolatility, gamma, gamma_source ('yfinance'/'bs')
@@ -73,6 +74,7 @@ class Tier1Result:
     forward_pe: Optional[float] = None
     fcf_yield: Optional[float] = None
     us10y: Optional[float] = None
+    pe_source: str = "yfinance"
     
     # v2.0 Divergence additions
     divergence_bonus: int = 0
@@ -109,3 +111,7 @@ class SignalResult:
     tier1: Tier1Result
     tier2: Tier2Result
     explanation: str
+    pe_source: str = "yfinance"
+    
+    # 2026-03 v3.0 logic extensions
+    erp: Optional[float] = None

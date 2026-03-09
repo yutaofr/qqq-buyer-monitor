@@ -100,7 +100,8 @@ def _run(args: argparse.Namespace) -> None:
         
     try:
         pe_dict = fetch_forward_pe()
-        forward_pe = pe_dict.get("trailing_pe") # Use trailing if forward isn't available
+        forward_pe = pe_dict.get("forward_pe")
+        pe_source = pe_dict.get("source", "yfinance")
     except Exception as exc:  # noqa: BLE001
         logger.warning("Fundamentals fetch failed: %s", exc)
         errors.append(f"Fundamentals: {exc}")
@@ -151,6 +152,7 @@ def _run(args: argparse.Namespace) -> None:
         us10y=us10y,
         fcf_yield=fcf_yield,
         earnings_revisions_breadth=earnings_revisions_breadth,
+        pe_source=pe_source,
         history_window=history_window,
     )
 

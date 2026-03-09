@@ -9,6 +9,7 @@ _YELLOW = "\033[93m"
 _RED = "\033[91m"
 _CYAN = "\033[96m"
 _PURPLE = "\033[95m"
+_DIM = "\033[2m"
 _BOLD = "\033[1m"
 _RESET = "\033[0m"
 
@@ -66,7 +67,13 @@ def print_signal(
     t1 = result.tier1
     pe_str = f"PE: {t1.trailing_pe:.1f}" if t1.trailing_pe else "PE: N/A"
     fpe_str = f"Forward PE: {t1.forward_pe:.1f}" if t1.forward_pe else "Forward PE: N/A"
-    print(f"{c(_CYAN)}║{r}  {pe_str}  │  {fpe_str}")
+    source_tag = f" ({c(_DIM)}来源: {result.pe_source}{r})"
+    print(f"{c(_CYAN)}║{r}  {pe_str}  │  {fpe_str} {source_tag}")
+    
+    if result.erp is not None:
+        erp_color = c(_GREEN) if result.erp > 1.0 else (c(_RED) if result.erp < 0 else "")
+        print(f"{c(_CYAN)}║{r}  股权风险溢价 (ERP): {erp_color}{result.erp:.2f}%{r}")
+    
     print(f"{c(_CYAN)}║{r}")
     print(
         f"{c(_CYAN)}║{r}  {c(_BOLD)}── Tier 1: 现货与情绪 ─────────────── 得分: {t1.score}/100 ──{r}"
