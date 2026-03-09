@@ -12,7 +12,7 @@ from src.engine.fundamentals import calculate_valuation_weight, calculate_fcf_bo
 
 # ── Gradient thresholds (low, high) ──────────────────────────────────────────
 # Signal 1: 52-week high drawdown  (higher = more bullish)
-DRAWDOWN_THRESHOLDS = (0.08, 0.12)      # <8%=0, 8-12%=10, >=12%=20
+DRAWDOWN_THRESHOLDS = (0.05, 0.10)      # <5%=0, 5-10%=10, >=10%=20
 
 # Signal 2: MA200 deviation  (more negative = more bullish)
 MA200_THRESHOLDS = (-0.03, -0.07)       # >-3%=0, -3~-7%=10, <=-7%=20

@@ -178,10 +178,10 @@ def _build_explanation(
         
         div_str = " + ".join(div_reasons) if div_reasons else "多重背离确认"
         parts.append(
-            f"🔥 🌟 综合判断：触发【强烈买入】(STRONG BUY) 核心信号！价格由于底背离（{div_str}）展现出罕见的逆势强度{hysteresis_note}。{erp_note}"
+            f"🔥 🌟 综合判断：触发【强烈买入】(STRONG BUY) 核心信号！价格由于底背离（{div_str}）展现出罕见的逆势强度，是极佳的加仓点{hysteresis_note}。{erp_note}"
         )
     elif signal == Signal.TRIGGERED:
-        parts.append(f"综合判断：触发买点，性价比较高{hysteresis_note}。{erp_note}")
+        parts.append(f"综合判断：触发买点，进入分批加仓（5% 级回调）区间{hysteresis_note}。{erp_note}")
     elif signal == Signal.WATCH:
         parts.append(f"综合判断：进入观察区，等待更多信号确认后再入场{hysteresis_note}。{erp_note}")
     else:
