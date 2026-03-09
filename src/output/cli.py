@@ -106,8 +106,16 @@ def print_signal(
             
         if div_b > 0:
             flags = getattr(t1, "divergence_flags", {})
-            active_divs = [k.replace("price_", "") for k, v in flags.items() if v]
-            print(f"{c(_CYAN)}║{r}  🔥 底部背离红利 ({', '.join(active_divs)}): {c(_GREEN)}+{div_b}{r}")
+            mapping = {
+                "price_breadth": "📈 市场广度背离",
+                "price_vix": "😱 恐慌指数背离",
+                "price_rsi": "⚡ RSI 动能背离",
+                "price_revision": "📊 盈利预期背离"
+            }
+            active_labels = [label for key, label in mapping.items() if flags.get(key)]
+            for label in active_labels:
+                print(f"{c(_CYAN)}║{r}  {label}")
+            print(f"{c(_CYAN)}║{r}  🔥 底部背离总红利: {c(_GREEN)}+{div_b}{r}")
             
         print(f"{c(_CYAN)}║{r}")
 
