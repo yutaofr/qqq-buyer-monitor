@@ -57,6 +57,10 @@ class Tier1Result:
     vix: SignalDetail
     fear_greed: SignalDetail
     breadth: SignalDetail
+    
+    # v2.0 Divergence additions
+    divergence_bonus: int = 0
+    divergence_flags: dict = field(default_factory=dict)
 
 
 @dataclass

@@ -7,6 +7,7 @@ All thresholds are defined as module-level constants for easy M4 tuning.
 from __future__ import annotations
 
 from src.models import MarketData, SignalDetail, Tier1Result
+from src.engine.divergence import check_divergences
 
 # ── Gradient thresholds (low, high) ──────────────────────────────────────────
 # Signal 1: 52-week high drawdown  (higher = more bullish)
@@ -129,6 +130,19 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
 
     total = s1_pts + s2_pts + s3_pts + s4_pts + s5_pts
 
+    # v2.0 Calculate Divergence Bonus
+    divergence_bonus = 0
+    divergence_flags = {}
+    if getattr(data, 'history_window', None) is not None and not data.history_window.empty:
+        div_res = check_divergences(data.price, data.vix, float(data.pct_above_50d), data.history_window)
+        divergence_bonus = div_res.get("bonus_score", 0)
+        total += divergence_bonus
+        divergence_flags = {
+            "price_breadth": div_res.get("price_breadth", False),
+            "price_vix": div_res.get("price_vix", False),
+            "price_rsi": div_res.get("price_rsi", False),
+        }
+
     return Tier1Result(
         score=total,
         drawdown_52w=s1,
@@ -136,4 +150,6 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         vix=s3,
         fear_greed=s4,
         breadth=s5,
+        divergence_bonus=divergence_bonus,
+        divergence_flags=divergence_flags,
     )
