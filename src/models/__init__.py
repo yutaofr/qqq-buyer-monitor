@@ -52,6 +52,10 @@ class MarketData:
     net_liquidity: Optional[float] = None
     liquidity_roc: Optional[float] = None
     move_index: Optional[float] = None
+    
+    # v4.0 Phase 3: Volatility & Sentiment Extremes
+    ohlcv_history: Optional[pd.DataFrame] = field(default=None, repr=False)
+    sector_rotation: Optional[float] = None
 
 
 @dataclass
@@ -102,6 +106,8 @@ class Tier1Result:
     net_liquidity: Optional[float] = None
     liquidity_roc: Optional[float] = None
     move_index: Optional[float] = None
+    market_regime: str = "NORMAL"
+    sector_rotation: Optional[float] = None
 
 
 @dataclass

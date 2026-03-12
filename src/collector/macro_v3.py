@@ -140,3 +140,28 @@ def fetch_move_index() -> float | None:
     except Exception as exc:
         logger.warning("FAILED to fetch MOVE Index: %s", exc)
     return None
+
+def fetch_sector_rotation() -> float | None:
+    """
+    Calculate Sector Rotation: 20-day relative strength of XLP (Defensive) vs QQQ (Growth).
+    A decrease in this ratio indicates a shift back to growth stocks.
+    Returns the 20-day change in the XLP/QQQ ratio.
+    """
+    try:
+        tickers = ["XLP", "QQQ"]
+        # Use simple period string for yfinance
+        data = yf.download(tickers, period="40d", interval="1d", progress=False)["Close"]
+        if data.empty:
+            return None
+            
+        ratio = data["XLP"] / data["QQQ"]
+        current_ratio = ratio.iloc[-1]
+        prev_ratio = ratio.iloc[-21] if len(ratio) >= 21 else ratio.iloc[0]
+        
+        # Relative change in ratio
+        rel_change = (current_ratio - prev_ratio) / prev_ratio * 100
+        logger.info("Sector Rotation (XLP/QQQ) 20D Change: %.2f%%", rel_change)
+        return rel_change
+    except Exception as exc:
+        logger.warning("FAILED to fetch Sector Rotation: %s", exc)
+    return None

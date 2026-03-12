@@ -19,72 +19,96 @@ def _calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     # Optional: Wilder's smoothing for more accuracy, but simple rolling mean is often acceptable for basic divergence
     return rsi
 
+def _calculate_mfi(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    """Calculate Money Flow Index (MFI) for a given DataFrame containing High, Low, Close, Volume."""
+    typical_price = (df['High'] + df['Low'] + df['Close']) / 3
+    money_flow = typical_price * df['Volume']
+    
+    delta = typical_price.diff()
+    positive_flow = money_flow.where(delta > 0, money_flow * 0)
+    negative_flow = money_flow.where(delta < 0, money_flow * 0)
+    
+    pos_sum = positive_flow.rolling(window=period).sum()
+    neg_sum = negative_flow.rolling(window=period).sum()
+    
+    # Avoid division by zero
+    mfr = pos_sum / neg_sum.replace(0, np.nan)
+    mfi = 100 - (100 / (1 + mfr))
+    return mfi.fillna(50)
+
 def check_divergences(
     current_price: float, 
     current_vix: float, 
     current_breadth: float, 
     df: pd.DataFrame | None,
-    current_revision_breadth: float | None = None
+    current_revision_breadth: float | None = None,
+    current_hist_df: pd.DataFrame | None = None
 ) -> dict:
     """
     Check for technical divergences between current data and recent historical minimums.
-    Also checks for Earnings Revision Divergence (v3.0).
-    Returns a dict with boolean flags and a total divergence bonus score.
+    Includes MFI (Money Flow Index) divergence for v4.2.
     """
     result = {
         "price_breadth": False,
         "price_vix": False,
         "price_rsi": False,
+        "price_mfi": False,
         "price_revision": False,
         "bonus_score": 0
     }
     
+    # We need history to calculate divergence
     if df is None or len(df) < 15:
         logger.debug("Not enough history to calculate divergence.")
         return result
         
     try:
-        # Check if price is making a new low compared to the window (e.g., last 60 days)
-        # Allow a small margin (e.g., 1%) to count as a "new low" zone.
+        # Price low detection (relative to last ~30-60 records in signals DB)
         hist_min_price = df['price'].min()
         
         if current_price <= hist_min_price * 1.01:
-            # Price is at or near the 60-day low. Find the date of the historic low.
             min_price_idx = df['price'].idxmin()
-            # If the min price happened recently (e.g., today or yesterday), we compare it to the SECOND lowest dip
-            # But for simplicity, we just compare current indicators against the minimal price context.
-            hist_breadth_at_min = df.loc[min_price_idx, 'breadth']
-            hist_vix_at_min = df.loc[min_price_idx, 'vix']
             
-            # --- Price-Breadth Divergence ---
-            # Current price is lower, but breadth is HIGHER (less stocks are participating in the drop)
+            # 1. Breadth Divergence
+            hist_breadth_at_min = df.loc[min_price_idx, 'breadth']
             if current_breadth > hist_breadth_at_min:
                 logger.info("🔥 Price-Breadth Divergence detected! Breadth improved while price dropped.")
                 result["price_breadth"] = True
                 result["bonus_score"] += 15
                 
-            # --- Price-VIX Divergence ---
-            # Current price is lower, but VIX is LOWER (less panic/protection buying)
+            # 2. VIX Divergence
+            hist_vix_at_min = df.loc[min_price_idx, 'vix']
             if current_vix < hist_vix_at_min:
                 logger.info("🔥 Price-VIX Divergence detected! VIX failed to make new highs on price lows.")
                 result["price_vix"] = True
                 result["bonus_score"] += 10
                 
-            # --- Price-RSI Divergence ---
+            # 3. RSI Divergence
             rsi_series = _calculate_rsi(df['price'])
             if not rsi_series.isna().all():
                 hist_rsi_at_min = rsi_series.loc[min_price_idx]
                 current_rsi = rsi_series.iloc[-1]
-                
-                # If RSI is higher now than at the previous price low
                 if current_rsi > hist_rsi_at_min:
                     logger.info("🔥 Price-RSI Divergence detected! RSI making higher lows.")
                     result["price_rsi"] = True
                     result["bonus_score"] += 5
+
+            # 4. MFI Divergence (v4.2)
+            if current_hist_df is not None and not current_hist_df.empty:
+                mfi_series = _calculate_mfi(current_hist_df)
+                if not mfi_series.isna().all():
+                    # Find price low in historical OHLCV df
+                    ohlc_min_idx = current_hist_df['Close'].idxmin()
+                    hist_mfi_at_min = mfi_series.loc[ohlc_min_idx]
+                    current_mfi = mfi_series.iloc[-1]
                     
-            # --- Epic 4: Fundamental Earnings Revision Divergence ---
+                    if current_mfi > hist_mfi_at_min:
+                        logger.info("🔥 Price-MFI Divergence detected! Strong money flow on price low.")
+                        result["price_mfi"] = True
+                        result["bonus_score"] += 10
+                    
+            # 5. Fundamental Earnings Revision Divergence
             if current_revision_breadth is not None:
-                # If price is at low, but analysts are upwardly revising earnings on net (>50%)
                 if current_revision_breadth > 50.0:
                     logger.info("🌟 FUNDAMENTAL DIVERGENCE: Price at new low, but Earnings Revisions > 50%% (%.1f%%). Strong Buy!", current_revision_breadth)
                     result["price_revision"] = True

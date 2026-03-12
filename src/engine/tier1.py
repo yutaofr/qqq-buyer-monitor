@@ -6,6 +6,9 @@ All thresholds are defined as module-level constants for easy M4 tuning.
 """
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
+
 from src.models import MarketData, SignalDetail, Tier1Result
 from src.engine.divergence import check_divergences
 from src.engine.fundamentals import calculate_valuation_weight, calculate_fcf_bonus
@@ -60,6 +63,8 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
 
     Returns Tier1Result with total score (0-100) and per-signal breakdown.
     """
+    regime = identify_regime(data.vix_zscore)
+    logger.info("Current Market Regime: %s (VIX Z=%.2f)", regime, data.vix_zscore)
     # Signal 1: 52-week drawdown
     drawdown = (data.high_52w - data.price) / data.high_52w
     s1_pts, s1_half, s1_full = _score_higher_better(drawdown, *DRAWDOWN_THRESHOLDS)
@@ -137,6 +142,17 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
     )
     # Breadth score: max of the two sub-signals (either indicator capitulating is informative)
     s5_pts = max(ratio_pts, pct_pts)
+    
+    # v4.2 QUIET Regime Boost: In low-vol environments, breadth is the most reliable filter
+    if regime == "QUIET":
+        if s5_pts > 0:
+            logger.info("Regime BOOST: Increasing Breadth weight in QUIET environment.")
+            s5_pts = min(s5_pts + 10, 20)
+        
+        # Also boost Fear & Greed if it's showing some fear in a quiet market
+        if s4_pts > 0:
+            s4_pts = min(s4_pts + 10, 20)
+
     # "half" if either triggered half; "full" only if BOTH are at full level
     s5_half = ratio_half or pct_half
     s5_full = ratio_full and pct_full
@@ -160,7 +176,8 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
             data.vix, 
             float(data.pct_above_50d), 
             data.history_window,
-            getattr(data, 'earnings_revisions_breadth', None)
+            getattr(data, 'earnings_revisions_breadth', None),
+            getattr(data, 'ohlcv_history', None)
         )
         divergence_bonus = div_res.get("bonus_score", 0)
         total += divergence_bonus
@@ -168,6 +185,7 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
             "price_breadth": div_res.get("price_breadth", False),
             "price_vix": div_res.get("price_vix", False),
             "price_rsi": div_res.get("price_rsi", False),
+            "price_mfi": div_res.get("price_mfi", False),
             "price_revision": div_res.get("price_revision", False),
         }
 
@@ -212,6 +230,15 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
     total += move_bonus
     divergence_bonus += move_bonus
 
+    # v4.0 Phase 3: Sector Rotation Bonus
+    rotation_bonus = 0
+    if data.sector_rotation is not None and data.sector_rotation < -2.0:
+        # XLP/QQQ ratio dropping > 2% over 20 days suggests rotation back to growth
+        rotation_bonus = 10
+        divergence_flags["growth_rotation"] = True
+    total += rotation_bonus
+    divergence_bonus += rotation_bonus
+
     return Tier1Result(
         score=total,
         drawdown_52w=s1,
@@ -235,4 +262,15 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         net_liquidity=data.net_liquidity,
         liquidity_roc=data.liquidity_roc,
         move_index=data.move_index,
+        market_regime=regime,
+        sector_rotation=data.sector_rotation,
     )
+
+def identify_regime(vix_zscore: float) -> str:
+    """Identify market regime based on VIX Z-Score (v4.2)."""
+    if vix_zscore > 1.5:
+        return "STORM"
+    elif vix_zscore < -1.0:
+        return "QUIET"
+    else:
+        return "NORMAL"

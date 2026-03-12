@@ -35,7 +35,8 @@ def _run(args: argparse.Namespace) -> None:
         fetch_fcf_yield, 
         fetch_earnings_revisions_breadth,
         fetch_net_liquidity,
-        fetch_move_index
+        fetch_move_index,
+        fetch_sector_rotation
     )
     from src.collector.fundamentals import fetch_forward_pe
     from src.models import MarketData, Signal
@@ -152,6 +153,13 @@ def _run(args: argparse.Namespace) -> None:
     # Phase 2: Net Liquidity & MOVE Index
     net_liq, liq_roc = fetch_net_liquidity()
     move_index = fetch_move_index()
+    
+    # Phase 3: Sector Rotation
+    sector_rotation = None
+    try:
+        sector_rotation = fetch_sector_rotation()
+    except Exception as exc:
+        logger.warning("Sector rotation fetch failed: %s", exc)
     # History Window (Epic 2) - Increased to 120d for v4.0 Z-scores
     history_window = None
     vix_zscore = 0.0
@@ -205,6 +213,8 @@ def _run(args: argparse.Namespace) -> None:
         net_liquidity=net_liq,
         liquidity_roc=liq_roc,
         move_index=move_index,
+        ohlcv_history=price_data.get("history"),
+        sector_rotation=sector_rotation,
     )
 
     logger.info("Running signal engines…")

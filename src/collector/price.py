@@ -55,4 +55,10 @@ def fetch_price_data(ticker: str = "QQQ", as_of: date | None = None) -> dict:
         "Price data: price=%.2f ma200=%.2f high_52w=%.2f date=%s",
         price, ma200, high_52w, record_date,
     )
-    return {"price": price, "ma200": ma200, "high_52w": high_52w, "date": record_date}
+    return {
+        "price": price, 
+        "ma200": ma200, 
+        "high_52w": high_52w, 
+        "date": record_date,
+        "history": hist # Return full history for indicator calculations
+    }

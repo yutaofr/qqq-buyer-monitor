@@ -43,6 +43,9 @@ def run_backtest() -> None:
     # Fetch MOVE Index
     move = yf.Ticker("^MOVE").history(start=START_DATE, end=END_DATE)
     
+    # Fetch XLP for Sector Rotation
+    xlp = yf.Ticker("XLP").history(start=START_DATE, end=END_DATE)
+    
     # Fetch WALCL from FRED (proxy for Liquidity)
     from src.collector.macro import fetch_fred_csv
     walcl_df = fetch_fred_csv("WALCL")
@@ -71,6 +74,13 @@ def run_backtest() -> None:
     move_clean = pd.Series(move["Close"].values, index=pd.to_datetime([d.date() for d in move.index]))
     df["MOVE"] = move_clean.reindex(df.index).ffill()
     
+    # XLP alignment
+    xlp_clean = pd.Series(xlp["Close"].values, index=pd.to_datetime([d.date() for d in xlp.index]))
+    df["XLP"] = xlp_clean.reindex(df.index).ffill()
+    # Sector Rotation (XLP/QQQ 20D)
+    df["XLP_QQQ_Ratio"] = df["XLP"] / df["Close"]
+    df["SectorRotation"] = df["XLP_QQQ_Ratio"].pct_change(20) * 100
+    
     # WALCL alignment and ROC
     if walcl_df is not None and not walcl_df.empty:
         walcl_clean = pd.Series(walcl_df["WALCL"].values, index=pd.to_datetime(walcl_df.index))
@@ -84,6 +94,10 @@ def run_backtest() -> None:
     # Pre-calculate rolling drawdowns for Z-score analysis
     peaks = df["Close"].expanding().max()
     df["Drawdown"] = (peaks - df["Close"]) / peaks
+    
+    # Add OHLCV for MFI
+    df["High"] = qqq["High"].values
+    df["Low"] = qqq["Low"].values
 
     signals = []
     prices = []
@@ -139,7 +153,9 @@ def run_backtest() -> None:
             drawdown_zscore=dd_zs,
             net_liquidity=float(row.get("WALCL", 0)) / 1000.0, # Scaled to Billions for realism
             liquidity_roc=float(row.get("LiqROC", 0)),
-            move_index=float(row.get("MOVE", 0)) if not pd.isna(row.get("MOVE")) else None
+            move_index=float(row.get("MOVE", 0)) if not pd.isna(row.get("MOVE")) else None,
+            ohlcv_history=lookback_df_120,
+            sector_rotation=float(row.get("SectorRotation", 0))
         )
         
         t1 = calculate_tier1(mdata)

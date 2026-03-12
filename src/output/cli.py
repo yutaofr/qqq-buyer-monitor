@@ -43,6 +43,7 @@ def print_signal(
     c = lambda code: code if use_color else ""  # noqa: E731
     r = c(_RESET)
 
+    t1 = result.tier1
     color, label = _SIGNAL_STYLE[result.signal]
     header_label = f"{c(color)}{c(_BOLD)}{label}{r}"
 
@@ -52,7 +53,7 @@ def print_signal(
     print(f"\n{c(_CYAN)}╔{border}╗{r}")
     print(
         f"{c(_CYAN)}║{r}  {c(_BOLD)}QQQ 买点信号监控{r}"
-        f"  │  {result.date}  │  {header_label}"
+        f"  │  {result.date}  │  环境: {c(_BOLD)}{t1.market_regime}{r}  │  {header_label}"
     )
     print(f"{c(_CYAN)}╠{border}╣{r}")
     
@@ -116,7 +117,9 @@ def print_signal(
     # Phase 2 details
     move_str = f"{t1.move_index:.1f}" if t1.move_index else "N/A"
     liq_roc_str = f"{t1.liquidity_roc:+.1f}%" if t1.liquidity_roc is not None else "N/A"
+    rot_str = f"{getattr(t1, 'sector_rotation', 0):+.1f}%"
     print(f"{c(_CYAN)}║{r}  美债波动 (MOVE): {move_str}  │ 净流动性 4W-ROC: {liq_roc_str}")
+    print(f"{c(_CYAN)}║{r}  板块轮动 (XLP/QQQ 20D): {rot_str}")
     
     # 2. Divergence Checks
     flags = t1.divergence_flags
@@ -127,9 +130,11 @@ def print_signal(
     print(div_row("price_breadth", "市场广度背离"))
     print(div_row("price_vix", "恐慌指数背离"))
     print(div_row("price_rsi", "动能 RSI 背离"))
+    print(div_row("price_mfi", "资金流 MFI 背离"))
     print(div_row("price_revision", "盈利预期背离"))
     print(div_row("liquidity_divergence", "流动性底背离"))
     print(div_row("bond_vol_spike", "债市恐慌见顶"))
+    print(div_row("growth_rotation", "板块轮动红利"))
     print(f"{c(_GREEN)}║{r}  背离红利总得分: {c(_GREEN)}+{div_b}{r}")
     
     # 3. Concentration Risk
