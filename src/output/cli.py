@@ -134,8 +134,14 @@ def print_signal(
     )
 
     pw_str = f"${t2.put_wall:.0f}" if t2.put_wall else "N/A"
+    pw_str = f"${t2.put_wall:.0f}" if t2.put_wall else "N/A"
     pw_dist = f"{t2.put_wall_distance_pct*100:.1f}%" if t2.put_wall_distance_pct is not None else "---"
     pw_flag = "支撑确认 ✓" if t2.support_confirmed else ("支撑破位 ✗" if t2.support_broken else "中性")
+    
+    if t2.support_broken and t2.next_put_wall is not None:
+        npw_dist = f"{t2.next_put_wall_distance_pct*100:.1f}%" if t2.next_put_wall_distance_pct is not None else "---"
+        pw_flag += f" (下档次级支撑: ${t2.next_put_wall:.0f}，距离 {npw_dist})"
+        
     print(f"{c(_CYAN)}║{r}  Put Wall: {pw_str}  │ 距离 {pw_dist}  → {pw_flag}")
 
     cw_str = f"${t2.call_wall:.0f}" if t2.call_wall else "N/A"

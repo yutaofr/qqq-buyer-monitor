@@ -98,6 +98,8 @@ class Tier2Result:
     # Distance metrics (pct from current price)
     put_wall_distance_pct: Optional[float]
     call_wall_distance_pct: Optional[float]
+    next_put_wall: Optional[float] = None
+    next_put_wall_distance_pct: Optional[float] = None
 
 
 @dataclass

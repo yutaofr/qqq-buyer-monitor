@@ -136,9 +136,14 @@ def _build_explanation(
 
     # Tier-2 options wall
     if tier2.support_broken:
+        next_wall_info = ""
+        if tier2.next_put_wall is not None:
+            pct = (tier2.next_put_wall_distance_pct or 0) * 100
+            next_wall_info = f"，下档次级支撑: ${tier2.next_put_wall} (距离 {pct:.1f}%)"
+            
         parts.append(
             f"价格已跌破 Put Wall（{tier2.put_wall}），做市商 delta 对冲压力可能加速下跌，"
-            f"支撑结构失效，否决买入信号"
+            f"支撑结构失效{next_wall_info}，否决买入信号"
         )
     elif tier2.support_confirmed:
         pct = (tier2.put_wall_distance_pct or 0) * 100

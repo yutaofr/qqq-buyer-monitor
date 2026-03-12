@@ -60,12 +60,18 @@ def calculate_tier2(price: float, options_df: pd.DataFrame | None) -> Tier2Resul
 
     put_wall_distance_pct = None
     call_wall_distance_pct = None
+    next_put_wall = None
+    next_put_wall_distance_pct = None
 
     if put_wall is not None:
         put_wall_distance_pct = (price - put_wall) / price
         if put_wall_distance_pct < 0:
             # Price is below put wall
             support_broken = True
+            # Find the next put wall (highest OI strike below current price)
+            next_put_wall = _find_next_wall(options_df, "put", price)
+            if next_put_wall is not None:
+                next_put_wall_distance_pct = (price - next_put_wall) / price
         elif put_wall_distance_pct <= SUPPORT_ZONE_PCT:
             # Price is just above put wall → support confirmed
             support_confirmed = True
@@ -110,12 +116,25 @@ def calculate_tier2(price: float, options_df: pd.DataFrame | None) -> Tier2Resul
         gamma_source=gamma_source,
         put_wall_distance_pct=round(put_wall_distance_pct, 4) if put_wall_distance_pct is not None else None,
         call_wall_distance_pct=round(call_wall_distance_pct, 4) if call_wall_distance_pct is not None else None,
+        next_put_wall=next_put_wall,
+        next_put_wall_distance_pct=round(next_put_wall_distance_pct, 4) if next_put_wall_distance_pct is not None else None,
     )
 
 
 def _find_wall(df: pd.DataFrame, option_type: str) -> float | None:
     """Return the strike with the highest Open Interest for the given side."""
     side = df[df["option_type"] == option_type]
+    if side.empty:
+        return None
+    agg = side.groupby("strike")["openInterest"].sum()
+    if agg.empty:
+        return None
+    return float(agg.idxmax())
+
+
+def _find_next_wall(df: pd.DataFrame, option_type: str, current_price: float) -> float | None:
+    """Return the strike with the highest OI for the given side that is strictly below current_price."""
+    side = df[(df["option_type"] == option_type) & (df["strike"] < current_price)]
     if side.empty:
         return None
     agg = side.groupby("strike")["openInterest"].sum()
@@ -191,4 +210,6 @@ def _neutral_result() -> Tier2Result:
         gamma_source="none",
         put_wall_distance_pct=None,
         call_wall_distance_pct=None,
+        next_put_wall=None,
+        next_put_wall_distance_pct=None,
     )

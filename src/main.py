@@ -87,6 +87,7 @@ def _run(args: argparse.Namespace) -> None:
     logger.info("Fetching macro & fundamental data…")
     credit_spread = None
     forward_pe = None
+    trailing_pe = None
     us10y = None
     fcf_yield = None
     earnings_revisions_breadth = None
@@ -101,6 +102,7 @@ def _run(args: argparse.Namespace) -> None:
     try:
         pe_dict = fetch_forward_pe()
         forward_pe = pe_dict.get("forward_pe")
+        trailing_pe = pe_dict.get("trailing_pe")
         pe_source = pe_dict.get("source", "yfinance")
     except Exception as exc:  # noqa: BLE001
         logger.warning("Fundamentals fetch failed: %s", exc)
@@ -162,6 +164,7 @@ def _run(args: argparse.Namespace) -> None:
         pct_above_50d=breadth["pct_above_50d"],
         options_df=options_df,
         credit_spread=credit_spread,
+        trailing_pe=trailing_pe,
         forward_pe=forward_pe,
         us10y=us10y,
         fcf_yield=fcf_yield,
