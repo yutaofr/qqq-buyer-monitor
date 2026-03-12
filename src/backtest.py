@@ -17,6 +17,7 @@ import yfinance as yf
 from src.models import MarketData, Signal, Tier2Result
 from src.engine.tier1 import calculate_tier1
 from src.engine.aggregator import aggregate
+from src.utils.stats import calculate_zscore
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
@@ -64,6 +65,10 @@ def run_backtest() -> None:
     
     df["VIX"] = vix_clean.reindex(df.index).ffill().bfill() # bfill handles any NaN at the very start
     df["Volume"] = pd.Series(qqq["Volume"].values, index=df.index)
+    
+    # Pre-calculate rolling drawdowns for Z-score analysis
+    peaks = df["Close"].expanding().max()
+    df["Drawdown"] = (peaks - df["Close"]) / peaks
 
     signals = []
     prices = []
@@ -92,7 +97,11 @@ def run_backtest() -> None:
         else: pct_50 = 0.40
         
         # Build MarketData
-        lookback_df_60 = df[df.index <= dt].tail(60).copy()
+        lookback_df_120 = df[df.index <= dt].tail(120).copy()
+        
+        # Calculate v4.0 Z-Scores
+        vix_zs = calculate_zscore(vix_val, lookback_df_120["VIX"])
+        dd_zs = calculate_zscore(float(row["Drawdown"]), lookback_df_120["Drawdown"])
         
         mdata = MarketData(
             date=dt.date(),
@@ -103,14 +112,16 @@ def run_backtest() -> None:
             fear_greed=int(fg_synthetic),
             adv_dec_ratio=0.5, # Neutral fallback for breadth ratio in backtest
             pct_above_50d=pct_50,
-            options_df=None, # Tier 2 is disabled for historical backtest due to lack of historical option metrics
+            options_df=None, # Tier 2 is disabled for historical backtest
             credit_spread=None,
             forward_pe=None,
             history_window=pd.DataFrame({
-                "price": lookback_df_60["Close"],
-                "vix": lookback_df_60["VIX"],
+                "price": lookback_df_120["Close"],
+                "vix": lookback_df_120["VIX"],
                 "breadth": 0.5 
-            })
+            }),
+            vix_zscore=vix_zs,
+            drawdown_zscore=dd_zs,
         )
         
         t1 = calculate_tier1(mdata)

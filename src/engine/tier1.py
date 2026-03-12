@@ -12,13 +12,15 @@ from src.engine.fundamentals import calculate_valuation_weight, calculate_fcf_bo
 
 # ── Gradient thresholds (low, high) ──────────────────────────────────────────
 # Signal 1: 52-week high drawdown  (higher = more bullish)
-DRAWDOWN_THRESHOLDS = (0.05, 0.10)      # <5%=0, 5-10%=10, >=10%=20
+DRAWDOWN_THRESHOLDS = (0.05, 0.10)      # Absolute: <5%=0, 5-10%=10, >=10%=20
+DRAWDOWN_Z_THRESHOLDS = (1.2, 2.0)      # Relative: Z > 1.2 = 10 pts, Z > 2.0 = 20 pts
 
 # Signal 2: MA200 deviation  (more negative = more bullish)
 MA200_THRESHOLDS = (-0.03, -0.07)       # >-3%=0, -3~-7%=10, <=-7%=20
 
-# Signal 3: VIX level  (higher = more bullish for contrarian)
-VIX_THRESHOLDS = (22.0, 30.0)           # <22=0, 22-30=10, >30=20
+# Signal 3: VIX level (contrarian)
+VIX_THRESHOLDS = (22.0, 30.0)           # Absolute: <22=0, 22-30=10, >30=20
+VIX_Z_THRESHOLDS = (1.5, 2.5)           # Relative: Z > 1.5 StdDev = 10, Z > 2.5 = 20
 
 # Signal 4: Fear & Greed (lower = more bullish)
 FG_THRESHOLDS = (30, 20)                # >30=0, 20-30=10, <=20=20
@@ -61,6 +63,15 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
     # Signal 1: 52-week drawdown
     drawdown = (data.high_52w - data.price) / data.high_52w
     s1_pts, s1_half, s1_full = _score_higher_better(drawdown, *DRAWDOWN_THRESHOLDS)
+    
+    # v4.0 Adaptive Boost: if volatility is low, Z-score might trigger even if absolute is low
+    if data.drawdown_zscore >= DRAWDOWN_Z_THRESHOLDS[1]:
+        s1_pts = max(s1_pts, 20)
+        s1_half, s1_full = True, True
+    elif data.drawdown_zscore >= DRAWDOWN_Z_THRESHOLDS[0]:
+        s1_pts = max(s1_pts, 10)
+        s1_half = True
+
     s1 = SignalDetail(
         name="52w_drawdown",
         value=round(drawdown, 4),
@@ -85,6 +96,15 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
 
     # Signal 3: VIX
     s3_pts, s3_half, s3_full = _score_higher_better(data.vix, *VIX_THRESHOLDS)
+    
+    # v4.0 Adaptive Boost for VIX
+    if data.vix_zscore >= VIX_Z_THRESHOLDS[1]:
+        s3_pts = max(s3_pts, 20)
+        s3_half, s3_full = True, True
+    elif data.vix_zscore >= VIX_Z_THRESHOLDS[0]:
+        s3_pts = max(s3_pts, 10)
+        s3_half = True
+
     s3 = SignalDetail(
         name="vix",
         value=round(data.vix, 2),
@@ -188,4 +208,6 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         divergence_flags=divergence_flags,
         ndx_concentration=ndx_concentration,
         concentration_penalty=concentration_penalty,
+        vix_zscore=data.vix_zscore,
+        drawdown_zscore=data.drawdown_zscore,
     )

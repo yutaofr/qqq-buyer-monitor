@@ -79,19 +79,20 @@ def print_signal(
         f"{c(_CYAN)}║{r}  {c(_BOLD)}── Tier 1: 现货与情绪 ─────────────── 得分: {t1.score}/100 ──{r}"
     )
 
-    def t1_row(detail, label: str) -> str:
+    def t1_row(detail, label: str, zscore: float | None = None) -> str:
         pts = detail.points
         bar = _bar(pts)
         flag = _fmt_flag(detail.triggered_half)
         color_pts = c(_GREEN) if pts >= 20 else (c(_YELLOW) if pts >= 10 else c(_RED))
+        z_str = f" (Z:{zscore:+.1f})" if zscore is not None else ""
         return (
-            f"{c(_CYAN)}║{r}  [{bar}] {label}: {detail.value}"
+            f"{c(_CYAN)}║{r}  [{bar}] {label}{z_str}: {detail.value}"
             f"  {flag}  {color_pts}{pts:+d}{r}"
         )
 
-    print(t1_row(t1.drawdown_52w, f"52周回撤 {t1.drawdown_52w.value*100:.1f}%"))
+    print(t1_row(t1.drawdown_52w, f"52周回撤 {t1.drawdown_52w.value*100:.1f}%", t1.drawdown_zscore))
     print(t1_row(t1.ma200_deviation, f"MA200偏离 {t1.ma200_deviation.value*100:.1f}%"))
-    print(t1_row(t1.vix, f"VIX {t1.vix.value:.1f}"))
+    print(t1_row(t1.vix, f"VIX {t1.vix.value:.1f}", t1.vix_zscore))
     print(t1_row(t1.fear_greed, f"F&G {int(t1.fear_greed.value)}"))
     print(t1_row(t1.breadth, f"市场广度 涨跌比 {t1.breadth.value:.2f}"))
 

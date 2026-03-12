@@ -43,6 +43,10 @@ class MarketData:
     
     # v2.0 Divergence historical data (prices, vix, breadth)
     history_window: Optional[pd.DataFrame] = field(default=None, repr=False)
+    
+    # v4.0 Adaptive Z-Scores
+    vix_zscore: float = 0.0
+    drawdown_zscore: float = 0.0
 
 
 @dataclass
@@ -84,6 +88,10 @@ class Tier1Result:
     # v2.0 Divergence additions
     divergence_bonus: int = 0
     divergence_flags: dict = field(default_factory=dict)
+    
+    # v4.0 Z-Scores
+    vix_zscore: float = 0.0
+    drawdown_zscore: float = 0.0
 
 
 @dataclass

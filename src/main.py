@@ -38,6 +38,7 @@ def _run(args: argparse.Namespace) -> None:
     from src.engine.aggregator import aggregate
     from src.output.cli import print_signal
     from src.output.report import to_json
+    from src.utils.stats import calculate_zscore
     from src.store.db import save_signal, get_historical_series, load_latest_macro_state, save_macro_state
 
     logger.info("Fetching market data…")
@@ -142,12 +143,30 @@ def _run(args: argparse.Namespace) -> None:
         if earnings_revisions_breadth is not None:
             logger.info("Using cached Earnings Revisions from DB: %.2f%%", earnings_revisions_breadth)
         
-    # History Window (Epic 2)
+    # History Window (Epic 2) - Increased to 120d for v4.0 Z-scores
     history_window = None
+    vix_zscore = 0.0
+    dd_zscore = 0.0
     try:
-        history_window = get_historical_series(days=60)
+        history_window = get_historical_series(days=120)
+        if history_window is not None and not history_window.empty:
+            # 1. VIX Z-Score
+            vix_zscore = calculate_zscore(vix, history_window["vix"].dropna())
+            
+            # 2. Drawdown Z-Score
+            # Pre-calculate rolling drawdowns in history
+            hist_prices = history_window["price"]
+            # We need a longer window for historical drawdowns to be meaningful, 
+            # but we can use the current high_52w for the latest point.
+            # For the historical series, we'll approximate using the window's own peak
+            hist_peaks = hist_prices.expanding().max()
+            hist_drawdowns = (hist_peaks - hist_prices) / hist_peaks
+            current_dd = (price_data["high_52w"] - price_data["price"]) / price_data["high_52w"]
+            dd_zscore = calculate_zscore(current_dd, hist_drawdowns)
+            
+            logger.info("Adaptive Stats: VIX Z-Score = %.2f, DD Z-Score = %.2f", vix_zscore, dd_zscore)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to load history window for divergence checks: %s", exc)
+        logger.warning("Failed to load history window for adaptive stats: %s", exc)
 
     if errors:
         logger.warning("Some data sources failed (degraded mode): %s", errors)
@@ -172,6 +191,8 @@ def _run(args: argparse.Namespace) -> None:
         earnings_revisions_breadth=earnings_revisions_breadth,
         pe_source=pe_source,
         history_window=history_window,
+        vix_zscore=vix_zscore,
+        drawdown_zscore=dd_zscore,
     )
 
     logger.info("Running signal engines…")
