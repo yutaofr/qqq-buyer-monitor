@@ -1,63 +1,88 @@
-# QQQ Buy-Signal Monitor (with Options Wall Confirmation)
+# QQQ Buy-Signal Monitor (v4.2 Evolution)
 
-一个基于五大维度市场信号（现货+情绪）并引入期权墙（Options Wall）硬否决逻辑的 QQQ 买点监控系统。
+一个基于五大维度市场信号（现货+情绪）并引入 **宏观引力因子** 与 **动态环境自适应** 逻辑的 QQQ 买点监控系统。
 
-## 🌟 核心特性 (v3.0 最新架构)
+> [!IMPORTANT]
+> **v4.2 核心突破**: 系统已从单纯的“恐慌计”进化为具有“环境感知”能力的综合监控器，对历史重大底部的捕捉率已提升至 **92.6%**。
 
-- **Tier-0 (大周期与宏观防御)**: 
-  - **信用利差熔断**: 实时监控 FRED 信用利差。若 >500 bps (流动性危机)，强制熔断所有买入信号。
-  - **ERP 模式开关**: 基于股权风险溢价 (1/ForwardPE - US10Y) 切换模式：
-    - **🛡️ 防守模式 (ERP < 1%)**: 泡沫背景下大幅收紧买入标准 (触发阈值 85)。
-    - **💎 击球区模式 (ERP > 5%)**: 极端低估背景下允许提前入场 (触发阈值 65)，不放过百年一遇的大底。
-- **Tier-1 (基础情绪层)**: 综合 52周回撤、MA200 偏离度、VIX 指数、CNN Fear & Greed 指数、市场广度（涨跌比）。
-- **Tier-1.5 (价值与背离红利)**: 
-  - **FCF Yield 绝对估值**: 当收益率 > 4.5% 时给予 +15 分基础红利，承认科技股现金流的压舱石作用。
-  - **底背离引擎**: 捕捉价格与 VIX/广度/RSI 以及**盈利预测 (Earnings Revision)** 的分歧。当价格创新低但分析师上修比例 > 50% 时，提供高额红利得分。
-- **Tier-2 (期权确认与否决)**: 实时计算 **Put Wall (支撑墙)**、**Call Wall (压力墙)** 与 **Gamma Flip**。
-- **硬否决逻辑 (Standard Rule)**: 即使前序得分再高，若价格低于 Put Wall，做市商的对冲压力会形成螺旋式下跌，系统强制否决 `TRIGGERED`。
-- **现代化技术栈**: Python 3.12, 异步数据采集, SQLite 历史持久化, Docker 容器化, **87 个单元/集成测试用例**。
+---
+
+## 🌟 核心特性 (v4.2 架构)
+
+### 1. Tier-0 (宏观防御与 ERP)
+- **信用利差熔断**: 实时监控 FRED 高收益债利差 (BAMLH0A0HYM2)。若 >500 bps (流动性危机)，强制熔断。
+- **ERP 模式开关**: 基于股权风险溢价 (1/FwdPE - TIPS) 切换：
+  - **🛡️ 防守模式 (ERP < 1%)**: 估值过高时收紧触发门槛。
+  - **💎 击球区模式 (ERP > 5%)**: 极端低估时允许左侧提前入场。
+
+### 2. Tier-1 (动态情绪层 - Phase 1)
+- **Market Regime Filter**: 自动识别 **QUIET / NORMAL / STORM** 三种波动模式。
+- **Adaptive Z-Scores**: 52周回撤与 VIX 均基于 120D 滚动窗口进行标准化，在低波动环境下也能灵敏探测相对极值。
+- **Regime Weighting**: 在 QUIET 模式下自动调高“市场广度”权重，捕捉无量阴跌底。
+
+### 3. Tier-1.5 (环境因子与背离 - Phase 2 & 3)
+- **Macro Gravity**: 
+  - **Fed Net Liquidity**: 接入美联储负债表、TGA 及 RRP 数据，捕捉流动性拐点得分。
+  - **MOVE Index**: 引入债市波动率，识别债市恐慌见顶带来的权益类机会。
+- **Smart Momentum**:
+  - **MFI (Money Flow Index)**: 结合价格与成交量，识别资金在缩量下跌中的提前进场（底背离）。
+  - **Sector Rotation**: 监控 **XLP/QQQ (防御/成长比)**。当资金从防御板块回流成长股时触发红利。
+
+### 4. Tier-2 (期权墙确认 - Hard Veto)
+- **VPVR & Options Chain**: 计算 **Put Wall** (支撑)、**Call Wall** (阻力) 与 **Gamma Flip**。
+- **螺旋否决**: 若价格低于 Put Wall 或处于 **负 Gamma** 区域，系统将自动否决 `TRIGGERED` 信号，防止陷入 Delta 螺旋。
+
+---
 
 ## 📊 信号分级
 
-| 状态 | 色彩 | 说明 | 行动建议 |
-21: |:---:|:---:|---|---|
-22: | **STRONG_BUY** | 紫色 | **强烈买入**：价格不仅超卖且伴随基本面（盈利预期）强力支撑 | 极具价值的长线击球点 |
-23: | **TRIGGERED** | 绿色 | **触发买点**：各项指标进入极限值且期权墙结构支持 | 适合分批建仓底部区域 |
-24: | **WATCH** | 黄色 | **观察区**：信号显现但尚未共振，或被硬否决层拦截 | 保持密切关注，不在此左侧抄底 |
-25: | **NO_SIGNAL** | 红色 | **未触发**：市场处于常态波动或高位 | 耐心等待，无买入机会 |
+| 状态 | 说明 |
+|:---:|---|
+| **STRONG_BUY** | **强烈买入**：Tier-1 触发且伴随强力基本面（盈利预期、MFI）底背离。 |
+| **TRIGGERED** | **触发买点**：各项指标进入极限值且期权墙结构提供支撑。 |
+| **WATCH** | **观察期**：信号显现但尚未共振，或被硬否决层拦截。 |
+| **NO_SIGNAL** | **未触发**：市场处于常态或高位，耐心等待。 |
+
+---
 
 ## 🚀 快速开始 (Docker)
 
-项目完全兼容 Docker，无需本地配置 Python 环境。
-
-### 1. 运行实时监控
+### 1. 配置 API Key
+在根目录创建 `.env` 文件，填入您的 FRED API Key：
 ```bash
+FRED_API_KEY=your_fred_api_key_here
+```
+
+### 2. 启动监控
+```bash
+# 获取实时信号报告
 docker-compose run --rm app python -m src.main
+
+# 以 JSON 格式输出 (适合自动化集成)
+docker-compose run --rm app python -m src.main --json
 ```
 
-### 2. 运行长线回测 (2000-2026)
+### 3. 运行回测
 ```bash
-docker-compose run --rm app python src/backtest.py
+# 运行 1999-2026 全量回测并生成可视化图表
+docker-compose run --rm app python -m src.backtest
 ```
 
-### 3. 运行自动化测试
-```bash
-docker-compose up --build test
-```
+---
 
-## 🛠️ 技术细节
+## 🛠️ 核心架构
 
-### 数据来源
-- **价格/期权链**: Yahoo Finance (`yfinance`) - 免 API Key
-- **宏观/国债**: FRED (Public CSV) & `yfinance`
-- **盈利预期**: 综合分析师底背离模型 (Synthesized Revision Breadth)
-- **情绪指数**: CNN Money API
+- **数据源**: Yahoo Finance (实时价格/期权), FRED (宏观), CNN Money (情绪), Chicago Fed (NFCI)。
+- **持久化**: SQLite 自动保存每日信号状态及宏观数据缓存。
+- **验证**: 包含 90+ 单元测试与集成测试用例，覆盖所有指标计算逻辑。
 
-### 核心亮点
-- **Strong Buy 升级机制**: 仅当 Tier-1 触发、ERP 处于健康模式、且出现**重大底背离**（如市场广度、VIX 或分析师盈利预期上修）时，信号才会升级为紫色 `STRONG_BUY`。
-- **四重背离模型**: 系统集成技术面 (Breadth, VIX, RSI) 与基本面 (Revision) 四个维度的背离监测，寻找价格与宏观/微观参与度的终极分歧。
-- **2026 回测洞察**: 2026 年初 QQQ 的多次 5-6% 回调被系统识别为“非结构性恐慌/非深度折扣”，在保持 **NO_SIGNAL** 状态下成功规避了多次震荡，体现了极高的保守可靠性。
+---
+
+## 📈 回测表现
+- **历史底部捕捉率**: 92.6% (50/54)
+- **回测报告**: 详见 [backtest_report.md](docs/backtest_report.md) (由 Phase 3 引擎生成)。
+
+---
 
 ## 📄 开源协议
 MIT License
-
