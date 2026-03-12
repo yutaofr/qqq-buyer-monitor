@@ -114,17 +114,31 @@ def _run(args: argparse.Namespace) -> None:
         logger.warning("v3.0 Macro fetch failed: %s", exc)
         errors.append(f"Macro_v3: {exc}")
         
-    # Use cached state if fetch failed
+    # Use cached state if all fetch attempts failed (FRED, yf fallback, etc.)
     if credit_spread is None and macro_state:
         credit_spread = macro_state.get("credit_spread")
+        if credit_spread is not None:
+            logger.info("Using cached Credit Spread from DB: %.0f bps", credit_spread)
+            
     if forward_pe is None and macro_state:
         forward_pe = macro_state.get("trailing_pe")
+        if forward_pe is not None:
+            logger.info("Using cached Forward PE from DB: %.1f", forward_pe)
+            
     if us10y is None and macro_state:
         us10y = macro_state.get("us10y")
+        if us10y is not None:
+            logger.info("Using cached US10Y from DB: %.2f%%", us10y)
+            
     if fcf_yield is None and macro_state:
         fcf_yield = macro_state.get("fcf_yield")
+        if fcf_yield is not None:
+            logger.info("Using cached FCF Yield from DB: %.2f%%", fcf_yield)
+            
     if earnings_revisions_breadth is None and macro_state:
         earnings_revisions_breadth = macro_state.get("earnings_revisions_breadth")
+        if earnings_revisions_breadth is not None:
+            logger.info("Using cached Earnings Revisions from DB: %.2f%%", earnings_revisions_breadth)
         
     # History Window (Epic 2)
     history_window = None

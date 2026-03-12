@@ -29,15 +29,17 @@ def fetch_breadth(as_of: date | None = None) -> dict:
             "pct_above_50d": float,    # proxy: 0.0-1.0
         }
     """
-    end = as_of or date.today()
-    start = end - timedelta(days=10)
+    target_date = as_of or date.today()
+    # yfinance end date is exclusive. Query up to target_date + 1.
+    query_end = target_date + timedelta(days=1)
+    query_start = target_date - timedelta(days=10)
 
-    adv_dec_ratio = _fetch_adv_dec_ratio(start, end)
-    pct_above_50d = _fetch_pct_above_50d_proxy(end)
+    adv_dec_ratio = _fetch_adv_dec_ratio(query_start, query_end)
+    pct_above_50d = _fetch_pct_above_50d_proxy(query_end)
 
     logger.debug(
-        "Breadth: adv_dec_ratio=%.3f pct_above_50d=%.3f",
-        adv_dec_ratio, pct_above_50d,
+        "Breadth: adv_dec_ratio=%.3f pct_above_50d=%.3f as_of=%s",
+        adv_dec_ratio, pct_above_50d, target_date
     )
     return {"adv_dec_ratio": adv_dec_ratio, "pct_above_50d": pct_above_50d}
 
@@ -45,16 +47,6 @@ def fetch_breadth(as_of: date | None = None) -> dict:
 def _fetch_adv_dec_ratio(start: date, end: date) -> float:
     """
     Derive an advance/decline ratio from available breadth tickers.
-
-    ^ADD gives the daily net (advances - declines). We convert to a
-    bounded ratio using a sigmoid so the Tier-1 thresholds apply cleanly:
-
-        ratio = sigmoid(net / scale)
-
-    With scale=1500 (typical single-day |ADD| range ≈ 500–3000):
-        net = +3000  →  ratio ≈ 0.87  (very broad advance)
-        net =     0  →  ratio = 0.50  (neutral)
-        net = -3000  →  ratio ≈ 0.13  (very broad decline / capitulation)
     """
     yf_logger = logging.getLogger("yfinance")
 
@@ -81,21 +73,24 @@ def _fetch_adv_dec_ratio(start: date, end: date) -> float:
 
     # All tickers failed: derive proxy from QQQ 5-day return
     logger.warning(
-        "All breadth tickers unavailable %s; using QQQ return proxy.", _BREADTH_CANDIDATES
+        "All breadth tickers unavailable %s; using QQQ return proxy. query_end=%s", 
+        _BREADTH_CANDIDATES, end
     )
-    return _proxy_ratio_from_qqq_change(end)
+    # The 'end' passed here is already query_end (target_date + 1).
+    # We want to use target_date for the proxy, which is end - 1.
+    target_date = end - timedelta(days=1)
+    return _proxy_ratio_from_qqq_change(target_date)
 
 
 def _proxy_ratio_from_qqq_change(as_of: date) -> float:
     """
     Fallback: use QQQ's 5-day return to infer market direction.
-        QQQ up >1%   → ratio 0.65  (probably more advances than declines)
-        QQQ flat     → ratio 0.55  (neutral, won't trigger thresholds)
-        QQQ down >1% → ratio 0.40  (probably more declines)
     """
+    # yfinance end date is exclusive. Query up to target_date + 1.
+    query_end = as_of + timedelta(days=1)
     start = as_of - timedelta(days=10)
     try:
-        hist = yf.Ticker("QQQ").history(start=start.isoformat(), end=as_of.isoformat())
+        hist = yf.Ticker("QQQ").history(start=start.isoformat(), end=query_end.isoformat())
         if len(hist) >= 2:
             ref_idx = min(5, len(hist) - 1)
             ret = (float(hist["Close"].iloc[-1]) - float(hist["Close"].iloc[-ref_idx])) / float(
@@ -114,16 +109,14 @@ def _proxy_ratio_from_qqq_change(as_of: date) -> float:
 def _fetch_pct_above_50d_proxy(as_of: date) -> float:
     """
     Proxy for % of stocks above 50-day MA.
-
-    Uses QQQ's deviation from its own 50-day MA:
-        QQQ > MA50 by >5%   → 0.65  (broad rally)
-        QQQ within ±5%      → 0.40  (mixed)
-        QQQ < MA50 by >5%   → 0.20  (broad weakness / capitulation)
+    Note: as_of passed here is already query_end (target_date + 1).
     """
-    start = as_of - timedelta(days=80)
+    # yfinance end date is exclusive. We use query_end (which is already target_date + 1).
+    query_end = as_of
+    start = query_end - timedelta(days=90)
     try:
         hist = yf.Ticker("QQQ").history(
-            start=start.isoformat(), end=as_of.isoformat()
+            start=start.isoformat(), end=query_end.isoformat()
         )
         if not hist.empty:
             close = float(hist["Close"].iloc[-1])

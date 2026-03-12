@@ -1,30 +1,47 @@
 import logging
 import pandas as pd
 import random
-from src.collector.macro import FRED_CSV_URL
+from src.collector.macro import fetch_fred_csv
 
 logger = logging.getLogger(__name__)
+
+import yfinance as yf
+from datetime import date, timedelta
 
 def fetch_us10y() -> float | None:
     """
     Fetch the latest 10-Year Treasury Constant Maturity Rate (DGS10) from FRED.
+    Falls back to Yahoo Finance (^TNX) if FRED is unavailable.
     Returns the yield as a percentage (e.g. 4.25 for 4.25%).
     """
     series_id = "DGS10"
+    # 1. Primary: FRED
     try:
-        url = FRED_CSV_URL.format(series_id)
-        df = pd.read_csv(url, na_values=".")
-        if df.empty:
-            return None
-        
-        df = df.dropna(subset=[series_id])
-        if df.empty:
-            return None
-            
-        return float(df.iloc[-1][series_id])
+        df = fetch_fred_csv(series_id)
+        if df is not None and not df.empty:
+            df = df.dropna(subset=[series_id])
+            if not df.empty:
+                val = float(df.iloc[-1][series_id])
+                logger.debug("Fetched US10Y from FRED: %.2f", val)
+                return val
     except Exception as exc:
-        logger.warning("Failed to fetch US10Y from FRED: %s", exc)
-        return None
+        logger.debug("FRED US10Y fetch failed: %s", exc)
+
+    # 2. Secondary: Yahoo Finance (^TNX)
+    try:
+        logger.info("FRED unavailable; attempting yfinance fallback for US10Y (^TNX)...")
+        tnx = yf.Ticker("^TNX")
+        # Query a small window to ensure we get the latest close
+        hist = tnx.history(period="5d")
+        if not hist.empty:
+            # ^TNX value is 10x the yield (e.g. 42.50 = 4.25%)
+            val = float(hist["Close"].iloc[-1]) / 10.0
+            logger.info("Fetched US10Y from yfinance (^TNX): %.2f", val)
+            return val
+    except Exception as exc:
+        logger.warning("All US10Y sources failed (FRED & yfinance): %s", exc)
+        
+    return None
 
 def fetch_fcf_yield(ticker: str = "QQQ") -> float | None:
     """

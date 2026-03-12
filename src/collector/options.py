@@ -73,7 +73,8 @@ def fetch_options_chain(ticker: str = "QQQ", as_of: date | None = None) -> pd.Da
 def _fetch_spot(ticker: str, as_of: date) -> float:
     """Fetch the most recent closing price for the ticker."""
     start = as_of - timedelta(days=5)
-    hist = yf.Ticker(ticker).history(start=start.isoformat(), end=as_of.isoformat())
+    query_end = as_of + timedelta(days=1)
+    hist = yf.Ticker(ticker).history(start=start.isoformat(), end=query_end.isoformat())
     if hist.empty:
         raise RuntimeError(f"Cannot fetch spot price for {ticker}")
     return float(hist["Close"].iloc[-1])

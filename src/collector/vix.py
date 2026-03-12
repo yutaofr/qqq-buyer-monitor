@@ -21,14 +21,15 @@ def fetch_vix(as_of: date | None = None) -> float:
     Raises:
         RuntimeError if data cannot be fetched.
     """
-    end = as_of or date.today()
-    start = end - timedelta(days=10)  # buffer for weekends/holidays
+    target_date = as_of or date.today()
+    query_end = target_date + timedelta(days=1)
+    start = target_date - timedelta(days=10)  # buffer for weekends/holidays
 
     ticker_obj = yf.Ticker(VIX_TICKER)
-    hist = ticker_obj.history(start=start.isoformat(), end=end.isoformat())
+    hist = ticker_obj.history(start=start.isoformat(), end=query_end.isoformat())
 
     if hist.empty:
-        raise RuntimeError(f"No VIX data available for period ending {end}")
+        raise RuntimeError(f"No VIX data available for period ending {target_date}")
 
     vix_value = float(hist["Close"].iloc[-1])
     logger.debug("VIX: %.2f", vix_value)

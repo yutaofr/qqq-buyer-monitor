@@ -13,7 +13,7 @@ def _make_data(**overrides) -> MarketData:
         date=date(2026, 3, 8),
         price=410.0,
         ma200=405.0,    # deviation ~+1.2% → 0 pts
-        high_52w=435.0, # drawdown ~5.7% → 0 pts
+        high_52w=425.0, # drawdown ~3.5% → 0 pts
         vix=18.0,       # 0 pts
         fear_greed=50,  # 0 pts
         adv_dec_ratio=0.75,  # 0 pts
@@ -26,19 +26,19 @@ def _make_data(**overrides) -> MarketData:
 
 class TestDrawdown:
     def test_zero_points_below_low_threshold(self):
-        data = _make_data(price=415.0, high_52w=440.0)  # drawdown 5.7%
+        data = _make_data(price=419.0, high_52w=440.0)  # drawdown 4.77% < 5%
         result = calculate_tier1(data)
         assert result.drawdown_52w.points == 0
 
     def test_ten_points_between_thresholds(self):
-        # drawdown = 10%
-        data = _make_data(price=396.0, high_52w=440.0)
+        # drawdown = 7.5% (between 5% and 10%)
+        data = _make_data(price=407.0, high_52w=440.0)
         result = calculate_tier1(data)
         assert result.drawdown_52w.points == 10
 
     def test_twenty_points_above_high_threshold(self):
-        # drawdown = 15.9%
-        data = _make_data(price=370.0, high_52w=440.0)
+        # drawdown = 11.3% >= 10%
+        data = _make_data(price=390.0, high_52w=440.0)
         result = calculate_tier1(data)
         assert result.drawdown_52w.points == 20
 

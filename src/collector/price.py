@@ -24,15 +24,18 @@ def fetch_price_data(ticker: str = "QQQ", as_of: date | None = None) -> dict:
     Raises:
         RuntimeError if data cannot be fetched.
     """
-    end = as_of or date.today()
+    # yfinance end date is exclusive. To include target_date, we query up to target_date + 1.
+    target_date = as_of or date.today()
+    query_end = target_date + timedelta(days=1)
+    
     # Need 260 trading days of history to compute MA200 reliably
-    start = end - timedelta(days=400)
+    start = target_date - timedelta(days=400)
 
     ticker_obj = yf.Ticker(ticker)
-    hist = ticker_obj.history(start=start.isoformat(), end=end.isoformat())
+    hist = ticker_obj.history(start=start.isoformat(), end=query_end.isoformat())
 
     if hist.empty:
-        raise RuntimeError(f"No price data available for {ticker} ending {end}")
+        raise RuntimeError(f"No price data available for {ticker} ending {target_date}")
 
     close = hist["Close"]
 
@@ -44,7 +47,7 @@ def fetch_price_data(ticker: str = "QQQ", as_of: date | None = None) -> dict:
     ma200 = float(close.rolling(200, min_periods=150).mean().iloc[-1])
 
     # 52-week high
-    one_year_ago = end - timedelta(days=365)
+    one_year_ago = target_date - timedelta(days=365)
     recent = close[close.index >= str(one_year_ago)]
     high_52w = float(recent.max()) if not recent.empty else float(close.max())
 

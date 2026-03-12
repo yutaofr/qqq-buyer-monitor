@@ -5,26 +5,26 @@ from src.collector.macro_v3 import fetch_us10y, fetch_fcf_yield, fetch_earnings_
 def test_fetch_us10y_success():
     mock_df = pd.DataFrame({"DGS10": [4.0, 4.1, 4.25]})
     
-    with patch("pandas.read_csv", return_value=mock_df):
+    with patch("src.collector.macro_v3.fetch_fred_csv", return_value=mock_df):
         us10y = fetch_us10y()
         assert us10y == 4.25
 
 def test_fetch_us10y_empty_df():
     mock_df = pd.DataFrame()
     
-    with patch("pandas.read_csv", return_value=mock_df):
+    with patch("src.collector.macro_v3.fetch_fred_csv", return_value=mock_df):
         us10y = fetch_us10y()
         assert us10y is None
 
 def test_fetch_us10y_no_valid_data():
     mock_df = pd.DataFrame({"DGS10": [None, float("nan")]})
     
-    with patch("pandas.read_csv", return_value=mock_df):
+    with patch("src.collector.macro_v3.fetch_fred_csv", return_value=mock_df):
         us10y = fetch_us10y()
         assert us10y is None
 
 def test_fetch_us10y_exception():
-    with patch("pandas.read_csv", side_effect=Exception("Network Error")):
+    with patch("src.collector.macro_v3.fetch_fred_csv", side_effect=Exception("Network Error")):
         us10y = fetch_us10y()
         assert us10y is None
 
