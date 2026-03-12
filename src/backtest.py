@@ -180,12 +180,43 @@ def run_backtest() -> None:
     print(f"Days in WATCH state: {len(watch_dates)} ({(len(watch_dates)/len(dates))*100:.1f}%)")
     print(f"Days in NO_SIGNAL state: {len(dates) - len(triggered_dates) - len(watch_dates)}")
     
-    # Calculate how many TRIGGERED were vetoed down to WATCH
     vetoed = 0
     for s, t1_score in zip(signals, tier1_scores):
         if t1_score >= 70 and s[0] != Signal.TRIGGERED:
             vetoed += 1
     print(f"Days TRIGGERED but VETOED by Tier-2 (Support Broken): {vetoed}")
+    
+    print("\n--- Missed Opportunities Analysis ---")
+    # Identify local market bottoms (lowest price in +/- 20 trading days) with at least 10% drawdown
+    df["LocalMin"] = df["Close"] == df["Close"].rolling(41, center=True, min_periods=1).min()
+    df["SignificantDrawdown"] = (df["High52w"] - df["Close"]) / df["High52w"] >= 0.10
+    bottom_days = []
+    for d, row in df.iterrows():
+        if row["LocalMin"] and row["SignificantDrawdown"] and d in dates:
+            bottom_days.append(d)
+            
+    missed_opportunities = []
+    for bottom_date in bottom_days:
+        try:
+            idx = dates.index(bottom_date)
+            # Look at a window of +/- 10 trading days around the actual bottom
+            start_idx = max(0, idx - 10)
+            end_idx = min(len(dates), idx + 11)
+            window_signals = [s[0] for s in signals[start_idx:end_idx]]
+            
+            # If neither TRIGGERED nor WATCH was generated in this window, it's a completely missed opportunity
+            if Signal.TRIGGERED not in window_signals and Signal.WATCH not in window_signals:
+                missed_opportunities.append(bottom_date)
+        except ValueError:
+            pass
+            
+    print(f"Significant Market Bottoms (>10% drawdown): {len(bottom_days)}")
+    print(f"Missed Opportunities (No WATCH/TRIGGERED within ±10 days): {len(missed_opportunities)}")
+    if missed_opportunities:
+        print("Missed opportunity dates:")
+        for mo in missed_opportunities:
+            actual_price = df.loc[pd.to_datetime(mo), "Close"]
+            print(f"  {mo.strftime('%Y-%m-%d')} (Price: ${actual_price:.2f})")
     
     # Detailed output for TRIGGERED clusters
     print("\nTRIGGERED events (clustered by month):")

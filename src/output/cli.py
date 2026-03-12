@@ -105,11 +105,11 @@ def print_signal(
     div_b = t1.divergence_bonus
 
     # 1. Macro & Valuation Details
-    us10y_str = f"{t1.us10y:.2f}%" if t1.us10y else "N/A"
+    ry_str = f"{t1.real_yield:.2f}%" if t1.real_yield else "N/A"
     fpe = t1.forward_pe or 0.0
     fcf_y = t1.fcf_yield or 0.0
     
-    print(f"{c(_CYAN)}║{r}  美债收益 (US10Y): {us10y_str}  │ 远期 PE: {fpe:.1f} → {val_b:+d}")
+    print(f"{c(_CYAN)}║{r}  实际利率 (TIPS): {ry_str}  │ 远期 PE: {fpe:.1f} → {val_b:+d}")
     print(f"{c(_CYAN)}║{r}  现金收益 (FCF): {fcf_y*100:.1f}%  → {fcf_b:+d}")
     
     # 2. Divergence Checks
@@ -123,6 +123,15 @@ def print_signal(
     print(div_row("price_rsi", "动能 RSI 背离"))
     print(div_row("price_revision", "盈利预期背离"))
     print(f"{c(_CYAN)}║{r}  背离红利总得分: {c(_GREEN)}+{div_b}{r}")
+    
+    # 3. Concentration Risk
+    nc = t1.ndx_concentration * 100
+    np = t1.concentration_penalty
+    if np < 0:
+        print(f"{c(_CYAN)}║{r}  纳指抱团预警: QQQ 领先 QQEW {nc:.1f}%  → {c(_RED)}{np}{r}")
+    else:
+        print(f"{c(_CYAN)}║{r}  纳指抱团预警: 内部结构健康 (差值 {nc:.1f}%)  → +0")
+        
     print(f"{c(_CYAN)}║{r}")
 
     # ── Tier 2 ────────────────────────────────────────────────────────────

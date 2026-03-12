@@ -163,6 +163,13 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         fcf_bonus = calculate_fcf_bonus(data.fcf_yield)
         total += fcf_bonus
 
+    # v3.0 Calculate NDX Concentration Penalty
+    concentration_penalty = 0
+    ndx_concentration = getattr(data, 'ndx_concentration', 0.0)
+    if ndx_concentration > 0.03:  # If Cap-weighted outperforms equal-weighted by > 3% on 50d MA
+        concentration_penalty = -20
+        total += concentration_penalty
+
     return Tier1Result(
         score=total,
         drawdown_52w=s1,
@@ -175,8 +182,10 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         trailing_pe=getattr(data, 'trailing_pe', None),
         forward_pe=getattr(data, 'forward_pe', None),
         fcf_yield=getattr(data, 'fcf_yield', None),
-        us10y=getattr(data, 'us10y', None),
+        real_yield=getattr(data, 'real_yield', None),
         pe_source=getattr(data, 'pe_source', 'yfinance'),
         divergence_bonus=divergence_bonus,
         divergence_flags=divergence_flags,
+        ndx_concentration=ndx_concentration,
+        concentration_penalty=concentration_penalty,
     )

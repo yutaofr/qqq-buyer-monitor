@@ -28,11 +28,12 @@ class MarketData:
     fear_greed: int  # CNN Fear & Greed index (0-100)
     adv_dec_ratio: float  # NYSE Advance/Decline ratio
     pct_above_50d: float  # Fraction of NYSE stocks above 50-day MA (0-1)
+    ndx_concentration: float = 0.0  # Spread between QQQ and QQEW 50d dev
     # v3.0 Macro & Fundamentals
     credit_spread: Optional[float] = None
     trailing_pe: Optional[float] = None
     forward_pe: Optional[float] = None
-    us10y: Optional[float] = None
+    real_yield: Optional[float] = None
     fcf_yield: Optional[float] = None
     earnings_revisions_breadth: Optional[float] = None
     pe_source: str = "yfinance"
@@ -73,8 +74,12 @@ class Tier1Result:
     trailing_pe: Optional[float] = None
     forward_pe: Optional[float] = None
     fcf_yield: Optional[float] = None
-    us10y: Optional[float] = None
+    real_yield: Optional[float] = None
     pe_source: str = "yfinance"
+    
+    # NDX Internal Breadth
+    ndx_concentration: float = 0.0
+    concentration_penalty: int = 0
     
     # v2.0 Divergence additions
     divergence_bonus: int = 0

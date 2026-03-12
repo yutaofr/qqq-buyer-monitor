@@ -30,7 +30,7 @@ def _run(args: argparse.Namespace) -> None:
     from src.collector.options import fetch_options_chain
     from src.collector.breadth import fetch_breadth
     from src.collector.macro import fetch_credit_spread
-    from src.collector.macro_v3 import fetch_us10y, fetch_fcf_yield, fetch_earnings_revisions_breadth
+    from src.collector.macro_v3 import fetch_real_yield, fetch_fcf_yield, fetch_earnings_revisions_breadth
     from src.collector.fundamentals import fetch_forward_pe
     from src.models import MarketData, Signal
     from src.engine.tier1 import calculate_tier1
@@ -88,7 +88,7 @@ def _run(args: argparse.Namespace) -> None:
     credit_spread = None
     forward_pe = None
     trailing_pe = None
-    us10y = None
+    real_yield = None
     fcf_yield = None
     earnings_revisions_breadth = None
     macro_state = load_latest_macro_state()
@@ -109,7 +109,7 @@ def _run(args: argparse.Namespace) -> None:
         errors.append(f"Fundamentals: {exc}")
         
     try:
-        us10y = fetch_us10y()
+        real_yield = fetch_real_yield()
         fcf_yield = fetch_fcf_yield()
         earnings_revisions_breadth = fetch_earnings_revisions_breadth()
     except Exception as exc:  # noqa: BLE001
@@ -127,10 +127,10 @@ def _run(args: argparse.Namespace) -> None:
         if forward_pe is not None:
             logger.info("Using cached Forward PE from DB: %.1f", forward_pe)
             
-    if us10y is None and macro_state:
-        us10y = macro_state.get("us10y")
-        if us10y is not None:
-            logger.info("Using cached US10Y from DB: %.2f%%", us10y)
+    if real_yield is None and macro_state:
+        real_yield = macro_state.get("real_yield")
+        if real_yield is not None:
+            logger.info("Using cached Real Yield from DB: %.2f%%", real_yield)
             
     if fcf_yield is None and macro_state:
         fcf_yield = macro_state.get("fcf_yield")
@@ -162,11 +162,12 @@ def _run(args: argparse.Namespace) -> None:
         fear_greed=fg,
         adv_dec_ratio=breadth["adv_dec_ratio"],
         pct_above_50d=breadth["pct_above_50d"],
+        ndx_concentration=breadth.get("ndx_concentration", 0.0),
         options_df=options_df,
         credit_spread=credit_spread,
         trailing_pe=trailing_pe,
         forward_pe=forward_pe,
-        us10y=us10y,
+        real_yield=real_yield,
         fcf_yield=fcf_yield,
         earnings_revisions_breadth=earnings_revisions_breadth,
         pe_source=pe_source,
@@ -200,7 +201,7 @@ def _run(args: argparse.Namespace) -> None:
         prev_signal=prev_signal,
         credit_spread=market_data.credit_spread,
         forward_pe=market_data.forward_pe,
-        us10y=market_data.us10y
+        real_yield=market_data.real_yield
     )
 
     consecutive_days = 1

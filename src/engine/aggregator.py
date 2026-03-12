@@ -29,7 +29,7 @@ def aggregate(
     prev_signal: Signal | None = None,
     credit_spread: float | None = None,
     forward_pe: float | None = None,
-    us10y: float | None = None,
+    real_yield: float | None = None,
 ) -> SignalResult:
     """
     Combine Tier-1 and Tier-2 results into a final SignalResult.
@@ -54,7 +54,7 @@ def aggregate(
 
     # ── Tier-0 Macro Veto ────────────────────────────────────────────────────
     is_macro_crisis = check_macro_regime(credit_spread)
-    erp_regime = check_erp_regime(forward_pe, us10y)
+    erp_regime = check_erp_regime(forward_pe, real_yield)
     
     if erp_regime == "Defense":
         current_triggered_thresh = 85
@@ -95,9 +95,9 @@ def aggregate(
 
     # Calculate final ERP value for reporting
     erp_val = None
-    if forward_pe and us10y and forward_pe > 0:
+    if forward_pe and real_yield and forward_pe > 0:
         earnings_yield = 1.0 / forward_pe
-        erp_val = (earnings_yield * 100) - us10y
+        erp_val = (earnings_yield * 100) - real_yield
 
     return SignalResult(
         date=market_date,

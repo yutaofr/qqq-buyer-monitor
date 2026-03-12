@@ -160,8 +160,8 @@ class TestMacroAndERPRegimes:
         # Score 75 is normally TRIGGERED (75 >= 70), but in Defense it should be WATCH
         t1 = _tier1(75)
         t2 = _tier2()
-        # forward_pe=25, us10y=4.0 -> EY=4%, ERP=0% (Defense)
-        result = aggregate(date(2026, 3, 8), 410.0, t1, t2, forward_pe=25.0, us10y=4.0)
+        # forward_pe=25, real_yield=2.0 -> EY=4%, ERP=2.0% (Defense)
+        result = aggregate(date(2026, 3, 8), 410.0, t1, t2, forward_pe=25.0, real_yield=2.0)
         assert result.signal == Signal.WATCH
         assert "[防守模式]" in result.explanation
 
@@ -170,8 +170,8 @@ class TestMacroAndERPRegimes:
         # Score 65 is normally WATCH (<70), but in Aggressive it should be TRIGGERED
         t1 = _tier1(65)
         t2 = _tier2()
-        # forward_pe=14.28, us10y=1.0 -> EY=7.0%, ERP=6.0% (Aggressive)
-        result = aggregate(date(2026, 3, 8), 410.0, t1, t2, forward_pe=14.28, us10y=1.0)
+        # forward_pe=14.28, real_yield=0.0 -> EY=7.0%, ERP=7.0% (Aggressive)
+        result = aggregate(date(2026, 3, 8), 410.0, t1, t2, forward_pe=14.28, real_yield=0.0)
         assert result.signal == Signal.TRIGGERED
         assert "[百年一遇]" in result.explanation
 
@@ -179,8 +179,8 @@ class TestMacroAndERPRegimes:
         # ERP between 1% and 5% -> Normal mode (Threshold 70)
         t1 = _tier1(70)
         t2 = _tier2()
-        # forward_pe=20, us10y=3.0 -> EY=5.0%, ERP=2.0% (Normal)
-        result = aggregate(date(2026, 3, 8), 410.0, t1, t2, forward_pe=20.0, us10y=3.0)
+        # forward_pe=20, real_yield=1.0 -> EY=5.0%, ERP=4.0% (Normal)
+        result = aggregate(date(2026, 3, 8), 410.0, t1, t2, forward_pe=20.0, real_yield=1.0)
         assert result.signal == Signal.TRIGGERED
         assert "[防守模式]" not in result.explanation
         assert "[百年一遇]" not in result.explanation

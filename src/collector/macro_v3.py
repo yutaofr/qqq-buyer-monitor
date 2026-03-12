@@ -8,13 +8,13 @@ logger = logging.getLogger(__name__)
 import yfinance as yf
 from datetime import date, timedelta
 
-def fetch_us10y() -> float | None:
+def fetch_real_yield() -> float | None:
     """
-    Fetch the latest 10-Year Treasury Constant Maturity Rate (DGS10) from FRED.
-    Falls back to Yahoo Finance (^TNX) if FRED is unavailable.
-    Returns the yield as a percentage (e.g. 4.25 for 4.25%).
+    Fetch the latest 10-Year Treasury Inflation-Indexed Security (TIPS) Rate (DFII10) from FRED.
+    Falls back to Yahoo Finance (^TNX) minus 2.0% inflation expectation proxy if FRED is unavailable.
+    Returns the real yield as a percentage (e.g. 2.25 for 2.25%).
     """
-    series_id = "DGS10"
+    series_id = "DFII10"
     # 1. Primary: FRED
     try:
         df = fetch_fred_csv(series_id)
@@ -22,24 +22,24 @@ def fetch_us10y() -> float | None:
             df = df.dropna(subset=[series_id])
             if not df.empty:
                 val = float(df.iloc[-1][series_id])
-                logger.debug("Fetched US10Y from FRED: %.2f", val)
+                logger.debug("Fetched Real Yield (TIPS) from FRED: %.2f", val)
                 return val
     except Exception as exc:
-        logger.debug("FRED US10Y fetch failed: %s", exc)
+        logger.debug("FRED DFII10 fetch failed: %s", exc)
 
-    # 2. Secondary: Yahoo Finance (^TNX)
+    # 2. Secondary: Yahoo Finance (^TNX) proxy
     try:
-        logger.info("FRED unavailable; attempting yfinance fallback for US10Y (^TNX)...")
+        logger.info("FRED unavailable; attempting yfinance fallback using ^TNX minus 2.0% proxy...")
         tnx = yf.Ticker("^TNX")
         # Query a small window to ensure we get the latest close
         hist = tnx.history(period="5d")
         if not hist.empty:
-            # ^TNX value is 10x the yield (e.g. 42.50 = 4.25%)
-            val = float(hist["Close"].iloc[-1]) / 10.0
-            logger.info("Fetched US10Y from yfinance (^TNX): %.2f", val)
+            # ^TNX value is 10x the yield (e.g. 42.50 = 4.25%), minus hardcoded 2% for real yield proxy
+            val = (float(hist["Close"].iloc[-1]) / 10.0) - 2.0
+            logger.info("Fetched Real Yield proxy from yfinance (^TNX - 2%%): %.2f", val)
             return val
     except Exception as exc:
-        logger.warning("All US10Y sources failed (FRED & yfinance): %s", exc)
+        logger.warning("All Real Yield sources failed (FRED & yfinance): %s", exc)
         
     return None
 

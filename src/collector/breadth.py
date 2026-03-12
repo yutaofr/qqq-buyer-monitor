@@ -36,12 +36,17 @@ def fetch_breadth(as_of: date | None = None) -> dict:
 
     adv_dec_ratio = _fetch_adv_dec_ratio(query_start, query_end)
     pct_above_50d = _fetch_pct_above_50d_proxy(query_end)
+    ndx_concentration = _fetch_ndx_concentration(query_end)
 
     logger.debug(
-        "Breadth: adv_dec_ratio=%.3f pct_above_50d=%.3f as_of=%s",
-        adv_dec_ratio, pct_above_50d, target_date
+        "Breadth: adv_dec_ratio=%.3f pct_above_50d=%.3f ndx_concentration=%.3f as_of=%s",
+        adv_dec_ratio, pct_above_50d, ndx_concentration, target_date
     )
-    return {"adv_dec_ratio": adv_dec_ratio, "pct_above_50d": pct_above_50d}
+    return {
+        "adv_dec_ratio": adv_dec_ratio, 
+        "pct_above_50d": pct_above_50d,
+        "ndx_concentration": ndx_concentration
+    }
 
 
 def _fetch_adv_dec_ratio(start: date, end: date) -> float:
@@ -130,3 +135,32 @@ def _fetch_pct_above_50d_proxy(as_of: date) -> float:
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not compute pct_above_50d proxy: %s", exc)
     return 0.40
+
+def _fetch_ndx_concentration(as_of: date) -> float:
+    """
+    Calculate the divergence between QQQ (Cap-Weighted) and QQEW (Equal-Weighted).
+    Returns the difference in percentage deviation from their respective 50-day MAs.
+    A positive value means QQQ is outperforming QQEW (high concentration).
+    """
+    query_end = as_of
+    start = query_end - timedelta(days=90)
+    try:
+        def get_dev(ticker: str) -> float | None:
+            hist = yf.Ticker(ticker).history(start=start.isoformat(), end=query_end.isoformat())
+            if not hist.empty:
+                close = float(hist["Close"].iloc[-1])
+                ma50 = float(hist["Close"].rolling(50, min_periods=40).mean().iloc[-1])
+                return (close - ma50) / ma50
+            return None
+            
+        qqq_dev = get_dev("QQQ")
+        qqew_dev = get_dev("QQEW")
+        
+        if qqq_dev is not None and qqew_dev is not None:
+            spread = qqq_dev - qqew_dev
+            return spread
+            
+    except Exception as exc:
+        logger.warning("Could not compute NDX concentration proxy: %s", exc)
+    
+    return 0.0
