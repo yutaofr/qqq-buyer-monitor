@@ -5,6 +5,8 @@ services:
     build: .
     volumes:
       - ./data:/app/data
+    env_file:
+      - .env
     environment:
       - QQQ_DB_PATH=/app/data/signals.db
     command: python -m src.main
@@ -13,6 +15,8 @@ services:
     build: .
     volumes:
       - .:/app
+    env_file:
+      - .env
     environment:
       - QQQ_DB_PATH=/tmp/test_signals.db
     command: pytest tests/ -v --tb=short

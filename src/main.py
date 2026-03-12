@@ -30,7 +30,13 @@ def _run(args: argparse.Namespace) -> None:
     from src.collector.options import fetch_options_chain
     from src.collector.breadth import fetch_breadth
     from src.collector.macro import fetch_credit_spread
-    from src.collector.macro_v3 import fetch_real_yield, fetch_fcf_yield, fetch_earnings_revisions_breadth
+    from src.collector.macro_v3 import (
+        fetch_real_yield, 
+        fetch_fcf_yield, 
+        fetch_earnings_revisions_breadth,
+        fetch_net_liquidity,
+        fetch_move_index
+    )
     from src.collector.fundamentals import fetch_forward_pe
     from src.models import MarketData, Signal
     from src.engine.tier1 import calculate_tier1
@@ -143,6 +149,9 @@ def _run(args: argparse.Namespace) -> None:
         if earnings_revisions_breadth is not None:
             logger.info("Using cached Earnings Revisions from DB: %.2f%%", earnings_revisions_breadth)
         
+    # Phase 2: Net Liquidity & MOVE Index
+    net_liq, liq_roc = fetch_net_liquidity()
+    move_index = fetch_move_index()
     # History Window (Epic 2) - Increased to 120d for v4.0 Z-scores
     history_window = None
     vix_zscore = 0.0
@@ -193,6 +202,9 @@ def _run(args: argparse.Namespace) -> None:
         history_window=history_window,
         vix_zscore=vix_zscore,
         drawdown_zscore=dd_zscore,
+        net_liquidity=net_liq,
+        liquidity_roc=liq_roc,
+        move_index=move_index,
     )
 
     logger.info("Running signal engines…")

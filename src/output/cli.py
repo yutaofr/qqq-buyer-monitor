@@ -113,6 +113,11 @@ def print_signal(
     print(f"{c(_CYAN)}║{r}  实际利率 (TIPS): {ry_str}  │ 远期 PE: {fpe:.1f} → {val_b:+d}")
     print(f"{c(_CYAN)}║{r}  现金收益 (FCF): {fcf_y*100:.1f}%  → {fcf_b:+d}")
     
+    # Phase 2 details
+    move_str = f"{t1.move_index:.1f}" if t1.move_index else "N/A"
+    liq_roc_str = f"{t1.liquidity_roc:+.1f}%" if t1.liquidity_roc is not None else "N/A"
+    print(f"{c(_CYAN)}║{r}  美债波动 (MOVE): {move_str}  │ 净流动性 4W-ROC: {liq_roc_str}")
+    
     # 2. Divergence Checks
     flags = t1.divergence_flags
     def div_row(key, label):
@@ -123,7 +128,9 @@ def print_signal(
     print(div_row("price_vix", "恐慌指数背离"))
     print(div_row("price_rsi", "动能 RSI 背离"))
     print(div_row("price_revision", "盈利预期背离"))
-    print(f"{c(_CYAN)}║{r}  背离红利总得分: {c(_GREEN)}+{div_b}{r}")
+    print(div_row("liquidity_divergence", "流动性底背离"))
+    print(div_row("bond_vol_spike", "债市恐慌见顶"))
+    print(f"{c(_GREEN)}║{r}  背离红利总得分: {c(_GREEN)}+{div_b}{r}")
     
     # 3. Concentration Risk
     nc = t1.ndx_concentration * 100

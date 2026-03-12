@@ -1,3 +1,4 @@
+import os
 import logging
 import pandas as pd
 import requests
@@ -6,23 +7,59 @@ import time
 
 logger = logging.getLogger(__name__)
 
-FRED_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={}"
+FRED_CSV_URL = (
+    "https://fred.stlouisfed.org/graph/fredgraph.csv?id={}"
+    "&mode=fred&cosd=1776-07-04&coed=9999-12-31"
+    "&fq=Daily&fam=avg&transformation=lin"
+)
 
-def fetch_fred_csv(series_id: str, timeout: int = 10, retries: int = 1) -> pd.DataFrame | None:
+def fetch_fred_api(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
+    """Fetch FRED data using the official API (JSON format)."""
+    api_key = os.getenv("FRED_API_KEY")
+    if not api_key:
+        return None
+        
+    url = f"https://api.stlouisfed.org/fred/series/observations?series_id={series_id}&api_key={api_key}&file_type=json"
+    try:
+        logger.debug("Fetching FRED %s via API...", series_id)
+        response = requests.get(url, timeout=timeout)
+        response.raise_for_status()
+        data = response.json()
+        
+        observations = data.get("observations", [])
+        if not observations:
+            return None
+            
+        df = pd.DataFrame(observations)
+        df = df.rename(columns={"date": "observation_date", "value": series_id})
+        # Ensure numeric conversion
+        df[series_id] = pd.to_numeric(df[series_id], errors='coerce')
+        return df[["observation_date", series_id]]
+    except Exception as exc:
+        logger.warning("FRED API fetch failed for %s: %s", series_id, exc)
+        return None
+
+def fetch_fred_data(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
+    """Unified FRED fetcher: API first, then CSV fallback."""
+    # 1. API
+    df = fetch_fred_api(series_id, timeout)
+    if df is not None and not df.empty:
+        return df
+        
+    # 2. CSV Fallback
+    logger.info("Official FRED API failed or no key; falling back to CSV scraping for %s...", series_id)
+    return fetch_fred_csv(series_id, timeout)
+
+def fetch_fred_csv(series_id: str, timeout: int = 15, retries: int = 3) -> pd.DataFrame | None:
     """Helper to fetch FRED CSV data with timeout and retries."""
     url = FRED_CSV_URL.format(series_id)
     # Using a very standard browser user agent
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept": "text/csv,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
-        "Sec-Ch-Ua": "\"Chromium\";v=\"122\", \"Not(A:Brand\";v=\"24\", \"Google Chrome\";v=\"122\"",
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": "\"macOS\"",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1"
     }
     
@@ -120,7 +157,7 @@ def fetch_credit_spread(series_id: str = "BAMLH0A0HYM2") -> float | None:
     """
     # 1. FRED
     try:
-        df = fetch_fred_csv(series_id)
+        df = fetch_fred_data(series_id)
         if df is not None and not df.empty:
             df = df.dropna(subset=[series_id])
             if not df.empty:

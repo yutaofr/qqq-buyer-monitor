@@ -47,6 +47,11 @@ class MarketData:
     # v4.0 Adaptive Z-Scores
     vix_zscore: float = 0.0
     drawdown_zscore: float = 0.0
+    
+    # v4.0 Phase 2 Macro Gravity
+    net_liquidity: Optional[float] = None
+    liquidity_roc: Optional[float] = None
+    move_index: Optional[float] = None
 
 
 @dataclass
@@ -92,6 +97,11 @@ class Tier1Result:
     # v4.0 Z-Scores
     vix_zscore: float = 0.0
     drawdown_zscore: float = 0.0
+    
+    # v4.0 Phase 2 Macro Gravity
+    net_liquidity: Optional[float] = None
+    liquidity_roc: Optional[float] = None
+    move_index: Optional[float] = None
 
 
 @dataclass

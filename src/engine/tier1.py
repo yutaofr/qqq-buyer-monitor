@@ -190,6 +190,28 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         concentration_penalty = -20
         total += concentration_penalty
 
+    # v4.0 Phase 2: Liquidity Divergence
+    liquidity_bonus = 0
+    if data.liquidity_roc is not None and data.liquidity_roc > 0.5:
+        # If QQQ is in a drawdown (>5%) or at least not at new highs, and liquidity is growing
+        if drawdown > 0.05:
+            liquidity_bonus = 10
+            divergence_flags["liquidity_divergence"] = True
+            
+    total += liquidity_bonus
+    divergence_bonus += liquidity_bonus
+    
+    # v4.0 Phase 2: Bond Volatility (MOVE) Bonus
+    # High bond vol (>110) during an equity drawdown often signals capitulation
+    move_bonus = 0
+    if data.move_index is not None and data.move_index > 110:
+        if drawdown > 0.05:
+            move_bonus = 10
+            divergence_flags["bond_vol_spike"] = True
+            
+    total += move_bonus
+    divergence_bonus += move_bonus
+
     return Tier1Result(
         score=total,
         drawdown_52w=s1,
@@ -210,4 +232,7 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         concentration_penalty=concentration_penalty,
         vix_zscore=data.vix_zscore,
         drawdown_zscore=data.drawdown_zscore,
+        net_liquidity=data.net_liquidity,
+        liquidity_roc=data.liquidity_roc,
+        move_index=data.move_index,
     )

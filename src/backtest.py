@@ -40,10 +40,12 @@ def run_backtest() -> None:
     # Fetch VIX
     vix = yf.Ticker("^VIX").history(start=START_DATE, end=END_DATE)
     
-    # We cannot easily fetch historical Fear & Greed, so we'll proxy it using VIX
-    # High VIX = Fear. For this backtest we map VIX to a synthetic F&G score.
-    # VIX 30 -> F&G 10 (Extreme Fear)
-    # VIX 15 -> F&G 50 (Neutral)
+    # Fetch MOVE Index
+    move = yf.Ticker("^MOVE").history(start=START_DATE, end=END_DATE)
+    
+    # Fetch WALCL from FRED (proxy for Liquidity)
+    from src.collector.macro import fetch_fred_csv
+    walcl_df = fetch_fred_csv("WALCL")
     
     # Breadth proxy (using QQQ distance from 50MA as done in breadth.py)
     
@@ -57,14 +59,27 @@ def run_backtest() -> None:
     # Forward fill VIX to match QQQ dates. VIX index might not match QQQ exactly due to holidays
     # Ensure they share the timezone-naive date format for alignment
     qqq_dates = [d.date() for d in qqq.index]
+    df.index = pd.to_datetime(qqq_dates)
     vix_dates = [d.date() for d in vix.index]
     
     # Create a clean VIX series aligned by date
     vix_clean = pd.Series(vix["Close"].values, index=pd.to_datetime(vix_dates))
-    df.index = pd.to_datetime(qqq_dates)
-    
     df["VIX"] = vix_clean.reindex(df.index).ffill().bfill() # bfill handles any NaN at the very start
     df["Volume"] = pd.Series(qqq["Volume"].values, index=df.index)
+    
+    # MOVE index alignment
+    move_clean = pd.Series(move["Close"].values, index=pd.to_datetime([d.date() for d in move.index]))
+    df["MOVE"] = move_clean.reindex(df.index).ffill()
+    
+    # WALCL alignment and ROC
+    if walcl_df is not None and not walcl_df.empty:
+        walcl_clean = pd.Series(walcl_df["WALCL"].values, index=pd.to_datetime(walcl_df.index))
+        df["WALCL"] = walcl_clean.reindex(df.index).ffill()
+        # 4-week ROC (20 trading days roughly)
+        df["LiqROC"] = df["WALCL"].pct_change(20) * 100
+    else:
+        df["WALCL"] = 0.0
+        df["LiqROC"] = 0.0
     
     # Pre-calculate rolling drawdowns for Z-score analysis
     peaks = df["Close"].expanding().max()
@@ -122,6 +137,9 @@ def run_backtest() -> None:
             }),
             vix_zscore=vix_zs,
             drawdown_zscore=dd_zs,
+            net_liquidity=float(row.get("WALCL", 0)) / 1000.0, # Scaled to Billions for realism
+            liquidity_roc=float(row.get("LiqROC", 0)),
+            move_index=float(row.get("MOVE", 0)) if not pd.isna(row.get("MOVE")) else None
         )
         
         t1 = calculate_tier1(mdata)
