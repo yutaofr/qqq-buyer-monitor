@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 from src.collector.macro_v3 import fetch_net_liquidity, fetch_move_index
 
-@patch("src.collector.macro_v3.fetch_fred_csv")
+@patch("src.collector.macro_v3.fetch_fred_data")
 def test_fetch_net_liquidity_success(mock_fred):
     # Mock data for WALCL (Millions), WTREASMS (Billions), RRPONTSYD (Billions)
     # WALCL: 8000000 Million = 8000 Billion
@@ -14,11 +14,14 @@ def test_fetch_net_liquidity_success(mock_fred):
     dates = pd.date_range(start="2024-01-01", periods=10, freq="W")
     
     def side_effect(series_id):
-        df = pd.DataFrame({series_id: [1.0]*10}, index=dates)
+        df = pd.DataFrame({
+            "observation_date": dates,
+            series_id: [1.0]*10
+        })
         if series_id == "WALCL":
             df[series_id] = [8000000.0] * 10
-        elif series_id == "WTREASMS":
-            df[series_id] = [500.0] * 10
+        elif series_id == "WDTGAL":
+            df[series_id] = [500000.0] * 10
         elif series_id == "RRPONTSYD":
             df[series_id] = [1000.0] * 10
         return df

@@ -165,3 +165,40 @@ def fetch_sector_rotation() -> float | None:
     except Exception as exc:
         logger.warning("FAILED to fetch Sector Rotation: %s", exc)
     return None
+
+def fetch_short_volume_proxy(ticker: str = "QQQ") -> float | None:
+    """
+    v5.0: Fetch Short Volume Ratio as an institutional sentiment proxy.
+    Since real-time FINRA API is restricted, we use a rolling average 
+    of put/call volume or a public scrape if available.
+    
+    For this implementation, we use Yahoo Finance volume metrics to 
+    derive a 'De-facto' short ratio based on price action vs volume spikes.
+    
+    Logic: High volume on a down day without a breakdown often implies
+    institutional absorption (bullish).
+    """
+    try:
+        t = yf.Ticker(ticker)
+        hist = t.history(period="5d")
+        if len(hist) < 2:
+            return None
+            
+        # Proxy: Volatility-adjusted Volume Ratio
+        latest = hist.iloc[-1]
+        avg_vol = hist["Volume"].mean()
+        vol_ratio = latest["Volume"] / avg_vol
+        
+        # We return a synthetic ratio between 0.2 and 0.8
+        base = 0.5
+        price_change = (latest["Close"] - latest["Open"]) / latest["Open"]
+        
+        if price_change < -0.01:
+            base += 0.1 * vol_ratio
+        elif price_change > 0.01:
+            base -= 0.05 * vol_ratio
+            
+        return min(0.8, max(0.2, base))
+    except Exception as exc:
+        logger.debug("Short volume proxy fetch failed: %s", exc)
+        return None
