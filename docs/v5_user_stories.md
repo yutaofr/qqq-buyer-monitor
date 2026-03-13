@@ -1,6 +1,6 @@
 # QQQ Buy-Signal Monitor v5.0 - User Stories & Progress
 
-This document summarizes the user stories and technical epics delivered in version 5.0.
+This document summarizes the user stories and technical epics delivered in version 5.0. It builds upon the foundations laid in [v2.0 (Divergence)](./v2_user_stories.md) and [v3.0 (Macro/Fundamentals)](./v3_user_stories.md).
 
 ---
 
