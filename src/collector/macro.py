@@ -15,8 +15,8 @@ FRED_CSV_URL = (
 
 def fetch_fred_api(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
     """Fetch FRED data using the official API (JSON format)."""
-    api_key = os.getenv("FRED_API_KEY")
-    if not api_key:
+    api_key = os.getenv("FRED_API_KEY", "").strip()
+    if not api_key or api_key == "your_fred_api_key_here":
         return None
         
     url = f"https://api.stlouisfed.org/fred/series/observations?series_id={series_id}&api_key={api_key}&file_type=json"
