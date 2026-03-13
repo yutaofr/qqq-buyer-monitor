@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 # Rule thresholds (as fractions of spot price)
 SUPPORT_ZONE_PCT = 0.03   # put wall is "confirmed" if price is within 3% above
 UPSIDE_MIN_PCT = 0.05     # call wall gives "open upside" if >= 5% above price
+BUFFER_PCT = 0.005        # 0.5% buffer zone to prevent signal flickering near walls
 
 # Scoring table
 SCORE_SUPPORT_CONFIRMED = 15
@@ -32,27 +33,37 @@ SCORE_NEGATIVE_GAMMA_BROKEN = -10  # extra penalty: negative gamma AND support b
 
 def calculate_tier2(price: float, options_df: pd.DataFrame | None) -> Tier2Result:
     """
-    Calculate Tier-2 options wall score.
-
-    Args:
-        price: Current QQQ spot price.
-        options_df: DataFrame from fetch_options_chain(). If None, returns
-                    neutral result (adjustment=0, no flags set).
-
-    Returns:
-        Tier2Result with adjustment score and explanatory flags.
+    Calculate Tier-2 options wall score by fetching walls from options_df and
+    evaluating rules.
     """
     if options_df is None or options_df.empty:
-        logger.warning("No options data; Tier-2 returning neutral result.")
+        logger.warning("Options data fetch failed or empty; returning neutral results.")
         return _neutral_result()
 
     gamma_source = _dominant_gamma_source(options_df)
-
     put_wall = _find_wall(options_df, "put")
     call_wall = _find_wall(options_df, "call")
     gamma_flip = _find_gamma_flip(options_df, price)
 
-    # ── Evaluate rules ────────────────────────────────────────────────────────
+    return evaluate_tier2_rules(
+        price, put_wall, call_wall, gamma_flip, 
+        options_df=options_df, 
+        gamma_source=gamma_source
+    )
+
+
+def evaluate_tier2_rules(
+    price: float,
+    put_wall: float | None,
+    call_wall: float | None,
+    gamma_flip: float | None,
+    options_df: pd.DataFrame | None = None,
+    gamma_source: str = "unknown"
+) -> Tier2Result:
+    """
+    Unified decision engine for Tier-2 rules. 
+    Can be used by both live monitor and backtest.
+    """
     support_confirmed = False
     support_broken = False
     upside_open = False
@@ -65,21 +76,33 @@ def calculate_tier2(price: float, options_df: pd.DataFrame | None) -> Tier2Resul
 
     if put_wall is not None:
         put_wall_distance_pct = (price - put_wall) / price
-        if put_wall_distance_pct < 0:
-            # Price is below put wall
+        if put_wall_distance_pct < -BUFFER_PCT:
             support_broken = True
-            # Find the next put wall (highest OI strike below current price)
-            next_put_wall = _find_next_wall(options_df, "put", price)
+            if options_df is not None:
+                next_put_wall = _find_next_wall(options_df, "put", price)
             if next_put_wall is not None:
                 next_put_wall_distance_pct = (price - next_put_wall) / price
         elif put_wall_distance_pct <= SUPPORT_ZONE_PCT:
-            # Price is just above put wall → support confirmed
             support_confirmed = True
 
     if call_wall is not None:
-        call_wall_distance_pct = (call_wall - price) / price
-        if call_wall_distance_pct >= UPSIDE_MIN_PCT:
-            upside_open = True
+        if call_wall <= price:
+            alt_call_wall = None
+            if options_df is not None:
+                alt_call_wall = _find_next_wall_above(options_df, "call", price)
+            
+            if alt_call_wall is not None:
+                dist = (alt_call_wall - price) / price
+                if dist >= UPSIDE_MIN_PCT:
+                    upside_open = True
+                call_wall_distance_pct = dist
+            else:
+                upside_open = True
+                call_wall_distance_pct = 0.99
+        else:
+            call_wall_distance_pct = (call_wall - price) / price
+            if call_wall_distance_pct >= UPSIDE_MIN_PCT:
+                upside_open = True
 
     if gamma_flip is not None:
         gamma_positive = price > gamma_flip
@@ -96,13 +119,6 @@ def calculate_tier2(price: float, options_df: pd.DataFrame | None) -> Tier2Resul
         adjustment += SCORE_GAMMA_POSITIVE
     if not gamma_positive and support_broken:
         adjustment += SCORE_NEGATIVE_GAMMA_BROKEN
-
-    logger.debug(
-        "Tier2: put_wall=%.1f call_wall=%.1f gamma_flip=%s adj=%d",
-        put_wall or 0, call_wall or 0,
-        f"{gamma_flip:.1f}" if gamma_flip else "N/A",
-        adjustment,
-    )
 
     return Tier2Result(
         adjustment=adjustment,
@@ -135,6 +151,17 @@ def _find_wall(df: pd.DataFrame, option_type: str) -> float | None:
 def _find_next_wall(df: pd.DataFrame, option_type: str, current_price: float) -> float | None:
     """Return the strike with the highest OI for the given side that is strictly below current_price."""
     side = df[(df["option_type"] == option_type) & (df["strike"] < current_price)]
+    if side.empty:
+        return None
+    agg = side.groupby("strike")["openInterest"].sum()
+    if agg.empty:
+        return None
+    return float(agg.idxmax())
+
+
+def _find_next_wall_above(df: pd.DataFrame, option_type: str, current_price: float) -> float | None:
+    """Return the strike with the highest OI for the given side that is strictly above current_price."""
+    side = df[(df["option_type"] == option_type) & (df["strike"] > current_price)]
     if side.empty:
         return None
     agg = side.groupby("strike")["openInterest"].sum()

@@ -156,9 +156,20 @@ def print_signal(
     )
 
     pw_str = f"${t2.put_wall:.0f}" if t2.put_wall else "N/A"
-    pw_str = f"${t2.put_wall:.0f}" if t2.put_wall else "N/A"
     pw_dist = f"{t2.put_wall_distance_pct*100:.1f}%" if t2.put_wall_distance_pct is not None else "---"
-    pw_flag = "支撑确认 ✓" if t2.support_confirmed else ("支撑破位 ✗" if t2.support_broken else "中性")
+    
+    # Refined PW flag logic for display
+    if t2.put_wall is not None and t2.call_wall is not None and abs(t2.put_wall - t2.call_wall) < 0.1:
+        pw_flag = "Pivot Wall 关键位"
+    elif t2.support_confirmed:
+        if t2.put_wall_distance_pct is not None and t2.put_wall_distance_pct < 0:
+            pw_flag = "支撑回测 ⚠"
+        else:
+            pw_flag = "支撑确认 ✓"
+    elif t2.support_broken:
+        pw_flag = "支撑破位 ✗"
+    else:
+        pw_flag = "中性"
     
     if t2.support_broken and t2.next_put_wall is not None:
         npw_dist = f"{t2.next_put_wall_distance_pct*100:.1f}%" if t2.next_put_wall_distance_pct is not None else "---"
@@ -168,7 +179,13 @@ def print_signal(
 
     cw_str = f"${t2.call_wall:.0f}" if t2.call_wall else "N/A"
     cw_dist = f"{t2.call_wall_distance_pct*100:.1f}%" if t2.call_wall_distance_pct is not None else "---"
-    cw_flag = "空间充足 ✓" if t2.upside_open else "阻力较近 ✗"
+    
+    if t2.upside_open and t2.call_wall_distance_pct is not None and t2.call_wall_distance_pct > 0.5:
+        cw_flag = "已突破 ✓"
+        cw_dist = "---"
+    else:
+        cw_flag = "空间充足 ✓" if t2.upside_open else "阻力较近 ✗"
+        
     print(f"{c(_CYAN)}║{r}  Call Wall: {cw_str}  │ 距离 {cw_dist}  → {cw_flag}")
 
     gf_str = f"${t2.gamma_flip:.1f}" if t2.gamma_flip else "N/A"

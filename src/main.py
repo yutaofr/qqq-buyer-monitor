@@ -77,7 +77,7 @@ def _run(args: argparse.Namespace) -> None:
 
     # Options
     try:
-        options_df = fetch_options_chain()
+        options_df = fetch_options_chain(spot_price=price_data["price"])
     except Exception as exc:  # noqa: BLE001
         logger.warning("Options fetch failed, Tier-2 will be neutral: %s", exc)
         errors.append(f"Options: {exc}")

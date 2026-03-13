@@ -120,14 +120,43 @@ class TestScoring:
 class TestGammaFlip:
     def test_gamma_flip_is_computed(self, basic_df):
         result = calculate_tier2(410.0, basic_df)
-        # Gamma flip should be a float (exact value depends on OI/gamma values)
         assert result.gamma_flip is not None
         assert isinstance(result.gamma_flip, float)
 
     def test_gamma_positive_when_price_above_flip(self, basic_df):
-        # Force a high price to be above gamma flip
         result = calculate_tier2(450.0, basic_df)
-        # gamma_positive should reflect whether price > gamma_flip
         if result.gamma_flip is not None:
             expected = 450.0 > result.gamma_flip
             assert result.gamma_positive == expected
+
+
+class TestRefinements:
+    def test_support_broken_only_beyond_buffer(self, basic_df):
+        # PW=400, price=399 is -0.25% -> within 0.5% buffer
+        # Should be support_confirmed=True (testing) and support_broken=False
+        result = calculate_tier2(399.0, basic_df)
+        assert result.support_confirmed is True
+        assert result.support_broken is False
+        
+        # PW=400, price=397 is -0.75% -> beyond 0.5% buffer
+        result = calculate_tier2(397.0, basic_df)
+        assert result.support_broken is True
+        assert result.support_confirmed is False
+
+    def test_cleared_call_wall_looks_higher(self, basic_df):
+        # Call wall at 430. If price is 435, it should look for next call wall or mark cleared.
+        result = calculate_tier2(435.0, basic_df)
+        assert result.upside_open is True
+        assert result.call_wall_distance_pct == 0.99
+        
+    def test_cleared_call_wall_finds_next(self):
+        df = _make_df([
+            {"strike": 400.0, "expiration": "2026-03-21", "option_type": "call",
+             "openInterest": 1000, "implied_volatility": 0.2, "gamma": 0.01, "gamma_source": "yfinance"},
+            {"strike": 450.0, "expiration": "2026-03-21", "option_type": "call",
+             "openInterest": 5000, "implied_volatility": 0.2, "gamma": 0.01, "gamma_source": "yfinance"},
+        ])
+        # Price 410 is above 400. Should use 450 as next wall.
+        result = calculate_tier2(410.0, df)
+        assert result.upside_open is True 
+        assert abs(result.call_wall_distance_pct - 0.0976) < 0.001

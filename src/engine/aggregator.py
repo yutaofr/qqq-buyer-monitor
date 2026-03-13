@@ -49,7 +49,19 @@ def aggregate(
     is_prev_triggered = prev_signal == Signal.TRIGGERED
     is_prev_watch = prev_signal in (Signal.WATCH, Signal.TRIGGERED)
     
-    current_triggered_thresh = 65 if is_prev_triggered else TRIGGERED_THRESHOLD
+    # ── Dynamic Adaptive Thresholds (v4.5) ───────────────────────────────────
+    regime = tier1.market_regime
+    drawdown = tier1.drawdown_52w.value  # (High - Price) / High
+    
+    if regime == "QUIET":
+        # Drawdown-Gated: Requires 0.5% dip to enter sensitive mode (45), else 67.
+        base_trigger = 45 if drawdown >= 0.005 else 67
+    elif regime == "NORMAL":
+        base_trigger = 60
+    else: # STORM
+        base_trigger = 65
+
+    current_triggered_thresh = (base_trigger - 5) if is_prev_triggered else base_trigger
     current_watch_thresh = 35 if is_prev_watch else WATCH_THRESHOLD
 
     # ── Tier-0 Macro Veto ────────────────────────────────────────────────────
@@ -58,8 +70,8 @@ def aggregate(
     
     if erp_regime == "Defense":
         current_triggered_thresh = 85
-    elif erp_regime == "Aggressive" and current_triggered_thresh == TRIGGERED_THRESHOLD:
-        current_triggered_thresh = 60 # Easier to trigger in a generational bottom
+    elif erp_regime == "Aggressive":
+        current_triggered_thresh = min(current_triggered_thresh, 60)
 
     # ── Three-state logic with hard vetoes ───────────────────────────────────
     # Macro crisis blocks all buys.
@@ -135,30 +147,49 @@ def _build_explanation(
         parts.append(f"Tier 1 信号尚未进入关注区域（得分 {t1_score}/100）")
 
     # Tier-2 options wall
-    if tier2.support_broken:
-        next_wall_info = ""
-        if tier2.next_put_wall is not None:
-            pct = (tier2.next_put_wall_distance_pct or 0) * 100
-            next_wall_info = f"，下档次级支撑: ${tier2.next_put_wall} (距离 {pct:.1f}%)"
-            
-        parts.append(
-            f"价格已跌破 Put Wall（{tier2.put_wall}），做市商 delta 对冲压力可能加速下跌，"
-            f"支撑结构失效{next_wall_info}，否决买入信号"
-        )
-    elif tier2.support_confirmed:
-        pct = (tier2.put_wall_distance_pct or 0) * 100
-        parts.append(
-            f"价格站在 Put Wall（{tier2.put_wall}）上方 {pct:.1f}%，支撑确认有效"
-        )
+    pw, cw = tier2.put_wall, tier2.call_wall
+    is_pivot = (pw is not None and cw is not None and pw == cw)
+    
+    if is_pivot:
+        parts.append(f"当前价格处于 Pivot Wall（${pw}）关键争夺区")
+        if tier2.support_broken:
+            parts.append("价格低于 Pivot Wall，支撑转为阻力，暂缓买入")
+        elif tier2.support_confirmed:
+            pct = (tier2.put_wall_distance_pct or 0) * 100
+            if pct < 0:
+                parts.append(f"价格正在回测 Pivot Wall ({pct:.1f}%)，处于缓冲区内，需等待企稳确认")
+            else:
+                parts.append(f"价格守在 Pivot Wall 上方 ({pct:.1f}%)，支撑极强")
     else:
-        parts.append("当前价格距 Put Wall 较远，期权支撑结构为中性")
+        if tier2.support_broken:
+            next_wall_info = ""
+            if tier2.next_put_wall is not None:
+                pct = (tier2.next_put_wall_distance_pct or 0) * 100
+                next_wall_info = f"，下档次级支撑: ${tier2.next_put_wall} (距离 {pct:.1f}%)"
+                
+            parts.append(
+                f"价格已跌破 Put Wall（${tier2.put_wall}），做市商 delta 对冲压力可能加速下跌，"
+                f"支撑结构失效{next_wall_info}，否决买入信号"
+            )
+        elif tier2.support_confirmed:
+            pct = (tier2.put_wall_distance_pct or 0) * 100
+            if pct < 0:
+                parts.append(f"价格正处于 Put Wall（${tier2.put_wall}）回撤缓冲区 ({pct:.1f}%)，支撑面临考验")
+            else:
+                parts.append(f"价格站在 Put Wall（${tier2.put_wall}）上方 {pct:.1f}%，支撑确认有效")
+        else:
+            parts.append("当前价格距 Put Wall 较远，期权支撑结构为中性")
 
-    if tier2.call_wall is not None:
+    # Call Wall explanation (skip if already handled in pivot)
+    if not is_pivot and cw is not None:
         pct = (tier2.call_wall_distance_pct or 0) * 100
         if tier2.upside_open:
-            parts.append(f"上方 Call Wall（{tier2.call_wall}）距离 {pct:.1f}%，反弹空间充足")
+            if tier2.call_wall_distance_pct > 0.5: # Effectively means we cleared the main wall
+                parts.append(f"主要 Call Wall（${cw:.0f}）已被突破，上方空间打开")
+            else:
+                parts.append(f"上方 Call Wall（${cw:.0f}）距离 {pct:.1f}%，反弹空间充足")
         else:
-            parts.append(f"上方 Call Wall（{tier2.call_wall}）距离仅 {pct:.1f}%，阻力较近")
+            parts.append(f"上方 Call Wall（${cw:.0f}）距离仅 {pct:.1f}%，阻力较近")
 
     if tier2.gamma_flip is not None:
         if tier2.gamma_positive:

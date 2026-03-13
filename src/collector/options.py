@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 RISK_FREE_TICKER = "^IRX"  # 13-week T-bill yield
 
 
-def fetch_options_chain(ticker: str = "QQQ", as_of: date | None = None) -> pd.DataFrame:
+def fetch_options_chain(ticker: str = "QQQ", as_of: date | None = None, spot_price: float | None = None) -> pd.DataFrame:
     """
     Fetch options chain for the nearest two expiration dates.
 
@@ -36,7 +36,7 @@ def fetch_options_chain(ticker: str = "QQQ", as_of: date | None = None) -> pd.Da
         RuntimeError if no options data can be fetched.
     """
     target_date = as_of or date.today()
-    spot = _fetch_spot(ticker, target_date)
+    spot = spot_price or _fetch_spot(ticker, target_date)
     risk_free = _fetch_risk_free_rate()
 
     t_obj = yf.Ticker(ticker)
@@ -114,7 +114,18 @@ def _process_side(
     out["strike"] = df["strike"].astype(float)
     out["expiration"] = expiration
     out["option_type"] = option_type
-    out["openInterest"] = df["openInterest"].fillna(0).astype(int)
+    oi = df["openInterest"].fillna(0).astype(int)
+    vol = df["volume"].fillna(0).astype(int)
+    
+    # Fallback to Volume if OI is zero (common in stale/broken yfinance data)
+    oi_zero_mask = (oi == 0) & (vol > 0)
+    if oi_zero_mask.any():
+        logger.warning(
+            "Found %d strikes with 0 Open Interest but positive Volume for expiration %s. Using Volume as fallback.",
+            oi_zero_mask.sum(), expiration
+        )
+    
+    out["openInterest"] = np.where(oi > 0, oi, vol)
     out["impliedVolatility"] = df["impliedVolatility"].fillna(0.3).astype(float)
 
     # Gamma: use yfinance value where available

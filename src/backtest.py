@@ -16,6 +16,7 @@ import pandas as pd
 import yfinance as yf
 from src.models import MarketData, Signal, Tier2Result
 from src.engine.tier1 import calculate_tier1
+from src.engine.tier2 import evaluate_tier2_rules
 from src.engine.aggregator import aggregate
 from src.utils.stats import calculate_zscore
 
@@ -164,15 +165,10 @@ def run_backtest() -> None:
         # Look back 21 trading days (approx 1 month)
         lookback_df = df[df.index <= dt].tail(21)
         synthetic_put_wall = None
-        support_broken = False
-        t2_adj = 0
         
         if len(lookback_df) == 21:
             # Create price bins (e.g. $5 wide) and sum volume
             # We only look for support *below* the current price
-            current_price = row["Close"]
-            # Find the max volume node in the recent past that is lower than current price
-            # or if current price is breaking through the max node.
             
             # Simple VPVR: bin the closing prices
             bins = pd.cut(lookback_df["Close"], bins=15)
@@ -182,28 +178,14 @@ def run_backtest() -> None:
                 # Find the bin with the highest volume (Point of Control)
                 poc_bin = vpvr.idxmax()
                 poc_price = poc_bin.mid
-                
                 synthetic_put_wall = float(poc_price)
-                
-                # If current price breaks significantly below the Point of Control
-                # treat it as support broken (Put Wall breached)
-                dist_pct = (current_price - synthetic_put_wall) / synthetic_put_wall
-                if dist_pct < -0.01: # 1% penetration
-                    support_broken = True
-                    t2_adj = -30
         
-        t2 = Tier2Result(
-            adjustment=t2_adj,
+        t2 = evaluate_tier2_rules(
+            price=row["Close"],
             put_wall=synthetic_put_wall,
             call_wall=None,
             gamma_flip=None,
-            support_confirmed=False,
-            support_broken=support_broken,
-            upside_open=False,
-            gamma_positive=False,
-            gamma_source="vpvr_proxy",
-            put_wall_distance_pct=None,
-            call_wall_distance_pct=None
+            gamma_source="vpvr_proxy"
         )
         
         # Aggregate

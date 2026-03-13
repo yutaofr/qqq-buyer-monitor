@@ -270,7 +270,7 @@ def identify_regime(vix_zscore: float) -> str:
     """Identify market regime based on VIX Z-Score (v4.2)."""
     if vix_zscore > 1.5:
         return "STORM"
-    elif vix_zscore < -1.0:
+    elif vix_zscore < -0.5:
         return "QUIET"
     else:
         return "NORMAL"
