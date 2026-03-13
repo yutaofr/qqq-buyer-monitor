@@ -46,19 +46,27 @@ def fetch_price_data(ticker: str = "QQQ", as_of: date | None = None) -> dict:
     # 200-day moving average (use all available, max 200 rows)
     ma200 = float(close.rolling(200, min_periods=150).mean().iloc[-1])
 
-    # 52-week high
+    # 52-week high and days since it happened
     one_year_ago = target_date - timedelta(days=365)
     recent = close[close.index >= str(one_year_ago)]
-    high_52w = float(recent.max()) if not recent.empty else float(close.max())
+    if not recent.empty:
+        high_52w = float(recent.max())
+        # Find the most recent date where the high occurred
+        high_date = recent[recent == high_52w].index[-1].date()
+        days_since_high = (record_date - high_date).days
+    else:
+        high_52w = float(close.max())
+        days_since_high = 0
 
     logger.debug(
-        "Price data: price=%.2f ma200=%.2f high_52w=%.2f date=%s",
-        price, ma200, high_52w, record_date,
+        "Price data: price=%.2f ma200=%.2f high_52w=%.2f (days ago: %d) date=%s",
+        price, ma200, high_52w, days_since_high, record_date,
     )
     return {
         "price": price, 
         "ma200": ma200, 
         "high_52w": high_52w, 
+        "days_since_high": days_since_high,
         "date": record_date,
         "history": hist # Return full history for indicator calculations
     }

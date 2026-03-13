@@ -175,3 +175,47 @@ def fetch_credit_spread(series_id: str = "BAMLH0A0HYM2") -> float | None:
     # 3. HYG Proxy Fallback
     logger.info("Chicago Fed unavailable; attempting HYG proxy fallback...")
     return fetch_hyg_proxy()
+
+def fetch_short_volume_proxy(ticker: str = "QQQ") -> float | None:
+    """
+    v5.0: Fetch Short Volume Ratio as an institutional sentiment proxy.
+    Since real-time FINRA API is restricted, we use a rolling average 
+    of put/call volume or a public scrape if available.
+    
+    For this implementation, we use Yahoo Finance volume metrics to 
+    derive a 'De-facto' short ratio based on price action vs volume spikes.
+    
+    Logic: High volume on a down day without a breakdown often implies
+    institutional absorption (bullish).
+    """
+    import yfinance as yf
+    try:
+        t = yf.Ticker(ticker)
+        hist = t.history(period="5d")
+        if len(hist) < 2:
+            return None
+            
+        # Proxy: Volatility-adjusted Volume Ratio
+        # In a real system, this would fetch from a FINRA CSV drop.
+        # Here we simulate the 'Short Ratio' logic:
+        # If today's volume is 1.5x average and price didn't crash, 
+        # it implies high 'Short Exempt' or absorption.
+        latest = hist.iloc[-1]
+        avg_vol = hist["Volume"].mean()
+        vol_ratio = latest["Volume"] / avg_vol
+        
+        # We return a synthetic ratio between 0.3 and 0.7
+        # High vol on green days -> lower 'short ratio' (0.4)
+        # High vol on red days -> higher 'short ratio' (0.65)
+        base = 0.5
+        price_change = (latest["Close"] - latest["Open"]) / latest["Open"]
+        
+        if price_change < -0.01:
+            base += 0.1 * vol_ratio
+        elif price_change > 0.01:
+            base -= 0.05 * vol_ratio
+            
+        return min(0.8, max(0.2, base))
+    except Exception as exc:
+        logger.debug("Short volume proxy fetch failed: %s", exc)
+        return None

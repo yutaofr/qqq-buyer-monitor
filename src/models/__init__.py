@@ -13,6 +13,7 @@ class Signal(str, Enum):
     STRONG_BUY = "STRONG_BUY"
     TRIGGERED = "TRIGGERED"
     WATCH = "WATCH"
+    GREEDY = "GREEDY"
     NO_SIGNAL = "NO_SIGNAL"
 
 
@@ -29,6 +30,9 @@ class MarketData:
     adv_dec_ratio: float  # NYSE Advance/Decline ratio
     pct_above_50d: float  # Fraction of NYSE stocks above 50-day MA (0-1)
     ndx_concentration: float = 0.0  # Spread between QQQ and QQEW 50d dev
+    # v5.0 Performance & Flow
+    days_since_52w_high: Optional[int] = None
+    short_vol_ratio: Optional[float] = None # FINRA Institutional Proxy
     # v3.0 Macro & Fundamentals
     credit_spread: Optional[float] = None
     trailing_pe: Optional[float] = None
@@ -108,6 +112,9 @@ class Tier1Result:
     move_index: Optional[float] = None
     market_regime: str = "NORMAL"
     sector_rotation: Optional[float] = None
+    # v5.0 Analytics
+    descent_velocity: Optional[str] = None # "PANIC", "GRIND", "NORMAL"
+    short_vol_rank: Optional[float] = None
 
 
 @dataclass

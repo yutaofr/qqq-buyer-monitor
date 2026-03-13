@@ -20,7 +20,7 @@ from src.engine.tier2 import evaluate_tier2_rules
 from src.engine.aggregator import aggregate
 from src.utils.stats import calculate_zscore
 
-logging.basicConfig(level=logging.WARNING)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # Constants
@@ -53,23 +53,49 @@ def run_backtest() -> None:
     
     # Breadth proxy (using QQQ distance from 50MA as done in breadth.py)
     
+    # Pre-computing moving averages and proxies
     print("Pre-computing moving averages and proxies...")
     df = pd.DataFrame(index=qqq.index)
     df["Close"] = qqq["Close"]
+    df["Volume"] = qqq["Volume"]
     df["MA200"] = df["Close"].rolling(200, min_periods=50).mean()
     df["MA50"] = df["Close"].rolling(50, min_periods=20).mean()
     df["High52w"] = df["Close"].rolling(252, min_periods=50).max()
     
-    # Forward fill VIX to match QQQ dates. VIX index might not match QQQ exactly due to holidays
-    # Ensure they share the timezone-naive date format for alignment
+    # Align dates
     qqq_dates = [d.date() for d in qqq.index]
     df.index = pd.to_datetime(qqq_dates)
-    vix_dates = [d.date() for d in vix.index]
     
-    # Create a clean VIX series aligned by date
+    # Clean VIX
+    vix_dates = [d.date() for d in vix.index]
     vix_clean = pd.Series(vix["Close"].values, index=pd.to_datetime(vix_dates))
-    df["VIX"] = vix_clean.reindex(df.index).ffill().bfill() # bfill handles any NaN at the very start
-    df["Volume"] = pd.Series(qqq["Volume"].values, index=df.index)
+    df["VIX"] = vix_clean.reindex(df.index).ffill().bfill()
+
+    # v5.0: Calculate Days Since 52w High
+    print("Calculating v5.0 time-decay metrics...")
+    def get_days_since_high(window):
+        if window.empty: return 0
+        high_val = window.max()
+        high_idx = window[window == high_val].index[-1]
+        return (window.index[-1] - high_idx).days
+
+    df["DaysSinceHigh"] = [
+        get_days_since_high(df["Close"].iloc[max(0, i-252):i+1])
+        for i in range(len(df))
+    ]
+    
+    # v5.0: Simulate Short Volume Ratio (FINRA Proxy)
+    df["VolRatio"] = df["Volume"] / df["Volume"].rolling(5).mean()
+    df["PriceChange"] = df["Close"].pct_change()
+    def simulate_short_ratio(row):
+        base = 0.5
+        v_ratio = row["VolRatio"] if not pd.isna(row["VolRatio"]) else 1.0
+        p_change = row["PriceChange"] if not pd.isna(row["PriceChange"]) else 0.0
+        if p_change < -0.01: base += 0.1 * v_ratio
+        elif p_change > 0.01: base -= 0.05 * v_ratio
+        return min(0.8, max(0.2, base))
+    
+    df["ShortVolRatio"] = df.apply(simulate_short_ratio, axis=1)
     
     # MOVE index alignment
     move_clean = pd.Series(move["Close"].values, index=pd.to_datetime([d.date() for d in move.index]))
@@ -156,7 +182,9 @@ def run_backtest() -> None:
             liquidity_roc=float(row.get("LiqROC", 0)),
             move_index=float(row.get("MOVE", 0)) if not pd.isna(row.get("MOVE")) else None,
             ohlcv_history=lookback_df_120,
-            sector_rotation=float(row.get("SectorRotation", 0))
+            sector_rotation=float(row.get("SectorRotation", 0)),
+            days_since_52w_high=int(row["DaysSinceHigh"]),
+            short_vol_ratio=float(row["ShortVolRatio"])
         )
         
         t1 = calculate_tier1(mdata)
@@ -189,7 +217,7 @@ def run_backtest() -> None:
         )
         
         # Aggregate
-        result = aggregate(dt.date(), row["Close"], t1, t2)
+        result = aggregate(dt.date(), row["Close"], t1, t2, ma50=row["MA50"])
         sig = result.signal
             
         dates.append(dt)
@@ -205,7 +233,9 @@ def run_backtest() -> None:
     print(f"Total trading days evaluated: {len(dates)}")
     print(f"Days in TRIGGERED state: {len(triggered_dates)} ({(len(triggered_dates)/len(dates))*100:.1f}%)")
     print(f"Days in WATCH state: {len(watch_dates)} ({(len(watch_dates)/len(dates))*100:.1f}%)")
-    print(f"Days in NO_SIGNAL state: {len(dates) - len(triggered_dates) - len(watch_dates)}")
+    greedy_dates = [d for d, s in zip(dates, signals) if s[0] == Signal.GREEDY]
+    print(f"Days in GREEDY state (Profit Taking): {len(greedy_dates)}")
+    print(f"Days in NO_SIGNAL state: {len(dates) - len(triggered_dates) - len(watch_dates) - len(greedy_dates)}")
     
     vetoed = 0
     for s, t1_score in zip(signals, tier1_scores):
@@ -269,7 +299,12 @@ def run_backtest() -> None:
     trigger_y = [p for p, s in zip(prices, signals) if s[0] == Signal.TRIGGERED]
     plt.scatter(trigger_x, trigger_y, color="green", label="TRIGGERED", marker="^", s=80, zorder=5)
 
-    plt.title("QQQ Buy-Signal Monitor Backtest (1999-2025, with synthetic Tier-2 VPVR Put Wall)")
+    # Mark GREEDY signals
+    greedy_x = [d for d, s in zip(dates, signals) if s[0] == Signal.GREEDY]
+    greedy_y = [p for p, s in zip(prices, signals) if s[0] == Signal.GREEDY]
+    plt.scatter(greedy_x, greedy_y, color="red", label="GREEDY (Sell/Take Profit)", marker="v", s=80, zorder=5)
+
+    plt.title("QQQ Buy-Signal Monitor Backtest v5.0 (1999-2025, with Time-Decay & Institutional Proxy)")
     plt.xlabel("Date")
     plt.ylabel("QQQ Price")
     plt.legend()

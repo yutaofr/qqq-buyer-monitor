@@ -36,7 +36,8 @@ def _run(args: argparse.Namespace) -> None:
         fetch_earnings_revisions_breadth,
         fetch_net_liquidity,
         fetch_move_index,
-        fetch_sector_rotation
+        fetch_sector_rotation,
+        fetch_short_volume_proxy
     )
     from src.collector.fundamentals import fetch_forward_pe
     from src.models import MarketData, Signal
@@ -160,6 +161,13 @@ def _run(args: argparse.Namespace) -> None:
         sector_rotation = fetch_sector_rotation()
     except Exception as exc:
         logger.warning("Sector rotation fetch failed: %s", exc)
+        
+    # v5.0 Short Volume Proxy
+    short_vol_ratio = None
+    try:
+        short_vol_ratio = fetch_short_volume_proxy()
+    except Exception as exc:
+        logger.warning("Short volume proxy fetch failed: %s", exc)
     # History Window (Epic 2) - Increased to 120d for v4.0 Z-scores
     history_window = None
     vix_zscore = 0.0
@@ -215,6 +223,8 @@ def _run(args: argparse.Namespace) -> None:
         move_index=move_index,
         ohlcv_history=price_data.get("history"),
         sector_rotation=sector_rotation,
+        days_since_52w_high=price_data.get("days_since_high"),
+        short_vol_ratio=short_vol_ratio
     )
 
     logger.info("Running signal engines…")
@@ -244,7 +254,8 @@ def _run(args: argparse.Namespace) -> None:
         prev_signal=prev_signal,
         credit_spread=market_data.credit_spread,
         forward_pe=market_data.forward_pe,
-        real_yield=market_data.real_yield
+        real_yield=market_data.real_yield,
+        ma50=getattr(market_data, 'history_window', pd.DataFrame()).get('ma50', pd.Series()).iloc[-1] if market_data.history_window is not None and 'ma50' in market_data.history_window else None
     )
 
     consecutive_days = 1

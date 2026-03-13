@@ -64,7 +64,9 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
     Returns Tier1Result with total score (0-100) and per-signal breakdown.
     """
     regime = identify_regime(data.vix_zscore)
-    logger.info("Current Market Regime: %s (VIX Z=%.2f)", regime, data.vix_zscore)
+    descent_v, days_to_dd = calculate_descent_velocity(data)
+    logger.info("Current Market Regime: %s (VIX Z=%.2f, Descent: %s [%d days])", 
+                regime, data.vix_zscore, descent_v, days_to_dd)
     # Signal 1: 52-week drawdown
     drawdown = (data.high_52w - data.price) / data.high_52w
     s1_pts, s1_half, s1_full = _score_higher_better(drawdown, *DRAWDOWN_THRESHOLDS)
@@ -239,6 +241,15 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
     total += rotation_bonus
     divergence_bonus += rotation_bonus
 
+    # v5.0 Institutional Short Flow Confirmation
+    short_flow_bonus = 0
+    if data.short_vol_ratio is not None and data.short_vol_ratio > 0.60:
+        # Extreme shorting into a drawdown often marks a local capitulation/squeeze point
+        if drawdown > 0.05:
+            short_flow_bonus = 10
+            divergence_flags["short_squeeze_potential"] = True
+    total += short_flow_bonus
+
     return Tier1Result(
         score=total,
         drawdown_52w=s1,
@@ -264,6 +275,7 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         move_index=data.move_index,
         market_regime=regime,
         sector_rotation=data.sector_rotation,
+        descent_velocity=descent_v,
     )
 
 def identify_regime(vix_zscore: float) -> str:
@@ -274,3 +286,27 @@ def identify_regime(vix_zscore: float) -> str:
         return "QUIET"
     else:
         return "NORMAL"
+
+def calculate_descent_velocity(data: MarketData) -> tuple[str, int]:
+    """
+    v5.0: Calculate speed of descent to distinguish Panic vs Grind.
+    Returns (Category, DaysSincePeak).
+    """
+    if data.days_since_52w_high is None:
+        return "NORMAL", 0
+    
+    days = data.days_since_52w_high
+    drawdown = (data.high_52w - data.price) / data.high_52w
+    
+    if drawdown < 0.05:
+        return "NORMAL", days
+        
+    # PANIC: 10% drop in < 15 days, or 5% in < 7 days
+    if (drawdown >= 0.10 and days < 15) or (drawdown >= 0.05 and days < 7):
+        return "PANIC", days
+    
+    # GRIND: 10% drop that took more than 45 days
+    if drawdown >= 0.10 and days > 45:
+        return "GRIND", days
+        
+    return "NORMAL", days

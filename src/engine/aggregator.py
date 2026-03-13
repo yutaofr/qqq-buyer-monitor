@@ -30,6 +30,7 @@ def aggregate(
     credit_spread: float | None = None,
     forward_pe: float | None = None,
     real_yield: float | None = None,
+    ma50: float | None = None,
 ) -> SignalResult:
     """
     Combine Tier-1 and Tier-2 results into a final SignalResult.
@@ -61,6 +62,13 @@ def aggregate(
     else: # STORM
         base_trigger = 65
 
+    # v5.0 Velocity Filter: If "GRIND", raise threshold (be harder to trigger)
+    descent_v = tier1.descent_velocity
+    if descent_v == "GRIND":
+        base_trigger += 10
+    elif descent_v == "PANIC":
+        base_trigger -= 5
+
     current_triggered_thresh = (base_trigger - 5) if is_prev_triggered else base_trigger
     current_watch_thresh = 35 if is_prev_watch else WATCH_THRESHOLD
 
@@ -82,6 +90,13 @@ def aggregate(
         signal = Signal.TRIGGERED
     elif final_score >= current_watch_thresh:
         signal = Signal.WATCH
+    # v5.0: GREEDY / Profit Taking Signal
+    elif (
+        tier1.fear_greed.value > 75 
+        and final_score < 10 
+        and ma50 is not None and price > 1.06 * ma50
+    ):
+        signal = Signal.GREEDY
     else:
         signal = Signal.NO_SIGNAL
 
@@ -225,10 +240,16 @@ def _build_explanation(
             f"🔥 🌟 综合判断：触发【强烈买入】(STRONG BUY) 核心信号！价格由于底背离（{div_str}）展现出罕见的逆势强度，是极佳的加仓点{hysteresis_note}。{erp_note}"
         )
     elif signal == Signal.TRIGGERED:
-        parts.append(f"综合判断：触发买点，进入分批加仓（5% 级回调）区间{hysteresis_note}。{erp_note}")
+        vel_note = ""
+        if tier1.descent_velocity == "PANIC": vel_note = "【恐慌放量】"
+        parts.append(f"综合判断：{vel_note}触发买点，进入分批加仓（5% 级回调）区间{hysteresis_note}。{erp_note}")
     elif signal == Signal.WATCH:
         parts.append(f"综合判断：进入观察区，等待更多信号确认后再入场{hysteresis_note}。{erp_note}")
+    elif signal == Signal.GREEDY:
+        parts.append(f"🚨 🌟 综合判断：触发【贪婪警告】(GREEDY)！当前市场情绪极度过热（F&G: {tier1.fear_greed.value}），且价格涨幅过快。建议分批止盈，落袋为安，切勿追高。")
     else:
+        if tier1.descent_velocity == "GRIND":
+            parts.append("阴跌预警：当前市场处于无量阴跌阶段，尚未出现恐慌性底背离，系统维持观望。")
         parts.append(f"综合判断：条件尚未满足，无买点信号{hysteresis_note}。{erp_note}")
 
     return "。".join(parts) + "。"

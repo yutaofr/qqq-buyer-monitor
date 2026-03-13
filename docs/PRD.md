@@ -1,8 +1,8 @@
 # PRD: QQQ 买点信号监控系统（含期权墙确认层）
 
-> **版本**: 1.1  
+> **版本**: 1.2 (v5.0 Optimization)  
 > **状态**: Approved  
-> **日期**: 2026-03-08  
+> **日期**: 2026-03-13  
 > **负责人**: Wei Zhang
 
 ---
@@ -11,15 +11,16 @@
 
 ### 1.1 现状
 
-当前已有一套基于 4 个维度的 QQQ 买点判断框架：
+当前已有一套基于 5 个维度的 QQQ 买点判断框架（v5.0 引入了环境自适应过滤）：
 
-| # | 信号维度 | 衡量内容 |
-|---|---------|---------|
-| 1 | 距 52 周高点回撤幅度 | 价格是否便宜 |
-| 2 | 距 200 日均线偏离幅度 | 趋势偏离程度 |
-| 3 | VIX 是否抬升 | 市场恐慌程度 |
-| 4 | Fear & Greed 是否进入恐慌区 | 情绪极端程度 |
-| 5 | 市场参与度 | 涨跌广度 |
+| # | 信号维度 | 衡量内容 | v5.0 更新 |
+|---|---------|---------|----------|
+| 1 | 距 52 周高点回撤幅度 | 价格是否便宜 | 引入 **Time-Decay** 区分阴跌与超跌 |
+| 2 | 距 200 日均线偏离幅度 | 趋势偏离程度 | - |
+| 3 | VIX 是否抬升 | 市场恐慌程度 | - |
+| 4 | Fear & Greed 指数 | 情绪极端程度 | - |
+| 5 | 机构流向代理 (Proxy) | 资金分布与背离 | 引入 **FINRA Short Volume** 替代商业数据 |
+| 6 | 市场参与度 (Breadth) | 涨跌广度 | - |
 
 这套规则覆盖了"价格是否便宜"和"市场是否恐慌"两个核心问题，但缺少**期权市场结构是否支持当前位置形成有效支撑**这一关键维度。
 
@@ -236,21 +237,41 @@ Gamma = N'(d1) / (S * sigma * sqrt(T))
 
 > Tier 2 调整分范围：**-40 到 +30**
 
-### 4.3 综合三态输出
+### 4.4 决策逻辑流水线 (v5.0 Schema)
 
+```mermaid
+flowchart TB
+    Start([数据采集完成]) --> T0{Tier 0: 宏观环境}
+    
+    T0 -- "利差爆炸 (>500bps)" --> Veto["🚫 强制不触发"]
+    T0 -- "低温环境 (ERP < 1%)" --> Shift["提高触发门槛 +10"]
+    T0 -- "常规范式" --> T1
+    
+    T1{Tier 1: 情绪引擎} --> Velocity{下行速度过滤}
+    Velocity -- "PANIC" --> Swift["增强灵敏度捕捉V反"]
+    Velocity -- "GRIND" --> Defense["提高门槛防止踩雷"]
+    
+    Swift & Defense --> T1_5{Tier 1.5: 资金流确认}
+    T1_5 -- "FINRA Short Proxy (机构吸筹)" --> Bonus["权重红利 +10~20"]
+    T1_5 -- "Macro Gravity (流动性)" --> Gravity["环境加分/减分"]
+    
+    Bonus & Gravity --> T2{Tier 2: 期权结构硬约束}
+    
+    T2 -- "跌破 Put Wall" --> Veto_Hard["🚨 一票否决 BUY"]
+    T2 -- "负 Gamma 区" --> Wait["限定为 WATCH"]
+    T2 -- "支撑确认 + 正 Gamma" --> Agg[最终得分聚合]
+    
+    Agg -- "Score >= 70" --> Buy[🟢 TRIGGERED]
+    Agg -- "Score >= 40" --> Watch[🟡 WATCH]
+    Agg -- "其他" --> Skip[⚪ NO SIGNAL]
+    
+    Agg -- "超高乖离 + 极贪" --> Greedy[🔴 GREEDY]
+    
+    Veto_Hard --> Watch
+    Wait --> Watch
 ```
-final_score = tier1_score + tier2_adjustment
 
-IF final_score >= 70 AND NOT support_broken:
-    -> 触发 (BUY SIGNAL)
-ELIF final_score >= 40 AND NOT support_broken:
-    -> 观察 (WATCH)
-ELSE:
-    -> 未触发 (NO SIGNAL)
-```
-
-> [!IMPORTANT]
-> **Put Wall 否决权（硬否决）**：`support_broken` = true 时，无论 Tier 1 得分多高，最终状态**不可能**为"触发"，最高只能输出"观察"。
+### 4.5 綜合三態輸出
 >
 > **否决权的金融逻辑**：当 QQQ 跌破 put wall，持有大量 put 头寸的做市商必须进行 delta 对冲——卖出标的资产。这种被迫卖出会形成级联效应（gamma squeeze to the downside），导致下跌自我加速。在这种市场微观结构下，即使现货和情绪指标全部达标，支撑位已经从结构上失效了。新的支撑要等下一个 put OI 集中区建立后才成立。这就是为什么 put wall 破位必须一票否决买入信号。
 
