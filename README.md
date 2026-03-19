@@ -1,133 +1,149 @@
-# QQQ Buy-Signal Monitor (v5.0 Optimization)
+# QQQ Long-Term Allocation Engine
 
-一个基于五大维度市场信号（现货+情绪）并引入 **宏观引力因子**、**时间衰减过滤** 与 **机构流向代理** 逻辑的 QQQ 买点监控系统。
+一个面向长期纳指 100 ETF 资金管理的分层仓位引擎。
+系统不再把输出定义成“高确定性买点标签”，而是把宏观结构、战术压力和期权结构整合成可执行的仓位动作建议。
 
 > [!IMPORTANT]
-> **v5.0 核心突破**: 系统引入了“下行速度过虑器”与“机构流向代理”，消除了 7.5% 的阴跌杂訊。25年全量回测显示，对历史重大底部的捕捉率已提升至 **98.1%**。
+> 当前主输出面是 `allocation_state`，包括 `BASE_DCA / SLOW_ACCUMULATE / FAST_ACCUMULATE / PAUSE_CHASING / RISK_CONTAINMENT`。
+> 旧的 `signal` 字段仅保留为兼容层，不应被当作主要仓位决策接口。
 
-## 🧠 决策逻辑可视化 (Decision Logic Schema)
+## 系统定位
 
-```mermaid
-graph TD
-    subgraph "Tier 0: 宏观熔断与环境 (Circuit Breaker)"
-        A["信用利差 > 500bps?"] -- YES --> B(🚫 强制熔断/静默)
-        A -- NO --> C[ERP 模式计算]
-        C --> D{ERP < 1% 防守?}
-        D -- YES --> E[收紧触发阈值 +10pts]
-        D -- NO --> F[标准阈值]
-    end
+- 适合长期 QQQ / 纳指 100 ETF 左侧加仓与风险控制。
+- 把系统用作“仓位节奏控制器”，而不是“抄底按钮”。
+- 优先减少过度自信、追高和阴跌补仓的行为偏差。
 
-    subgraph "Tier 1: 情绪与时间衰减 (Sentiment & v5.0 Filter)"
-        G["52w回撤 / MA200偏离 / VIX / F&G"] --> H{下行速度计算}
-        H -- "快 (PANIC)" --> I["敏感度增强: 捕捉V反"]
-        H -- "慢 (GRIND)" --> K["防御增强: 提高准入阈值"]
-        I & K --> L[Tier 1 基础得分]
-    end
+## 决策框架
 
-    subgraph "Tier 1.5: 资金流与机构 (v5.0 Flow)"
-        M[FINRA Short Volume Proxy] -- "空头回补/吸筹" --> N[额外权重奖赏]
-        O["Sector Rotation / MOVE / Liquidity"] --> P[环境红利得分]
-        L & N & P --> Q["综合初步评分 (Score)"]
-    end
+### Tier 0: Structural Regime
+- 结合信用利差与 ERP，识别 `EUPHORIC / RICH_TIGHTENING / NEUTRAL / TRANSITION_STRESS / CRISIS`。
+- 决定资金当前应偏防守、常规定投还是加速吸纳。
 
-    subgraph "Tier 2: 期权墙硬核确认 (Hard Veto)"
-        Q --> R{跌破 Put Wall?}
-        R -- YES --> S["🚨 一票否决 TRIGGERED"]
-        R -- NO --> T{处于负 Gamma 区?}
-        T -- YES --> U["观察 WATCH: 等待波动收敛"]
-        T -- NO --> V{Score >= 70?}
-    end
+### Tier 1: Tactical Pressure
+- 基于回撤、MA200 偏离、VIX、F&G、广度，构造 `stress / capitulation / persistence`。
+- 目标不是预测最低点，而是识别是否值得加快或放慢投入速度。
 
-    subgraph "Final Output: 信号输出"
-        V -- YES --> W[🟢 TRIGGERED / BUY]
-        V -- NO --> X{Score >= 40?}
-        X -- YES --> Y[🟡 WATCH]
-        X -- NO --> Z[⚪ NO SIGNAL]
-        S --> Y
-        U --> Y
-        
-        Q -- "超买 + 极贪 + 乖离" --> G1[🔴 GREEDY / PROFIT TAKING]
-    end
-```
+### Tier 2: Options Overlay
+- 期权墙不再扮演“硬开关”。
+- 当前逻辑把它作为软约束层，用于降低 tranche、延长冷却和削弱置信度。
 
----
+## 仓位动作输出
 
-## 🌟 核心特性 (v5.0 架构)
+| `allocation_state` | 含义 | 操作语义 |
+|---|---|---|
+| `BASE_DCA` | 常规环境 | 维持基础定投 |
+| `SLOW_ACCUMULATE` | 有压力但结构未充分出清 | 仅小幅试探 |
+| `FAST_ACCUMULATE` | 中性结构下的明显超跌/恐慌 | 允许提高加仓速度 |
+| `PAUSE_CHASING` | 价格显著抬升，不适合追高 | 暂停追高 |
+| `RISK_CONTAINMENT` | 结构性压力或流动性风险升高 | 进入风险控制 |
 
-### 1. Tier-0 (宏观防御与 ERP)
-- **信用利差熔断**: 实时监控 FRED 高收益债利差 (BAMLH0A0HYM2)。若 >500 bps (流动性危机)，强制熔断。
-- **ERP 模式开关**: 基于股权风险溢价 (1/FwdPE - TIPS) 切换：
-  - **🛡️ 防守模式 (ERP < 1%)**: 估值过高时收紧触发门槛。
-  - **💎 击球区模式 (ERP > 5%)**: 极端低估时允许左侧提前入场。
+兼容字段:
+- `signal` 仍会输出 `NO_SIGNAL / WATCH / TRIGGERED / STRONG_BUY / GREEDY`，但不应凌驾于 `allocation_state` 之上。
+- CLI、JSON 和历史输出都优先展示 `allocation_state`。
 
-### 2. Tier-1 (动态情绪层 & 时间衰减)
-- **Time-Decay Filter (v5.0)**: 自动计算下行速度。
-  - **PANIC (恐慌)**: 快速下跌时自动增强灵敏度，捕捉 V 型反转。
-  - **GRIND (阴跌)**: 慢速阴跌时提高触发门槛 (+10 pts)，规避无量阴跌。
-- **Adaptive Z-Scores**: 52周回撤与 VIX 均基于 120D 滚动窗口进行标准化。
+## 快速开始
 
-### 3. Tier-1.5 (环境因子与机构流向)
-- **Institutional Proxy (v5.0)**: 引入 **FINRA Short Volume Proxy**。通过分析成交量分布与价格背离，识别机构吸筹（capitulation）信号，作为买点确认。
-- **Macro Gravity**: 监控 Fed 净流动性、MOVE Index 债市波动率。
-- **Smart Momentum**: 结合 MFI 资金流向与 Sector Rotation (XLP/QQQ)。
+### 1. 配置环境
 
-### 4. Tier-2 (期权墙确认 - Hard Veto)
-- **VPVR & Options Chain**: 计算 **Put Wall** (支撑)、**Call Wall** (阻力) 与 **Gamma Flip**。
-- **螺旋否决**: 若价格低于 Put Wall 或处于 **负 Gamma** 区域，系统将自动否决 `TRIGGERED` 信号。
+在根目录创建 `.env`：
 
----
-
-## 📊 信号分级
-
-| 状态 | 说明 |
-|:---:|---|
-| **STRONG_BUY** | **强烈买入**：Tier-1 触发且伴随多重技术/基本面底背离。 |
-| **TRIGGERED** | **触发买点**：各项指标进入极限值且期权支撑确认。 |
-| **WATCH** | **观察期**：信号显现但尚未共振。 |
-| **GREEDY (v5.0)** | **贪婪警报**：市场极端过热且超买，建议分批止盈离场。 |
-| **NO_SIGNAL** | **未触发**：市场处于常态或高位。 |
-
----
-
-## 🚀 快速开始 (Docker)
-
-### 1. 配置 API Key
-在根目录创建 `.env` 文件，填入您的 FRED API Key：
 ```bash
 FRED_API_KEY=your_fred_api_key_here
 ```
 
-### 2. 启动监控
-```bash
-# 获取实时信号报告
-docker-compose run --rm app python -m src.main
+### 2. 运行实时信号
 
-# 以 JSON 格式输出 (适合自动化集成)
-docker-compose run --rm app python -m src.main --json
+```bash
+python -m src.main
 ```
 
-### 3. 运行回测
+### 3. 输出 JSON
+
 ```bash
-# 运行 1999-2026 全量回测并生成可视化图表
-docker-compose run --rm app python -m src.backtest
+python -m src.main --json
 ```
 
----
+JSON 当前会显式包含：
+- `allocation_state`
+- `daily_tranche_pct`
+- `max_total_add_pct`
+- `cooldown_days`
+- `required_persistence_days`
+- `confidence`
+- `data_quality`
+- `data_quality_summary`
 
-## 🛠️ 核心架构
+### 4. 查看历史记录
 
-- **数据源**: Yahoo Finance (实时价格/期权/成交量), FRED (宏观), FINRA Proxy (机构流向), CNN Money (情绪)。
-- **持久化**: SQLite 自动保存每日信号状态。
-- **验证**: 包含 100+ 单元测试用例，覆盖 v5.0 核心逻辑。
+```bash
+python -m src.main --history 30
+```
 
----
+历史输出优先显示：
+- `allocation_state`
+- 对应动作语义
+- 分数与价格
 
-## 📈 回测表现
-- **历史底部捕捉率**: 98.1% (53/54)
-- **触发精确度**: 较 v4.5 版本提升了 7.5%（减少了阴跌中的提前触发）。
-- **回测报告**: 详见 [backtest_report.md](docs/backtest_report.md) (由 Phase 3 引擎生成)。
+## Docker 运行
 
----
+当前 Docker 基础镜像为 `python:3.13-slim`，默认镜像名为 `qqq-monitor:py313`。
 
-## 📄 开源协议
+构建镜像：
+
+```bash
+docker build -t qqq-monitor:py313 .
+```
+
+运行主程序：
+
+```bash
+docker run --rm --env-file .env qqq-monitor:py313 python -m src.main
+```
+
+运行完整测试：
+
+```bash
+docker run --rm -v "$(pwd)":/app -w /app --env-file .env qqq-monitor:py313 python -m pytest -q
+```
+
+使用 compose：
+
+```bash
+docker compose run --rm app
+docker compose run --rm test
+docker compose run --rm backtest
+```
+
+## 回测方法
+
+当前回测是 allocator-style，而不是 signal-label replay。
+
+- 基线始终是 weekly DCA。
+- 战术状态只决定“加快 / 放慢 / 暂停追高 / 风险控制”的投入速度。
+- 核心指标是：
+  - `T+5 / T+20 / T+60` forward return
+  - add 后最大不利波动 (`max adverse excursion`)
+  - 相对 baseline DCA 的平均成本变化
+  - 最终低点前的资金部署比例
+
+参考文档：
+- [docs/backtests/methodology.md](docs/backtests/methodology.md)
+- [docs/backtest_report.md](docs/backtest_report.md)
+
+## 当前约束
+
+- 如果历史数据拿不到，就明确排除，不再伪造 fear/greed 或 short-volume 因子。
+- `data_quality` 会区分 live 与 cache，并给出 `stale_days`。
+- 旧版“98.1% 底部捕捉率”不再代表当前方法学，也不应用于宣传或决策。
+
+## 验证
+
+- Docker 构建: `docker build -t qqq-monitor:py313 .`
+- Docker smoke test: `docker run --rm qqq-monitor:py313 python -V && docker run --rm -v "$(pwd)":/app -w /app qqq-monitor:py313 python -m pytest -q`
+- 单元与集成测试: `python3 -m pytest -q`
+- 静态编译: `python3 -m compileall src tests`
+- 回测 smoke run: `python3 -m src.backtest`
+
+## 许可证
+
 MIT License

@@ -30,7 +30,6 @@ FG_THRESHOLDS = (30, 20)                # >30=0, 20-30=10, <=20=20
 
 # Signal 5: Market breadth (lower = more bullish / capitulation)
 BREADTH_RATIO_T = (0.7, 0.4)            # advance/decline ratio
-BREADTH_PCT50_T = (0.40, 0.25)          # pct of stocks above 50-day MA
 
 
 # ── Scoring helpers ───────────────────────────────────────────────────────────
@@ -134,16 +133,11 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         triggered_full=s4_full,
     )
 
-    # Signal 5: Market breadth (composite of adv_dec_ratio and pct_above_50d)
-    # Both metrics: lower = more bullish → lower_better
-    ratio_pts, ratio_half, ratio_full = _score_lower_better(
+    # Signal 5: Market breadth uses a single auditable definition so live and
+    # historical divergence checks compare the same concept.
+    s5_pts, s5_half, s5_full = _score_lower_better(
         data.adv_dec_ratio, BREADTH_RATIO_T[0], BREADTH_RATIO_T[1]
     )
-    pct_pts, pct_half, pct_full = _score_lower_better(
-        data.pct_above_50d, BREADTH_PCT50_T[0], BREADTH_PCT50_T[1]
-    )
-    # Breadth score: max of the two sub-signals (either indicator capitulating is informative)
-    s5_pts = max(ratio_pts, pct_pts)
     
     # v4.2 QUIET Regime Boost: In low-vol environments, breadth is the most reliable filter
     if regime == "QUIET":
@@ -155,19 +149,20 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         if s4_pts > 0:
             s4_pts = min(s4_pts + 10, 20)
 
-    # "half" if either triggered half; "full" only if BOTH are at full level
-    s5_half = ratio_half or pct_half
-    s5_full = ratio_full and pct_full
     s5 = SignalDetail(
         name="breadth",
         value=round(data.adv_dec_ratio, 3),
         points=s5_pts,
-        thresholds=(BREADTH_RATIO_T, BREADTH_PCT50_T),
+        thresholds=BREADTH_RATIO_T,
         triggered_half=s5_half,
         triggered_full=s5_full,
     )
 
-    total = s1_pts + s2_pts + s3_pts + s4_pts + s5_pts
+    stress_score = s1_pts + s3_pts
+    capitulation_score = s4_pts + s5_pts
+    persistence_score = s2_pts
+
+    total = stress_score + capitulation_score + persistence_score
 
     # v2.0 Calculate Divergence Bonus
     divergence_bonus = 0
@@ -176,7 +171,7 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         div_res = check_divergences(
             data.price, 
             data.vix, 
-            float(data.pct_above_50d), 
+            float(data.adv_dec_ratio),
             data.history_window,
             getattr(data, 'earnings_revisions_breadth', None),
             getattr(data, 'ohlcv_history', None)
@@ -257,8 +252,12 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         vix=s3,
         fear_greed=s4,
         breadth=s5,
+        stress_score=stress_score,
+        capitulation_score=capitulation_score,
+        persistence_score=persistence_score,
         valuation_bonus=valuation_bonus,
         fcf_bonus=fcf_bonus,
+        short_flow_bonus=short_flow_bonus,
         trailing_pe=getattr(data, 'trailing_pe', None),
         forward_pe=getattr(data, 'forward_pe', None),
         fcf_yield=getattr(data, 'fcf_yield', None),

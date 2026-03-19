@@ -1,7 +1,8 @@
 """CLI output formatter for QQQ signal results."""
 from __future__ import annotations
 
-from src.models import Signal, SignalResult
+from src.models import AllocationState, Signal, SignalResult
+from src.output.report import summarize_data_quality
 
 # ANSI colours
 _GREEN = "\033[92m"
@@ -14,10 +15,18 @@ _BOLD = "\033[1m"
 _RESET = "\033[0m"
 
 _SIGNAL_STYLE = {
-    Signal.STRONG_BUY: (_PURPLE, "🌟 强烈买入 (STRONG BUY)"),
-    Signal.TRIGGERED: (_GREEN, "✅ 触发 (TRIGGERED)"),
-    Signal.WATCH: (_YELLOW, "👀 观察 (WATCH)"),
-    Signal.NO_SIGNAL: (_RED, "❌ 未触发 (NO_SIGNAL)"),
+    Signal.STRONG_BUY: (_PURPLE, "允许提高加仓速度"),
+    Signal.TRIGGERED: (_GREEN, "允许提高加仓速度"),
+    Signal.WATCH: (_YELLOW, "仅小幅试探"),
+    Signal.NO_SIGNAL: (_RED, "维持基础定投"),
+}
+
+_ALLOCATION_STYLE = {
+    AllocationState.BASE_DCA: (_RED, "维持基础定投"),
+    AllocationState.PAUSE_CHASING: (_YELLOW, "暂停追高"),
+    AllocationState.RISK_CONTAINMENT: (_RED, "进入风险控制"),
+    AllocationState.SLOW_ACCUMULATE: (_YELLOW, "仅小幅试探"),
+    AllocationState.FAST_ACCUMULATE: (_GREEN, "允许提高加仓速度"),
 }
 
 _BAR_FULL = "■"
@@ -33,6 +42,20 @@ def _fmt_flag(flag: bool) -> str:
     return "✓" if flag else "✗"
 
 
+def _allocation_label(state: AllocationState) -> str:
+    if state == AllocationState.BASE_DCA:
+        return "维持基础定投"
+    if state == AllocationState.PAUSE_CHASING:
+        return "暂停追高"
+    if state == AllocationState.RISK_CONTAINMENT:
+        return "进入风险控制"
+    if state == AllocationState.SLOW_ACCUMULATE:
+        return "仅小幅试探"
+    if state == AllocationState.FAST_ACCUMULATE:
+        return "允许提高加仓速度"
+    return "维持基础定投"
+
+
 def print_signal(
     result: SignalResult,
     use_color: bool = True,
@@ -44,8 +67,10 @@ def print_signal(
     r = c(_RESET)
 
     t1 = result.tier1
-    color, label = _SIGNAL_STYLE[result.signal]
+    color, label = _ALLOCATION_STYLE[result.allocation_state]
     header_label = f"{c(color)}{c(_BOLD)}{label}{r}"
+    allocation_label = f"{c(_BOLD)}{_allocation_label(result.allocation_state)}{r}"
+    data_quality_summary = summarize_data_quality(result.data_quality)
 
     width = 62
     border = "═" * width
@@ -53,12 +78,17 @@ def print_signal(
     print(f"\n{c(_CYAN)}╔{border}╗{r}")
     print(
         f"{c(_CYAN)}║{r}  {c(_BOLD)}QQQ 买点信号监控{r}"
-        f"  │  {result.date}  │  环境: {c(_BOLD)}{t1.market_regime}{r}  │  {header_label}"
+        f"  │  {result.date}  │  环境: {c(_BOLD)}{t1.market_regime}{r}"
+        f"  │  动作: {allocation_label}  │  状态: {header_label}"
     )
     print(f"{c(_CYAN)}╠{border}╣{r}")
-    
+
     if compact:
-        msg = f"🔕 【报告折叠】连续第 {consecutive_days} 天 {label}。当前得分 {result.final_score}，收盘价 ${result.price:.2f}。为防信号疲劳，已折叠详细输出。"
+        msg = (
+            f"🔕 【报告折叠】连续第 {consecutive_days} 天 {allocation_label}。"
+            f"当前得分 {result.final_score}，收盘价 ${result.price:.2f}。"
+            f"动作 {allocation_label}，数据质量 {data_quality_summary}。"
+        )
         print(f"{c(_CYAN)}║{r}  {msg}")
         print(f"{c(_CYAN)}╚{border}╝{r}\n")
         return
@@ -115,9 +145,10 @@ def print_signal(
     print(f"{c(_CYAN)}║{r}  现金收益 (FCF): {fcf_y*100:.1f}%  → {fcf_b:+d}")
     
     # Phase 2 details
-    move_str = f"{t1.move_index:.1f}" if t1.move_index else "N/A"
+    move_str = f"{t1.move_index:.1f}" if t1.move_index is not None else "N/A"
     liq_roc_str = f"{t1.liquidity_roc:+.1f}%" if t1.liquidity_roc is not None else "N/A"
-    rot_str = f"{getattr(t1, 'sector_rotation', 0):+.1f}%"
+    sector_rotation = getattr(t1, "sector_rotation", None)
+    rot_str = f"{sector_rotation:+.1f}%" if sector_rotation is not None else "N/A"
     print(f"{c(_CYAN)}║{r}  美债波动 (MOVE): {move_str}  │ 净流动性 4W-ROC: {liq_roc_str}")
     print(f"{c(_CYAN)}║{r}  板块轮动 (XLP/QQQ 20D): {rot_str}")
     
@@ -208,7 +239,14 @@ def print_signal(
 
     print(
         f"{c(_CYAN)}║{r}  {c(_BOLD)}── 最终得分: {score_color}{result.final_score}{r}{c(_BOLD)}"
-        f"  状态: {header_label} ────{r}"
+        f"  动作: {header_label} ────{r}"
+    )
+    print(
+        f"{c(_CYAN)}║{r}  仓位: {c(_BOLD)}{result.allocation_state.value}{r}"
+        f"  │  动作: {allocation_label}"
+        f"  │  单日加仓: {result.daily_tranche_pct:.0%}"
+        f"  │  置信度: {result.confidence}"
+        f"  │  数据质量: {data_quality_summary}"
     )
 
     # Wrap explanation at ~55 chars

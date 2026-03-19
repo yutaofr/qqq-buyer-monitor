@@ -1,20 +1,19 @@
 """
-Tier-2 engine: options wall confirmation and veto layer.
+Tier-2 engine: options wall confirmation and soft overlay layer.
 
 Computes:
   - put_wall: strike with highest put Open Interest
   - call_wall: strike with highest call Open Interest
   - gamma_flip: price level where dealer net gamma changes sign
 
-Then applies confirmation / veto rules per PRD section 4.2.
+Then applies confirmation / overlay rules per PRD section 4.2.
 """
 from __future__ import annotations
 
 import logging
-
 import pandas as pd
 
-from src.models import Tier2Result
+from src.models import OptionsOverlay, Tier2Result
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +28,6 @@ SCORE_SUPPORT_BROKEN = -30
 SCORE_UPSIDE_OPEN = 10
 SCORE_GAMMA_POSITIVE = 5
 SCORE_NEGATIVE_GAMMA_BROKEN = -10  # extra penalty: negative gamma AND support broken
-
-
 def calculate_tier2(price: float, options_df: pd.DataFrame | None) -> Tier2Result:
     """
     Calculate Tier-2 options wall score by fetching walls from options_df and
@@ -45,11 +42,12 @@ def calculate_tier2(price: float, options_df: pd.DataFrame | None) -> Tier2Resul
     call_wall = _find_wall(options_df, "call")
     gamma_flip = _find_gamma_flip(options_df, price)
 
-    return evaluate_tier2_rules(
+    result = evaluate_tier2_rules(
         price, put_wall, call_wall, gamma_flip, 
         options_df=options_df, 
         gamma_source=gamma_source
     )
+    return result
 
 
 def evaluate_tier2_rules(
@@ -120,7 +118,14 @@ def evaluate_tier2_rules(
     if not gamma_positive and support_broken:
         adjustment += SCORE_NEGATIVE_GAMMA_BROKEN
 
-    return Tier2Result(
+    overlay = _build_options_overlay(
+        support_confirmed=support_confirmed,
+        support_broken=support_broken,
+        upside_open=upside_open,
+        gamma_positive=gamma_positive,
+    )
+
+    result = Tier2Result(
         adjustment=adjustment,
         put_wall=put_wall,
         call_wall=call_wall,
@@ -134,7 +139,9 @@ def evaluate_tier2_rules(
         call_wall_distance_pct=round(call_wall_distance_pct, 4) if call_wall_distance_pct is not None else None,
         next_put_wall=next_put_wall,
         next_put_wall_distance_pct=round(next_put_wall_distance_pct, 4) if next_put_wall_distance_pct is not None else None,
+        overlay=overlay,
     )
+    return result
 
 
 def _find_wall(df: pd.DataFrame, option_type: str) -> float | None:
@@ -224,8 +231,34 @@ def _dominant_gamma_source(df: pd.DataFrame) -> str:
     return str(counts.idxmax())
 
 
+def _build_options_overlay(
+    *,
+    support_confirmed: bool,
+    support_broken: bool,
+    upside_open: bool,
+    gamma_positive: bool,
+) -> OptionsOverlay:
+    """Translate raw options structure into a non-upgrading overlay."""
+    if support_broken:
+        return OptionsOverlay(
+            can_reduce_tranche=True,
+            tranche_multiplier=0.5,
+            confidence="low",
+            delay_days=1,
+        )
+
+    # Support-confirmed / upside-open / positive gamma is useful context, but
+    # it does not upgrade structural state by itself.
+    return OptionsOverlay(
+        can_reduce_tranche=False,
+        tranche_multiplier=1.0,
+        confidence="medium",
+        delay_days=0,
+    )
+
+
 def _neutral_result() -> Tier2Result:
-    return Tier2Result(
+    result = Tier2Result(
         adjustment=0,
         put_wall=None,
         call_wall=None,
@@ -239,4 +272,6 @@ def _neutral_result() -> Tier2Result:
         call_wall_distance_pct=None,
         next_put_wall=None,
         next_put_wall_distance_pct=None,
+        overlay=OptionsOverlay(),
     )
+    return result

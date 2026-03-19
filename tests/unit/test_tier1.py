@@ -113,6 +113,14 @@ class TestBreadth:
         result = calculate_tier1(data)
         assert result.breadth.points == 0
 
+    def test_uses_adv_dec_ratio_as_single_breadth_definition(self):
+        data = _make_data(adv_dec_ratio=0.8, pct_above_50d=0.10)
+        result = calculate_tier1(data)
+
+        assert result.breadth.value == pytest.approx(0.8)
+        assert result.breadth.thresholds == (0.7, 0.4)
+        assert result.breadth.points == 0
+
     def test_ten_points_deteriorating(self):
         # ratio below 0.7 threshold
         data = _make_data(adv_dec_ratio=0.5, pct_above_50d=0.5)
@@ -152,6 +160,23 @@ class TestTotalScore:
         )
         assert result.score == expected
 
+    def test_exposes_additive_tactical_buckets(self, bullish_market_data):
+        result = calculate_tier1(bullish_market_data)
+
+        assert result.stress_score == result.drawdown_52w.points + result.vix.points
+        assert result.capitulation_score == result.fear_greed.points + result.breadth.points
+        assert result.persistence_score == result.ma200_deviation.points
+        assert result.score == (
+            result.stress_score
+            + result.capitulation_score
+            + result.persistence_score
+            + result.valuation_bonus
+            + result.fcf_bonus
+            + result.divergence_bonus
+            + result.concentration_penalty
+            + result.short_flow_bonus
+        )
+
 class TestBonuses:
     def test_valuation_bonus_applied(self):
         # Base score 0 because everything is neutral
@@ -181,6 +206,20 @@ class TestBonuses:
         assert result.divergence_flags["price_revision"] is True
         assert result.score == 20
 
+    def test_divergence_uses_adv_dec_ratio_for_history_comparison(self, mocker):
+        spy = mocker.patch("src.engine.tier1.check_divergences", return_value={"bonus_score": 0})
+
+        import pandas as pd
+
+        data = _make_data(
+            adv_dec_ratio=0.42,
+            pct_above_50d=0.91,
+            history_window=pd.DataFrame({"price": [100.0] * 16, "vix": [20.0] * 16, "breadth": [0.4] * 16}),
+        )
+        calculate_tier1(data)
+
+        assert spy.call_args.args[2] == pytest.approx(0.42)
+
     def test_all_bonuses_combined(self, mocker):
         mocker.patch("src.engine.tier1.check_divergences", return_value={"bonus_score": 15, "price_vix": True})
         import pandas as pd
@@ -198,3 +237,23 @@ class TestBonuses:
         assert result.divergence_bonus == 15
         # Total base score = 0, + (15 - 10 + 15) = 20
         assert result.score == 20
+
+    def test_short_flow_bonus_is_public_and_reconciles_score(self):
+        data = _make_data(
+            price=398.0,
+            high_52w=440.0,
+            short_vol_ratio=0.65,
+        )
+        result = calculate_tier1(data)
+
+        assert result.short_flow_bonus == 10
+        assert result.score == (
+            result.stress_score
+            + result.capitulation_score
+            + result.persistence_score
+            + result.valuation_bonus
+            + result.fcf_bonus
+            + result.divergence_bonus
+            + result.concentration_penalty
+            + result.short_flow_bonus
+        )

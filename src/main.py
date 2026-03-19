@@ -15,6 +15,8 @@ import logging
 import sys
 from datetime import date
 
+import pandas as pd
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s – %(message)s",
@@ -40,6 +42,7 @@ def _run(args: argparse.Namespace) -> None:
         fetch_short_volume_proxy
     )
     from src.collector.fundamentals import fetch_forward_pe
+    from src.engine.data_quality import build_data_quality
     from src.models import MarketData, Signal
     from src.engine.tier1 import calculate_tier1
     from src.engine.tier2 import calculate_tier2
@@ -100,7 +103,19 @@ def _run(args: argparse.Namespace) -> None:
     real_yield = None
     fcf_yield = None
     earnings_revisions_breadth = None
+    pe_source = "unknown"
     macro_state = load_latest_macro_state()
+    data_quality_meta: dict[str, dict[str, int | str]] = {}
+
+    cache_stale_days = 0
+    if macro_state and macro_state.get("date"):
+        try:
+            cache_stale_days = max(
+                (price_data["date"] - date.fromisoformat(str(macro_state["date"]))).days,
+                0,
+            )
+        except (TypeError, ValueError):
+            cache_stale_days = 0
     
     try:
         credit_spread = fetch_credit_spread()
@@ -130,26 +145,46 @@ def _run(args: argparse.Namespace) -> None:
         credit_spread = macro_state.get("credit_spread")
         if credit_spread is not None:
             logger.info("Using cached Credit Spread from DB: %.0f bps", credit_spread)
+            data_quality_meta["credit_spread"] = {
+                "source": "cache:macro_state",
+                "stale_days": cache_stale_days,
+            }
             
     if forward_pe is None and macro_state:
-        forward_pe = macro_state.get("trailing_pe")
+        forward_pe = macro_state.get("forward_pe")
         if forward_pe is not None:
             logger.info("Using cached Forward PE from DB: %.1f", forward_pe)
+            data_quality_meta["forward_pe"] = {
+                "source": "cache:macro_state",
+                "stale_days": cache_stale_days,
+            }
             
     if real_yield is None and macro_state:
         real_yield = macro_state.get("real_yield")
         if real_yield is not None:
             logger.info("Using cached Real Yield from DB: %.2f%%", real_yield)
+            data_quality_meta["real_yield"] = {
+                "source": "cache:macro_state",
+                "stale_days": cache_stale_days,
+            }
             
     if fcf_yield is None and macro_state:
         fcf_yield = macro_state.get("fcf_yield")
         if fcf_yield is not None:
             logger.info("Using cached FCF Yield from DB: %.2f%%", fcf_yield)
+            data_quality_meta["fcf_yield"] = {
+                "source": "cache:macro_state",
+                "stale_days": cache_stale_days,
+            }
             
     if earnings_revisions_breadth is None and macro_state:
         earnings_revisions_breadth = macro_state.get("earnings_revisions_breadth")
         if earnings_revisions_breadth is not None:
             logger.info("Using cached Earnings Revisions from DB: %.2f%%", earnings_revisions_breadth)
+            data_quality_meta["earnings_revisions_breadth"] = {
+                "source": "cache:macro_state",
+                "stale_days": cache_stale_days,
+            }
         
     # Phase 2: Net Liquidity & MOVE Index
     net_liq, liq_roc = fetch_net_liquidity()
@@ -257,19 +292,32 @@ def _run(args: argparse.Namespace) -> None:
         real_yield=market_data.real_yield,
         ma50=getattr(market_data, 'history_window', pd.DataFrame()).get('ma50', pd.Series()).iloc[-1] if market_data.history_window is not None and 'ma50' in market_data.history_window else None
     )
+    result.data_quality = build_data_quality(market_data, feature_meta=data_quality_meta)
 
     consecutive_days = 1
-    if history and result.signal.value == history[0]["signal"]:
-        for rec in history:
-            if rec["signal"] == result.signal.value:
-                consecutive_days += 1
-            else:
-                break
+    current_allocation_state = result.allocation_state.value
+    if history:
+        def _record_allocation_state(record: dict) -> str | None:
+            return record.get("allocation_state") or record.get("signal")
+
+        if _record_allocation_state(history[0]) == current_allocation_state:
+            for rec in history:
+                if _record_allocation_state(rec) == current_allocation_state:
+                    consecutive_days += 1
+                else:
+                    break
                 
     compact_mode = False
-    if result.signal == Signal.NO_SIGNAL and consecutive_days >= 3:
+    if result.allocation_state in (
+        result.allocation_state.__class__.BASE_DCA,
+        result.allocation_state.__class__.PAUSE_CHASING,
+        result.allocation_state.__class__.RISK_CONTAINMENT,
+    ) and consecutive_days >= 3:
         compact_mode = True
-    elif result.signal in (Signal.WATCH, Signal.TRIGGERED) and consecutive_days >= 4:
+    elif result.allocation_state in (
+        result.allocation_state.__class__.SLOW_ACCUMULATE,
+        result.allocation_state.__class__.FAST_ACCUMULATE,
+    ) and consecutive_days >= 4:
         compact_mode = True
 
     # Output
@@ -287,11 +335,25 @@ def _run(args: argparse.Namespace) -> None:
     if not args.no_save:
         save_signal(result)
         # Update macro state cache
-        if market_data.credit_spread is not None or market_data.forward_pe is not None:
+        if any(
+            value is not None
+            for value in (
+                market_data.credit_spread,
+                market_data.trailing_pe,
+                market_data.forward_pe,
+                market_data.real_yield,
+                market_data.fcf_yield,
+                market_data.earnings_revisions_breadth,
+            )
+        ):
             save_macro_state(
                 record_date=market_data.date,
                 credit_spread=market_data.credit_spread,
-                trailing_pe=market_data.forward_pe, # We store it in trailing_pe column since that's what we got
+                trailing_pe=market_data.trailing_pe,
+                forward_pe=market_data.forward_pe,
+                real_yield=market_data.real_yield,
+                fcf_yield=market_data.fcf_yield,
+                earnings_revisions_breadth=market_data.earnings_revisions_breadth,
             )
         logger.info("Signal and macro states saved to DB.")
 
@@ -303,9 +365,29 @@ def _history(args: argparse.Namespace) -> None:
     if not records:
         print("No history records found.")
         return
+    def _action_label(record: dict) -> str:
+        state = record.get("allocation_state")
+        if state == "BASE_DCA":
+            return "维持基础定投"
+        if state == "PAUSE_CHASING":
+            return "暂停追高"
+        if state == "RISK_CONTAINMENT":
+            return "进入风险控制"
+        if state == "SLOW_ACCUMULATE":
+            return "仅小幅试探"
+        if state == "FAST_ACCUMULATE":
+            return "允许提高加仓速度"
+        signal = record.get("signal", "UNKNOWN")
+        if signal == "WATCH":
+            return "仅小幅试探"
+        if signal == "TRIGGERED":
+            return "允许提高加仓速度"
+        return "维持基础定投"
     for rec in records:
+        allocation_state = rec.get("allocation_state", "UNKNOWN")
         print(
-            f"{rec['date']}  {rec['signal']:12s}  score={rec['final_score']:3d}"
+            f"{rec['date']}  action={_action_label(rec):8s}  allocation={allocation_state:18s}"
+            f"  score={rec['final_score']:3d}"
             f"  price=${rec['price']:.2f}"
         )
 

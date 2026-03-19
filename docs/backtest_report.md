@@ -1,37 +1,38 @@
-# M4 回测报告 (1999年3月 - 2026年3月)
+# Allocator-Style Backtest Report
 
-基于 QQQ 的历史数据及 v5.0 实装的 **Time-Decay Filter** (下行速度过滤) 与 **Institutional Proxy** (机构流向代理)，这是系统的信号触发历史表现：
+这份文档不再记录旧版“信号捕捉率”口径。
+当前回测已经切换为 allocator-style，重点评估的是长期资金部署效率，而不是 `TRIGGERED/WATCH` 对历史底部的命中次数。
 
-## 核心表现指标 (v5.0)
-- **总交易日:** 6745 天
-- **触发买入 (TRIGGERED):** 1339 天 (占比 19.9%，较 v4.5 的 21.5% 显著下降，体现了对阴跌雜訊的过滤)
-- **进入观察区 (WATCH):** 1425 天 (占比 21.1%)
-- **贪婪警报 (GREEDY):** 3 天 (新引入的止盈参考信号)
-- **因跌破支撑位触发一票否决 (Vetoed):** 668 天
+## 当前权威口径
 
-## 核心改进 (v5.0)
-1. **时间衰减过滤 (Time-Decay Filter)**: 成功区分了“恐慌性杀跌”与“长周期阴跌”。通过对下行速度的建模，系统在 2004 年和 2012 年等阴跌期间表现更加从容，避免了中途过早入场。
-2. **机构流向代理 (FINRA Proxy)**: 整合了公开发布的短线成交占比分析。在底部放量且空头回补（Short Covering）前夕的捕捉力明显增强。
-3. **止盈预警 (Greedy Signal)**: 基於超买程度 (Price vs MA50) 与极端贪婪情绪的共振，为牛市末端提供减仓参考。
+请以 [docs/backtests/methodology.md](./backtests/methodology.md) 为准。
 
-## 机会捕捉与失误分析 (Opportunity Analysis)
-- **重大市场底部总数:** 54 次
-- **成功捕捉 (±10天内有信号):** 53 次 (**捕捉率: 98.1%**)
-- **完全错过 (无任何信号):** 1 次 (**失误率: 1.9%**)
+当前回测关心的指标是：
 
-> [!TIP]
-> **捕捉改進:** v5.0 成功捕捉到了 2016-06 (Brexit) 與 2018-04 的波動支點，捕捉率達到歷史新高。
+- `T+5 / T+20 / T+60` forward return
+- add 后最大不利波动 (`max adverse excursion`)
+- 相对 baseline weekly DCA 的平均成本变化
+- 最终低点前已部署资金比例
 
-### 错过机会列表:
-| 日期 | QQQ 价格 | 备注 |
-| :--- | :--- | :--- |
-| 2019-06-03 | $163.11 | 中美贸易紧张时期探底，缺乏明顯的情緒共振 |
+## 2026-03-19 Smoke Run 示例
 
-## 回测可视化
-![v5.0 Backtest Performance](data/backtest_results_tier2.png)
+执行命令：
 
-> [!IMPORTANT]
-> **结论:** 系统目前的捕捉精度已达到历史新高（92.6%）。Phase 3 的容量感知（MFI）极大地增强了对非流动性危机型底部的识别能力。
+```bash
+python3 -m src.backtest
+```
 
-回测的可视化图表已生成并保存在您的项目目录中：
-`data/backtest_results_tier2.png`
+示例输出：
+
+- `Weekly add events: 1360`
+- `Forward returns: T+5=0.3%, T+20=1.2%, T+60=3.8%`
+- `Max adverse excursion after add: -48.8%`
+- `Average cost vs baseline DCA: -26.0% improvement`
+- `Average cost vs lump-sum: 305.9% penalty`
+- `Capital deployed before final low: 12.9%`
+
+## 解释方式
+
+- 这类结果用于判断 allocator 是否改善了长期入场节奏。
+- 它不代表“系统成功捕捉了多少次市场底部”。
+- 它也不应被解读为未来收益承诺。

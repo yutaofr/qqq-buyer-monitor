@@ -1,6 +1,8 @@
 """Unit tests for Tier-2 options wall engine."""
 from __future__ import annotations
 
+from dataclasses import asdict, fields
+
 import pandas as pd
 import pytest
 from src.engine.tier2 import (
@@ -13,6 +15,7 @@ from src.engine.tier2 import (
     SCORE_GAMMA_POSITIVE,
     SCORE_NEGATIVE_GAMMA_BROKEN,
 )
+from src.models import OptionsOverlay, Tier2Result
 
 
 def _make_df(rows: list[dict]) -> pd.DataFrame:
@@ -131,6 +134,22 @@ class TestGammaFlip:
 
 
 class TestRefinements:
+    def test_overlay_is_part_of_formal_schema(self, basic_df):
+        result = calculate_tier2(395.0, basic_df)
+
+        assert "overlay" in {field.name for field in fields(Tier2Result)}
+        assert isinstance(result.overlay, OptionsOverlay)
+        assert asdict(result)["overlay"]["cannot_upgrade_structural_state"] is True
+
+    def test_overlay_flags_soften_negative_options_and_never_upgrade_state(self, basic_df):
+        result = calculate_tier2(395.0, basic_df)
+
+        overlay = result.overlay
+        assert overlay.can_reduce_tranche is True
+        assert overlay.cannot_upgrade_structural_state is True
+        assert overlay.tranche_multiplier < 1.0
+        assert overlay.confidence == "low"
+
     def test_support_broken_only_beyond_buffer(self, basic_df):
         # PW=400, price=399 is -0.25% -> within 0.5% buffer
         # Should be support_confirmed=True (testing) and support_broken=False

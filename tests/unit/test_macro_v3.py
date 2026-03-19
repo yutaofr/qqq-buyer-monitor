@@ -33,12 +33,10 @@ def test_fetch_real_yield_exception():
         ry = fetch_real_yield()
         assert ry is None
 
-def test_fetch_fcf_yield():
+def test_fetch_fcf_yield_returns_none_without_trusted_source():
     fcf = fetch_fcf_yield("QQQ")
-    assert isinstance(fcf, float)
-    assert 2.5 <= fcf <= 5.0
+    assert fcf is None
 
-def test_fetch_earnings_revisions_breadth():
+def test_fetch_earnings_revisions_breadth_returns_none_without_trusted_source():
     rev = fetch_earnings_revisions_breadth("QQQ")
-    assert isinstance(rev, float)
-    assert 35.0 <= rev <= 65.0
+    assert rev is None

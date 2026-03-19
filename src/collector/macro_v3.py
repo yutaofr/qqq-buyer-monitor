@@ -1,6 +1,5 @@
 import logging
 import pandas as pd
-import random
 from src.collector.macro import fetch_fred_data
 
 logger = logging.getLogger(__name__)
@@ -46,24 +45,18 @@ def fetch_real_yield() -> float | None:
 def fetch_fcf_yield(ticker: str = "QQQ") -> float | None:
     """
     Fetch the Free Cash Flow Yield for the given ticker.
-    Without a commercial API, calculating highly accurate aggregate FCF yield 
-    for an ETF is difficult. We return a mock plausible value for v3.0 PoC.
-    Returns percentage (e.g. 3.5 for 3.5%).
+    Without a trusted point-in-time source, do not fabricate a live value.
     """
-    # In a real production system, this would scrape yfinance or AlphaVantage
-    # For now, return a mock value oscillating around 3.0% - 5.0%
-    logger.debug("Using simulated FCF Yield for %s due to keyless constraint", ticker)
-    val = round(3.5 + random.uniform(-1.0, 1.5), 2)
-    return val
+    logger.info("FCF Yield unavailable for %s; no trusted source configured.", ticker)
+    return None
 
 def fetch_earnings_revisions_breadth(ticker: str = "QQQ") -> float | None:
     """
     Fetch the percentage of analyst upward revisions for the ETF components.
-    Without a Bloomberg terminal, this is simulated.
-    Returns percentage 0-100 (e.g. 55.0 for 55% upward revisions).
+    Without a trusted point-in-time source, do not fabricate a live value.
     """
-    logger.debug("Using simulated Earnings Revisions Breadth for %s", ticker)
-    return round(50.0 + random.uniform(-15.0, 15.0), 2)
+    logger.info("Earnings revisions breadth unavailable for %s; no trusted source configured.", ticker)
+    return None
 
 def fetch_net_liquidity() -> tuple[float | None, float | None]:
     """

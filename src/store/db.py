@@ -52,7 +52,7 @@ def init_db(path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn.execute(CREATE_MACRO_TABLE_SQL)
     
     # v3.0 migrations for existing DB
-    for col in ["real_yield", "fcf_yield", "earnings_revisions_breadth"]:
+    for col in ["forward_pe", "real_yield", "fcf_yield", "earnings_revisions_breadth"]:
         try:
             conn.execute(f"ALTER TABLE macro_states ADD COLUMN {col} REAL")
         except sqlite3.OperationalError:
@@ -232,10 +232,21 @@ def _to_json_dict(result: SignalResult) -> dict:
         "price": result.price,
         "signal": result.signal.value,
         "final_score": result.final_score,
+        "allocation_state": result.allocation_state.value,
+        "daily_tranche_pct": float(result.daily_tranche_pct),
+        "max_total_add_pct": float(result.max_total_add_pct),
+        "cooldown_days": int(result.cooldown_days),
+        "required_persistence_days": int(result.required_persistence_days),
+        "confidence": result.confidence,
+        "data_quality": result.data_quality,
         "tier1": {
             "score": t1.score,
+            "stress_score": getattr(t1, "stress_score", 0),
+            "capitulation_score": getattr(t1, "capitulation_score", 0),
+            "persistence_score": getattr(t1, "persistence_score", 0),
             "valuation_bonus": getattr(t1, "valuation_bonus", 0),
             "fcf_bonus": getattr(t1, "fcf_bonus", 0),
+            "short_flow_bonus": getattr(t1, "short_flow_bonus", 0),
             "divergence_bonus": getattr(t1, "divergence_bonus", 0),
             "divergence_flags": getattr(t1, "divergence_flags", {}),
             "details": {

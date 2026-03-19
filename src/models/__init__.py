@@ -17,6 +17,25 @@ class Signal(str, Enum):
     NO_SIGNAL = "NO_SIGNAL"
 
 
+class AllocationState(str, Enum):
+    PAUSE_CHASING = "PAUSE_CHASING"
+    BASE_DCA = "BASE_DCA"
+    SLOW_ACCUMULATE = "SLOW_ACCUMULATE"
+    FAST_ACCUMULATE = "FAST_ACCUMULATE"
+    RISK_CONTAINMENT = "RISK_CONTAINMENT"
+
+
+@dataclass(frozen=True)
+class OptionsOverlay:
+    """Soft overlay derived from options structure."""
+
+    can_reduce_tranche: bool = False
+    cannot_upgrade_structural_state: bool = True
+    tranche_multiplier: float = 1.0
+    confidence: str = "medium"
+    delay_days: int = 0
+
+
 @dataclass
 class MarketData:
     """Raw market data collected from all data sources."""
@@ -84,10 +103,16 @@ class Tier1Result:
     vix: SignalDetail
     fear_greed: SignalDetail
     breadth: SignalDetail
+
+    # Additive tactical buckets derived from the five core signals.
+    stress_score: int = 0
+    capitulation_score: int = 0
+    persistence_score: int = 0
     
     # v3.0 Valuation & FCF
     valuation_bonus: int = 0
     fcf_bonus: int = 0
+    short_flow_bonus: int = 0
     trailing_pe: Optional[float] = None
     forward_pe: Optional[float] = None
     fcf_yield: Optional[float] = None
@@ -136,6 +161,7 @@ class Tier2Result:
     call_wall_distance_pct: Optional[float]
     next_put_wall: Optional[float] = None
     next_put_wall_distance_pct: Optional[float] = None
+    overlay: OptionsOverlay = field(default_factory=OptionsOverlay)
 
 
 @dataclass
@@ -153,3 +179,12 @@ class SignalResult:
     
     # 2026-03 v3.0 logic extensions
     erp: Optional[float] = None
+
+    # 2026-03 allocation-oriented output surface
+    allocation_state: AllocationState = AllocationState.BASE_DCA
+    daily_tranche_pct: float = 0.25
+    max_total_add_pct: float = 1.0
+    cooldown_days: int = 0
+    required_persistence_days: int = 1
+    confidence: str = "medium"
+    data_quality: dict = field(default_factory=dict)

@@ -1,318 +1,355 @@
 """
-M4 Backtesting script for QQQ Buy-Signal Monitor.
+QQQ backtest methodology.
 
-Runs the Tier-1 signals over historical data (2022-2025) to evaluate
-if the "TRIGGERED" and "WATCH" moments align with actual market bottoms.
-Since historical options Open Interest / Gamma data is rarely available
-for free, this backtest focuses purely on the Tier-1 (Spot + Sentiment) engine.
+This module treats the backtest as an allocator simulation, not a signal
+labeler. It uses observable price history only, reports forward returns and
+drawdown pain, and explicitly excludes synthetic fear/greed and fabricated
+short-volume features from the backtest methodology.
 """
 from __future__ import annotations
 
-import logging
-from datetime import date, timedelta
+from dataclasses import dataclass, field
+from datetime import date
+from typing import Optional
 
-import matplotlib.pyplot as plt
 import pandas as pd
 import yfinance as yf
-from src.models import MarketData, Signal, Tier2Result
-from src.engine.tier1 import calculate_tier1
-from src.engine.tier2 import evaluate_tier2_rules
-from src.engine.aggregator import aggregate
-from src.utils.stats import calculate_zscore
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+from src.models import AllocationState
 
-# Constants
-START_DATE = "1999-03-10"  # QQQ inception date
-END_DATE = date.today().strftime("%Y-%m-%d")
+START_DATE = "1999-03-10"
+END_DATE = date.today().isoformat()
+FWD_HORIZONS = (5, 20, 60)
+WEEKLY_ADD_INTERVAL = 5
+BASE_WEEKLY_DCA_UNITS = 1.0
+EXCLUDED_HISTORICAL_FEATURES = ("fear_greed", "short_vol_ratio")
 
+STATE_BONUS_UNITS = {
+    AllocationState.PAUSE_CHASING: -0.5,
+    AllocationState.BASE_DCA: 0.0,
+    AllocationState.SLOW_ACCUMULATE: 0.5,
+    AllocationState.FAST_ACCUMULATE: 1.0,
+    AllocationState.RISK_CONTAINMENT: -0.5,
+}
+
+
+@dataclass(frozen=True)
+class AllocationEventMetrics:
+    """Metrics for a single weekly add event."""
+
+    date: pd.Timestamp
+    price: float
+    state: AllocationState
+    units: float
+    forward_returns: dict[int, Optional[float]]
+    max_adverse_excursion: Optional[float]
+
+
+@dataclass(frozen=True)
+class BacktestMethodologySummary:
+    """Methodology summary for allocator-style backtests."""
+
+    events: tuple[AllocationEventMetrics, ...]
+    forward_returns_by_horizon: dict[int, float]
+    max_adverse_excursion: Optional[float]
+    average_cost_improvement_vs_baseline_dca: float
+    average_cost_penalty_vs_lump_sum: float
+    baseline_dca_average_cost: float
+    tactical_average_cost: float
+    lump_sum_average_cost: float
+    fraction_capital_deployed_before_final_low: float
+    capital_deployed_before_final_low_units: float
+    total_capital_units: float
+    excluded_features: tuple[str, ...] = EXCLUDED_HISTORICAL_FEATURES
+    feature_policy: dict[str, str] = field(
+        default_factory=lambda: {
+            "fear_greed": "excluded: unavailable historically, not synthesized",
+            "short_vol_ratio": "excluded: fabricated in old methodology, not used",
+        }
+    )
+
+
+def _coerce_state(value: object) -> AllocationState:
+    if isinstance(value, AllocationState):
+        return value
+    if value is None:
+        return AllocationState.BASE_DCA
+    try:
+        return AllocationState(str(value))
+    except ValueError:
+        return AllocationState.BASE_DCA
+
+
+def _state_units(state: AllocationState) -> float:
+    return max(0.0, BASE_WEEKLY_DCA_UNITS + STATE_BONUS_UNITS[state])
+
+
+def compute_forward_returns(
+    prices: pd.Series,
+    entry_label,
+    horizons: tuple[int, ...] = FWD_HORIZONS,
+) -> dict[int, Optional[float]]:
+    """Return forward price returns from a specific entry point."""
+
+    if entry_label not in prices.index:
+        raise KeyError(f"Entry label {entry_label!r} is not present in the price series")
+
+    entry_loc = prices.index.get_loc(entry_label)
+    if isinstance(entry_loc, slice):
+        entry_loc = entry_loc.start
+
+    entry_price = float(prices.iloc[entry_loc])
+    returns: dict[int, Optional[float]] = {}
+
+    for horizon in horizons:
+        exit_loc = entry_loc + horizon
+        if exit_loc >= len(prices):
+            returns[horizon] = None
+            continue
+        exit_price = float(prices.iloc[exit_loc])
+        returns[horizon] = exit_price / entry_price - 1.0
+
+    return returns
+
+
+def compute_max_adverse_excursion(
+    prices: pd.Series,
+    entry_label,
+    lookahead: int = max(FWD_HORIZONS),
+) -> Optional[float]:
+    """Return worst drawdown from the entry price during the lookahead window."""
+
+    if entry_label not in prices.index:
+        raise KeyError(f"Entry label {entry_label!r} is not present in the price series")
+
+    entry_loc = prices.index.get_loc(entry_label)
+    if isinstance(entry_loc, slice):
+        entry_loc = entry_loc.start
+
+    end_loc = min(len(prices) - 1, entry_loc + lookahead)
+    window = prices.iloc[entry_loc : end_loc + 1]
+    if window.empty:
+        return None
+
+    entry_price = float(prices.iloc[entry_loc])
+    return float(window.min() / entry_price - 1.0)
+
+
+def _align_state_series(
+    prices: pd.Series,
+    tactical_states: Optional[pd.Series],
+) -> pd.Series:
+    if tactical_states is None or tactical_states.empty:
+        return pd.Series(AllocationState.BASE_DCA, index=prices.index)
+
+    aligned = tactical_states.copy()
+    aligned.index = pd.to_datetime(aligned.index)
+    aligned = aligned.sort_index().reindex(prices.index, method="ffill")
+    if aligned.isna().any():
+        aligned = aligned.fillna(AllocationState.BASE_DCA)
+
+    return pd.Series([_coerce_state(value) for value in aligned], index=prices.index)
+
+
+def derive_tactical_state_series(prices: pd.Series) -> pd.Series:
+    """Derive a deterministic tactical state series from observable price action."""
+
+    prices = prices.astype(float)
+    if prices.empty:
+        return pd.Series(dtype=object)
+
+    drawdown = prices / prices.cummax() - 1.0
+    ma50 = prices.rolling(50, min_periods=20).mean()
+    prior_high_20 = prices.shift(1).rolling(20, min_periods=5).max()
+
+    states: list[AllocationState] = []
+    for i, price in enumerate(prices):
+        dd = float(drawdown.iloc[i])
+        momentum_5 = 0.0
+        if i >= 5:
+            momentum_5 = float(price / float(prices.iloc[i - 5]) - 1.0)
+
+        dist_to_20d_high = 0.0
+        if not pd.isna(prior_high_20.iloc[i]):
+            dist_to_20d_high = float(price / float(prior_high_20.iloc[i]) - 1.0)
+
+        below_ma50 = not pd.isna(ma50.iloc[i]) and float(price) < float(ma50.iloc[i])
+
+        if dd <= -0.25:
+            state = AllocationState.RISK_CONTAINMENT
+        elif dd <= -0.12 and momentum_5 < -0.03:
+            state = AllocationState.FAST_ACCUMULATE
+        elif dd <= -0.05 or below_ma50:
+            state = AllocationState.SLOW_ACCUMULATE
+        elif dist_to_20d_high > 0.08:
+            state = AllocationState.PAUSE_CHASING
+        else:
+            state = AllocationState.BASE_DCA
+
+        states.append(state)
+
+    return pd.Series(states, index=prices.index)
+
+
+def simulate_allocator(
+    prices: pd.Series,
+    tactical_states: Optional[pd.Series] = None,
+    interval: int = WEEKLY_ADD_INTERVAL,
+) -> BacktestMethodologySummary:
+    """Simulate weekly DCA plus tactical state-driven speed-ups or slow-downs."""
+
+    prices = prices.astype(float).dropna()
+    if prices.empty:
+        raise ValueError("Price series cannot be empty")
+
+    aligned_states = _align_state_series(prices, tactical_states)
+    add_dates = list(prices.index[::interval])
+    if not add_dates:
+        add_dates = [prices.index[0]]
+
+    total_capital_units = 0.0
+    tactical_cost_numerator = 0.0
+    baseline_cost_numerator = 0.0
+    capital_deployed_before_final_low = 0.0
+    event_metrics: list[AllocationEventMetrics] = []
+    horizon_return_numerators: dict[int, float] = {horizon: 0.0 for horizon in FWD_HORIZONS}
+    horizon_return_denominators: dict[int, float] = {horizon: 0.0 for horizon in FWD_HORIZONS}
+    mae_values: list[float] = []
+
+    final_low_date = prices.idxmin()
+
+    for dt in add_dates:
+        state = _coerce_state(aligned_states.loc[dt])
+        price = float(prices.loc[dt])
+        units = _state_units(state)
+
+        forward_returns = compute_forward_returns(prices, dt)
+        max_adverse_excursion = compute_max_adverse_excursion(prices, dt)
+
+        event_metrics.append(
+            AllocationEventMetrics(
+                date=dt,
+                price=price,
+                state=state,
+                units=units,
+                forward_returns=forward_returns,
+                max_adverse_excursion=max_adverse_excursion,
+            )
+        )
+
+        total_capital_units += units
+        tactical_cost_numerator += price * units
+        baseline_cost_numerator += price
+
+        if dt <= final_low_date:
+            capital_deployed_before_final_low += units
+
+        for horizon, value in forward_returns.items():
+            if value is not None:
+                horizon_return_numerators[horizon] += value * units
+                horizon_return_denominators[horizon] += units
+
+        if max_adverse_excursion is not None:
+            mae_values.append(max_adverse_excursion)
+
+    tactical_average_cost = tactical_cost_numerator / total_capital_units
+    baseline_dca_average_cost = baseline_cost_numerator / len(add_dates)
+    lump_sum_average_cost = float(prices.iloc[add_dates.index(add_dates[0])])
+
+    average_cost_improvement_vs_baseline_dca = (
+        (baseline_dca_average_cost - tactical_average_cost) / baseline_dca_average_cost
+        if baseline_dca_average_cost
+        else 0.0
+    )
+    average_cost_penalty_vs_lump_sum = (
+        (tactical_average_cost - lump_sum_average_cost) / lump_sum_average_cost
+        if lump_sum_average_cost
+        else 0.0
+    )
+
+    forward_returns_by_horizon = {
+        horizon: (
+            horizon_return_numerators[horizon] / horizon_return_denominators[horizon]
+            if horizon_return_denominators[horizon]
+            else 0.0
+        )
+        for horizon in FWD_HORIZONS
+    }
+    max_adverse_excursion = min(mae_values) if mae_values else None
+    fraction_capital_deployed_before_final_low = (
+        capital_deployed_before_final_low / total_capital_units if total_capital_units else 0.0
+    )
+
+    return BacktestMethodologySummary(
+        events=tuple(event_metrics),
+        forward_returns_by_horizon=forward_returns_by_horizon,
+        max_adverse_excursion=max_adverse_excursion,
+        average_cost_improvement_vs_baseline_dca=average_cost_improvement_vs_baseline_dca,
+        average_cost_penalty_vs_lump_sum=average_cost_penalty_vs_lump_sum,
+        baseline_dca_average_cost=baseline_dca_average_cost,
+        tactical_average_cost=tactical_average_cost,
+        lump_sum_average_cost=lump_sum_average_cost,
+        fraction_capital_deployed_before_final_low=fraction_capital_deployed_before_final_low,
+        capital_deployed_before_final_low_units=capital_deployed_before_final_low,
+        total_capital_units=total_capital_units,
+    )
+
+
+def summarize_backtest_methodology(
+    prices: pd.Series,
+    tactical_states: Optional[pd.Series] = None,
+    interval: int = WEEKLY_ADD_INTERVAL,
+) -> BacktestMethodologySummary:
+    """Public summary helper used by tests and the CLI entry point."""
+
+    return simulate_allocator(prices, tactical_states=tactical_states, interval=interval)
+
+
+def _format_pct(value: Optional[float]) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value * 100:.1f}%"
 
 
 def run_backtest() -> None:
-    print(f"Fetching historical data from {START_DATE} to {END_DATE}...")
+    print(f"Fetching QQQ history from {START_DATE} to {END_DATE}...")
 
-    # Fetch QQQ price baseline
     qqq = yf.Ticker("QQQ").history(start=START_DATE, end=END_DATE)
     if qqq.empty:
         print("Failed to fetch QQQ historical data.")
         return
 
-    # Fetch VIX
-    vix = yf.Ticker("^VIX").history(start=START_DATE, end=END_DATE)
-    
-    # Fetch MOVE Index
-    move = yf.Ticker("^MOVE").history(start=START_DATE, end=END_DATE)
-    
-    # Fetch XLP for Sector Rotation
-    xlp = yf.Ticker("XLP").history(start=START_DATE, end=END_DATE)
-    
-    # Fetch WALCL from FRED (proxy for Liquidity)
-    from src.collector.macro import fetch_fred_csv
-    walcl_df = fetch_fred_csv("WALCL")
-    
-    # Breadth proxy (using QQQ distance from 50MA as done in breadth.py)
-    
-    # Pre-computing moving averages and proxies
-    print("Pre-computing moving averages and proxies...")
-    df = pd.DataFrame(index=qqq.index)
-    df["Close"] = qqq["Close"]
-    df["Volume"] = qqq["Volume"]
-    df["MA200"] = df["Close"].rolling(200, min_periods=50).mean()
-    df["MA50"] = df["Close"].rolling(50, min_periods=20).mean()
-    df["High52w"] = df["Close"].rolling(252, min_periods=50).max()
-    
-    # Align dates
-    qqq_dates = [d.date() for d in qqq.index]
-    df.index = pd.to_datetime(qqq_dates)
-    
-    # Clean VIX
-    vix_dates = [d.date() for d in vix.index]
-    vix_clean = pd.Series(vix["Close"].values, index=pd.to_datetime(vix_dates))
-    df["VIX"] = vix_clean.reindex(df.index).ffill().bfill()
+    prices = qqq["Close"].dropna().astype(float)
+    tactical_states = derive_tactical_state_series(prices)
+    summary = summarize_backtest_methodology(prices, tactical_states=tactical_states)
 
-    # v5.0: Calculate Days Since 52w High
-    print("Calculating v5.0 time-decay metrics...")
-    def get_days_since_high(window):
-        if window.empty: return 0
-        high_val = window.max()
-        high_idx = window[window == high_val].index[-1]
-        return (window.index[-1] - high_idx).days
-
-    df["DaysSinceHigh"] = [
-        get_days_since_high(df["Close"].iloc[max(0, i-252):i+1])
-        for i in range(len(df))
-    ]
-    
-    # v5.0: Simulate Short Volume Ratio (FINRA Proxy)
-    df["VolRatio"] = df["Volume"] / df["Volume"].rolling(5).mean()
-    df["PriceChange"] = df["Close"].pct_change()
-    def simulate_short_ratio(row):
-        base = 0.5
-        v_ratio = row["VolRatio"] if not pd.isna(row["VolRatio"]) else 1.0
-        p_change = row["PriceChange"] if not pd.isna(row["PriceChange"]) else 0.0
-        if p_change < -0.01: base += 0.1 * v_ratio
-        elif p_change > 0.01: base -= 0.05 * v_ratio
-        return min(0.8, max(0.2, base))
-    
-    df["ShortVolRatio"] = df.apply(simulate_short_ratio, axis=1)
-    
-    # MOVE index alignment
-    move_clean = pd.Series(move["Close"].values, index=pd.to_datetime([d.date() for d in move.index]))
-    df["MOVE"] = move_clean.reindex(df.index).ffill()
-    
-    # XLP alignment
-    xlp_clean = pd.Series(xlp["Close"].values, index=pd.to_datetime([d.date() for d in xlp.index]))
-    df["XLP"] = xlp_clean.reindex(df.index).ffill()
-    # Sector Rotation (XLP/QQQ 20D)
-    df["XLP_QQQ_Ratio"] = df["XLP"] / df["Close"]
-    df["SectorRotation"] = df["XLP_QQQ_Ratio"].pct_change(20) * 100
-    
-    # WALCL alignment and ROC
-    if walcl_df is not None and not walcl_df.empty:
-        walcl_clean = pd.Series(walcl_df["WALCL"].values, index=pd.to_datetime(walcl_df.index))
-        df["WALCL"] = walcl_clean.reindex(df.index).ffill()
-        # 4-week ROC (20 trading days roughly)
-        df["LiqROC"] = df["WALCL"].pct_change(20) * 100
-    else:
-        df["WALCL"] = 0.0
-        df["LiqROC"] = 0.0
-    
-    # Pre-calculate rolling drawdowns for Z-score analysis
-    peaks = df["Close"].expanding().max()
-    df["Drawdown"] = (peaks - df["Close"]) / peaks
-    
-    # Add OHLCV for MFI
-    df["High"] = qqq["High"].values
-    df["Low"] = qqq["Low"].values
-
-    signals = []
-    prices = []
-    dates = []
-    tier1_scores = []
-    
-    print(f"Simulating daily signals for {len(df)} trading days...")
-    
-    for dt, row in df.iterrows():
-        # Need enough history to have valid MA200 and High52w
-        if pd.isna(row["MA200"]) or pd.isna(row["High52w"]) or pd.isna(row["VIX"]):
-            continue
-            
-        # Synthetic Fear & Greed from VIX (for backtesting only)
-        # VIX > 30 -> F&G < 20 (Fear)
-        # VIX < 15 -> F&G > 60 (Greed)
-        vix_val = float(row["VIX"])
-        fg_synthetic = max(0.0, min(100.0, 100.0 - (vix_val - 10) * 4))
-        
-        # Synthetic breadth pct_above_50d from QQQ vs MA50
-        dev_50 = (row["Close"] - row["MA50"]) / row["MA50"]
-        if pd.isna(dev_50):
-            pct_50 = 0.5
-        elif dev_50 > 0.05: pct_50 = 0.65
-        elif dev_50 < -0.05: pct_50 = 0.20
-        else: pct_50 = 0.40
-        
-        # Build MarketData
-        lookback_df_120 = df[df.index <= dt].tail(120).copy()
-        
-        # Calculate v4.0 Z-Scores
-        vix_zs = calculate_zscore(vix_val, lookback_df_120["VIX"])
-        dd_zs = calculate_zscore(float(row["Drawdown"]), lookback_df_120["Drawdown"])
-        
-        mdata = MarketData(
-            date=dt.date(),
-            price=float(row["Close"]),
-            ma200=float(row["MA200"]),
-            high_52w=float(row["High52w"]),
-            vix=vix_val,
-            fear_greed=int(fg_synthetic),
-            adv_dec_ratio=0.5, # Neutral fallback for breadth ratio in backtest
-            pct_above_50d=pct_50,
-            options_df=None, # Tier 2 is disabled for historical backtest
-            credit_spread=None,
-            forward_pe=None,
-            history_window=pd.DataFrame({
-                "price": lookback_df_120["Close"],
-                "vix": lookback_df_120["VIX"],
-                "breadth": 0.5 
-            }),
-            vix_zscore=vix_zs,
-            drawdown_zscore=dd_zs,
-            net_liquidity=float(row.get("WALCL", 0)) / 1000.0, # Scaled to Billions for realism
-            liquidity_roc=float(row.get("LiqROC", 0)),
-            move_index=float(row.get("MOVE", 0)) if not pd.isna(row.get("MOVE")) else None,
-            ohlcv_history=lookback_df_120,
-            sector_rotation=float(row.get("SectorRotation", 0)),
-            days_since_52w_high=int(row["DaysSinceHigh"]),
-            short_vol_ratio=float(row["ShortVolRatio"])
+    print("\n--- Backtest Methodology Summary ---")
+    print(f"Weekly add events: {len(summary.events)}")
+    print(
+        "Forward returns: "
+        + ", ".join(
+            f"T+{h}={_format_pct(summary.forward_returns_by_horizon[h])}"
+            for h in FWD_HORIZONS
         )
-        
-        t1 = calculate_tier1(mdata)
-        
-        # --- Synthetic Tier 2: Volume Profile Put Wall ---
-        # Look back 21 trading days (approx 1 month)
-        lookback_df = df[df.index <= dt].tail(21)
-        synthetic_put_wall = None
-        
-        if len(lookback_df) == 21:
-            # Create price bins (e.g. $5 wide) and sum volume
-            # We only look for support *below* the current price
-            
-            # Simple VPVR: bin the closing prices
-            bins = pd.cut(lookback_df["Close"], bins=15)
-            vpvr = lookback_df.groupby(bins, observed=False)["Volume"].sum()
-            
-            if not vpvr.empty:
-                # Find the bin with the highest volume (Point of Control)
-                poc_bin = vpvr.idxmax()
-                poc_price = poc_bin.mid
-                synthetic_put_wall = float(poc_price)
-        
-        t2 = evaluate_tier2_rules(
-            price=row["Close"],
-            put_wall=synthetic_put_wall,
-            call_wall=None,
-            gamma_flip=None,
-            gamma_source="vpvr_proxy"
-        )
-        
-        # Aggregate
-        result = aggregate(dt.date(), row["Close"], t1, t2, ma50=row["MA50"])
-        sig = result.signal
-            
-        dates.append(dt)
-        prices.append(row["Close"])
-        signals.append((sig, result.final_score))
-        tier1_scores.append(t1.score)
+    )
+    print(f"Max adverse excursion after add: {_format_pct(summary.max_adverse_excursion)}")
+    print(
+        "Average cost vs baseline DCA: "
+        f"{_format_pct(summary.average_cost_improvement_vs_baseline_dca)} improvement"
+    )
+    print(
+        "Average cost vs lump-sum: "
+        f"{_format_pct(summary.average_cost_penalty_vs_lump_sum)} penalty"
+    )
+    print(f"Baseline weekly DCA average cost: ${summary.baseline_dca_average_cost:.2f}")
+    print(f"Tactical allocator average cost: ${summary.tactical_average_cost:.2f}")
+    print(f"Lump-sum average cost: ${summary.lump_sum_average_cost:.2f}")
+    print(
+        "Capital deployed before final low: "
+        f"{_format_pct(summary.fraction_capital_deployed_before_final_low)}"
+    )
+    print("Excluded historical features: " + ", ".join(summary.excluded_features))
 
-    print("\n--- Backtest Summary ---")
-    
-    triggered_dates = [d for d, s in zip(dates, signals) if s[0] == Signal.TRIGGERED]
-    watch_dates = [d for d, s in zip(dates, signals) if s[0] == Signal.WATCH]
-    
-    print(f"Total trading days evaluated: {len(dates)}")
-    print(f"Days in TRIGGERED state: {len(triggered_dates)} ({(len(triggered_dates)/len(dates))*100:.1f}%)")
-    print(f"Days in WATCH state: {len(watch_dates)} ({(len(watch_dates)/len(dates))*100:.1f}%)")
-    greedy_dates = [d for d, s in zip(dates, signals) if s[0] == Signal.GREEDY]
-    print(f"Days in GREEDY state (Profit Taking): {len(greedy_dates)}")
-    print(f"Days in NO_SIGNAL state: {len(dates) - len(triggered_dates) - len(watch_dates) - len(greedy_dates)}")
-    
-    vetoed = 0
-    for s, t1_score in zip(signals, tier1_scores):
-        if t1_score >= 70 and s[0] != Signal.TRIGGERED:
-            vetoed += 1
-    print(f"Days TRIGGERED but VETOED by Tier-2 (Support Broken): {vetoed}")
-    
-    print("\n--- Missed Opportunities Analysis ---")
-    # Identify local market bottoms (lowest price in +/- 20 trading days) with at least 10% drawdown
-    df["LocalMin"] = df["Close"] == df["Close"].rolling(41, center=True, min_periods=1).min()
-    df["SignificantDrawdown"] = (df["High52w"] - df["Close"]) / df["High52w"] >= 0.10
-    bottom_days = []
-    for d, row in df.iterrows():
-        if row["LocalMin"] and row["SignificantDrawdown"] and d in dates:
-            bottom_days.append(d)
-            
-    missed_opportunities = []
-    for bottom_date in bottom_days:
-        try:
-            idx = dates.index(bottom_date)
-            # Look at a window of +/- 10 trading days around the actual bottom
-            start_idx = max(0, idx - 10)
-            end_idx = min(len(dates), idx + 11)
-            window_signals = [s[0] for s in signals[start_idx:end_idx]]
-            
-            # If neither TRIGGERED nor WATCH was generated in this window, it's a completely missed opportunity
-            if Signal.TRIGGERED not in window_signals and Signal.WATCH not in window_signals:
-                missed_opportunities.append(bottom_date)
-        except ValueError:
-            pass
-            
-    print(f"Significant Market Bottoms (>10% drawdown): {len(bottom_days)}")
-    print(f"Missed Opportunities (No WATCH/TRIGGERED within ±10 days): {len(missed_opportunities)}")
-    if missed_opportunities:
-        print("Missed opportunity dates:")
-        for mo in missed_opportunities:
-            actual_price = df.loc[pd.to_datetime(mo), "Close"]
-            print(f"  {mo.strftime('%Y-%m-%d')} (Price: ${actual_price:.2f})")
-    
-    # Detailed output for TRIGGERED clusters
-    print("\nTRIGGERED events (clustered by month):")
-    clusters = {}
-    for d in triggered_dates:
-        month = d.strftime("%Y-%m")
-        clusters[month] = clusters.get(month, 0) + 1
-        
-    for month, count in sorted(clusters.items()):
-        print(f"  {month}: {count} days")
-
-    # Plot
-    plt.figure(figsize=(14, 7))
-    plt.plot(dates, prices, label="QQQ Price", color="black", linewidth=1.5)
-    
-    # Mark WATCH signals
-    watch_x = [d for d, s in zip(dates, signals) if s[0] == Signal.WATCH]
-    watch_y = [p for p, s in zip(prices, signals) if s[0] == Signal.WATCH]
-    plt.scatter(watch_x, watch_y, color="orange", label="WATCH (Score >= 40)", alpha=0.5, s=20)
-    
-    # Mark TRIGGERED signals
-    trigger_x = [d for d, s in zip(dates, signals) if s[0] == Signal.TRIGGERED]
-    trigger_y = [p for p, s in zip(prices, signals) if s[0] == Signal.TRIGGERED]
-    plt.scatter(trigger_x, trigger_y, color="green", label="TRIGGERED", marker="^", s=80, zorder=5)
-
-    # Mark GREEDY signals
-    greedy_x = [d for d, s in zip(dates, signals) if s[0] == Signal.GREEDY]
-    greedy_y = [p for p, s in zip(prices, signals) if s[0] == Signal.GREEDY]
-    plt.scatter(greedy_x, greedy_y, color="red", label="GREEDY (Sell/Take Profit)", marker="v", s=80, zorder=5)
-
-    plt.title("QQQ Buy-Signal Monitor Backtest v5.0 (1999-2025, with Time-Decay & Institutional Proxy)")
-    plt.xlabel("Date")
-    plt.ylabel("QQQ Price")
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    plot_path = "data/backtest_results_tier2.png"
-    plt.savefig(plot_path)
-    print(f"\nSaved backtest chart to {plot_path}")
 
 if __name__ == "__main__":
     run_backtest()
