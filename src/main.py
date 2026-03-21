@@ -48,6 +48,7 @@ def _run(args: argparse.Namespace) -> None:
     from src.engine.tier2 import calculate_tier2
     from src.engine.aggregator import aggregate
     from src.output.cli import print_signal
+    from src.output.interpreter import NarrativeEngine
     from src.output.report import to_json
     from src.utils.stats import calculate_zscore
     from src.store.db import save_signal, get_historical_series, load_latest_macro_state, save_macro_state
@@ -330,6 +331,12 @@ def _run(args: argparse.Namespace) -> None:
             compact=compact_mode, 
             consecutive_days=consecutive_days
         )
+        # AI Narrative Interpretation (v6.1 White-box Logic)
+        try:
+            interpreter = NarrativeEngine()
+            interpreter.print_narrative(result.logic_trace)
+        except Exception as exc:
+            logger.warning("Narrative interpreter failed: %s", exc)
 
     # Persist
     if not args.no_save:

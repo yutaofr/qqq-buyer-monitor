@@ -189,3 +189,4 @@ class SignalResult:
     required_persistence_days: int = 1
     confidence: str = "medium"
     data_quality: dict = field(default_factory=dict)
+    logic_trace: list[dict] = field(default_factory=list)  # v6.1 Decision evidence chain (Monadic state)
