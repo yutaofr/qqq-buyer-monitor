@@ -332,21 +332,13 @@ def _run(args: argparse.Namespace) -> None:
         )
 
     if args.explain:
-        import os
         from src.output.interpreter import AIInterpreter
         
-        gemini_key = os.getenv("GEMINI_API_KEY")
-        # Initialize if we have either Gemini key OR a configured Ollama host
-        if not gemini_key and not os.getenv("OLLAMA_HOST"):
-             # If no cloud key and no explicit local host, we check if Ollama is likely there
-             # But it's safer to just try AIInterpreter and let it handle fallback
-             pass
-
-        logger.info("Generating AI expert interpretation (Resilient Layer enabled)…")
+        logger.info("Generating AI expert interpretation (Local Ollama Layer enabled)…")
         interpreter = AIInterpreter()
         explanation = interpreter.explain_signal(result, market_data)
         print("\n" + "="*60)
-        print("💡 QQQ 智能决策专家解读 (High Availability)")
+        print("💡 QQQ 智能决策专家解读 (Local Only)")
         print("="*60 + "\n")
         print(explanation)
         print("\n" + "="*60)

@@ -51,73 +51,45 @@ def mock_signal_result():
 def mock_market_data():
     return MagicMock(spec=MarketData, credit_spread=35, net_liquidity=6.5, real_yield=1.2)
 
-def test_explain_signal_gemini_success(mock_signal_result, mock_market_data):
-    mock_gemini = MagicMock()
-    mock_gemini.models.generate_content.return_value.text = "Gemini Response"
-    
-    interpreter = AIInterpreter(gemini_client=mock_gemini)
-    report = interpreter.explain_signal(mock_signal_result, mock_market_data)
-    
-    assert "Gemini Response" in report
-    assert "Gemini" in report
-    assert mock_gemini.models.generate_content.called
+def test_explain_signal_ollama_success(mock_signal_result, mock_market_data):
+    # Ollama succeeds via httpx
+    with patch("httpx.Client") as MockClient:
+        mock_instance = MockClient.return_value.__enter__.return_value
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"message": {"content": "Ollama Response"}}
+        mock_response.raise_for_status.return_value = None
+        mock_instance.post.return_value = mock_response
+        
+        interpreter = AIInterpreter()
+        report = interpreter.explain_signal(mock_signal_result, mock_market_data)
+        
+        assert "Ollama Response" in report
+        assert "qwen3.5:0.8b" in report
+        assert mock_instance.post.called
 
-def test_explain_signal_fallback_to_ollama(mock_signal_result, mock_market_data):
-    # Gemini fails
-    mock_gemini = MagicMock()
-    mock_gemini.models.generate_content.side_effect = Exception("Quota Exceeded")
-    
-    # Ollama succeeds
-    mock_ollama = MagicMock()
-    mock_choice = MagicMock()
-    mock_choice.message.content = "Ollama Response"
-    mock_ollama.chat.completions.create.return_value.choices = [mock_choice]
-    
-    interpreter = AIInterpreter(gemini_client=mock_gemini, ollama_client=mock_ollama)
-    report = interpreter.explain_signal(mock_signal_result, mock_market_data)
-    
-    assert "Ollama Response" in report
-    assert "qwen3.5:0.8b" in report # Default model
-    assert mock_gemini.models.generate_content.called
-    assert mock_ollama.chat.completions.create.called
-
-def test_explain_signal_all_fail(mock_signal_result, mock_market_data):
-    mock_gemini = MagicMock()
-    mock_gemini.models.generate_content.side_effect = Exception("Gemini Down")
-    
-    mock_ollama = MagicMock()
-    mock_ollama.chat.completions.create.side_effect = Exception("Ollama Down")
-    
-    interpreter = AIInterpreter(gemini_client=mock_gemini, ollama_client=mock_ollama)
-    report = interpreter.explain_signal(mock_signal_result, mock_market_data)
-    
-    assert "暂不可用" in report
+def test_explain_signal_ollama_fail(mock_signal_result, mock_market_data):
+    with patch("httpx.Client") as MockClient:
+        mock_instance = MockClient.return_value.__enter__.return_value
+        mock_instance.post.side_effect = Exception("Ollama Connection Refused")
+        
+        interpreter = AIInterpreter()
+        report = interpreter.explain_signal(mock_signal_result, mock_market_data)
+        
+        assert "暂不可用" in report
+        assert "Connection Refused" in report
 
 def test_explain_signal_strips_thinking_tags(mock_signal_result, mock_market_data):
-    mock_gemini = MagicMock()
-    # Response includes <think> tags which should be removed
-    mock_gemini.models.generate_content.return_value.text = "<think>Thinking hard...</think>Final recommendation."
-    
-    interpreter = AIInterpreter(gemini_client=mock_gemini)
-    report = interpreter.explain_signal(mock_signal_result, mock_market_data)
-    
-    assert "Final recommendation." in report
-    assert "Thinking hard..." not in report
-    assert "<think>" not in report
-
-def test_explain_signal_ollama_strips_thinking_tags(mock_signal_result, mock_market_data):
-    # Gemini fails
-    mock_gemini = MagicMock()
-    mock_gemini.models.generate_content.side_effect = Exception("Fail")
-    
     # Ollama response includes <think> tags
-    mock_ollama = MagicMock()
-    mock_choice = MagicMock()
-    mock_choice.message.content = "<think>Ollama is thinking...</think>Local recommendation."
-    mock_ollama.chat.completions.create.return_value.choices = [mock_choice]
-    
-    interpreter = AIInterpreter(gemini_client=mock_gemini, ollama_client=mock_ollama)
-    report = interpreter.explain_signal(mock_signal_result, mock_market_data)
-    
-    assert "Local recommendation." in report
-    assert "Ollama is thinking..." not in report
+    with patch("httpx.Client") as MockClient:
+        mock_instance = MockClient.return_value.__enter__.return_value
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"message": {"content": "<think>I am analyzing the data...</think>Final expert advice."}}
+        mock_response.raise_for_status.return_value = None
+        mock_instance.post.return_value = mock_response
+        
+        interpreter = AIInterpreter()
+        report = interpreter.explain_signal(mock_signal_result, mock_market_data)
+        
+        assert "Final expert advice." in report
+        assert "analyzing" not in report
+        assert "<think>" not in report
