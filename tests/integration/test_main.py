@@ -104,7 +104,8 @@ def test_main_json_reports_missing_live_features(monkeypatch, capsys):
     monkeypatch.setattr("src.store.db.get_historical_series", lambda days=120: None)
     monkeypatch.setattr("src.store.db.load_history", lambda n=5: [])
 
-    _run(SimpleNamespace(json=True, no_save=True, no_color=True))
+    args = SimpleNamespace(json=True, no_save=True, no_color=True, explain=False)
+    _run(args)
 
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
@@ -186,7 +187,8 @@ def test_main_json_marks_cached_macro_values_stale(monkeypatch, capsys):
     monkeypatch.setattr("src.store.db.get_historical_series", lambda days=120: None)
     monkeypatch.setattr("src.store.db.load_history", lambda n=5: [])
 
-    _run(SimpleNamespace(json=True, no_save=True, no_color=True))
+    args = SimpleNamespace(json=True, no_save=True, no_color=True, explain=False)
+    _run(args)
 
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
@@ -259,7 +261,8 @@ def test_main_json_marks_cached_macro_state_with_cache_source_and_staleness(monk
     monkeypatch.setattr("src.store.db.get_historical_series", lambda days=120: None)
     monkeypatch.setattr("src.store.db.load_history", lambda n=5: [])
 
-    _run(SimpleNamespace(json=True, no_save=True, no_color=True))
+    args = SimpleNamespace(json=True, no_save=True, no_color=True, explain=False)
+    _run(args)
 
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
@@ -335,7 +338,8 @@ def test_main_compact_mode_uses_allocation_state(monkeypatch, capsys):
         ),
     )
 
-    _run(SimpleNamespace(json=False, no_save=True, no_color=True))
+    args = SimpleNamespace(json=False, no_save=True, no_color=True, explain=False)
+    _run(args)
 
     captured = capsys.readouterr()
     assert "报告折叠" in captured.out

@@ -54,12 +54,30 @@
 
 ```bash
 FRED_API_KEY=your_fred_api_key_here
+
+# --- AI 解读配置 (本地 Ollama) ---
+OLLAMA_HOST=http://host.docker.internal:11434   # Docker 访问宿主机 Ollama 路径
+OLLAMA_MODEL=qwen3.5:0.8b                       # 推荐使用 Qwen 3.5 0.8B (兼顾速度与质量)
+
+> [!TIP]
+> 请确保已在宿主机安装 Ollama 并运行 `ollama pull qwen3.5:0.8b`。
+
+#### 常见网络问题 (Troubleshooting)
+如果 Docker 内无法连接宿主机 Ollama（提示 Connection Refused 或 Timeout）：
+1. **检查绑定地址**: Ollama 默认仅监听 `127.0.0.1`。需将其配置为监听所有地址。
+   - **macOS**: 在终端运行 `launchctl setenv OLLAMA_HOST "0.0.0.0"` 然后重启 Ollama 菜单栏应用。
+   - **Linux/Systemd**: 修改 service 文件添加 `Environment="OLLAMA_HOST=0.0.0.0"`。
+2. **确认 Host 解析**: 本项目已在 `docker-compose.yml` 中配置 `host.docker.internal` 映射。
 ```
 
 ### 2. 运行实时信号
 
 ```bash
+# 基础运行
 python -m src.main
+
+# 带有 AI 专家解读 (强制本地推理，保护隐私)
+python -m src.main --explain
 ```
 
 ### 3. 输出 JSON

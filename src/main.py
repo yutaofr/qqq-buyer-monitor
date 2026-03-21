@@ -331,6 +331,18 @@ def _run(args: argparse.Namespace) -> None:
             consecutive_days=consecutive_days
         )
 
+    if args.explain:
+        from src.output.interpreter import AIInterpreter
+        
+        logger.info("Generating AI expert interpretation (Local Ollama Layer enabled)…")
+        interpreter = AIInterpreter()
+        explanation = interpreter.explain_signal(result, market_data)
+        print("\n" + "="*60)
+        print("💡 QQQ 智能决策专家解读 (Local Only)")
+        print("="*60 + "\n")
+        print(explanation)
+        print("\n" + "="*60)
+
     # Persist
     if not args.no_save:
         save_signal(result)
@@ -399,6 +411,7 @@ def main() -> None:
     parser.add_argument("--json", action="store_true", help="Output JSON report")
     parser.add_argument("--no-save", action="store_true", help="Skip saving to DB")
     parser.add_argument("--no-color", action="store_true", help="Disable ANSI color output (useful for Discord/logs)")
+    parser.add_argument("--explain", action="store_true", help="Generate AI-powered Chinese explanation of the signal")
     parser.add_argument(
         "--history", type=int, metavar="N",
         help="Print last N signal records and exit"

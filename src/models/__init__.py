@@ -92,6 +92,14 @@ class SignalDetail:
     triggered_half: bool
     triggered_full: bool
 
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "value": self.value,
+            "points": self.points,
+            "triggered_full": self.triggered_full
+        }
+
 
 @dataclass
 class Tier1Result:
@@ -141,6 +149,18 @@ class Tier1Result:
     descent_velocity: Optional[str] = None # "PANIC", "GRIND", "NORMAL"
     short_vol_rank: Optional[float] = None
 
+    def to_dict(self) -> dict:
+        return {
+            "score": self.score,
+            "drawdown_52w": self.drawdown_52w.to_dict(),
+            "ma200_deviation": self.ma200_deviation.to_dict(),
+            "vix": self.vix.to_dict(),
+            "fear_greed": self.fear_greed.to_dict(),
+            "breadth": self.breadth.to_dict(),
+            "market_regime": self.market_regime,
+            "descent_velocity": self.descent_velocity
+        }
+
 
 @dataclass
 class Tier2Result:
@@ -163,6 +183,16 @@ class Tier2Result:
     next_put_wall_distance_pct: Optional[float] = None
     overlay: OptionsOverlay = field(default_factory=OptionsOverlay)
     poc: Optional[float] = None  # v6.0 Volume POC price level
+
+    def to_dict(self) -> dict:
+        return {
+            "adjustment": self.adjustment,
+            "put_wall": self.put_wall,
+            "gamma_flip": self.gamma_flip,
+            "support_broken": self.support_broken,
+            "gamma_positive": self.gamma_positive,
+            "poc": self.poc
+        }
 
 
 @dataclass
