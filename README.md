@@ -60,7 +60,10 @@ GEMINI_MODEL_NAME=gemini-2.0-flash            # 可选
 
 # --- 本地容灾配置 (Ollama) ---
 OLLAMA_HOST=http://host.docker.internal:11434/v1 # Docker 访问宿主机 Ollama 路径
-OLLAMA_MODEL=qwen3.5:latest                     # 推荐使用 Qwen 3.5 系列 (9B+)
+OLLAMA_MODEL=qwen3.5:0.8b                       # 推荐使用 Qwen 3.5 0.8B (兼顾速度与质量)
+
+> [!TIP]
+> 如果启用本地容灾，请确保已安装 Ollama 并在宿主机运行 `ollama pull qwen3.5:0.8b`。
 ```
 
 ### 2. 运行实时信号

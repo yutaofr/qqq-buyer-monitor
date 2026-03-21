@@ -41,7 +41,7 @@ class AIInterpreter:
         # 2. Config Ollama (OpenAI compatible)
         # In Docker, use host.docker.internal to reach the host's Ollama service
         self.ollama_host = os.getenv("OLLAMA_HOST", "http://host.docker.internal:11434/v1")
-        self.ollama_model = os.getenv("OLLAMA_MODEL", "qwen3.5:latest")
+        self.ollama_model = os.getenv("OLLAMA_MODEL", "qwen3.5:0.8b")
         
         if not self.ollama_client:
             try:
@@ -80,7 +80,7 @@ class AIInterpreter:
                         {"role": "system", "content": EXPERT_INTERPRETER_PROMPT},
                         {"role": "user", "content": user_prompt}
                     ],
-                    timeout=10.0 # Don't hang CLI forever
+                    timeout=30.0 # Increased for local 9B+ models
                 )
                 if response.choices and response.choices[0].message.content:
                     cleaned = self._clean_response(response.choices[0].message.content)

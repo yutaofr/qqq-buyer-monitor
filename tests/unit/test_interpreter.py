@@ -77,7 +77,7 @@ def test_explain_signal_fallback_to_ollama(mock_signal_result, mock_market_data)
     report = interpreter.explain_signal(mock_signal_result, mock_market_data)
     
     assert "Ollama Response" in report
-    assert "qwen3.5:latest" in report # Default model
+    assert "qwen3.5:0.8b" in report # Default model
     assert mock_gemini.models.generate_content.called
     assert mock_ollama.chat.completions.create.called
 
