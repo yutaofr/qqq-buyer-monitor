@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from datetime import date
-from src.output.interpreter import GeminiInterpreter
+from src.output.interpreter import AIInterpreter
 from src.models import SignalResult, Signal, Tier1Result, Tier2Result, MarketData, AllocationState, SignalDetail
 
 @pytest.fixture
@@ -51,38 +51,44 @@ def mock_signal_result():
 def mock_market_data():
     return MagicMock(spec=MarketData, credit_spread=35, net_liquidity=6.5, real_yield=1.2)
 
-def test_explain_signal_calls_gemini_correctly(mock_signal_result, mock_market_data):
-    mock_response = MagicMock()
-    mock_response.text = "这是一份模拟的专家解读报告。"
+def test_explain_signal_gemini_success(mock_signal_result, mock_market_data):
+    mock_gemini = MagicMock()
+    mock_gemini.models.generate_content.return_value.text = "Gemini Response"
     
-    with patch("google.genai.Client") as MockClient:
-        instance = MockClient.return_value
-        instance.models.generate_content.return_value = mock_response
-        
-        with patch.dict("os.environ", {"GEMINI_API_KEY": "test_key"}):
-            interpreter = GeminiInterpreter()
-            report = interpreter.explain_signal(mock_signal_result, mock_market_data)
-            
-            assert report == "这是一份模拟的专家解读报告。"
-            assert instance.models.generate_content.called
+    interpreter = AIInterpreter(gemini_client=mock_gemini)
+    report = interpreter.explain_signal(mock_signal_result, mock_market_data)
+    
+    assert "Gemini Response" in report
+    assert "Gemini" in report
+    assert mock_gemini.models.generate_content.called
 
-def test_interpreter_supports_client_injection():
-    mock_client = MagicMock()
-    mock_client.models.generate_content.return_value.text = "Injected Response"
+def test_explain_signal_fallback_to_ollama(mock_signal_result, mock_market_data):
+    # Gemini fails
+    mock_gemini = MagicMock()
+    mock_gemini.models.generate_content.side_effect = Exception("Quota Exceeded")
     
-    # This tests the injection logic
-    interpreter = GeminiInterpreter(client=mock_client)
-    assert interpreter.enabled is True
+    # Ollama succeeds
+    mock_ollama = MagicMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = "Ollama Response"
+    mock_ollama.chat.completions.create.return_value.choices = [mock_choice]
     
-    result = interpreter.explain_signal(MagicMock(), MagicMock())
-    assert result == "Injected Response"
-    assert mock_client.models.generate_content.called
+    interpreter = AIInterpreter(gemini_client=mock_gemini, ollama_client=mock_ollama)
+    report = interpreter.explain_signal(mock_signal_result, mock_market_data)
+    
+    assert "Ollama Response" in report
+    assert "qwen3.5:latest" in report # Default model
+    assert mock_gemini.models.generate_content.called
+    assert mock_ollama.chat.completions.create.called
 
-def test_interpreter_disabled_without_api_key():
-    with patch.dict("os.environ", {"GEMINI_API_KEY": ""}, clear=True):
-        interpreter = GeminiInterpreter()
-        assert interpreter.enabled is False
-        
-        # 即使调用 explain_signal 也不应报错，而是返回降级提示
-        result = interpreter.explain_signal(MagicMock(), MagicMock())
-        assert "disabled" in result.lower()
+def test_explain_signal_all_fail(mock_signal_result, mock_market_data):
+    mock_gemini = MagicMock()
+    mock_gemini.models.generate_content.side_effect = Exception("Gemini Down")
+    
+    mock_ollama = MagicMock()
+    mock_ollama.chat.completions.create.side_effect = Exception("Ollama Down")
+    
+    interpreter = AIInterpreter(gemini_client=mock_gemini, ollama_client=mock_ollama)
+    report = interpreter.explain_signal(mock_signal_result, mock_market_data)
+    
+    assert "暂不可用" in report

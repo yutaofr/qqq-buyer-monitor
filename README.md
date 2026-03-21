@@ -54,8 +54,13 @@
 
 ```bash
 FRED_API_KEY=your_fred_api_key_here
-GEMINI_API_KEY=your_gemini_api_key_here  # 可选，用于 AI 专家解读
-GEMINI_MODEL_NAME=models/gemini-2.0-flash # 可选，默认为 gemini-2.0-flash
+# --- AI 解读配置 ---
+GEMINI_API_KEY=your_gemini_api_key_here        # 可选，云端主模型
+GEMINI_MODEL_NAME=gemini-2.0-flash            # 可选
+
+# --- 本地容灾配置 (Ollama) ---
+OLLAMA_HOST=http://host.docker.internal:11434/v1 # Docker 访问宿主机 Ollama 路径
+OLLAMA_MODEL=qwen3.5:latest                     # 推荐使用 Qwen 3.5 系列 (9B+)
 ```
 
 ### 2. 运行实时信号
@@ -64,7 +69,7 @@ GEMINI_MODEL_NAME=models/gemini-2.0-flash # 可选，默认为 gemini-2.0-flash
 # 基础运行
 python -m src.main
 
-# 带有 AI 专家解读（需配置 GEMINI_API_KEY）
+# 带有 AI 专家解读（具备云端优先，本地容灾逻辑）
 python -m src.main --explain
 ```
 

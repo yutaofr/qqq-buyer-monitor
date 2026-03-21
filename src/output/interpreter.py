@@ -1,4 +1,4 @@
-"""AI interpretation of QQQ signals using Gemini."""
+"""AI interpretation of QQQ signals using Gemini and local Ollama fallback."""
 from __future__ import annotations
 
 import logging
@@ -6,6 +6,7 @@ import os
 from typing import TYPE_CHECKING, Any
 
 from google import genai
+from openai import OpenAI
 from dotenv import load_dotenv
 
 from src.output.prompts import EXPERT_INTERPRETER_PROMPT
@@ -16,59 +17,75 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class GeminiInterpreter:
-    """Expert interpreter using Gemini Pro to explain market signals."""
+class AIInterpreter:
+    """High-availability interpreter using Gemini (Cloud) and Ollama (Local)."""
 
-    def __init__(self, client: Any | None = None) -> None:
-        """
-        Initialize the interpreter.
-        
-        Args:
-            client: Optional client instance to inject (useful for testing).
-        """
+    def __init__(self, gemini_client: Any | None = None, ollama_client: Any | None = None) -> None:
+        """Initialize both Cloud and Local LLM clients."""
         load_dotenv()
-        self.client = client
-        self.model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash")
+        self.gemini_client = gemini_client
+        self.ollama_client = ollama_client
         
-        if self.client:
-            self.enabled = True
-            return
+        # 1. Config Gemini
+        self.gemini_model = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash")
+        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        
+        if not self.gemini_client and gemini_api_key:
+            try:
+                self.gemini_client = genai.Client(api_key=gemini_api_key)
+                logger.info("Gemini Cloud client initialized.")
+            except Exception as exc:
+                logger.error("Failed to init Gemini client: %s", exc)
 
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            logger.warning("GEMINI_API_KEY not found. AI interpretation will be disabled.")
-            self.enabled = False
-            return
-
-        try:
-            self.client = genai.Client(api_key=api_key)
-            self.enabled = True
-            logger.info("GeminiInterpreter initialized with model: %s", self.model_name)
-        except Exception as exc:
-            logger.error("Failed to initialize Gemini: %s", exc)
-            self.enabled = False
+        # 2. Config Ollama (OpenAI compatible)
+        # In Docker, use host.docker.internal to reach the host's Ollama service
+        self.ollama_host = os.getenv("OLLAMA_HOST", "http://host.docker.internal:11434/v1")
+        self.ollama_model = os.getenv("OLLAMA_MODEL", "qwen3.5:latest")
+        
+        if not self.ollama_client:
+            try:
+                # We use a dummy api_key as Ollama doesn't require one by default
+                self.ollama_client = OpenAI(base_url=self.ollama_host, api_key="ollama")
+                logger.info("Ollama Local client configured at %s", self.ollama_host)
+            except Exception as exc:
+                logger.error("Failed to init Ollama client: %s", exc)
 
     def explain_signal(self, result: SignalResult, market_data: MarketData) -> str:
-        """Generate a Chinese explanation for the given signal and market state."""
-        if not self.enabled:
-            return "AI interpretation is disabled (check API key)."
+        """
+        Generate interpretation with Gemini -> Ollama fallback.
+        """
+        summary = self._prepare_summary(result, market_data)
+        user_prompt = f"请解读以下量化交易信号：\n{summary}"
 
-        # Prepare a structured summary for the LLM
-        signal_summary = self._prepare_summary(result, market_data)
-        user_prompt = f"请解读以下量化交易信号：\n{signal_summary}"
+        # --- Attempt 1: Gemini (Cloud) ---
+        if self.gemini_client:
+            try:
+                response = self.gemini_client.models.generate_content(
+                    model=self.gemini_model,
+                    contents=[EXPERT_INTERPRETER_PROMPT, user_prompt]
+                )
+                if response and response.text:
+                    return f"{response.text}\n\n*(解读由 Gemini 提供)*"
+            except Exception as exc:
+                logger.warning("Gemini Cloud failed, attempting Ollama fallback: %s", exc)
 
-        try:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=[
-                    EXPERT_INTERPRETER_PROMPT,
-                    user_prompt
-                ]
-            )
-            return response.text
-        except Exception as exc:
-            logger.error("Gemini generation failed: %s", exc)
-            return f"生成解读时发生错误: {exc}"
+        # --- Attempt 2: Ollama (Local) ---
+        if self.ollama_client:
+            try:
+                response = self.ollama_client.chat.completions.create(
+                    model=self.ollama_model,
+                    messages=[
+                        {"role": "system", "content": EXPERT_INTERPRETER_PROMPT},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    timeout=10.0 # Don't hang CLI forever
+                )
+                if response.choices and response.choices[0].message.content:
+                    return f"{response.choices[0].message.content}\n\n*(解读由本地模型 {self.ollama_model} 提供)*"
+            except Exception as exc:
+                logger.error("Ollama Local fallback also failed: %s", exc)
+
+        return "⚠️  AI 解读服务暂不可用 (Gemini 配额用尽且本地 Ollama 未响应)。"
 
     def _prepare_summary(self, result: SignalResult, market_data: MarketData) -> dict[str, Any]:
         """Extract key metrics into a flat structure for the LLM."""

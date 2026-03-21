@@ -1,44 +1,43 @@
-# SRD: AI Expert Interpreter Module (Chinese)
+# SRD: AI Expert Interpreter Module (v1.1 - Resilience Edition)
 
 ## 1. 目标 (Objective)
-为 `qqq-monitor` 增加一个基于 LLM 的输出层，将复杂的量化指标（Tier 0/1/2）转化为非专业投资者可理解的“中文专家解读”，旨在提升工具的教育价值和决策可解释性。
+为 `qqq-monitor` 增加一个高可用的 LLM 解读层。系统优先使用云端模型 (Gemini) 提供高质量解读，在触发 API 配额限制或网络故障时，自动切换到本地模型 (Ollama) 以保证服务连续性。
 
 ## 2. 系统架构 (Architecture)
-- **模块位置**: `src/output/interpreter.py`
-- **集成点**: `src/main.py` (新增 `--explain` 参数)
-- **依赖库**: `google-generativeai`, `python-dotenv`
-- **身份验证**: 强制使用 `GEMINI_API_KEY` (环境变量)。
+- **模块位置**: `src/output/interpreter.py` (类名重构为 `AIInterpreter`)
+- **云端引擎**: `google-genai` (Gemini API)
+- **本地引擎**: `openai` (兼容 Ollama 的 OpenAI 协议)
+- **调度策略**: **Cloud-First, Local-Fallback** (云端优先，本地容灾)。
 
 ## 3. 核心功能要求 (Functional Requirements)
 
-### 3.1 AI 配置管理
-- 支持通过 `.env` 配置 `GEMINI_MODEL_NAME` (默认为 `models/gemini-3.1-pro-preview`)。
-- 必须具备异常处理机制：若 API Key 失效或网络中断，系统应打印友好错误并优雅退出该子模块，不影响核心监测功能。
+### 3.1 多级配置管理 (Multi-Tier Config)
+- **Gemini**: 必须配置 `GEMINI_API_KEY`。可选 `GEMINI_MODEL_NAME` (默认 `gemini-2.0-flash`)。
+- **Ollama**: 可选 `OLLAMA_HOST` (默认 `http://host.docker.internal:11434/v1`)，`OLLAMA_MODEL` (建议 `qwen2.5:1.5b` 或 `qwen2.5:3b`)。
+- **降级逻辑**: 
+    1. 捕获 Gemini 429 (Quota), 5xx (Server Error) 或 ConnectionError。
+    2. 自动尝试调用本地 Ollama 接口。
+    3. 若两者均不可用，返回原始系统信号。
 
-### 3.2 Prompt 工程设计
-- **角色定位**: Senior Trading Mentor (资深交易导师)。
-- **逻辑注入**: 必须在 Prompt 中包含对 `GEMINI.md` 定义的三层过滤逻辑 (Tiered Logic) 的描述。
-- **语言限制**: 强制输出为简体中文。
-- **术语转换**: 自动将 `Gamma Flip`, `Put Wall`, `Credit Spreads` 等术语用生活化比喻进行二次解释。
+### 3.2 Prompt 一致性
+- 无论云端还是本地，必须使用统一的 `EXPERT_INTERPRETER_PROMPT`。
+- 本地 Qwen 模型应具备基本的量化指标理解力。
 
-### 3.3 数据流 (Data Flow)
-1. `main.py` 收集 `Engine` 生成的 `SignalResult` 对象和 `MarketData` 对象。
-2. 数据摘要发送至 `GeminiInterpreter.explain_signal()`。
-3. 调用 Gemini API 获取生成的 Markdown 格式报告。
-4. 在 CLI 中以分隔线包裹的形式进行打印。
+### 3.3 沙盒隔离兼容性
+- Docker 容器内访问宿主机 Ollama 必须使用 `host.docker.internal` 作为 Host。
 
 ## 4. 接口定义 (Interface)
 
 ```python
-class GeminiInterpreter:
+class AIInterpreter:
     def __init__(self):
-        """初始化 API 配置并加载模型。"""
+        """初始化云端和本地客户端。"""
     def explain_signal(self, result: SignalResult, market_data: MarketData) -> str:
-        """生成并返回中文解读报告。"""
+        """执行调度逻辑，返回最终解读内容。"""
 ```
 
 ## 5. 验收标准 (Acceptance Criteria)
-1. **Docker 兼容性**: 必须能通过 `docker-compose run --rm app python -m src.main --explain` 正常运行。
-2. **零耦合**: 删除 `GEMINI_API_KEY` 后，系统应提示“AI 模块不可用”并正常显示原始信号。
-3. **输出质量**: 解读报告必须准确识别出“哪一层 Tier 触发了硬性阻断”。
-4. **单元测试**: 模块代码应支持传入 Mock 后的 Gemini 对象以进行逻辑验证。
+1. **容灾测试**: 模拟 `GEMINI_API_KEY` 无效或触发 429，系统应能自动输出由 Ollama 生成的报告。
+2. **零依赖性**: 若无 API Key 且本地无 Ollama，应打印“AI 解释模块已静默”。
+3. **输出质量**: 本地 Qwen 1.5B 解读必须符合 Markdown 格式。
+4. **性能**: 本地推理时间在 M1/M2/M3 Mac 上应控制在 5s 以内。
