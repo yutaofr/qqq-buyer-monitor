@@ -264,7 +264,7 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
     mr_score = 0.0
     if data.ohlcv_history is not None:
         mr_score = calculate_mean_reversion_score(data.ohlcv_history['Close'])
-        if mr_score > 2.0: # Significant mean reversion regime
+        if mr_score < -2.0: # Significant downside deviation (mean reversion likely)
             mr_bonus = 10
             divergence_flags["mean_reversion_regime"] = True
             

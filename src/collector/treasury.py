@@ -49,17 +49,19 @@ def fetch_treasury_yields() -> dict[str, float | None]:
         # Get the latest entry
         latest_entry = entries[-1]
         properties = latest_entry.find('.//m:properties', ns)
+        if properties is None:
+            return result
+            
+        ten_year_el = properties.find('d:BC_10YEAR', ns)
+        three_month_el = properties.find('d:BC_3MONTH', ns)
+        date_el = properties.find('d:NEW_DATE', ns)
         
-        ten_year_raw = properties.find('d:BC_10YEAR', ns).text
-        three_month_raw = properties.find('d:BC_3MONTH', ns).text
-        date_raw = properties.find('d:NEW_DATE', ns).text
-        
-        if ten_year_raw:
-            result["10Y"] = float(ten_year_raw)
-        if three_month_raw:
-            result["3M"] = float(three_month_raw)
-        if date_raw:
-            result["date"] = date_raw.split('T')[0]
+        if ten_year_el is not None and ten_year_el.text:
+            result["10Y"] = float(ten_year_el.text)
+        if three_month_el is not None and three_month_el.text:
+            result["3M"] = float(three_month_el.text)
+        if date_el is not None and date_el.text:
+            result["date"] = date_el.text.split('T')[0]
             
         logger.info("Fetched Treasury Yields (Backup): 10Y=%.2f%%, 3M=%.2f%% (Date: %s)", 
                     result["10Y"], result["3M"], result["date"])

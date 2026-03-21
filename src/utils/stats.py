@@ -27,9 +27,9 @@ def calculate_zscore(value: float, series: pd.Series | list[float]) -> float:
 def calculate_mean_reversion_score(price_series: pd.Series, window: int = 50) -> float:
     """
     Calculate a mean reversion score based on distance from moving average.
-    Returns absolute Z-score of price relative to its window.
-    High Score (> 2.0): Extreme deviation (Mean reversion likely).
-    Low Score (< 1.0): Price hugging the trend (Trending).
+    Returns the Z-score of price relative to its window.
+    Negative Score (< -2.0): Extreme oversold (Mean reversion likely).
+    Positive Score (> 2.0): Extreme overbought.
     """
     if len(price_series) < window:
         return 0.0
@@ -45,7 +45,7 @@ def calculate_mean_reversion_score(price_series: pd.Series, window: int = 50) ->
         return 0.0
         
     z_score = (latest_price - latest_sma) / latest_std
-    return float(abs(z_score))
+    return float(z_score)
 
 def calculate_volume_poc(df: pd.DataFrame, bins: int = 50) -> float:
     """

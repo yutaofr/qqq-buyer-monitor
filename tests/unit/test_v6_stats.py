@@ -4,21 +4,19 @@ import pytest
 from src.utils.stats import calculate_mean_reversion_score, calculate_volume_poc, calculate_sma_deviation_zscore
 
 def test_calculate_mean_reversion_score_high():
-    # Extreme deviation (Z-score > 2)
+    # Extreme oversold deviation (Z-score < -2)
     steady = [100.0] * 50
-    spike = [120.0]
+    spike = [80.0]
     series = pd.Series(steady + spike)
-    # 50-day SMA=100, StdDev=~2.8 (with one 120), Z=~7
     score = calculate_mean_reversion_score(series, window=50)
-    assert score > 2.0
+    assert score < -2.0
 
 def test_calculate_mean_reversion_score_low():
     # Steady trend with low deviation
     series = pd.Series(np.linspace(100, 110, 100))
     score = calculate_mean_reversion_score(series, window=50)
-    # Z-score of a perfect linear trend relative to its SMA is around 1.7, 
-    # but with more data it stabilizes.
-    assert score < 2.0
+    # Z-score of a perfect linear trend relative to its SMA is positive
+    assert -2.0 < score < 2.0
 
 def test_calculate_volume_poc_simple():
     # Create a DataFrame where price 100 has the most volume
