@@ -1,17 +1,18 @@
 import logging
 import pandas as pd
-from src.collector.macro import fetch_fred_data
-
-logger = logging.getLogger(__name__)
-
 import yfinance as yf
 from datetime import date, timedelta
+from src.collector.macro import fetch_fred_data
+from src.collector.treasury import fetch_treasury_yields
+
+logger = logging.getLogger(__name__)
 
 def fetch_real_yield() -> float | None:
     """
     Fetch the latest 10-Year Treasury Inflation-Indexed Security (TIPS) Rate (DFII10) from FRED.
-    Falls back to Yahoo Finance (^TNX) minus 2.0% inflation expectation proxy if FRED is unavailable.
-    Returns the real yield as a percentage (e.g. 2.25 for 2.25%).
+    Falls back to:
+    1. U.S. Treasury XML (as a 10Y nominal proxy if real yield not available)
+    2. Yahoo Finance (^TNX) proxy
     """
     series_id = "DFII10"
     # 1. Primary: FRED
@@ -26,9 +27,21 @@ def fetch_real_yield() -> float | None:
     except Exception as exc:
         logger.debug("FRED DFII10 fetch failed: %s", exc)
 
-    # 2. Secondary: Yahoo Finance (^TNX) proxy
+    # 2. Secondary: Treasury Backup (Nominal proxy)
     try:
-        logger.info("FRED unavailable; attempting yfinance fallback using ^TNX minus 2.0% proxy...")
+        logger.info("FRED unavailable; attempting Treasury XML fallback...")
+        yields = fetch_treasury_yields()
+        if yields["10Y"] is not None:
+            # Simple proxy: 10Y Nominal - 2.0% inflation = Real Yield
+            val = float(yields["10Y"]) - 2.0
+            logger.info("Fetched Real Yield proxy from Treasury XML: %.2f", val)
+            return val
+    except Exception as exc:
+        logger.debug("Treasury XML fallback failed: %s", exc)
+
+    # 3. Tertiary: Yahoo Finance (^TNX) proxy
+    try:
+        logger.info("Treasury XML failed; attempting yfinance fallback using ^TNX minus 2.0% proxy...")
         tnx = yf.Ticker("^TNX")
         # Query a small window to ensure we get the latest close
         hist = tnx.history(period="5d")
@@ -38,7 +51,7 @@ def fetch_real_yield() -> float | None:
             logger.info("Fetched Real Yield proxy from yfinance (^TNX - 2%%): %.2f", val)
             return val
     except Exception as exc:
-        logger.warning("All Real Yield sources failed (FRED & yfinance): %s", exc)
+        logger.warning("All Real Yield sources failed (FRED, Treasury, yfinance): %s", exc)
         
     return None
 

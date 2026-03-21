@@ -280,7 +280,7 @@ def _run(args: argparse.Namespace) -> None:
             pass
 
     tier1 = calculate_tier1(market_data)
-    tier2 = calculate_tier2(market_data.price, market_data.options_df)
+    tier2 = calculate_tier2(market_data.price, market_data.options_df, ohlcv_history=market_data.ohlcv_history)
     result = aggregate(
         market_data.date, 
         market_data.price, 

@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 from src.models import MarketData, SignalDetail, Tier1Result
 from src.engine.divergence import check_divergences
 from src.engine.fundamentals import calculate_valuation_weight, calculate_fcf_bonus
+from src.utils.stats import calculate_zscore, calculate_mean_reversion_score, calculate_sma_deviation_zscore
 
 # ── Gradient thresholds (low, high) ──────────────────────────────────────────
 # Signal 1: 52-week high drawdown  (higher = more bullish)
@@ -20,6 +21,7 @@ DRAWDOWN_Z_THRESHOLDS = (1.2, 2.0)      # Relative: Z > 1.2 = 10 pts, Z > 2.0 = 
 
 # Signal 2: MA200 deviation  (more negative = more bullish)
 MA200_THRESHOLDS = (-0.03, -0.07)       # >-3%=0, -3~-7%=10, <=-7%=20
+MA200_Z_THRESHOLDS = (-1.5, -2.5)       # Z < -1.5 = 10 pts, Z < -2.5 = 20 pts
 
 # Signal 3: VIX level (contrarian)
 VIX_THRESHOLDS = (22.0, 30.0)           # Absolute: <22=0, 22-30=10, >30=20
@@ -91,6 +93,18 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
     ma200_dev = (data.price - data.ma200) / data.ma200
     # Deviation is negative for "more bullish"; flip sign for lower_better logic
     s2_pts, s2_half, s2_full = _score_lower_better(ma200_dev, *MA200_THRESHOLDS)
+    
+    # v6.0 Adaptive Boost for MA200 deviation
+    ma200_z = 0.0
+    if data.ohlcv_history is not None:
+        ma200_z = calculate_sma_deviation_zscore(data.ohlcv_history['Close'])
+        if ma200_z <= MA200_Z_THRESHOLDS[1]:
+            s2_pts = max(s2_pts, 20)
+            s2_half, s2_full = True, True
+        elif ma200_z <= MA200_Z_THRESHOLDS[0]:
+            s2_pts = max(s2_pts, 10)
+            s2_half = True
+    
     s2 = SignalDetail(
         name="ma200_deviation",
         value=round(ma200_dev, 4),
@@ -245,6 +259,18 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
             divergence_flags["short_squeeze_potential"] = True
     total += short_flow_bonus
 
+    # v6.0 Mean Reversion Regime Bonus
+    mr_bonus = 0
+    mr_score = 0.0
+    if data.ohlcv_history is not None:
+        mr_score = calculate_mean_reversion_score(data.ohlcv_history['Close'])
+        if mr_score > 2.0: # Significant mean reversion regime
+            mr_bonus = 10
+            divergence_flags["mean_reversion_regime"] = True
+            
+    total += mr_bonus
+    divergence_bonus += mr_bonus
+    
     return Tier1Result(
         score=total,
         drawdown_52w=s1,
