@@ -137,8 +137,8 @@ def evaluate_tier2_rules(
         poc_val = calculate_volume_poc(vp_hist)
         if poc_val > 0:
             dist_to_poc = abs(price - poc_val) / price
-            # POC is a confirmed support if within 2%
-            if dist_to_poc <= 0.02:
+            # POC is a confirmed support if within 2% AND support not already broken
+            if dist_to_poc <= 0.02 and not support_broken:
                 logger.info("v6.0 POC SUPPORT: Price is within 2%% of Volume POC ($%.2f)", poc_val)
                 adjustment += SCORE_POC_SUPPORT
                 support_confirmed = True

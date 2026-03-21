@@ -15,17 +15,22 @@
 
 ## 决策框架
 
-### Tier 0: Structural Regime
-- 结合信用利差与 ERP，识别 `EUPHORIC / RICH_TIGHTENING / NEUTRAL / TRANSITION_STRESS / CRISIS`。
-- 决定资金当前应偏防守、常规定投还是加速吸纳。
+### Tier 0: Structural Regime (宏观结构)
+- **核心逻辑**：结合信用利差（Credit Spread）与股权风险溢价（ERP），识别市场宏观背景。
+- **容灾增强 (v6.1)**：引入了 **U.S. Treasury (美国财政部)** 官方数据源作为无风险利率的硬备份。当 FRED API 失效时，系统会自动切换到财政部 XML 馈送，确保宏观断路器始终在线。
+- **输出状态**：`EUPHORIC / RICH_TIGHTENING / NEUTRAL / TRANSITION_STRESS / CRISIS`。
 
-### Tier 1: Tactical Pressure
-- 基于回撤、MA200 偏离、VIX、F&G、广度，构造 `stress / capitulation / persistence`。
-- 目标不是预测最低点，而是识别是否值得加快或放慢投入速度。
+### Tier 1: Tactical Pressure (战术压力)
+- **核心逻辑**：基于回撤、VIX、贪婪恐惧指数、市场广度计算压力得分。
+- **统计增强 (v6.0/6.1)**：
+    - **Mean Reversion Score**：利用 50 日均线的 Z-Score 动态识别“过度拉伸”状态，量化均值回归的概率。
+    - **SMA200 Deviation Z-Score**：用统计学定义“黄金坑”，而非固定百分比偏离。
+- **目标**：识别市场是否处于“情绪竭尽”或“均值回归”的高赔率区间。
 
-### Tier 2: Options Overlay
-- 期权墙不再扮演“硬开关”。
-- 当前逻辑把它作为软约束层，用于降低 tranche、延长冷却和削弱置信度。
+### Tier 2: Options & Volume Overlay (结构支撑)
+- **期权墙 (Put Wall)**：监控做市商对冲压力位，识别数学意义上的支撑。
+- **筹码墙 (Volume POC) (v6.0)**：引入 252 日 **Volume Profile** 分析，识别历史上发生最大规模换手的“价格控制点（POC）”。
+- **共振确认**：只有当价格守在 Put Wall 或 Volume POC 之上时，才允许置信度升级。如果 Put Wall 跌破，系统将执行“硬否决”或降低配置级别。
 
 ## 仓位动作输出
 
