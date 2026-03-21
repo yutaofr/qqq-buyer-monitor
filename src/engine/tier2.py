@@ -130,15 +130,16 @@ def evaluate_tier2_rules(
         adjustment += SCORE_NEGATIVE_GAMMA_BROKEN
 
     # v6.0 Volume POC Confirmation
+    poc_val = None
     if ohlcv_history is not None and not ohlcv_history.empty:
         # Use past 252 trading days for Volume Profile
         vp_hist = ohlcv_history.tail(252)
-        poc = calculate_volume_poc(vp_hist)
-        if poc > 0:
-            dist_to_poc = abs(price - poc) / price
+        poc_val = calculate_volume_poc(vp_hist)
+        if poc_val > 0:
+            dist_to_poc = abs(price - poc_val) / price
             # POC is a confirmed support if within 2%
             if dist_to_poc <= 0.02:
-                logger.info("v6.0 POC SUPPORT: Price is within 2%% of Volume POC ($%.2f)", poc)
+                logger.info("v6.0 POC SUPPORT: Price is within 2%% of Volume POC ($%.2f)", poc_val)
                 adjustment += SCORE_POC_SUPPORT
                 support_confirmed = True
 
@@ -149,12 +150,14 @@ def evaluate_tier2_rules(
         gamma_positive=gamma_positive,
     )
 
-    result = Tier2Result(
+    return Tier2Result(
         adjustment=adjustment,
         put_wall=put_wall,
         call_wall=call_wall,
         gamma_flip=gamma_flip,
+        poc=poc_val,
         support_confirmed=support_confirmed,
+
         support_broken=support_broken,
         upside_open=upside_open,
         gamma_positive=gamma_positive,
@@ -285,20 +288,22 @@ def _evaluate_poc_only(price: float, ohlcv_history: pd.DataFrame | None) -> Tier
     """Fall-back to Volume POC support if options data is missing."""
     adjustment = 0
     support_confirmed = False
+    poc_val = None
     
     if ohlcv_history is not None and not ohlcv_history.empty:
         vp_hist = ohlcv_history.tail(252)
-        poc = calculate_volume_poc(vp_hist)
-        if poc > 0:
-            dist_to_poc = abs(price - poc) / price
+        poc_val = calculate_volume_poc(vp_hist)
+        if poc_val > 0:
+            dist_to_poc = abs(price - poc_val) / price
             if dist_to_poc <= 0.02:
-                logger.info("v6.0 FALLBACK POC SUPPORT: Price within 2%% of POC ($%.2f)", poc)
+                logger.info("v6.0 FALLBACK POC SUPPORT: Price within 2%% of POC ($%.2f)", poc_val)
                 adjustment += SCORE_POC_SUPPORT
                 support_confirmed = True
                 
     result = _neutral_result()
     result.adjustment = adjustment
     result.support_confirmed = support_confirmed
+    result.poc = poc_val
     return result
 
 
@@ -308,6 +313,7 @@ def _neutral_result() -> Tier2Result:
         put_wall=None,
         call_wall=None,
         gamma_flip=None,
+        poc=None,
         support_confirmed=False,
         support_broken=False,
         upside_open=False,
