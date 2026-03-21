@@ -54,12 +54,18 @@
 
 ```bash
 FRED_API_KEY=your_fred_api_key_here
+GEMINI_API_KEY=your_gemini_api_key_here  # 可选，用于 AI 专家解读
+GEMINI_MODEL_NAME=models/gemini-2.0-flash # 可选，默认为 gemini-2.0-flash
 ```
 
 ### 2. 运行实时信号
 
 ```bash
+# 基础运行
 python -m src.main
+
+# 带有 AI 专家解读（需配置 GEMINI_API_KEY）
+python -m src.main --explain
 ```
 
 ### 3. 输出 JSON

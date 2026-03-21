@@ -5,7 +5,7 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any
 
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 
 from src.output.prompts import EXPERT_INTERPRETER_PROMPT
@@ -19,31 +19,29 @@ logger = logging.getLogger(__name__)
 class GeminiInterpreter:
     """Expert interpreter using Gemini Pro to explain market signals."""
 
-    def __init__(self, model: Any | None = None) -> None:
+    def __init__(self, client: Any | None = None) -> None:
         """
         Initialize the interpreter.
         
         Args:
-            model: Optional model instance to inject (useful for testing).
+            client: Optional client instance to inject (useful for testing).
         """
         load_dotenv()
-        self.model = model
+        self.client = client
+        self.model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash")
         
-        if self.model:
+        if self.client:
             self.enabled = True
             return
 
         api_key = os.getenv("GEMINI_API_KEY")
-        self.model_name = os.getenv("GEMINI_MODEL_NAME", "models/gemini-2.5-flash")
-        
         if not api_key:
             logger.warning("GEMINI_API_KEY not found. AI interpretation will be disabled.")
             self.enabled = False
             return
 
         try:
-            genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel(self.model_name)
+            self.client = genai.Client(api_key=api_key)
             self.enabled = True
             logger.info("GeminiInterpreter initialized with model: %s", self.model_name)
         except Exception as exc:
@@ -60,10 +58,13 @@ class GeminiInterpreter:
         user_prompt = f"请解读以下量化交易信号：\n{signal_summary}"
 
         try:
-            response = self.model.generate_content([
-                EXPERT_INTERPRETER_PROMPT,
-                user_prompt
-            ])
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=[
+                    EXPERT_INTERPRETER_PROMPT,
+                    user_prompt
+                ]
+            )
             return response.text
         except Exception as exc:
             logger.error("Gemini generation failed: %s", exc)
@@ -75,21 +76,8 @@ class GeminiInterpreter:
             "date": str(result.date),
             "final_signal": result.signal.value,
             "final_score": result.final_score,
-            "tier1_breakdown": {
-                "score": result.tier1.score,
-                "vix": result.tier1.vix.value if hasattr(result.tier1.vix, 'value') else result.tier1.vix,
-                "fear_greed": result.tier1.fear_greed.value if hasattr(result.tier1.fear_greed, 'value') else result.tier1.fear_greed,
-                "ma200_deviation": result.tier1.ma200_deviation.value if hasattr(result.tier1.ma200_deviation, 'value') else result.tier1.ma200_deviation,
-                "market_regime": result.tier1.market_regime,
-                "descent_velocity": result.tier1.descent_velocity,
-            },
-            "tier2_breakdown": {
-                "adjustment": result.tier2.adjustment,
-                "put_wall": result.tier2.put_wall,
-                "gamma_flip": result.tier2.gamma_flip,
-                "support_broken": result.tier2.support_broken,
-                "gamma_positive": result.tier2.gamma_positive,
-            },
+            "tier1_breakdown": result.tier1.to_dict(),
+            "tier2_breakdown": result.tier2.to_dict(),
             "macro_context": {
                 "credit_spread": market_data.credit_spread,
                 "net_liquidity": market_data.net_liquidity,

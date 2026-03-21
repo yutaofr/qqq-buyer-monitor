@@ -332,15 +332,21 @@ def _run(args: argparse.Namespace) -> None:
         )
 
     if args.explain:
+        import os
         from src.output.interpreter import GeminiInterpreter
-        logger.info("Generating AI expert interpretation…")
-        interpreter = GeminiInterpreter()
-        explanation = interpreter.explain_signal(result, market_data)
-        print("\n" + "="*60)
-        print("💡 QQQ 智能决策专家解读 (Gemini 3.1 Pro)")
-        print("="*60 + "\n")
-        print(explanation)
-        print("\n" + "="*60)
+        
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            print("\n⚠️  AI 专家解读不可用: 未检测到 GEMINI_API_KEY 环境变量。")
+        else:
+            logger.info("Generating AI expert interpretation…")
+            interpreter = GeminiInterpreter()
+            explanation = interpreter.explain_signal(result, market_data)
+            print("\n" + "="*60)
+            print("💡 QQQ 智能决策专家解读 (Gemini)")
+            print("="*60 + "\n")
+            print(explanation)
+            print("\n" + "="*60)
 
     # Persist
     if not args.no_save:
