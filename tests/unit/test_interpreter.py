@@ -77,6 +77,7 @@ def test_explain_signal_ollama_fail(mock_signal_result, mock_market_data):
         
         assert "暂不可用" in report
         assert "Connection Refused" in report
+        assert "0.0.0.0" in report # Check for tip
 
 def test_explain_signal_strips_thinking_tags(mock_signal_result, mock_market_data):
     # Ollama response includes <think> tags

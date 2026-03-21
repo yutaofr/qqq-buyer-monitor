@@ -58,7 +58,10 @@ class AIInterpreter:
                     return f"{cleaned}\n\n*(解读由本地模型 {self.ollama_model} 提供)*"
         except Exception as exc:
             logger.error("Ollama Local inference failed: %s", exc)
-            return f"⚠️  AI 解读服务暂不可用 (本地 Ollama 响应失败: {exc})。"
+            return (
+                f"⚠️  AI 解读服务暂不可用 (本地 Ollama 响应失败: {exc})。\n"
+                f"💡 提示: 请检查宿主机 Ollama 是否已运行并监听 0.0.0.0 (参考 README 常见网络问题)。"
+            )
 
         return "⚠️  AI 解读服务未返回有效内容。"
 
