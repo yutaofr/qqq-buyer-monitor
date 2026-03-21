@@ -166,6 +166,8 @@ def print_signal(
     print(div_row("liquidity_divergence", "流动性底背离"))
     print(div_row("bond_vol_spike", "债市恐慌见顶"))
     print(div_row("growth_rotation", "板块轮动红利"))
+    print(div_row("mean_reversion_regime", "均值回归红利 (v6)"))
+    print(div_row("short_squeeze_potential", "空头挤压预警 (v5/v6)"))
     print(f"{c(_GREEN)}║{r}  背离红利总得分: {c(_GREEN)}+{div_b}{r}")
     
     # 3. Concentration Risk
@@ -207,6 +209,12 @@ def print_signal(
         pw_flag += f" (下档次级支撑: ${t2.next_put_wall:.0f}，距离 {npw_dist})"
         
     print(f"{c(_CYAN)}║{r}  Put Wall: {pw_str}  │ 距离 {pw_dist}  → {pw_flag}")
+
+    # v6.0 Volume POC
+    if t2.poc is not None:
+        poc_dist = abs(result.price - t2.poc) / result.price
+        poc_status = "✓ [密集支撑]" if poc_dist <= 0.02 else "---"
+        print(f"{c(_CYAN)}║{r}  Volume POC: ${t2.poc:.2f}  │ 偏离 {poc_dist*100:.1f}%  → {poc_status}")
 
     cw_str = f"${t2.call_wall:.0f}" if t2.call_wall else "N/A"
     cw_dist = f"{t2.call_wall_distance_pct*100:.1f}%" if t2.call_wall_distance_pct is not None else "---"
