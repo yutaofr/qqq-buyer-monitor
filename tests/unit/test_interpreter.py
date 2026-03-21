@@ -92,3 +92,32 @@ def test_explain_signal_all_fail(mock_signal_result, mock_market_data):
     report = interpreter.explain_signal(mock_signal_result, mock_market_data)
     
     assert "暂不可用" in report
+
+def test_explain_signal_strips_thinking_tags(mock_signal_result, mock_market_data):
+    mock_gemini = MagicMock()
+    # Response includes <think> tags which should be removed
+    mock_gemini.models.generate_content.return_value.text = "<think>Thinking hard...</think>Final recommendation."
+    
+    interpreter = AIInterpreter(gemini_client=mock_gemini)
+    report = interpreter.explain_signal(mock_signal_result, mock_market_data)
+    
+    assert "Final recommendation." in report
+    assert "Thinking hard..." not in report
+    assert "<think>" not in report
+
+def test_explain_signal_ollama_strips_thinking_tags(mock_signal_result, mock_market_data):
+    # Gemini fails
+    mock_gemini = MagicMock()
+    mock_gemini.models.generate_content.side_effect = Exception("Fail")
+    
+    # Ollama response includes <think> tags
+    mock_ollama = MagicMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = "<think>Ollama is thinking...</think>Local recommendation."
+    mock_ollama.chat.completions.create.return_value.choices = [mock_choice]
+    
+    interpreter = AIInterpreter(gemini_client=mock_gemini, ollama_client=mock_ollama)
+    report = interpreter.explain_signal(mock_signal_result, mock_market_data)
+    
+    assert "Local recommendation." in report
+    assert "Ollama is thinking..." not in report

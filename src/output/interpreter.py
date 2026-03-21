@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import TYPE_CHECKING, Any
 
 from google import genai
@@ -65,7 +66,8 @@ class AIInterpreter:
                     contents=[EXPERT_INTERPRETER_PROMPT, user_prompt]
                 )
                 if response and response.text:
-                    return f"{response.text}\n\n*(解读由 Gemini 提供)*"
+                    cleaned = self._clean_response(response.text)
+                    return f"{cleaned}\n\n*(解读由 Gemini 提供)*"
             except Exception as exc:
                 logger.warning("Gemini Cloud failed, attempting Ollama fallback: %s", exc)
 
@@ -81,11 +83,18 @@ class AIInterpreter:
                     timeout=10.0 # Don't hang CLI forever
                 )
                 if response.choices and response.choices[0].message.content:
-                    return f"{response.choices[0].message.content}\n\n*(解读由本地模型 {self.ollama_model} 提供)*"
+                    cleaned = self._clean_response(response.choices[0].message.content)
+                    return f"{cleaned}\n\n*(解读由本地模型 {self.ollama_model} 提供)*"
             except Exception as exc:
                 logger.error("Ollama Local fallback also failed: %s", exc)
 
         return "⚠️  AI 解读服务暂不可用 (Gemini 配额用尽且本地 Ollama 未响应)。"
+
+    def _clean_response(self, text: str) -> str:
+        """Strip <think>...</think> tags and other LLM artifacts."""
+        # Remove thinking tags and their content
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+        return text.strip()
 
     def _prepare_summary(self, result: SignalResult, market_data: MarketData) -> dict[str, Any]:
         """Extract key metrics into a flat structure for the LLM."""
