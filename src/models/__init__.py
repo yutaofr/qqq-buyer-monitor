@@ -162,6 +162,7 @@ class Tier2Result:
     next_put_wall: Optional[float] = None
     next_put_wall_distance_pct: Optional[float] = None
     overlay: OptionsOverlay = field(default_factory=OptionsOverlay)
+    poc: Optional[float] = None  # v6.0 Volume POC price level
 
 
 @dataclass

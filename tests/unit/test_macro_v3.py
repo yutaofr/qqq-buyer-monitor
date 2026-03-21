@@ -13,6 +13,7 @@ def test_fetch_real_yield_empty_df():
     mock_df = pd.DataFrame()
     
     with patch("src.collector.macro_v3.fetch_fred_data", return_value=mock_df), \
+         patch("src.collector.macro_v3.fetch_treasury_yields", return_value={"10Y": None, "3M": None}), \
          patch("src.collector.macro_v3.yf.Ticker") as mock_ticker:
         mock_ticker.return_value.history.return_value = pd.DataFrame()
         ry = fetch_real_yield()
@@ -22,6 +23,7 @@ def test_fetch_real_yield_no_valid_data():
     mock_df = pd.DataFrame({"DFII10": [None, float("nan")]})
     
     with patch("src.collector.macro_v3.fetch_fred_data", return_value=mock_df), \
+         patch("src.collector.macro_v3.fetch_treasury_yields", return_value={"10Y": None, "3M": None}), \
          patch("src.collector.macro_v3.yf.Ticker") as mock_ticker:
         mock_ticker.return_value.history.return_value = pd.DataFrame()
         ry = fetch_real_yield()
@@ -29,6 +31,7 @@ def test_fetch_real_yield_no_valid_data():
 
 def test_fetch_real_yield_exception():
     with patch("src.collector.macro_v3.fetch_fred_data", side_effect=Exception("Network Error")), \
+         patch("src.collector.macro_v3.fetch_treasury_yields", side_effect=Exception("Network Error")), \
          patch("src.collector.macro_v3.yf.Ticker", side_effect=Exception("Network Error")):
         ry = fetch_real_yield()
         assert ry is None

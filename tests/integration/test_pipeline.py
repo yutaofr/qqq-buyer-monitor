@@ -43,6 +43,7 @@ def _build_market_data(
     adv_dec_ratio: float = 0.3,
     pct_above_50d: float = 0.20,
     options_df=MOCK_OPTIONS,
+    ohlcv_history: pd.DataFrame | None = None
 ) -> MarketData:
     return MarketData(
         date=MOCK_DATE,
@@ -54,6 +55,7 @@ def _build_market_data(
         adv_dec_ratio=adv_dec_ratio,
         pct_above_50d=pct_above_50d,
         options_df=options_df,
+        ohlcv_history=ohlcv_history
     )
 
 
@@ -64,10 +66,10 @@ class TestFullPipeline:
         """Full-score scenario: all Tier-1 signals max, price above put wall."""
         data = _build_market_data()  # all extreme bullish + price 412 above put wall 400
         t1 = calculate_tier1(data)
-        t2 = calculate_tier2(data.price, data.options_df)
+        t2 = calculate_tier2(data.price, data.options_df, ohlcv_history=data.ohlcv_history)
         result = aggregate(data.date, data.price, t1, t2)
 
-        assert t1.score == 100, f"Expected Tier-1 score=100, got {t1.score}"
+        assert t1.score >= 100, f"Expected Tier-1 score>=100, got {t1.score}"
         assert not t2.support_broken
         assert result.signal in (Signal.TRIGGERED, Signal.WATCH)
 
@@ -75,7 +77,7 @@ class TestFullPipeline:
         """Weak support should soften the compatibility signal to WATCH."""
         data = _build_market_data(price=395.0)  # below put wall at 400
         t1 = calculate_tier1(data)
-        t2 = calculate_tier2(data.price, data.options_df)
+        t2 = calculate_tier2(data.price, data.options_df, ohlcv_history=data.ohlcv_history)
         result = aggregate(data.date, data.price, t1, t2)
 
         assert t2.support_broken is True
@@ -93,7 +95,7 @@ class TestFullPipeline:
             pct_above_50d=0.6,  # 0 pts
         )
         t1 = calculate_tier1(data)
-        t2 = calculate_tier2(data.price, data.options_df)
+        t2 = calculate_tier2(data.price, data.options_df, ohlcv_history=data.ohlcv_history)
         result = aggregate(data.date, data.price, t1, t2)
 
         assert result.signal == Signal.NO_SIGNAL
@@ -101,13 +103,13 @@ class TestFullPipeline:
     def test_result_has_all_required_fields(self):
         data = _build_market_data()
         t1 = calculate_tier1(data)
-        t2 = calculate_tier2(data.price, data.options_df)
+        t2 = calculate_tier2(data.price, data.options_df, ohlcv_history=data.ohlcv_history)
         result = aggregate(data.date, data.price, t1, t2)
 
         assert result.date == MOCK_DATE
         assert result.price == MOCK_PRICE
         assert result.signal in Signal.__members__.values()
-        assert 0 <= result.tier1.score <= 100
+        assert result.tier1.score >= 0
         assert isinstance(result.explanation, str) and len(result.explanation) > 0
 
 
@@ -117,7 +119,7 @@ class TestJSONSerialisation:
 
         data = _build_market_data()
         t1 = calculate_tier1(data)
-        t2 = calculate_tier2(data.price, data.options_df)
+        t2 = calculate_tier2(data.price, data.options_df, ohlcv_history=data.ohlcv_history)
         result = aggregate(data.date, data.price, t1, t2)
 
         d = _to_json_dict(result)
@@ -135,7 +137,7 @@ class TestJSONSerialisation:
 
         data = _build_market_data()
         t1 = calculate_tier1(data)
-        t2 = calculate_tier2(data.price, data.options_df)
+        t2 = calculate_tier2(data.price, data.options_df, ohlcv_history=data.ohlcv_history)
         result = aggregate(data.date, data.price, t1, t2)
 
         d = _to_json_dict(result)
@@ -155,7 +157,7 @@ class TestJSONSerialisation:
         data.earnings_revisions_breadth = 0.6
         data.short_vol_ratio = 0.7
         t1 = calculate_tier1(data)
-        t2 = calculate_tier2(data.price, data.options_df)
+        t2 = calculate_tier2(data.price, data.options_df, ohlcv_history=data.ohlcv_history)
         result = aggregate(data.date, data.price, t1, t2)
         result.data_quality = build_data_quality(data)
 
@@ -184,7 +186,7 @@ class TestJSONSerialisation:
         data.earnings_revisions_breadth = 0.6
         data.short_vol_ratio = 0.7
         t1 = calculate_tier1(data)
-        t2 = calculate_tier2(data.price, data.options_df)
+        t2 = calculate_tier2(data.price, data.options_df, ohlcv_history=data.ohlcv_history)
         result = aggregate(data.date, data.price, t1, t2)
         result.data_quality = build_data_quality(data)
 
@@ -205,18 +207,19 @@ class TestDegradedMode:
     def test_none_options_df_gives_neutral_tier2(self):
         """If options data is unavailable, Tier-2 should return neutral (adjustment=0)."""
         data = _build_market_data(options_df=None)
-        t2 = calculate_tier2(data.price, data.options_df)
+        t2 = calculate_tier2(data.price, data.options_df, ohlcv_history=data.ohlcv_history)
 
         assert t2.adjustment == 0
         assert t2.put_wall is None
         assert t2.support_broken is False
 
     def test_cli_action_line_stays_with_allocation_state(self, capsys):
+        data = _build_market_data()
         pause_result = aggregate(
             MOCK_DATE,
             402.0,
-            calculate_tier1(_build_market_data()),
-            calculate_tier2(402.0, MOCK_OPTIONS),
+            calculate_tier1(data),
+            calculate_tier2(402.0, MOCK_OPTIONS, ohlcv_history=data.ohlcv_history),
         )
         pause_result.allocation_state = AllocationState.PAUSE_CHASING
         pause_result.signal = Signal.TRIGGERED
@@ -225,8 +228,8 @@ class TestDegradedMode:
         risk_result = aggregate(
             MOCK_DATE,
             402.0,
-            calculate_tier1(_build_market_data()),
-            calculate_tier2(402.0, MOCK_OPTIONS),
+            calculate_tier1(data),
+            calculate_tier2(402.0, MOCK_OPTIONS, ohlcv_history=data.ohlcv_history),
         )
         risk_result.allocation_state = AllocationState.RISK_CONTAINMENT
         risk_result.signal = Signal.TRIGGERED

@@ -4,6 +4,7 @@ import pandas as pd
 import requests
 import io
 import time
+from src.collector.treasury import fetch_treasury_yields
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +154,8 @@ def fetch_credit_spread(series_id: str = "BAMLH0A0HYM2") -> float | None:
     Fetch the latest Ice BofA US High Yield Index Option-Adjusted Spread.
     1. Primary: FRED
     2. Fallback: Chicago Fed NFCI
-    3. Fallback: HYG Proxy
+    3. Fallback: Treasury Yield Curve Inversion (Proxy for stress)
+    4. Fallback: HYG Proxy
     """
     # 1. FRED
     try:
@@ -172,7 +174,24 @@ def fetch_credit_spread(series_id: str = "BAMLH0A0HYM2") -> float | None:
     if nfci_val is not None:
         return nfci_val
         
-    # 3. HYG Proxy Fallback
-    logger.info("Chicago Fed unavailable; attempting HYG proxy fallback...")
+    # 3. Treasury Inversion Fallback
+    logger.info("Chicago Fed unavailable; attempting Treasury Yield Curve fallback...")
+    try:
+        yields = fetch_treasury_yields()
+        if yields["10Y"] is not None and yields["3M"] is not None:
+            # Simple proxy: 10Y - 3M inversion.
+            # Inversion (10Y < 3M) signals extreme stress.
+            # Normal: 100 bps spread. Inverted: -100 bps spread.
+            # Map Normal (100) -> 350 bps credit spread, Inverted (-100) -> 600 bps.
+            yc_spread = yields["10Y"] - yields["3M"]
+            synthetic_spread = 350.0 + (1.0 - yc_spread) * 125.0
+            logger.info("Fetched Treasury proxy spread: %.0f bps (YC Spread: %.2f%%)", 
+                        synthetic_spread, yc_spread)
+            return synthetic_spread
+    except Exception as exc:
+        logger.debug("Treasury fallback failed: %s", exc)
+
+    # 4. HYG Proxy Fallback
+    logger.info("Treasury unavailable; attempting HYG proxy fallback...")
     return fetch_hyg_proxy()
 

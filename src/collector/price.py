@@ -28,8 +28,9 @@ def fetch_price_data(ticker: str = "QQQ", as_of: date | None = None) -> dict:
     target_date = as_of or date.today()
     query_end = target_date + timedelta(days=1)
     
-    # Need 260 trading days of history to compute MA200 reliably
-    start = target_date - timedelta(days=400)
+    # Need at least 2 years of history for v6.0 indicators (POC, Variance Ratio, Z-Scores)
+    # 2 years = ~500 trading days
+    start = target_date - timedelta(days=735)
 
     ticker_obj = yf.Ticker(ticker)
     hist = ticker_obj.history(start=start.isoformat(), end=query_end.isoformat())

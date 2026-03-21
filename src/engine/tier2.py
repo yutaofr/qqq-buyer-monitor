@@ -22,20 +22,29 @@ SUPPORT_ZONE_PCT = 0.03   # put wall is "confirmed" if price is within 3% above
 UPSIDE_MIN_PCT = 0.05     # call wall gives "open upside" if >= 5% above price
 BUFFER_PCT = 0.005        # 0.5% buffer zone to prevent signal flickering near walls
 
+from src.utils.stats import calculate_volume_poc
+
 # Scoring table
 SCORE_SUPPORT_CONFIRMED = 15
 SCORE_SUPPORT_BROKEN = -30
 SCORE_UPSIDE_OPEN = 10
 SCORE_GAMMA_POSITIVE = 5
 SCORE_NEGATIVE_GAMMA_BROKEN = -10  # extra penalty: negative gamma AND support broken
-def calculate_tier2(price: float, options_df: pd.DataFrame | None) -> Tier2Result:
+SCORE_POC_SUPPORT = 10             # v6.0 POC support bonus
+
+def calculate_tier2(
+    price: float, 
+    options_df: pd.DataFrame | None,
+    ohlcv_history: pd.DataFrame | None = None
+) -> Tier2Result:
     """
     Calculate Tier-2 options wall score by fetching walls from options_df and
     evaluating rules.
     """
     if options_df is None or options_df.empty:
         logger.warning("Options data fetch failed or empty; returning neutral results.")
-        return _neutral_result()
+        # Even if options fail, we might still have POC from history
+        return _evaluate_poc_only(price, ohlcv_history)
 
     gamma_source = _dominant_gamma_source(options_df)
     put_wall = _find_wall(options_df, "put")
@@ -45,7 +54,8 @@ def calculate_tier2(price: float, options_df: pd.DataFrame | None) -> Tier2Resul
     result = evaluate_tier2_rules(
         price, put_wall, call_wall, gamma_flip, 
         options_df=options_df, 
-        gamma_source=gamma_source
+        gamma_source=gamma_source,
+        ohlcv_history=ohlcv_history
     )
     return result
 
@@ -56,7 +66,8 @@ def evaluate_tier2_rules(
     call_wall: float | None,
     gamma_flip: float | None,
     options_df: pd.DataFrame | None = None,
-    gamma_source: str = "unknown"
+    gamma_source: str = "unknown",
+    ohlcv_history: pd.DataFrame | None = None
 ) -> Tier2Result:
     """
     Unified decision engine for Tier-2 rules. 
@@ -118,6 +129,20 @@ def evaluate_tier2_rules(
     if not gamma_positive and support_broken:
         adjustment += SCORE_NEGATIVE_GAMMA_BROKEN
 
+    # v6.0 Volume POC Confirmation
+    poc_val = None
+    if ohlcv_history is not None and not ohlcv_history.empty:
+        # Use past 252 trading days for Volume Profile
+        vp_hist = ohlcv_history.tail(252)
+        poc_val = calculate_volume_poc(vp_hist)
+        if poc_val > 0:
+            dist_to_poc = abs(price - poc_val) / price
+            # POC is a confirmed support if within 2% AND support not already broken
+            if dist_to_poc <= 0.02 and not support_broken:
+                logger.info("v6.0 POC SUPPORT: Price is within 2%% of Volume POC ($%.2f)", poc_val)
+                adjustment += SCORE_POC_SUPPORT
+                support_confirmed = True
+
     overlay = _build_options_overlay(
         support_confirmed=support_confirmed,
         support_broken=support_broken,
@@ -125,12 +150,14 @@ def evaluate_tier2_rules(
         gamma_positive=gamma_positive,
     )
 
-    result = Tier2Result(
+    return Tier2Result(
         adjustment=adjustment,
         put_wall=put_wall,
         call_wall=call_wall,
         gamma_flip=gamma_flip,
+        poc=poc_val,
         support_confirmed=support_confirmed,
+
         support_broken=support_broken,
         upside_open=upside_open,
         gamma_positive=gamma_positive,
@@ -257,12 +284,36 @@ def _build_options_overlay(
     )
 
 
+def _evaluate_poc_only(price: float, ohlcv_history: pd.DataFrame | None) -> Tier2Result:
+    """Fall-back to Volume POC support if options data is missing."""
+    adjustment = 0
+    support_confirmed = False
+    poc_val = None
+    
+    if ohlcv_history is not None and not ohlcv_history.empty:
+        vp_hist = ohlcv_history.tail(252)
+        poc_val = calculate_volume_poc(vp_hist)
+        if poc_val > 0:
+            dist_to_poc = abs(price - poc_val) / price
+            if dist_to_poc <= 0.02:
+                logger.info("v6.0 FALLBACK POC SUPPORT: Price within 2%% of POC ($%.2f)", poc_val)
+                adjustment += SCORE_POC_SUPPORT
+                support_confirmed = True
+                
+    result = _neutral_result()
+    result.adjustment = adjustment
+    result.support_confirmed = support_confirmed
+    result.poc = poc_val
+    return result
+
+
 def _neutral_result() -> Tier2Result:
     result = Tier2Result(
         adjustment=0,
         put_wall=None,
         call_wall=None,
         gamma_flip=None,
+        poc=None,
         support_confirmed=False,
         support_broken=False,
         upside_open=False,

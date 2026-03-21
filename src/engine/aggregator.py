@@ -322,11 +322,14 @@ def _build_explanation(
                 f"支撑结构转弱{next_wall_info}，建议降低单笔加仓规模并等待修复"
             )
         elif tier2.support_confirmed:
-            pct = (tier2.put_wall_distance_pct or 0) * 100
-            if pct < 0:
-                parts.append(f"价格正处于 Put Wall（${tier2.put_wall}）回撤缓冲区 ({pct:.1f}%)，支撑面临考验")
-            else:
-                parts.append(f"价格站在 Put Wall（${tier2.put_wall}）上方 {pct:.1f}%，支撑确认有效")
+            if tier2.put_wall is not None:
+                pct = (tier2.put_wall_distance_pct or 0) * 100
+                if pct < 0:
+                    parts.append(f"价格正处于 Put Wall（${tier2.put_wall}）回撤缓冲区 ({pct:.1f}%)，支撑面临考验")
+                else:
+                    parts.append(f"价格站在 Put Wall（${tier2.put_wall}）上方 {pct:.1f}%，支撑确认有效")
+            elif tier2.poc is not None:
+                parts.append(f"价格处于 Volume POC (${tier2.poc:.2f}) 筹码密集支撑区，结构性买盘显著")
         else:
             parts.append("当前价格距 Put Wall 较远，期权支撑结构为中性")
 
