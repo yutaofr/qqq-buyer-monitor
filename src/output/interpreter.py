@@ -3,6 +3,7 @@ AI Narrative Interpreter: Translates technical logic traces into
 plain-language investment rationales for non-professional investors.
 """
 from __future__ import annotations
+from src.models import AllocationState
 
 class NarrativeEngine:
     """Consumes logic traces and generates plain-language explanations."""
@@ -31,8 +32,15 @@ class NarrativeEngine:
         # 1. Macro Context
         regime_node = next((n for n in trace if n["step"] == "structural_regime"), None)
         if regime_node:
-            sections.append(f"1️⃣ 【大势背景】: {self.regime_map.get(regime_node['decision'], '中性环境')}")
-            sections.append(f"   - 为什么要看这个？因为‘季节’决定了操作的容错率。在干旱季节（RICH），即使短期有反弹也容易‘渴死’。")
+            regime = regime_node['decision']
+            sections.append(f"1️⃣ 【大势背景】: {self.regime_map.get(regime, '中性环境')}")
+            
+            if regime == "RICH_TIGHTENING":
+                sections.append(f"   - 为什么要看这个？因为‘季节’决定了操作的容错率。在干旱季节，即便短期有反弹也容易‘渴死’。")
+            elif regime == "CRISIS":
+                sections.append(f"   - 为什么要看这个？在危机模式下，传统的估值支撑往往会失效，‘活下去’比‘赚多少’更重要。")
+            else:
+                sections.append(f"   - 为什么要看这个？宏观环境决定了市场的‘底色’，影响我们投入资金的整体信心。")
             
         # 2. Sentiment Context
         tactical_node = next((n for n in trace if n["step"] == "tactical_state"), None)
@@ -44,11 +52,20 @@ class NarrativeEngine:
         allocation_node = next((n for n in trace if n["step"] == "allocation_policy"), None)
         if allocation_node:
             sections.append(f"🎯 【决策逻辑：为什么是这样定案的？】")
-            reason = allocation_node.get("reason", "综合判定")
-            # Translate common architectural constraints into plain language
-            if "capped" in reason or "降级" in reason or "forces" in reason:
+            
+            decision = allocation_node['decision']
+            reason = allocation_node.get("reason", "")
+            
+            # Use explicit decision-state branching instead of string heuristics
+            if decision == AllocationState.RISK_CONTAINMENT.value:
+                sections.append(f"   - 系统判定：触发【风险控制】模式。当前防御高于一切。")
+                sections.append(f"   - 理由：由于市场出现极端恐慌或宏观崩溃信号，系统强制进入保护模式以防止本金受损。")
+            elif "capped" in reason or "降级" in reason or "forces" in reason:
                 sections.append(f"   - 系统判定：虽然短期情绪有买入机会，但受限于第一步的【宏观压制】，我们必须‘减速慢行’。")
                 sections.append(f"   - 理由：在大趋势不利时，即便群众恐慌，也要防止‘接飞刀’，所以选择小幅试探而非全力进攻。")
+            elif decision == AllocationState.PAUSE_CHASING.value:
+                sections.append(f"   - 系统判定：进入【暂停追高】模式。")
+                sections.append(f"   - 理由：市场估值已进入过热区间，缺乏安全边际，此时不宜继续加仓。")
             else:
                 sections.append(f"   - 系统判定：目前的宏观与情绪共振良好，按照标准路径执行策略。")
             

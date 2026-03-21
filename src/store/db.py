@@ -273,4 +273,5 @@ def _to_json_dict(result: SignalResult) -> dict:
         "explanation": result.explanation,
         "pe_source": result.pe_source,
         "erp": _float(result.erp),
+        "logic_trace": result.logic_trace,
     }
