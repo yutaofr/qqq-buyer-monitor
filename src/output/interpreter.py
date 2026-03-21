@@ -75,6 +75,29 @@ class NarrativeEngine:
         sections.append("────────────────────────────────────────────────────────────────")
         return "\n".join(sections)
 
+    def print_decision_tree(self, trace: list[dict]):
+        """Prints a visual tree of the decision execution path."""
+        print("\n🌳 [AI 决策树执行路径 - 逻辑追踪]")
+        
+        for i, node in enumerate(trace):
+            is_last = (i == len(trace) - 1)
+            marker = "└──" if is_last else "├──"
+            
+            step_name = node["step"].replace("_", " ").upper()
+            decision = node["decision"]
+            reason = node.get("reason", "N/A")
+            
+            # Print the main node
+            print(f"{marker} [{step_name}] ──▶ {decision}")
+            
+            # Print the evidence/reason sub-node
+            indent = "    " if is_last else "│   "
+            # Clean up reason for visual clarity
+            clean_reason = reason.replace("Regime identified as ", "").replace("Tactical state identified as ", "")
+            print(f"{indent}└── 理由: {clean_reason}")
+            
+        print("────────────────────────────────────────────────────────────────")
+
     def print_narrative(self, trace: list[dict]):
         """Helper to print to console with styling."""
         output = self.generate(trace)

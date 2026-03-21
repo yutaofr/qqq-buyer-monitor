@@ -335,6 +335,7 @@ def _run(args: argparse.Namespace) -> None:
         try:
             interpreter = NarrativeEngine()
             interpreter.print_narrative(result.logic_trace)
+            interpreter.print_decision_tree(result.logic_trace)
         except Exception as exc:
             logger.warning("Narrative interpreter failed: %s", exc)
 
