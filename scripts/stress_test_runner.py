@@ -116,7 +116,7 @@ def generate_report(results):
     for name, summary in results.items():
         if not summary: continue
         report += f"### 情景：{name}\n"
-        report += f"![{name}](images/backtest_v6.2_{name.lower().replace(' ', '_').replace('-', '_')}.png)\n\n"
+        report += f"![{name}](images/backtest_v6.3_{name.lower().replace(' ', '_').replace('-', '_')}.png)\n\n"
         report += f"- **战术最大回撤 (Tactical MDD):** {summary.tactical_mdd * 100:.2f}%\n"
         report += f"- **基准最大回撤 (Baseline MDD):** {summary.baseline_mdd * 100:.2f}%\n"
         improvement = (abs(summary.baseline_mdd) - abs(summary.tactical_mdd)) * 100
@@ -183,6 +183,6 @@ if __name__ == "__main__":
         summary = run_scenario(name, params[0], params[1], params[2])
         if summary:
             results[name] = summary
-            img_file = f"docs/images/backtest_v6.2_{name.lower().replace(' ', '_').replace('-', '_')}.png"
+            img_file = f"docs/images/backtest_v6.3_{name.lower().replace(' ', '_').replace('-', '_')}.png"
             plot_stress_test(name, summary, img_file)
     generate_report(results)
