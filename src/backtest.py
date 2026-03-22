@@ -174,7 +174,7 @@ class Backtester:
             if macro_seeder:
                 macro_features = macro_seeder.get_features_for_date(dt.date())
 
-            # A. Check for Weekly Addition
+            # A. Check for Weekly Addition (Cash Flow Event)
             if dt in add_dates:
                 base_units = _state_units(state)
                 
@@ -183,9 +183,8 @@ class Backtester:
                 if state in (AllocationState.FAST_ACCUMULATE, AllocationState.SLOW_ACCUMULATE) and cash > (self.initial_capital * 0.1):
                     units_to_add += 1.0 
                 
-                # Standard addition buy QQQ first, rebalancing will fix distribution
+                # Standard addition: Buy QQQ first (funding phase)
                 cost = units_to_add * p_qqq
-                
                 if cash >= cost:
                     cash -= cost
                     units_qqq += units_to_add
@@ -203,26 +202,30 @@ class Backtester:
                 
                 if dt <= final_low_date:
                     deployed_before_low += units_to_add
-                
-                # B. Execute Rebalancing (v6.3 Strategic TAA)
-                # target = [Cash%, QQQ%, QLD%, Beta]
-                target = get_target_allocation(state)
-                current_nav = (units_qqq * p_qqq) + (units_qld * p_qld) + cash
-                
-                # Ideal State
-                target_cash = current_nav * target.target_cash_pct
-                target_qqq_val = current_nav * target.target_qqq_pct
-                target_qld_val = current_nav * target.target_qld_pct
-                
-                # T+0 Rebalance (Atomic swap)
-                cash = target_cash
-                units_qqq = target_qqq_val / p_qqq
-                units_qld = target_qld_val / p_qld
-                
-                # C. Metrics Collection
+
+            # B. Execute DAILY Rebalancing (v6.3.13 Strategic TAA calibration)
+            # This ensures AC-4 Beta Fidelity by correcting drift from leveraged assets daily.
+            target = get_target_allocation(state)
+            current_nav = (units_qqq * p_qqq) + (units_qld * p_qld) + cash
+            
+            # Ideal State
+            target_cash = current_nav * target.target_cash_pct
+            target_qqq_val = current_nav * target.target_qqq_pct
+            target_qld_val = current_nav * target.target_qld_pct
+            
+            # T+0 Rebalance (Atomic risk swap)
+            cash = target_cash
+            units_qqq = target_qqq_val / p_qqq
+            units_qld = target_qld_val / p_qld
+            
+            # C. Check for Weekly Metrics Collection
+            if dt in add_dates:
                 fwd_ret = compute_forward_returns(prices_qqq, dt)
                 mae = compute_max_adverse_excursion(prices_qqq, dt)
                 if mae is not None: mae_values.append(mae)
+                
+                # Use units_to_add from step A
+                # Note: units_to_add is only defined if dt in add_dates
                 for h, val in fwd_ret.items():
                     if val is not None:
                         horizon_numerators[h] += val * units_to_add
@@ -260,17 +263,15 @@ class Backtester:
         daily_ts = pd.DataFrame(daily_stats).set_index("date")
         
         # v6.3.11: Returns-based Realized Beta (AC-4)
-        # Beta = Cov(Rp, Rb) / Var(Rb)
-        # Rp: Tactical Daily Returns, Rb: Baseline Daily Returns
-        # We use pct_change on NAV series
+        # Beta = Cov(Rp, Rm) / Var(Rm)
+        # Rp: Tactical Daily Returns, Rm: Market (QQQ) Daily Returns
         daily_ts["tactical_ret"] = pd.Series(daily_nav, index=prices_qqq.index).pct_change().fillna(0)
-        daily_ts["baseline_ret"] = pd.Series(baseline_nav, index=prices_qqq.index).pct_change().fillna(0)
+        daily_ts["market_ret"] = prices_qqq.pct_change().fillna(0)
         
-        cov_matrix = np.cov(daily_ts["tactical_ret"], daily_ts["baseline_ret"])
-        variance_baseline = np.var(daily_ts["baseline_ret"])
+        cov_matrix = np.cov(daily_ts["tactical_ret"], daily_ts["market_ret"])
+        variance_market = np.var(daily_ts["market_ret"])
         
-        # cov_matrix[0,1] is Cov(Rp, Rb)
-        realized_beta = float(cov_matrix[0, 1] / variance_baseline) if variance_baseline > 0 else 0.0
+        realized_beta = float(cov_matrix[0, 1] / variance_market) if variance_market > 0 else 0.0
 
         # v6.3.12: Interval Beta Audit (AC-4 Fidelity)
         # 1. Identify contiguous intervals of states
@@ -286,12 +287,12 @@ class Backtester:
             s_state = AllocationState(s_state_str)
             
             s_tactical_ret = group["tactical_ret"]
-            s_baseline_ret = group["baseline_ret"]
+            s_market_ret = group["market_ret"]
             
-            s_var_baseline = np.var(s_baseline_ret)
-            if s_var_baseline > 0:
-                s_cov = np.cov(s_tactical_ret, s_baseline_ret)[0, 1]
-                s_realized_beta = float(s_cov / s_var_baseline)
+            s_var_market = np.var(s_market_ret)
+            if s_var_market > 0:
+                s_cov = np.cov(s_tactical_ret, s_market_ret)[0, 1]
+                s_realized_beta = float(s_cov / s_var_market)
                 s_target_beta = get_target_allocation(s_state).target_beta
                 
                 interval_beta_audit.append({
