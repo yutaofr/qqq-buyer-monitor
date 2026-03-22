@@ -76,14 +76,14 @@ def print_signal(
             f"{c(color)}{label}{r} | "
             f"Price: ${result.price:.2f} | "
             f"Score: {result.final_score} | "
-            f"({consecutive_days}d)"
+            f"({consecutive_days}d) [报告折叠]"
         )
         print(msg)
         return
 
     sig_color, sig_label = _SIGNAL_STYLE[result.signal]
 
-    print(f"\n{c(_BOLD)}=== QQQ BUY-SIGNAL MONITOR (v6.2) ==={r}")
+    print(f"\n{c(_BOLD)}=== QQQ BUY-SIGNAL MONITOR (v6.3) ==={r}")
     print(f"Date:      {result.date}")
     print(f"Price:     ${result.price:.2f}")
     print(f"Signal:    {c(sig_color)}{sig_label}{r} (Score: {result.final_score}/100)")
@@ -93,10 +93,16 @@ def print_signal(
     # Details summary
     print(f"Details:   单日加仓: {result.daily_tranche_pct:.0%}, 滚动上限: {result.max_total_add_pct:.1f}x, 置信度: {result.confidence}")
     
-    # v6.2 Portfolio Alignment
-    if result.target_cash_pct > 0:
-        p = result.portfolio
-        print(f"Portfolio: Cash={p.current_cash_pct:.1f}% -> Target={result.target_cash_pct:.1f}% | Lev={p.leverage_ratio:.1f}x")
+    # v6.3 Strategic Portfolio Alignment
+    p = result.current_portfolio
+    t = result.target_allocation
+    if p and (p.current_cash_pct > 0 or p.qqq_pct > 0 or p.qld_pct > 0):
+        print(f"Reality:   Cash={p.current_cash_pct*100:.1f}%, QQQ={p.qqq_pct*100:.1f}%, QLD={p.qld_pct*100:.1f}% | Exp={result.effective_exposure:.2f}x")
+        print(f"Ideal:     Cash={t.target_cash_pct*100:.1f}%, QQQ={t.target_qqq_pct*100:.1f}%, QLD={t.target_qld_pct*100:.1f}% | Beta={t.target_beta:.2f}x")
+    elif result.target_cash_pct > 0:
+        # Fallback for older records
+        old_p = result.portfolio
+        print(f"Portfolio: Cash={old_p.current_cash_pct:.1f}% -> Target={result.target_cash_pct:.1f}% | Lev={old_p.leverage_ratio:.1f}x")
 
     # Data Quality Summary (v6.2: Logic corrected to match data_quality.py structure)
     if result.data_quality:

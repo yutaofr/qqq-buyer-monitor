@@ -65,13 +65,22 @@ class TestFullPipeline:
     def test_bullish_scenario_produces_triggered(self):
         """Full-score scenario: all Tier-1 signals max, price above put wall."""
         data = _build_market_data()  # all extreme bullish + price 412 above put wall 400
+        # Add neutral macro to allow FAST_ACCUMULATE (if macro is too good it becomes EUPHORIC)
+        # NEUTRAL: credit_spread < 250, ERP < 4.0 (RICH_TIGHTENING starts below 4.0 but spread < 250 allows NEUTRAL)
+        data.credit_spread = 240.0
+        data.forward_pe = 25.0 # EY = 4.0
+        data.real_yield = 1.5  # ERP = 2.5
+        data.liquidity_roc = 0.5
+        
         t1 = calculate_tier1(data)
         t2 = calculate_tier2(data.price, data.options_df, ohlcv_history=data.ohlcv_history)
-        result = aggregate(data.date, data.price, t1, t2)
+        result = aggregate(data.date, data.price, t1, t2, credit_spread=data.credit_spread, 
+                          forward_pe=data.forward_pe, real_yield=data.real_yield, liquidity_roc=data.liquidity_roc)
 
         assert t1.score >= 100, f"Expected Tier-1 score>=100, got {t1.score}"
         assert not t2.support_broken
-        assert result.signal in (Signal.TRIGGERED, Signal.WATCH)
+        assert result.signal == Signal.TRIGGERED
+        assert result.allocation_state == AllocationState.FAST_ACCUMULATE
 
     def test_broken_support_softens_to_watch(self):
         """Weak support should soften the compatibility signal to WATCH."""

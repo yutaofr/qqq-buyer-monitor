@@ -90,6 +90,36 @@ def save_signal(result: SignalResult, path: str = DEFAULT_DB_PATH) -> None:
     logger.debug("Saved signal for %s: %s", result.date, result.signal.value)
 
 
+def _migrate_blob(blob: dict) -> dict:
+    """Lazy migration for historical JSON blobs to ensure v6.3 compatibility."""
+    # Ensure current_portfolio exists
+    if "current_portfolio" not in blob:
+        old_p = blob.get("portfolio", {})
+        blob["current_portfolio"] = {
+            "current_cash_pct": old_p.get("current_cash_pct", 1.0),
+            "qqq_pct": 0.0,
+            "qld_pct": 0.0
+        }
+    
+    # Ensure target_allocation exists
+    if "target_allocation" not in blob:
+        blob["target_allocation"] = {
+            "target_cash_pct": blob.get("target_cash_pct", 0.1),
+            "target_qqq_pct": 0.9,
+            "target_qld_pct": 0.0,
+            "target_beta": 0.9
+        }
+    
+    if "effective_exposure" not in blob:
+        p = blob["current_portfolio"]
+        blob["effective_exposure"] = p["qqq_pct"] + 2.0 * p["qld_pct"]
+    
+    if "interval_beta_audit" not in blob:
+        blob["interval_beta_audit"] = []
+        
+    return blob
+
+
 def load_history(n: int = 30, path: str = DEFAULT_DB_PATH) -> list[dict]:
     """Return the most recent n signal records as raw dicts."""
     if not Path(path).exists():
@@ -99,7 +129,7 @@ def load_history(n: int = 30, path: str = DEFAULT_DB_PATH) -> list[dict]:
         "SELECT json_blob FROM signals ORDER BY date DESC LIMIT ?", (n,)
     ).fetchall()
     conn.close()
-    return [json.loads(row[0]) for row in rows]
+    return [_migrate_blob(json.loads(row[0])) for row in rows]
 
 
 def get_historical_series(days: int = 60, path: str = DEFAULT_DB_PATH) -> pd.DataFrame | None:
@@ -274,8 +304,21 @@ def _to_json_dict(result: SignalResult) -> dict:
         "pe_source": result.pe_source,
         "erp": _float(result.erp),
         "logic_trace": result.logic_trace,
-        # v6.2 Portfolio & Rebalancing
-        "target_cash_pct": _float(result.target_cash_pct),
+        # v6.3 Strategic Portfolio & Rebalancing
+        "effective_exposure": _float(result.effective_exposure),
+        "interval_beta_audit": result.interval_beta_audit,
+        "target_allocation": {
+            "target_cash_pct": _float(result.target_allocation.target_cash_pct),
+            "target_qqq_pct": _float(result.target_allocation.target_qqq_pct),
+            "target_qld_pct": _float(result.target_allocation.target_qld_pct),
+            "target_beta": _float(result.target_allocation.target_beta),
+        },
+        "current_portfolio": {
+            "current_cash_pct": _float(result.current_portfolio.current_cash_pct),
+            "qqq_pct": _float(result.current_portfolio.qqq_pct),
+            "qld_pct": _float(result.current_portfolio.qld_pct),
+        },
+        # Deprecated v6.2 fields
         "portfolio": {
             "current_cash_pct": _float(result.portfolio.current_cash_pct),
             "leverage_ratio": _float(result.portfolio.leverage_ratio),
