@@ -60,14 +60,21 @@ class NarrativeEngine:
             if decision == AllocationState.RISK_CONTAINMENT.value:
                 sections.append(f"   - 系统判定：触发【风险控制】模式。当前防御高于一切。")
                 sections.append(f"   - 理由：由于市场出现极端恐慌或宏观崩溃信号，系统强制进入保护模式以防止本金受损。")
-            elif "capped" in reason or "降级" in reason or "forces" in reason:
-                sections.append(f"   - 系统判定：虽然短期情绪有买入机会，但受限于第一步的【宏观压制】，我们必须‘减速慢行’。")
-                sections.append(f"   - 理由：在大趋势不利时，即便群众恐慌，也要防止‘接飞刀’，所以选择小幅试探而非全力进攻。")
             elif decision == AllocationState.PAUSE_CHASING.value:
                 sections.append(f"   - 系统判定：进入【暂停追高】模式。")
                 sections.append(f"   - 理由：市场估值已进入过热区间，缺乏安全边际，此时不宜继续加仓。")
+            elif decision == AllocationState.SLOW_ACCUMULATE.value:
+                if "capped" in reason or "降级" in reason or "forces" in reason:
+                    sections.append(f"   - 系统判定：虽有买入信号，但受【宏观环境压制】，必须‘减速慢行’。")
+                    sections.append(f"   - 理由：在大趋势不利时，需防止‘接飞刀’，故选择小幅试探。")
+                else:
+                    sections.append(f"   - 系统判定：进入【小幅试探】模式。")
+                    sections.append(f"   - 理由：市场开始释放机会，但尚未达到全力进攻的条件，保持耐心分批入场。")
+            elif decision == AllocationState.FAST_ACCUMULATE.value:
+                sections.append(f"   - 系统判定：开启【快速加仓】模式！")
+                sections.append(f"   - 理由：宏观气候与战术情绪产生共振，市场正处于高性价比的‘黄金坑’。")
             else:
-                sections.append(f"   - 系统判定：目前的宏观与情绪共振良好，按照标准路径执行策略。")
+                sections.append(f"   - 系统判定：目前的宏观与情绪处于平衡态，执行【标准定投】策略。")
             
             sections.append(f"   - 详细路径：{reason}")
 
