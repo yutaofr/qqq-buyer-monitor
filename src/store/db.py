@@ -113,6 +113,9 @@ def _migrate_blob(blob: dict) -> dict:
     if "effective_exposure" not in blob:
         p = blob["current_portfolio"]
         blob["effective_exposure"] = p["qqq_pct"] + 2.0 * p["qld_pct"]
+    
+    if "interval_beta_audit" not in blob:
+        blob["interval_beta_audit"] = []
         
     return blob
 
@@ -303,6 +306,7 @@ def _to_json_dict(result: SignalResult) -> dict:
         "logic_trace": result.logic_trace,
         # v6.3 Strategic Portfolio & Rebalancing
         "effective_exposure": _float(result.effective_exposure),
+        "interval_beta_audit": result.interval_beta_audit,
         "target_allocation": {
             "target_cash_pct": _float(result.target_allocation.target_cash_pct),
             "target_qqq_pct": _float(result.target_allocation.target_qqq_pct),

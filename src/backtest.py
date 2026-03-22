@@ -77,8 +77,9 @@ class BacktestMethodologySummary:
     baseline_mdd: float = 0.0
     # v6.3.11: Returns-based Realized Beta (AC-4)
     realized_beta: float = 0.0
-    # v6.3.12: Per-state Beta Audit (AC-4 Fidelity)
-    state_beta_audit: dict[AllocationState, dict[str, float]] = field(default_factory=dict)
+    # v6.3.12: Interval Beta Audit (AC-4 Fidelity)
+    # List of {state, start, end, realized, target, deviation}
+    interval_beta_audit: list[dict[str, Any]] = field(default_factory=list)
     # v6.2 Visualization Support
     daily_timeseries: Optional[pd.DataFrame] = None
     excluded_features: tuple[str, ...] = EXCLUDED_HISTORICAL_FEATURES
@@ -270,26 +271,36 @@ class Backtester:
         # cov_matrix[0,1] is Cov(Rp, Rb)
         realized_beta = float(cov_matrix[0, 1] / variance_baseline) if variance_baseline > 0 else 0.0
 
-        # v6.3.12: Per-state Beta Audit (AC-4 Fidelity)
-        state_beta_audit = {}
-        for s in AllocationState:
-            state_mask = (daily_ts["state"] == s.value)
-            if state_mask.sum() < 5: # Need enough points for meaningful beta
+        # v6.3.12: Interval Beta Audit (AC-4 Fidelity)
+        # 1. Identify contiguous intervals of states
+        daily_ts["state_change"] = (daily_ts["state"] != daily_ts["state"].shift(1))
+        daily_ts["interval_id"] = daily_ts["state_change"].cumsum()
+        
+        interval_beta_audit = []
+        for interval_id, group in daily_ts.groupby("interval_id"):
+            if len(group) < 5: # Need enough points for meaningful beta per AC-4 effective interval
                 continue
             
-            s_tactical_ret = daily_ts.loc[state_mask, "tactical_ret"]
-            s_baseline_ret = daily_ts.loc[state_mask, "baseline_ret"]
+            s_state_str = group["state"].iloc[0]
+            s_state = AllocationState(s_state_str)
+            
+            s_tactical_ret = group["tactical_ret"]
+            s_baseline_ret = group["baseline_ret"]
             
             s_var_baseline = np.var(s_baseline_ret)
             if s_var_baseline > 0:
                 s_cov = np.cov(s_tactical_ret, s_baseline_ret)[0, 1]
                 s_realized_beta = float(s_cov / s_var_baseline)
-                s_target_beta = get_target_allocation(s).target_beta
-                state_beta_audit[s] = {
+                s_target_beta = get_target_allocation(s_state).target_beta
+                
+                interval_beta_audit.append({
+                    "state": s_state_str,
+                    "start_date": group.index[0].isoformat(),
+                    "end_date": group.index[-1].isoformat(),
                     "realized": s_realized_beta,
                     "target": s_target_beta,
                     "deviation": abs(s_realized_beta - s_target_beta)
-                }
+                })
 
         # 4. Final Summary
         tactical_avg_cost = tactical_cost_num / total_tactical_units if total_tactical_units else 0
@@ -311,7 +322,7 @@ class Backtester:
             tactical_mdd=tactical_mdd,
             baseline_mdd=baseline_mdd,
             realized_beta=realized_beta,
-            state_beta_audit=state_beta_audit,
+            interval_beta_audit=interval_beta_audit,
             daily_timeseries=daily_ts
         )
 
@@ -514,10 +525,11 @@ def run_backtest() -> None:
     print(f"MDD Improvement: {_format_pct(mdd_improve)}")
     print(f"Realized Beta (Full Sample): {summary.realized_beta:.2f}")
     
-    if summary.state_beta_audit:
-        print("\n--- AC-4 Beta Fidelity Audit (Per Regime) ---")
-        for s, metrics in summary.state_beta_audit.items():
-            print(f"  - {s.name:15}: Realized={metrics['realized']:.2f}, Target={metrics['target']:.2f}, Dev={metrics['deviation']:.2f}")
+    if summary.interval_beta_audit:
+        print("\n--- AC-4 Beta Fidelity Audit (Effective Intervals) ---")
+        # Show only top 10 most recent/relevant intervals for brevity
+        for metrics in summary.interval_beta_audit[-10:]:
+            print(f"  - {metrics['state']:15} ({metrics['start_date']} to {metrics['end_date']}): Realized={metrics['realized']:.2f}, Target={metrics['target']:.2f}, Dev={metrics['deviation']:.2f}")
     
     print("-" * 40)
     print("Forward returns: " + ", ".join(f"T+{h}={_format_pct(summary.forward_returns_by_horizon[h])}" for h in FWD_HORIZONS))

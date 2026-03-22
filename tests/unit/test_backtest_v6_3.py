@@ -55,12 +55,13 @@ def test_backtest_v6_3_multi_asset_nav_and_rebalancing():
         
         # v6.3.12: AC-4 Beta Fidelity Regression
         assert summary.realized_beta > 0.0
-        assert AllocationState.FAST_ACCUMULATE in summary.state_beta_audit
-        fast_audit = summary.state_beta_audit[AllocationState.FAST_ACCUMULATE]
-        assert fast_audit["target"] == 1.10
+        assert len(summary.interval_beta_audit) > 0
+        first_interval = summary.interval_beta_audit[0]
+        assert first_interval["state"] == "FAST_ACCUMULATE"
+        assert first_interval["target"] == 1.10
         # 验证偏差字段存在
-        assert "deviation" in fast_audit
-        assert fast_audit["realized"] > 0
+        assert "deviation" in first_interval
+        assert first_interval["realized"] > 0
         
         # MDD Improvement Regression
         # Verify improvement logic: abs(baseline) - abs(tactical)

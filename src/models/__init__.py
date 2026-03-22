@@ -267,6 +267,7 @@ class SignalResult:
     current_portfolio: CurrentPortfolioState = field(default_factory=CurrentPortfolioState)
     target_allocation: TargetAllocationState = field(default_factory=TargetAllocationState)
     effective_exposure: float = 0.0
+    interval_beta_audit: list[dict] = field(default_factory=list)
     
     # Deprecated fields (kept for db migration bridge)
     @property
