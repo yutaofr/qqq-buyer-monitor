@@ -75,6 +75,8 @@ class BacktestMethodologySummary:
     # v6.2 Performance KPIs
     tactical_mdd: float = 0.0
     baseline_mdd: float = 0.0
+    # v6.3.11: Returns-based Realized Beta (AC-4)
+    realized_beta: float = 0.0
     # v6.2 Visualization Support
     daily_timeseries: Optional[pd.DataFrame] = None
     excluded_features: tuple[str, ...] = EXCLUDED_HISTORICAL_FEATURES
@@ -248,11 +250,24 @@ class Backtester:
                 "state": state.value
             })
 
-        # 3. Compute MDDs
+        # 3. Compute Performance KPIs
         tactical_mdd = self._calculate_mdd(daily_nav)
         baseline_mdd = self._calculate_mdd(baseline_nav)
         daily_ts = pd.DataFrame(daily_stats).set_index("date")
         
+        # v6.3.11: Returns-based Realized Beta (AC-4)
+        # Beta = Cov(Rp, Rb) / Var(Rb)
+        # Rp: Tactical Daily Returns, Rb: Baseline Daily Returns
+        # We use pct_change on NAV series
+        daily_ts["tactical_ret"] = pd.Series(daily_nav, index=prices_qqq.index).pct_change().fillna(0)
+        daily_ts["baseline_ret"] = pd.Series(baseline_nav, index=prices_qqq.index).pct_change().fillna(0)
+        
+        cov_matrix = np.cov(daily_ts["tactical_ret"], daily_ts["baseline_ret"])
+        variance_baseline = np.var(daily_ts["baseline_ret"])
+        
+        # cov_matrix[0,1] is Cov(Rp, Rb)
+        realized_beta = float(cov_matrix[0, 1] / variance_baseline) if variance_baseline > 0 else 0.0
+
         # 4. Final Summary
         tactical_avg_cost = tactical_cost_num / total_tactical_units if total_tactical_units else 0
         baseline_avg_cost = baseline_cost_num / len(add_dates) if add_dates else 0
@@ -272,6 +287,7 @@ class Backtester:
             total_capital_units=total_tactical_units,
             tactical_mdd=tactical_mdd,
             baseline_mdd=baseline_mdd,
+            realized_beta=realized_beta,
             daily_timeseries=daily_ts
         )
 
@@ -466,7 +482,13 @@ def run_backtest() -> None:
     print(f"Weekly add events: {len(summary.events)}")
     print(f"Tactical Max Drawdown: {_format_pct(summary.tactical_mdd)}")
     print(f"Baseline DCA Max Drawdown: {_format_pct(summary.baseline_mdd)}")
-    print(f"MDD Improvement: {_format_pct(summary.baseline_mdd - summary.tactical_mdd)}")
+    # Improvement is positive if tactical MDD is less negative than baseline MDD
+    # e.g., -50% (tactical) vs -54% (baseline) -> -0.54 - (-0.50) = -0.04 (Wait, should be +0.04)
+    # Actually baseline - tactical: -0.54 - (-0.50) = -0.04.
+    # Let's use (abs(baseline) - abs(tactical))
+    mdd_improve = abs(summary.baseline_mdd) - abs(summary.tactical_mdd)
+    print(f"MDD Improvement: {_format_pct(mdd_improve)}")
+    print(f"Realized Beta (Returns-based): {summary.realized_beta:.2f}")
     print("-" * 40)
     print("Forward returns: " + ", ".join(f"T+{h}={_format_pct(summary.forward_returns_by_horizon[h])}" for h in FWD_HORIZONS))
     print(f"Max adverse excursion after add: {_format_pct(summary.max_adverse_excursion)}")
