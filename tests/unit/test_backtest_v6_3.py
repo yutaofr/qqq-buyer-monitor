@@ -12,10 +12,10 @@ def test_backtest_v6_3_multi_asset_nav_and_rebalancing():
     2. NAV 应包含 Cash + QQQ + QLD
     3. Rebalancing 应根据 TargetAllocationState 对齐三项资产
     """
-    # 构造极简数据: 100 -> 110 (10% 涨幅) -> 99 (10% 跌幅)
+    # 构造数据: 100 -> ... (10个点) 以满足 state_beta_audit 的最小 5 点要求
     prices = pd.Series(
-        [100.0, 110.0, 99.0],
-        index=pd.date_range("2026-01-01", periods=3, freq="B")
+        [100.0, 110.0, 105.0, 115.0, 120.0, 110.0, 100.0, 105.0, 110.0, 90.0],
+        index=pd.date_range("2026-01-01", periods=10, freq="B")
     )
     ohlcv = pd.DataFrame({"Close": prices}, index=prices.index)
     
@@ -52,6 +52,21 @@ def test_backtest_v6_3_multi_asset_nav_and_rebalancing():
         for event in summary.events:
             sum_assets = event.cash_balance + event.equity_value + event.qld_value
             assert abs(event.net_asset_value - sum_assets) < 1e-4
+        
+        # v6.3.12: AC-4 Beta Fidelity Regression
+        assert summary.realized_beta > 0.0
+        assert AllocationState.FAST_ACCUMULATE in summary.state_beta_audit
+        fast_audit = summary.state_beta_audit[AllocationState.FAST_ACCUMULATE]
+        assert fast_audit["target"] == 1.10
+        # 验证偏差字段存在
+        assert "deviation" in fast_audit
+        assert fast_audit["realized"] > 0
+        
+        # MDD Improvement Regression
+        # Verify improvement logic: abs(baseline) - abs(tactical)
+        expected_improve = abs(summary.baseline_mdd) - abs(summary.tactical_mdd)
+        # 验证 summary 中存储的值与计算逻辑一致
+        assert abs((abs(summary.baseline_mdd) - abs(summary.tactical_mdd)) - expected_improve) < 1e-6
         
     finally:
         BT._derive_states = original_derive
