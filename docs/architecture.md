@@ -10,96 +10,64 @@ The system follows a **Functional Pipeline (Monadic)** architecture, where state
 
 | Component | Responsibility |
 | :--- | :--- |
-| **Collector Layer** (`src/collector/`) | Fetching raw data from `yfinance`, `FRED`, and `CNN`. Handles retries and basic parsing. |
-| **Model Layer** (`src/models/`) | Defines the "Data Contract" between collectors and engines (`MarketData`, `SignalResult`). |
-| **Engine Layer** (`src/engine/`) | The core logic. Now implemented as a **Decision State Monad** in `aggregator.py`. |
-| **Interpreter Layer** (`src/output/interpreter.py`) | Consumes `logic_trace` to generate human rationales and visual decision trees. |
-| **Store Layer** (`src/store/`) | Persistence using SQLite. Now serializes `logic_trace` for auditability. |
-| **Output Layer** (`src/output/`) | Formatting results for CLI (Human) or JSON (Machine/API). |
+| **Collector Layer** (`src/collector/`) | Fetching raw data from `yfinance`, `FRED`, and `CNN`. Handles retries and SSoT (WDTGAL priority). |
+| **Model Layer** (`src/models/`) | Defines the "Data Contract" including the new `PortfolioState` (Balance Sheet awareness). |
+| **Engine Layer** (`src/engine/`) | The core logic. Implements the **Defensive Bypass Manager** and **Portfolio Alignment**. |
+| **Interpreter Layer** (`src/output/interpreter.py`) | Consumes `logic_trace` and enforces **Narrative Guardrails** (Filtering bullish bias). |
+| **Store Layer** (`src/store/`) | Persistence using SQLite. Serializes `logic_trace` and `PortfolioState`. |
+| **Backtest Layer** (`src/backtest.py`) | Institutional simulator with **Macro Injection** and **NAV Tracking**. |
 
 ---
 
 ## 2. Data Flow & Execution Sequence (v6.2 Monadic Pipeline)
 
+The v6.2 pipeline introduces a **High-Priority Defensive Bypass** that checks for macro resonance before executing tactical logic.
+
 ```mermaid
 graph TD
-    A[Initialize DecisionContext] --> B[_step_structural_regime]
-    B --> C[_step_tactical_state]
-    C --> D[_step_allocation_policy]
-    D --> E[_step_overlay_refinement]
-    E --> F[_step_finalize]
-    F --> G[SignalResult with logic_trace]
-    G --> H[NarrativeEngine]
-    G --> I[SQLite Persistence]
+    A[Initialize DecisionContext] --> B[_step_defensive_bypass]
+    B --> C[_step_structural_regime]
+    C --> D[_step_tactical_state]
+    D --> E[_step_allocation_policy]
+    E --> F[_step_portfolio_alignment]
+    F --> G[_step_overlay_refinement]
+    G --> H[_step_finalize]
+    H --> I[SignalResult with PortfolioState]
 ```
 
 ---
 
-## 3. Decision State Monad (DSM)
+## 3. Triple Confirmation Defense Ladder (Tier 0 Override)
 
-### 3.1 The Monadic Container: `DecisionContext`
-Every decision step accepts a `DecisionContext` and returns a new one with updated state and an appended `trace` node. This ensures immutability and full auditability of the execution path.
+To prevent "catching falling knives" during credit crunches, the system implements a prioritized bypass:
 
-### 3.2 Logic Trace Schema
-Each node in the `logic_trace` list follows this structure:
-- `step`: The name of the pipeline stage.
-- `decision`: The categorical output of that stage (e.g., `RICH_TIGHTENING`).
-- `reason`: A technical description of why the decision was made.
-- `evidence`: A dictionary of the raw values used in the decision.
+1.  **L1 (WATCH_DEFENSE):** Triggered by Credit Acceleration > 15%. Restricts leverage to 1.0.
+2.  **L2 (DELEVERAGE):** Triggered by Credit + Liquidity (ROC < -2%) resonance. Targets 30% Cash.
+3.  **L3 (CASH_FLIGHT):** Triggered by Credit + Liquidity + Funding Stress. Targets 50% Cash, Tranche=0.
 
 ---
 
-## 4. Persistent Logic Trace
+## 4. Decision State Monad (DSM)
 
-Unlike previous versions where internal logic was lost after execution, v6.2 serializes the entire `logic_trace` into the `json_blob` column of the `signals` table. This allows for historical "Logic Audits" to verify if architectural constraints were respected during past market events.
+### 4.1 The Monadic Container: `DecisionContext`
+Every decision step accepts a `DecisionContext` and returns a new one. In v6.2, the context also carries `current_cash_pct` and `credit_accel`.
 
----
-
-## 3. Data Contracts
-
-### 3.1 MarketData (Input Model)
-The canonical object passed to all engine functions.
-- **Identifiers**: `date`, `price`.
-- **Tier 1 Alpha**: `vix`, `fear_greed`, `adv_dec_ratio`, `ma200`, `high_52w`.
-- **v5.0 Meta**: `vix_zscore`, `drawdown_zscore`, `days_since_52w_high`.
-- **Macro/Flow**: `credit_spread`, `forward_pe`, `net_liquidity`, `short_vol_ratio`.
-
-### 3.2 SignalResult (Output Model)
-The immutable record of a single execution.
-- **Signal**: Enum (`STRONG_BUY`, `TRIGGERED`, `WATCH`, `GREEDY`, `NO_SIGNAL`).
-- **Final Score**: Aggregated Tier-1 score + Tier-2 adjustment.
-- **Explanation**: Contextual Chinese-language explanation of why the signal was generated.
-- **Nested Results**: Includes full `Tier1Result` and `Tier2Result` for auditability.
+### 4.2 Portfolio Alignment Logic
+The `_step_portfolio_alignment` compares the `current_cash_pct` against the `target_cash_pct` derived from the defensive state. If a gap exists, it generates a `[REBALANCE ACTION]` in the output narrative.
 
 ---
 
-## 4. Persistence Schema
+## 5. Persistence & Auditability
 
-### 4.1 `signals` Table
-Stores the historical result of every run.
-- `date`: TEXT PRIMARY KEY (ISO format).
-- `signal`: TEXT (The enum value).
-- `final_score`: INTEGER.
-- `json_blob`: TEXT (The full `SignalResult` serialized as JSON).
+### 5.1 Logic Trace Audit
+The entire `logic_trace` is serialized. This allows post-mortem analysis of why a specific rebalance was triggered (e.g., "Step: defensive_bypass, Evidence: {accel: 18.5%, liq_roc: -2.1%}").
 
-### 4.2 `macro_states` Table
-Acts as a cache for low-frequency macro data (FRED/Analyst Revisions).
-- Allows the system to run in **Degraded Mode** if APIs fail.
+### 5.2 Portfolio Snapshots
+Historical signal records now include the `PortfolioState` at the time of execution, enabling long-term tracking of allocation drift.
 
 ---
 
-## 5. Resilience & Error Handling
+## 6. Resilience & Error Handling
 
-The system is designed for "Graceful Degradation":
-
-1.  **Source Failures**: If `yfinance` or `FRED` fails, the system uses **Neutral Defaults** (e.g., VIX=20.0, F&G=50) or **Cached Values** from the `macro_states` table.
-2.  **Options Fallback**: If the `yfinance` options chain lacks Greeks, the system employs a **Black-Scholes Fallback** to calculate Gamma and identify the Gamma Flip level.
-3.  **Hard Vetoes**: Architectural constraints ensure that even if scoring is high, a "Hard Veto" (e.g., Price < Put Wall) will strictly prevent a `TRIGGERED` signal.
-
----
-
-## 6. Adaptive Thresholding (Schmitt Trigger)
-
-To prevent signal flickering at threshold boundaries, the `Aggregator` implements a **Hysteresis** pattern:
-- **Sticky Trigger**: If the previous state was `TRIGGERED`, the threshold to stay in `TRIGGERED` is lowered by 5 points.
-- **Regime Shift**: Thresholds are dynamically adjusted based on the `Market Regime` (STORM vs QUIET) identified in Tier 1.
+1.  **SSoT Data Integrity**: Prioritizes `WDTGAL` (Daily TGA) over `WTREGEN`. Implements `ffill` resampling to handle weekend data gaps in 4-week ROC calculations.
+2.  **Narrative Guardrails**: A regex-based filter in the `NarrativeEngine` automatically substitutes bullish vocabulary (e.g., "Buy the dip") with neutral defensive terminology when in a Macro Defense regime.

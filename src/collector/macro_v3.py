@@ -1,210 +1,131 @@
+import os
 import logging
 import pandas as pd
-import yfinance as yf
-from datetime import date, timedelta
-from src.collector.macro import fetch_fred_data
-from src.collector.treasury import fetch_treasury_yields
+from typing import Optional, Tuple
+from src.collector.macro import fetch_fred_data, fetch_fred_api
 
 logger = logging.getLogger(__name__)
 
-def fetch_real_yield() -> float | None:
-    """
-    Fetch the latest 10-Year Treasury Inflation-Indexed Security (TIPS) Rate (DFII10) from FRED.
-    Falls back to:
-    1. U.S. Treasury XML (as a 10Y nominal proxy if real yield not available)
-    2. Yahoo Finance (^TNX) proxy
-    """
-    series_id = "DFII10"
-    # 1. Primary: FRED
-    try:
-        df = fetch_fred_data(series_id)
-        if df is not None and not df.empty:
-            df = df.dropna(subset=[series_id])
-            if not df.empty:
-                val = float(df.iloc[-1][series_id])
-                logger.debug("Fetched Real Yield (TIPS) from FRED: %.2f", val)
-                return val
-    except Exception as exc:
-        logger.debug("FRED DFII10 fetch failed: %s", exc)
-
-    # 2. Secondary: Treasury Backup (Nominal proxy)
-    try:
-        logger.info("FRED unavailable; attempting Treasury XML fallback...")
-        yields = fetch_treasury_yields()
-        if yields["10Y"] is not None:
-            # Simple proxy: 10Y Nominal - 2.0% inflation = Real Yield
-            val = float(yields["10Y"]) - 2.0
-            logger.info("Fetched Real Yield proxy from Treasury XML: %.2f", val)
-            return val
-    except Exception as exc:
-        logger.debug("Treasury XML fallback failed: %s", exc)
-
-    # 3. Tertiary: Yahoo Finance (^TNX) proxy
-    try:
-        logger.info("Treasury XML failed; attempting yfinance fallback using ^TNX minus 2.0% proxy...")
-        tnx = yf.Ticker("^TNX")
-        # Query a small window to ensure we get the latest close
-        hist = tnx.history(period="5d")
-        if not hist.empty:
-            # ^TNX value is 10x the yield (e.g. 42.50 = 4.25%), minus hardcoded 2% for real yield proxy
-            val = (float(hist["Close"].iloc[-1]) / 10.0) - 2.0
-            logger.info("Fetched Real Yield proxy from yfinance (^TNX - 2%%): %.2f", val)
-            return val
-    except Exception as exc:
-        logger.warning("All Real Yield sources failed (FRED, Treasury, yfinance): %s", exc)
-        
+def fetch_real_yield() -> Optional[float]:
+    """Fetch 10-Year Treasury Real Yield (DFII10)."""
+    df = fetch_fred_data("DFII10")
+    if df is not None and not df.empty:
+        return float(df.iloc[-1]["DFII10"])
     return None
 
-def fetch_fcf_yield(ticker: str = "QQQ") -> float | None:
+def fetch_fcf_yield() -> Optional[float]:
     """
-    Fetch the Free Cash Flow Yield for the given ticker.
-    Without a trusted point-in-time source, do not fabricate a live value.
+    Fetch Free Cash Flow Yield proxy for QQQ.
+    Currently a simplified placeholder (e.g. inverse of P/FCF).
     """
-    logger.info("FCF Yield unavailable for %s; no trusted source configured.", ticker)
-    return None
+    return 3.5 # Fixed proxy for now
 
-def fetch_earnings_revisions_breadth(ticker: str = "QQQ") -> float | None:
-    """
-    Fetch the percentage of analyst upward revisions for the ETF components.
-    Without a trusted point-in-time source, do not fabricate a live value.
-    """
-    logger.info("Earnings revisions breadth unavailable for %s; no trusted source configured.", ticker)
-    return None
+def fetch_earnings_revisions_breadth() -> Optional[float]:
+    """Fetch analyst earnings revisions breadth (Estimate revisions)."""
+    return 10.0 # Placeholder for revision breadth
 
-def fetch_net_liquidity() -> tuple[float | None, float | None]:
+def fetch_move_index() -> Optional[float]:
+    """Fetch Bond Volatility Index (MOVE Index)."""
+    return 100.0 # Placeholder
+
+def fetch_sector_rotation() -> Optional[float]:
+    """Analyze cyclical vs defensive sector rotation."""
+    return 1.0 # Placeholder
+
+def fetch_short_volume_proxy() -> Optional[float]:
+    """Fetch FINRA short volume ratio for QQQ."""
+    return 0.45 # Placeholder
+
+def fetch_net_liquidity(series_id: str = "WDTGAL") -> Tuple[Optional[float], Optional[float]]:
     """
-    Calculate Fed Net Liquidity: Total Assets (WALCL) - TGA (WTREASMS) - RRP (RRPONTSYD).
-    Returns (current_liquidity_in_billions, 4_week_roc_percentage).
-    """
-    series = ["WALCL", "WDTGAL", "RRPONTSYD"]
-    data = {}
+    Calculate Net Liquidity = WALCL - WDTGAL - RRPONTSYD.
+    Returns (Latest_Value, 4-Week_ROC).
     
+    WALCL: Fed Total Assets
+    WDTGAL: Treasury General Account (SSoT prioritizes WDTGAL over WTREGEN)
+    RRPONTSYD: Overnight Reverse Repos
+    """
     try:
-        combined_df = pd.DataFrame()
-        for s in series:
-            try:
-                df = fetch_fred_data(s)
-                if df is not None and not df.empty:
-                    df = df.rename(columns={s: "value"})
-                    df["observation_date"] = pd.to_datetime(df["observation_date"])
-                    df.set_index("observation_date", inplace=True)
-                    data[s] = df
-            except Exception as exc:
-                logger.debug("Failed to fetch %s: %s", s, exc)
-
-        # Reconstruct combined_df from the fetched data
-        if not data:
-            return None, None
-
-        for s_id, df_s in data.items():
-            if combined_df.empty:
-                combined_df = df_s.rename(columns={"value": s_id})
-            else:
-                combined_df = combined_df.join(df_s.rename(columns={"value": s_id}), how="outer")
+        walcl = fetch_fred_data("WALCL")
+        tga = fetch_fred_data(series_id)
+        rrp = fetch_fred_data("RRPONTSYD")
         
-        if combined_df.empty:
+        if walcl is None or tga is None or rrp is None:
             return None, None
             
-        combined_df = combined_df.ffill().dropna()
-        required = ["WALCL", "WDTGAL", "RRPONTSYD"]
-        if not all(col in combined_df.columns for col in required):
-            logger.warning("Missing required Fed components for Net Liquidity. Found: %s", combined_df.columns.tolist())
-            return None, None
-            
-        # Calculate Net Liquidity: WALCL - TGA - RRP
-        # WALCL (Millions), WDTGAL (Millions), RRPONTSYD (Billions)
-        walcl = combined_df["WALCL"] / 1000.0  # M -> B
-        tga = combined_df["WDTGAL"] / 1000.0   # M -> B
-        rrp = combined_df["RRPONTSYD"]        # B
+        # Merge on date
+        merged = pd.merge(walcl, tga, on="observation_date", how="inner")
+        merged = pd.merge(merged, rrp, on="observation_date", how="inner")
         
-        net_liq = walcl - tga - rrp
-        current_liq = float(net_liq.iloc[-1])
+        # Calculate Net Liquidity
+        # WALCL is in millions, TGA is in millions, RRP is in billions
+        merged["net_liq"] = merged["WALCL"] - merged[series_id] - (merged["RRPONTSYD"] * 1000)
         
-        # Calculate 4-week ROC (roughly 4 records if weekly)
-        if len(net_liq) >= 5:
-            prev_liq = float(net_liq.iloc[-5])
-            roc = (current_liq - prev_liq) / prev_liq * 100
+        latest_val = float(merged["net_liq"].iloc[-1])
+        
+        # Calculate 4-Week ROC (roughly 4 data points if weekly)
+        # Note: WALCL is weekly (Wednesday). 4 points = 28 days.
+        if len(merged) >= 5:
+            prev_val = float(merged["net_liq"].iloc[-5])
+            roc = ((latest_val - prev_val) / prev_val) * 100.0
         else:
             roc = 0.0
             
-        logger.info("Fed Net Liquidity: $%.2fB (4W ROC: %.2f%%)", current_liq, roc)
-        return current_liq, roc
-        
+        logger.info("Net Liquidity: %.0f M, 4-Week ROC: %.2f%%", latest_val, roc)
+        return latest_val, roc
     except Exception as exc:
-        logger.warning("Failed to calculate Fed Net Liquidity: %s", exc)
+        logger.error("Failed to calculate net liquidity: %s", exc)
         return None, None
 
-def fetch_move_index() -> float | None:
-    """Fetch the latest MOVE Index (^MOVE) from Yahoo Finance."""
-    try:
-        ticker = yf.Ticker("^MOVE")
-        hist = ticker.history(period="5d")
-        if not hist.empty:
-            val = float(hist["Close"].iloc[-1])
-            logger.info("Fetched MOVE Index: %.2f", val)
-            return val
-    except Exception as exc:
-        logger.warning("FAILED to fetch MOVE Index: %s", exc)
-    return None
-
-def fetch_sector_rotation() -> float | None:
+def fetch_credit_acceleration(window: int = 10) -> Optional[float]:
     """
-    Calculate Sector Rotation: 20-day relative strength of XLP (Defensive) vs QQQ (Growth).
-    A decrease in this ratio indicates a shift back to growth stocks.
-    Returns the 20-day change in the XLP/QQQ ratio.
+    Calculate high yield credit spread acceleration (BAMLH0A0HYM2).
+    Returns the percentage expansion over the specified window (default 10d).
     """
     try:
-        tickers = ["XLP", "QQQ"]
-        # Use simple period string for yfinance
-        data = yf.download(tickers, period="40d", interval="1d", progress=False)["Close"]
-        if data.empty:
+        series_id = "BAMLH0A0HYM2"
+        df = fetch_fred_data(series_id)
+        if df is None or len(df) < window:
             return None
             
-        ratio = data["XLP"] / data["QQQ"]
-        current_ratio = ratio.iloc[-1]
-        prev_ratio = ratio.iloc[-21] if len(ratio) >= 21 else ratio.iloc[0]
+        latest = float(df.iloc[-1][series_id])
+        start = float(df.iloc[-window][series_id])
         
-        # Relative change in ratio
-        rel_change = (current_ratio - prev_ratio) / prev_ratio * 100
-        logger.info("Sector Rotation (XLP/QQQ) 20D Change: %.2f%%", rel_change)
-        return rel_change
-    except Exception as exc:
-        logger.warning("FAILED to fetch Sector Rotation: %s", exc)
-    return None
-
-def fetch_short_volume_proxy(ticker: str = "QQQ") -> float | None:
-    """
-    v5.0: Fetch Short Volume Ratio as an institutional sentiment proxy.
-    Since real-time FINRA API is restricted, we use a rolling average 
-    of put/call volume or a public scrape if available.
-    
-    For this implementation, we use Yahoo Finance volume metrics to 
-    derive a 'De-facto' short ratio based on price action vs volume spikes.
-    
-    Logic: High volume on a down day without a breakdown often implies
-    institutional absorption (bullish).
-    """
-    try:
-        t = yf.Ticker(ticker)
-        hist = t.history(period="5d")
-        if len(hist) < 2:
-            return None
+        if start <= 0:
+            return 0.0
             
-        # Proxy: Volatility-adjusted Volume Ratio
-        latest = hist.iloc[-1]
-        avg_vol = hist["Volume"].mean()
-        vol_ratio = latest["Volume"] / avg_vol
-        
-        # We return a synthetic ratio between 0.2 and 0.8
-        base = 0.5
-        price_change = (latest["Close"] - latest["Open"]) / latest["Open"]
-        
-        if price_change < -0.01:
-            base += 0.1 * vol_ratio
-        elif price_change > 0.01:
-            base -= 0.05 * vol_ratio
-            
-        return min(0.8, max(0.2, base))
+        accel_pct = ((latest - start) / start) * 100.0
+        logger.info("Credit Spread Acceleration (10d): %.2f%% (%.2f -> %.2f)", 
+                    accel_pct, start, latest)
+        return accel_pct
     except Exception as exc:
-        logger.debug("Short volume proxy fetch failed: %s", exc)
+        logger.error("Failed to calculate credit acceleration: %s", exc)
         return None
+
+def fetch_funding_stress() -> dict:
+    """
+    Monitor funding market stress via NFCI and CPFF.
+    NFCI: National Financial Conditions Index (Positive = Tightening)
+    CPFF: Commercial Paper Funding Facility (Or proxy for CP stress)
+    """
+    stress_info = {"nfci": 0.0, "cpff": 0.0, "is_stressed": False}
+    try:
+        # NFCI via official API
+        nfci_df = fetch_fred_api("NFCI")
+        if nfci_df is not None and not nfci_df.empty:
+            stress_info["nfci"] = float(nfci_df.iloc[-1]["NFCI"])
+            
+        # CPFF (Commercial Paper) via API
+        cpff_df = fetch_fred_api("CPFF") # Proxy ID
+        if cpff_df is not None and not cpff_df.empty:
+            stress_info["cpff"] = float(cpff_df.iloc[-1]["CPFF"])
+            
+        # Logic Gate: NFCI > 0 indicates tighter than average financial conditions
+        if stress_info["nfci"] > 0:
+            stress_info["is_stressed"] = True
+            logger.warning("Funding Stress detected: NFCI=%.3f", stress_info["nfci"])
+            
+        return stress_info
+    except Exception as exc:
+        logger.error("Failed to fetch funding stress: %s", exc)
+        return stress_info

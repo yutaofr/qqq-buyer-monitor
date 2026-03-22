@@ -194,7 +194,8 @@ class TestJSONSerialisation:
 
         out = capsys.readouterr().out
         assert "允许提高加仓速度" in out
-        assert "仓位: FAST_ACCUMULATE" in out
+        assert "Policy:" in out
+        assert "FAST" in out
         assert "单日加仓: 75%" in out
         assert "置信度: high" in out
         assert "数据质量: 6/6 可用" in out

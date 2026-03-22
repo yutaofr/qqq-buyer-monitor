@@ -274,4 +274,14 @@ def _to_json_dict(result: SignalResult) -> dict:
         "pe_source": result.pe_source,
         "erp": _float(result.erp),
         "logic_trace": result.logic_trace,
+        # v6.2 Portfolio & Rebalancing
+        "target_cash_pct": _float(result.target_cash_pct),
+        "portfolio": {
+            "current_cash_pct": _float(result.portfolio.current_cash_pct),
+            "leverage_ratio": _float(result.portfolio.leverage_ratio),
+            "gross_exposure_pct": _float(result.portfolio.gross_exposure_pct),
+            "net_exposure_pct": _float(result.portfolio.net_exposure_pct),
+            "core_equity_pct": _float(result.portfolio.core_equity_pct),
+            "tactical_equity_pct": _float(result.portfolio.tactical_equity_pct),
+        }
     }

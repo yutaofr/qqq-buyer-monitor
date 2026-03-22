@@ -23,6 +23,23 @@ class AllocationState(str, Enum):
     SLOW_ACCUMULATE = "SLOW_ACCUMULATE"
     FAST_ACCUMULATE = "FAST_ACCUMULATE"
     RISK_CONTAINMENT = "RISK_CONTAINMENT"
+    # v6.2 Defensive States
+    WATCH_DEFENSE = "WATCH_DEFENSE"
+    DELEVERAGE = "DELEVERAGE"
+    CASH_FLIGHT = "CASH_FLIGHT"
+
+
+@dataclass(frozen=True)
+class PortfolioState:
+    """Current asset allocation and leverage state."""
+    current_cash_pct: float = 0.0
+    leverage_ratio: float = 1.0
+    gross_exposure_pct: float = 1.0
+    net_exposure_pct: float = 1.0
+    core_equity_pct: float = 0.0
+    tactical_equity_pct: float = 0.0
+    # v6.2 Rebalancing Targets
+    target_cash_pct: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -61,9 +78,6 @@ class MarketData:
     earnings_revisions_breadth: Optional[float] = None
     pe_source: str = "yfinance"
     options_df: Optional[pd.DataFrame] = field(default=None, repr=False)
-    # options_df columns: strike, expiration, option_type ('call'/'put'),
-    #   openInterest, impliedVolatility, gamma, gamma_source ('yfinance'/'bs')
-    
     # v2.0 Divergence historical data (prices, vix, breadth)
     history_window: Optional[pd.DataFrame] = field(default=None, repr=False)
     
@@ -189,4 +203,8 @@ class SignalResult:
     required_persistence_days: int = 1
     confidence: str = "medium"
     data_quality: dict = field(default_factory=dict)
-    logic_trace: list[dict] = field(default_factory=list)  # v6.1 Decision evidence chain (Monadic state)
+    logic_trace: list[dict] = field(default_factory=list)  # v6.1 Decision evidence chain
+    
+    # v6.2 Portfolio state and rebalancing
+    portfolio: PortfolioState = field(default_factory=PortfolioState)
+    target_cash_pct: float = 0.0
