@@ -268,8 +268,9 @@ class Backtester:
         daily_ts["tactical_ret"] = pd.Series(daily_nav, index=prices_qqq.index).pct_change().fillna(0)
         daily_ts["market_ret"] = prices_qqq.pct_change().fillna(0)
         
-        cov_matrix = np.cov(daily_ts["tactical_ret"], daily_ts["market_ret"])
-        variance_market = np.var(daily_ts["market_ret"])
+        # Align degrees of freedom (ddof=1) for both estimators to ensure consistency
+        cov_matrix = np.cov(daily_ts["tactical_ret"], daily_ts["market_ret"], ddof=1)
+        variance_market = np.var(daily_ts["market_ret"], ddof=1)
         
         realized_beta = float(cov_matrix[0, 1] / variance_market) if variance_market > 0 else 0.0
 
@@ -289,9 +290,10 @@ class Backtester:
             s_tactical_ret = group["tactical_ret"]
             s_market_ret = group["market_ret"]
             
-            s_var_market = np.var(s_market_ret)
+            # Align ddof=1 for interval-specific estimators
+            s_var_market = np.var(s_market_ret, ddof=1)
             if s_var_market > 0:
-                s_cov = np.cov(s_tactical_ret, s_market_ret)[0, 1]
+                s_cov = np.cov(s_tactical_ret, s_market_ret, ddof=1)[0, 1]
                 s_realized_beta = float(s_cov / s_var_market)
                 s_target_beta = get_target_allocation(s_state).target_beta
                 
