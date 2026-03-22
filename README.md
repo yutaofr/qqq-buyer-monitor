@@ -11,7 +11,7 @@ Following the v6.2 credit cycle pivot, this version shifts focus from signal gen
 
 ## 📊 Performance & Resilience (v6.3 Backtest)
 Based on full-cycle historical simulations (1999-2026):
-- **MDD Improvement:** Tactical TAA reduced Maximum Drawdown by **3.5% (absolute)** compared to pure QQQ DCA, even when including leveraged assets.
+- **MDD Improvement:** Tactical TAA reduced Maximum Drawdown by **5.0% (absolute)** compared to pure QQQ DCA, even when including leveraged assets.
 - **Defense Coverage:** Maintained defensive regimes (`CASH_FLIGHT` / `DELEVERAGE`) for **241 weeks** across 27 years, successfully bypassing major crash cores.
 - **Statistical Edge:** Average T+60 forward returns of **4.1%** following tactical add signals.
 

@@ -281,7 +281,7 @@ class Backtester:
         
         interval_beta_audit = []
         for interval_id, group in daily_ts.groupby("interval_id"):
-            if len(group) < 5: # Need enough points for meaningful beta per AC-4 effective interval
+            if len(group) < 3: # Catch shorter intervals for more granular AC-4 audit
                 continue
             
             s_state_str = group["state"].iloc[0]
