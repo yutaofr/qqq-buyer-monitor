@@ -1,6 +1,6 @@
-# Architecture Design Document: QQQ Monitor (v6.2)
+# Architecture Design Document: QQQ Monitor (v6.3)
 
-This document provides a technical deep-dive into the internal architecture, data contracts, and design patterns of the `qqq-monitor` system.
+This document provides a technical deep-dive into the internal architecture, data contracts, and design patterns of the `qqq-monitor` system, specifically focusing on the v6.3 **Strategic Asset Allocation (SAA)** layer.
 
 ---
 
@@ -10,18 +10,18 @@ The system follows a **Functional Pipeline (Monadic)** architecture, where state
 
 | Component | Responsibility |
 | :--- | :--- |
-| **Collector Layer** (`src/collector/`) | Fetching raw data from `yfinance`, `FRED`, and `CNN`. Handles retries and SSoT (WDTGAL priority). |
-| **Model Layer** (`src/models/`) | Defines the "Data Contract" including the new `PortfolioState` (Balance Sheet awareness). |
-| **Engine Layer** (`src/engine/`) | The core logic. Implements the **Defensive Bypass Manager** and **Portfolio Alignment**. |
-| **Interpreter Layer** (`src/output/interpreter.py`) | Consumes `logic_trace` and enforces **Narrative Guardrails** (Filtering bullish bias). |
-| **Store Layer** (`src/store/`) | Persistence using SQLite. Serializes `logic_trace` and `PortfolioState`. |
-| **Backtest Layer** (`src/backtest.py`) | Institutional simulator with **Macro Injection** and **NAV Tracking**. |
+| **Collector Layer** (`src/collector/`) | Fetching raw data from `yfinance`, `FRED`. Handles **Treasury XML Fallback** for Real Yield data. |
+| **Model Layer** (`src/models/`) | Defines **Reality (`CurrentPortfolioState`)** vs **Ideal (`TargetAllocationState`)** models. |
+| **Engine Layer** (`src/engine/`) | Core logic. Implements the **TAA Matrix** and **Exposure Audit**. |
+| **Interpreter Layer** (`src/output/interpreter.py`) | Consumes `logic_trace`. Maps internal steps to institutional labels (e.g., "大势背景"). |
+| **Store Layer** (`src/store/`) | Persistence using SQLite. Supports **Lazy Migration** for `interval_beta_audit` metadata. |
+| **Backtest Layer** (`src/backtest.py`) | **Daily T+0 Risk Rebalancing** engine with QLD leverage simulation (drag-adjusted). |
 
 ---
 
-## 2. Data Flow & Execution Sequence (v6.2 Monadic Pipeline)
+## 2. Data Flow & Execution Sequence (v6.3 Strategic Pipeline)
 
-The v6.2 pipeline introduces a **High-Priority Defensive Bypass** that checks for macro resonance before executing tactical logic.
+The v6.3 pipeline extends v6.2 by adding a strategic layer that maps regimes to specific asset weights.
 
 ```mermaid
 graph TD
@@ -29,45 +29,59 @@ graph TD
     B --> C[_step_structural_regime]
     C --> D[_step_tactical_state]
     D --> E[_step_allocation_policy]
-    E --> F[_step_portfolio_alignment]
-    F --> G[_step_overlay_refinement]
-    G --> H[_step_finalize]
-    H --> I[SignalResult with PortfolioState]
+    E --> F[_step_strategic_allocation]
+    F --> G[_step_portfolio_alignment]
+    G --> H[_step_overlay_refinement]
+    H --> I[_step_finalize]
+    I --> J[SignalResult with TAA Audit]
 ```
 
 ---
 
-## 3. Triple Confirmation Defense Ladder (Tier 0 Override)
+## 3. Strategic TAA Matrix (Ideal Model)
 
-To prevent "catching falling knives" during credit crunches, the system implements a prioritized bypass:
+The system maps each `AllocationState` to a target triplet: `[Cash%, QQQ%, QLD%]`.
 
-1.  **L1 (WATCH_DEFENSE):** Triggered by Credit Acceleration > 15%. Restricts leverage to 1.0.
-2.  **L2 (DELEVERAGE):** Triggered by Credit + Liquidity (ROC < -2%) resonance. Targets 30% Cash.
-3.  **L3 (CASH_FLIGHT):** Triggered by Credit + Liquidity + Funding Stress. Targets 50% Cash, Tranche=0.
-
----
-
-## 4. Decision State Monad (DSM)
-
-### 4.1 The Monadic Container: `DecisionContext`
-Every decision step accepts a `DecisionContext` and returns a new one. In v6.2, the context also carries `current_cash_pct` and `credit_accel`.
-
-### 4.2 Portfolio Alignment Logic
-The `_step_portfolio_alignment` compares the `current_cash_pct` against the `target_cash_pct` derived from the defensive state. If a gap exists, it generates a `[REBALANCE ACTION]` in the output narrative.
+| State | Target Cash | Target QQQ | Target QLD | Target Beta |
+| :--- | :---: | :---: | :---: | :---: |
+| **FAST_ACCUMULATE** | 5% | 80% | 15% | **1.10** |
+| **BASE_DCA** | 10% | 85% | 5% | **0.95** |
+| **WATCH_DEFENSE** | 20% | 80% | 0% | **0.80** |
+| **DELEVERAGE** | 35% | 65% | 0% | **0.65** |
+| **CASH_FLIGHT** | 60% | 40% | 0% | **0.40** |
 
 ---
 
-## 5. Persistence & Auditability
+## 4. Institutional Risk Audit (AC-4)
 
-### 5.1 Logic Trace Audit
-The entire `logic_trace` is serialized. This allows post-mortem analysis of why a specific rebalance was triggered (e.g., "Step: defensive_bypass, Evidence: {accel: 18.5%, liq_roc: -2.1%}").
+### 4.1 Returns-based Realized Beta
+Unlike simple notional exposure, the system calculates realized beta using daily return covariance:
+$$\beta = \frac{Cov(R_{tactical}, R_{market})}{Var(R_{market})}$$
+Estimators are statistically consistent using **Bessel's correction (ddof=1)**.
 
-### 5.2 Portfolio Snapshots
-Historical signal records now include the `PortfolioState` at the time of execution, enabling long-term tracking of allocation drift.
+### 4.2 Effective Interval Audit
+Audit is performed over **Contiguous Intervals** of identical states.
+- **Mean Absolute Deviation (MAD)**: Global metric requiring $\le 0.05$ across all crisis scenarios.
+- **Daily Rebalancing**: T+0 risk-alignment ensures leveraged asset drift is corrected before it violates AC-4.
 
 ---
 
-## 6. Resilience & Error Handling
+## 5. Decision State Monad (DSM)
 
-1.  **SSoT Data Integrity**: Prioritizes `WDTGAL` (Daily TGA) over `WTREGEN`. Implements `ffill` resampling to handle weekend data gaps in 4-week ROC calculations.
-2.  **Narrative Guardrails**: A regex-based filter in the `NarrativeEngine` automatically substitutes bullish vocabulary (e.g., "Buy the dip") with neutral defensive terminology when in a Macro Defense regime.
+### 5.1 The Monadic Container: `DecisionContext`
+In v6.3, the context carries the dual models: `current_portfolio` (Reality from environment) and `target_allocation` (Ideal from matrix).
+
+### 5.2 Exposure Audit Logic
+The `_step_finalize` calculates `effective_exposure` (Notional Proxy) and generates the `[EXPOSURE AUDIT]` report, identifying if the portfolio is **"符合预期"**, **"风险偏高"**, or **"敞口不足"**.
+
+---
+
+## 6. Persistence & Lazy Migration
+
+### 6.1 Audit Metadata
+The `interval_beta_audit` list is persisted as a JSON blob within the `signals` table. This preserves the "proof of fidelity" for every historical signal.
+
+### 6.2 Schema Evolution
+The DB layer (`src/store/db.py`) implements an automatic migration path:
+- v6.2 `portfolio` fields $\rightarrow$ v6.3 `current_portfolio`
+- Injects default TAA targets for historical records missing the `target_allocation` key.
