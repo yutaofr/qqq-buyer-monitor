@@ -39,7 +39,9 @@ def _run(args: argparse.Namespace) -> None:
         fetch_net_liquidity,
         fetch_move_index,
         fetch_sector_rotation,
-        fetch_short_volume_proxy
+        fetch_short_volume_proxy,
+        fetch_credit_acceleration,
+        fetch_funding_stress
     )
     from src.collector.fundamentals import fetch_forward_pe
     from src.engine.data_quality import build_data_quality
@@ -141,55 +143,29 @@ def _run(args: argparse.Namespace) -> None:
         logger.warning("v3.0 Macro fetch failed: %s", exc)
         errors.append(f"Macro_v3: {exc}")
         
-    # Use cached state if all fetch attempts failed (FRED, yf fallback, etc.)
+    # Use cached state if all fetch attempts failed
     if credit_spread is None and macro_state:
         credit_spread = macro_state.get("credit_spread")
-        if credit_spread is not None:
-            logger.info("Using cached Credit Spread from DB: %.0f bps", credit_spread)
-            data_quality_meta["credit_spread"] = {
-                "source": "cache:macro_state",
-                "stale_days": cache_stale_days,
-            }
             
     if forward_pe is None and macro_state:
         forward_pe = macro_state.get("forward_pe")
-        if forward_pe is not None:
-            logger.info("Using cached Forward PE from DB: %.1f", forward_pe)
-            data_quality_meta["forward_pe"] = {
-                "source": "cache:macro_state",
-                "stale_days": cache_stale_days,
-            }
             
     if real_yield is None and macro_state:
         real_yield = macro_state.get("real_yield")
-        if real_yield is not None:
-            logger.info("Using cached Real Yield from DB: %.2f%%", real_yield)
-            data_quality_meta["real_yield"] = {
-                "source": "cache:macro_state",
-                "stale_days": cache_stale_days,
-            }
             
     if fcf_yield is None and macro_state:
         fcf_yield = macro_state.get("fcf_yield")
-        if fcf_yield is not None:
-            logger.info("Using cached FCF Yield from DB: %.2f%%", fcf_yield)
-            data_quality_meta["fcf_yield"] = {
-                "source": "cache:macro_state",
-                "stale_days": cache_stale_days,
-            }
             
     if earnings_revisions_breadth is None and macro_state:
         earnings_revisions_breadth = macro_state.get("earnings_revisions_breadth")
-        if earnings_revisions_breadth is not None:
-            logger.info("Using cached Earnings Revisions from DB: %.2f%%", earnings_revisions_breadth)
-            data_quality_meta["earnings_revisions_breadth"] = {
-                "source": "cache:macro_state",
-                "stale_days": cache_stale_days,
-            }
         
     # Phase 2: Net Liquidity & MOVE Index
     net_liq, liq_roc = fetch_net_liquidity()
     move_index = fetch_move_index()
+    
+    # v6.2 Defensive Confirmation (New)
+    credit_accel = fetch_credit_acceleration()
+    funding_stress = fetch_funding_stress()
     
     # Phase 3: Sector Rotation
     sector_rotation = None
@@ -204,28 +180,20 @@ def _run(args: argparse.Namespace) -> None:
         short_vol_ratio = fetch_short_volume_proxy()
     except Exception as exc:
         logger.warning("Short volume proxy fetch failed: %s", exc)
-    # History Window (Epic 2) - Increased to 120d for v4.0 Z-scores
+
+    # History Window (Epic 2)
     history_window = None
     vix_zscore = 0.0
     dd_zscore = 0.0
     try:
         history_window = get_historical_series(days=120)
         if history_window is not None and not history_window.empty:
-            # 1. VIX Z-Score
             vix_zscore = calculate_zscore(vix, history_window["vix"].dropna())
-            
-            # 2. Drawdown Z-Score
-            # Pre-calculate rolling drawdowns in history
             hist_prices = history_window["price"]
-            # We need a longer window for historical drawdowns to be meaningful, 
-            # but we can use the current high_52w for the latest point.
-            # For the historical series, we'll approximate using the window's own peak
             hist_peaks = hist_prices.expanding().max()
             hist_drawdowns = (hist_peaks - hist_prices) / hist_peaks
             current_dd = (price_data["high_52w"] - price_data["price"]) / price_data["high_52w"]
             dd_zscore = calculate_zscore(current_dd, hist_drawdowns)
-            
-            logger.info("Adaptive Stats: VIX Z-Score = %.2f, DD Z-Score = %.2f", vix_zscore, dd_zscore)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to load history window for adaptive stats: %s", exc)
 
@@ -265,7 +233,6 @@ def _run(args: argparse.Namespace) -> None:
 
     logger.info("Running signal engines…")
     
-    # ── Hysteresis & Notification Muting ─────────────────────────────────────
     from src.store.db import load_history
     try:
         history = load_history(n=5)
@@ -282,6 +249,8 @@ def _run(args: argparse.Namespace) -> None:
 
     tier1 = calculate_tier1(market_data)
     tier2 = calculate_tier2(market_data.price, market_data.options_df, ohlcv_history=market_data.ohlcv_history)
+    
+    # v6.2 Full Aggregation with Defensive Parameters
     result = aggregate(
         market_data.date, 
         market_data.price, 
@@ -291,9 +260,17 @@ def _run(args: argparse.Namespace) -> None:
         credit_spread=market_data.credit_spread,
         forward_pe=market_data.forward_pe,
         real_yield=market_data.real_yield,
-        ma50=getattr(market_data, 'history_window', pd.DataFrame()).get('ma50', pd.Series()).iloc[-1] if market_data.history_window is not None and 'ma50' in market_data.history_window else None
+        ma50=getattr(market_data, 'history_window', pd.DataFrame()).get('ma50', pd.Series()).iloc[-1] if market_data.history_window is not None and 'ma50' in market_data.history_window else None,
+        credit_accel=credit_accel,
+        liquidity_roc=liq_roc,
+        is_funding_stressed=funding_stress.get("is_stressed", False),
+        current_cash_pct=0.0 # Placeholder for actual portfolio state
     )
     result.data_quality = build_data_quality(market_data, feature_meta=data_quality_meta)
+
+    # v6.2 Narrative Guardrail: Filter bullish bias in defensive states
+    interpreter = NarrativeEngine()
+    result.explanation = interpreter.format_explanation(result.explanation, result.allocation_state)
 
     consecutive_days = 1
     current_allocation_state = result.allocation_state.value
@@ -313,12 +290,8 @@ def _run(args: argparse.Namespace) -> None:
         result.allocation_state.__class__.BASE_DCA,
         result.allocation_state.__class__.PAUSE_CHASING,
         result.allocation_state.__class__.RISK_CONTAINMENT,
+        result.allocation_state.__class__.WATCH_DEFENSE,
     ) and consecutive_days >= 3:
-        compact_mode = True
-    elif result.allocation_state in (
-        result.allocation_state.__class__.SLOW_ACCUMULATE,
-        result.allocation_state.__class__.FAST_ACCUMULATE,
-    ) and consecutive_days >= 4:
         compact_mode = True
 
     # Output
@@ -331,9 +304,7 @@ def _run(args: argparse.Namespace) -> None:
             compact=compact_mode, 
             consecutive_days=consecutive_days
         )
-        # AI Narrative Interpretation (v6.1 White-box Logic)
         try:
-            interpreter = NarrativeEngine()
             interpreter.print_narrative(result.logic_trace)
             interpreter.print_decision_tree(result.logic_trace)
         except Exception as exc:
@@ -342,18 +313,7 @@ def _run(args: argparse.Namespace) -> None:
     # Persist
     if not args.no_save:
         save_signal(result)
-        # Update macro state cache
-        if any(
-            value is not None
-            for value in (
-                market_data.credit_spread,
-                market_data.trailing_pe,
-                market_data.forward_pe,
-                market_data.real_yield,
-                market_data.fcf_yield,
-                market_data.earnings_revisions_breadth,
-            )
-        ):
+        if any(v is not None for v in (market_data.credit_spread, market_data.forward_pe, market_data.real_yield)):
             save_macro_state(
                 record_date=market_data.date,
                 credit_spread=market_data.credit_spread,
@@ -366,54 +326,16 @@ def _run(args: argparse.Namespace) -> None:
         logger.info("Signal and macro states saved to DB.")
 
 
-def _history(args: argparse.Namespace) -> None:
-    """Print the last N signal records from DB."""
-    from src.store.db import load_history
-    records = load_history(n=args.history)
-    if not records:
-        print("No history records found.")
-        return
-    def _action_label(record: dict) -> str:
-        state = record.get("allocation_state")
-        if state == "BASE_DCA":
-            return "维持基础定投"
-        if state == "PAUSE_CHASING":
-            return "暂停追高"
-        if state == "RISK_CONTAINMENT":
-            return "进入风险控制"
-        if state == "SLOW_ACCUMULATE":
-            return "仅小幅试探"
-        if state == "FAST_ACCUMULATE":
-            return "允许提高加仓速度"
-        signal = record.get("signal", "UNKNOWN")
-        if signal == "WATCH":
-            return "仅小幅试探"
-        if signal == "TRIGGERED":
-            return "允许提高加仓速度"
-        return "维持基础定投"
-    for rec in records:
-        allocation_state = rec.get("allocation_state", "UNKNOWN")
-        print(
-            f"{rec['date']}  action={_action_label(rec):8s}  allocation={allocation_state:18s}"
-            f"  score={rec['final_score']:3d}"
-            f"  price=${rec['price']:.2f}"
-        )
-
-
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="QQQ Buy-Signal Monitor with Options Wall Confirmation"
-    )
+    parser = argparse.ArgumentParser(description="QQQ Buy-Signal Monitor (v6.2 Institutional Upgrade)")
     parser.add_argument("--json", action="store_true", help="Output JSON report")
     parser.add_argument("--no-save", action="store_true", help="Skip saving to DB")
-    parser.add_argument("--no-color", action="store_true", help="Disable ANSI color output (useful for Discord/logs)")
-    parser.add_argument(
-        "--history", type=int, metavar="N",
-        help="Print last N signal records and exit"
-    )
+    parser.add_argument("--no-color", action="store_true", help="Disable ANSI color output")
+    parser.add_argument("--history", type=int, metavar="N", help="Print last N signal records and exit")
     args = parser.parse_args()
 
     if args.history:
+        from src.main import _history
         _history(args)
     else:
         _run(args)
