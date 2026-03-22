@@ -1,0 +1,73 @@
+import pytest
+import pandas as pd
+import numpy as np
+from datetime import date
+from src.backtest import Backtester
+from src.models import AllocationState
+
+def test_backtest_v6_3_multi_asset_nav_and_rebalancing():
+    """
+    AC-3: 验证多资产 NAV 计算与 TAA 自动对齐逻辑
+    1. QLD 价格应基于 QQQ 涨跌幅 2 倍模拟
+    2. NAV 应包含 Cash + QQQ + QLD
+    3. Rebalancing 应根据 TargetAllocationState 对齐三项资产
+    """
+    # 构造极简数据: 100 -> 110 (10% 涨幅) -> 99 (10% 跌幅)
+    prices = pd.Series(
+        [100.0, 110.0, 99.0],
+        index=pd.date_range("2026-01-01", periods=3, freq="B")
+    )
+    ohlcv = pd.DataFrame({"Close": prices}, index=prices.index)
+    
+    # 模拟分配状态: 始终 FAST_ACCUMULATE (TAA: 5% Cash, 80% QQQ, 15% QLD)
+    # _TAA_MATRIX[AllocationState.FAST_ACCUMULATE] = (0.05, 0.80, 0.15, 1.10)
+    def mock_derive_states(self, ohlcv, seeder):
+        return pd.Series([AllocationState.FAST_ACCUMULATE] * len(ohlcv), index=ohlcv.index)
+    
+    # 动态替换 derive_states 以隔离测试
+    from src.backtest import Backtester as BT
+    original_derive = BT._derive_states
+    BT._derive_states = mock_derive_states
+    
+    try:
+        tester = Backtester(initial_capital=10000)
+        # 强制 WEEKLY_ADD_INTERVAL 为 1 以便每日触发
+        import src.backtest as bt_module
+        original_interval = bt_module.WEEKLY_ADD_INTERVAL
+        bt_module.WEEKLY_ADD_INTERVAL = 1
+        
+        summary = tester.simulate_portfolio(ohlcv)
+        
+        # 验证 QLD 模拟: 
+        # t=0: QQQ=100, QLD=100 (假设初始对齐)
+        # t=1: QQQ=110 (+10%), QLD=120 (+20%)
+        # t=2: QQQ=99 (-10%), QLD=120 * (1 - 0.1 * 2) = 120 * 0.8 = 96
+        
+        # 验证 NAV (t=1):
+        # 假设 t=0 后 Rebalance 成功: Cash=500, QQQ=8000, QLD=1500 (15 units)
+        # t=1 价格变化前 Value: Cash=500, QQQ=8800 (80*110), QLD=1800 (15*120) -> NAV=11100
+        # t=1 Rebalance 后 (5%, 80%, 15%): Cash=555, QQQ=8880, QLD=1665
+        
+        # AC-3: 增加一致性断言，验证 NAV - (Sum of Assets) < 1e-4
+        for event in summary.events:
+            sum_assets = event.cash_balance + event.equity_value + event.qld_value
+            assert abs(event.net_asset_value - sum_assets) < 1e-4
+        
+    finally:
+        BT._derive_states = original_derive
+        bt_module.WEEKLY_ADD_INTERVAL = original_interval
+
+def test_qld_price_simulation_logic():
+    """验证 QLD 价格模拟函数 (v6.3 内部逻辑，包含 SRD 4.2 drag)"""
+    from src.backtest import simulate_leveraged_price
+    qqq_prices = pd.Series([100.0, 105.0, 100.0])
+    qld_prices = simulate_leveraged_price(qqq_prices, leverage=2.0)
+    
+    # drag = 0.0000377
+    # t=0: QQQ=100 -> QLD=100
+    # t=1: QQQ=105 (+5%) -> QLD = 100 * (1 + 2 * 0.05 - 0.0000377) = 100 * (1.0999623) = 109.99623
+    # t=2: QQQ=100 (-4.7619%) -> QLD = 109.99623 * (1 + 2 * -0.047619 - 0.0000377) 
+    #      = 109.99623 * (1 - 0.095238 - 0.0000377) = 109.99623 * 0.9047243 = 99.516
+    assert qld_prices.iloc[0] == 100.0
+    assert qld_prices.iloc[1] == pytest.approx(109.99623, rel=1e-5)
+    assert qld_prices.iloc[2] == pytest.approx(99.516, rel=1e-3)

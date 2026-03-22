@@ -59,14 +59,18 @@ class HistoricalMacroSeeder:
         features["liquidity_roc"] = float(row.get("liquidity_roc", 0.0))
         features["is_funding_stressed"] = bool(row.get("is_funding_stressed", False))
         
-        # Calculate 10-day acceleration
-        try:
-            start_ts = actual_ts - pd.Timedelta(days=10)
-            if start_ts in self.df.index:
-                start_val = float(self.df.loc[start_ts].get("BAMLH0A0HYM2", 0.0))
-                if start_val > 0:
-                    features["credit_accel"] = ((features["credit_spread"] - start_val) / start_val) * 100.0
-        except Exception:
-            pass
+        # v6.3.10: Support pre-computed acceleration if available
+        if "credit_accel" in row:
+            features["credit_accel"] = float(row["credit_accel"])
+        else:
+            # Calculate 10-day acceleration fallback
+            try:
+                start_ts = actual_ts - pd.Timedelta(days=10)
+                if start_ts in self.df.index:
+                    start_val = float(self.df.loc[start_ts].get("BAMLH0A0HYM2", 0.0))
+                    if start_val > 0:
+                        features["credit_accel"] = ((features["credit_spread"] - start_val) / start_val) * 100.0
+            except Exception:
+                pass
             
         return features

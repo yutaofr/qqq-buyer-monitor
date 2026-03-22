@@ -1,6 +1,8 @@
 """Data models for QQQ signal monitor."""
 from __future__ import annotations
 
+import os
+import numpy as np
 from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
@@ -30,16 +32,72 @@ class AllocationState(str, Enum):
 
 
 @dataclass(frozen=True)
-class PortfolioState:
-    """Current asset allocation and leverage state."""
-    current_cash_pct: float = 0.0
+class CurrentPortfolioState:
+    """Current asset allocation and leverage auditing (Reality)."""
+    current_cash_pct: float = 1.0
+    qqq_pct: float = 0.0
+    qld_pct: float = 0.0
     leverage_ratio: float = 1.0
-    gross_exposure_pct: float = 1.0
-    net_exposure_pct: float = 1.0
+    gross_exposure_pct: float = 0.0
+    net_exposure_pct: float = 0.0
     core_equity_pct: float = 0.0
     tactical_equity_pct: float = 0.0
-    # v6.2 Rebalancing Targets
+    # Legacy target field (deprecated in favor of TargetAllocationState)
     target_cash_pct: float = 0.0
+
+    @staticmethod
+    def from_env() -> CurrentPortfolioState:
+        """
+        v6.3.8 Defensive Input Protocol: 
+        Parses CASH_LEVEL, QQQ_LEVEL, QLD_LEVEL from env with normalization.
+        """
+        try:
+            raw_c = float(os.environ.get("CASH_LEVEL", "0.0"))
+            raw_q = float(os.environ.get("QQQ_LEVEL", "0.0"))
+            raw_l = float(os.environ.get("QLD_LEVEL", "0.0"))
+        except (ValueError, TypeError):
+            raw_c, raw_q, raw_l = 0.0, 0.0, 0.0
+
+        # Legality Clipping (max(0, v))
+        vals = np.array([max(0.0, raw_c), max(0.0, raw_q), max(0.0, raw_l)])
+        s = np.sum(vals)
+
+        # Safe Fallback (AC-1)
+        if s <= 0 or not np.isfinite(s):
+            return CurrentPortfolioState(
+                current_cash_pct=1.0, 
+                qqq_pct=0.0, 
+                qld_pct=0.0,
+                gross_exposure_pct=0.0
+            )
+
+        # Normalization
+        norm_vals = vals / s
+        c, q, l = norm_vals[0], norm_vals[1], norm_vals[2]
+        
+        # Effective Exposure = QQQ% + 2 * QLD%
+        exposure = q + 2.0 * l
+        
+        return CurrentPortfolioState(
+            current_cash_pct=float(c),
+            qqq_pct=float(q),
+            qld_pct=float(l),
+            gross_exposure_pct=float(exposure),
+            net_exposure_pct=float(exposure),
+            leverage_ratio=float(exposure) if exposure > 1.0 else 1.0
+        )
+
+# Backward Compatibility Alias
+PortfolioState = CurrentPortfolioState
+
+
+@dataclass(frozen=True)
+class TargetAllocationState:
+    """Ideal asset allocation model (Target)."""
+    target_cash_pct: float = 0.10
+    target_qqq_pct: float = 0.90
+    target_qld_pct: float = 0.0
+    target_beta: float = 0.90
 
 
 @dataclass(frozen=True)
@@ -205,6 +263,16 @@ class SignalResult:
     data_quality: dict = field(default_factory=dict)
     logic_trace: list[dict] = field(default_factory=list)  # v6.1 Decision evidence chain
     
-    # v6.2 Portfolio state and rebalancing
-    portfolio: PortfolioState = field(default_factory=PortfolioState)
-    target_cash_pct: float = 0.0
+    # v6.3 Strategic Architecture (Split Reality from Ideal)
+    current_portfolio: CurrentPortfolioState = field(default_factory=CurrentPortfolioState)
+    target_allocation: TargetAllocationState = field(default_factory=TargetAllocationState)
+    realized_beta: float = 0.0
+    
+    # Deprecated fields (kept for db migration bridge)
+    @property
+    def portfolio(self) -> CurrentPortfolioState:
+        return self.current_portfolio
+    
+    @property
+    def target_cash_pct(self) -> float:
+        return self.target_allocation.target_cash_pct
