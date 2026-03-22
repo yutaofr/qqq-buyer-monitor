@@ -73,6 +73,8 @@ class BacktestMethodologySummary:
     # v6.2 Performance KPIs
     tactical_mdd: float = 0.0
     baseline_mdd: float = 0.0
+    # v6.2 Visualization Support
+    daily_timeseries: Optional[pd.DataFrame] = None
     excluded_features: tuple[str, ...] = EXCLUDED_HISTORICAL_FEATURES
 
 class Backtester:
@@ -113,6 +115,7 @@ class Backtester:
         # Track Daily NAV for MDD
         daily_nav = []
         baseline_nav = []
+        daily_stats = []
         
         add_dates = list(prices.index[::WEEKLY_ADD_INTERVAL])
         event_metrics = []
@@ -131,10 +134,23 @@ class Backtester:
             price = float(prices.loc[dt])
             state = tactical_states.loc[dt]
             
+            # Fetch macro features for daily stats (already computed in _derive_states, but we redo for simplicity)
+            macro_features = {"credit_accel": 0.0}
+            if macro_seeder:
+                macro_features = macro_seeder.get_features_for_date(dt.date())
+
             # A. Check for Weekly Addition
             if dt in add_dates:
                 # Tactical Addition
-                units_to_add = _state_units(state)
+                base_units = _state_units(state)
+                
+                # v6.2.3 Cash Re-deployment logic:
+                # If we have excess cash (from defensive periods) and a bullish signal, accelerate deployment.
+                units_to_add = base_units
+                if state in (AllocationState.FAST_ACCUMULATE, AllocationState.SLOW_ACCUMULATE) and cash > (self.initial_capital * 0.1):
+                    # If cash is high, add an extra 1.0 units to 'burn' the defensive cash buffer
+                    units_to_add += 1.0 
+                
                 cost = units_to_add * price
                 
                 # Check for cash availability
@@ -144,7 +160,6 @@ class Backtester:
                     tactical_cost_num += price * units_to_add
                     total_tactical_units += units_to_add
                 else:
-                    # Partial add if cash is limited
                     can_afford_units = cash / price
                     cash = 0.0
                     units_held += can_afford_units
@@ -188,12 +203,24 @@ class Backtester:
                 ))
 
             # D. Track Daily Performance
-            daily_nav.append(units_held * price + cash)
-            baseline_nav.append(baseline_units_held * price) # Baseline is pure equity DCA
+            nav = units_held * price + cash
+            b_nav = baseline_units_held * price
+            daily_nav.append(nav)
+            baseline_nav.append(b_nav)
+            
+            daily_stats.append({
+                "date": dt,
+                "nav": nav,
+                "baseline_nav": b_nav,
+                "cash_pct": (cash / nav * 100.0) if nav > 0 else 100.0,
+                "credit_accel": macro_features.get("credit_accel", 0.0),
+                "state": state.value
+            })
 
         # 3. Compute MDDs
         tactical_mdd = self._calculate_mdd(daily_nav)
         baseline_mdd = self._calculate_mdd(baseline_nav)
+        daily_ts = pd.DataFrame(daily_stats).set_index("date")
         
         # 4. Final Summary
         tactical_avg_cost = tactical_cost_num / total_tactical_units if total_tactical_units else 0
@@ -213,7 +240,8 @@ class Backtester:
             capital_deployed_before_final_low_units=deployed_before_low,
             total_capital_units=total_tactical_units,
             tactical_mdd=tactical_mdd,
-            baseline_mdd=baseline_mdd
+            baseline_mdd=baseline_mdd,
+            daily_timeseries=daily_ts
         )
 
     def _calculate_mdd(self, nav_series: List[float]) -> float:
