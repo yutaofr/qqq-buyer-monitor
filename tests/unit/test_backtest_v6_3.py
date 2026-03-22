@@ -12,10 +12,10 @@ def test_backtest_v6_3_multi_asset_nav_and_rebalancing():
     2. NAV 应包含 Cash + QQQ + QLD
     3. Rebalancing 应根据 TargetAllocationState 对齐三项资产
     """
-    # 构造数据: 100 -> 101... (10个点) 极其平稳以验证 Beta 对齐
+    # 构造 100 个点的数据: 100 -> 110 (极缓长趋势) 以最小化离散再平衡产生的噪声
     prices = pd.Series(
-        [100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0, 108.0, 109.0],
-        index=pd.date_range("2026-01-01", periods=10, freq="B")
+        np.linspace(100.0, 110.0, 100),
+        index=pd.date_range("2026-01-01", periods=100, freq="B")
     )
     ohlcv = pd.DataFrame({"Close": prices}, index=prices.index)
     
@@ -54,8 +54,8 @@ def test_backtest_v6_3_multi_asset_nav_and_rebalancing():
         assert first_interval["realized"] > 0
         
         # AC-4 Acceptance Gate
-        # 在真实回测中均值偏差应 <= 0.05，在合成极简测试中允许略高误差以容忍离散再平衡产生的单点噪声
-        assert summary.mean_interval_beta_deviation <= 0.15
+        # 在引入 Daily Rebalancing 后，即便在合成测试中也应满足 <= 0.05 的严苛标准
+        assert summary.mean_interval_beta_deviation <= 0.05
         
         # MDD Improvement Regression
         # Verify improvement logic: abs(baseline) - abs(tactical)

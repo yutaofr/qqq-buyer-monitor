@@ -88,3 +88,50 @@ def test_logic_trace_db_roundtrip(tmp_path):
     assert "logic_trace" in loaded_signal
     assert loaded_signal["logic_trace"] == trace
     assert loaded_signal["logic_trace"][0]["step"] == "step1"
+
+def test_v6_3_strategic_fields_db_roundtrip(tmp_path):
+    """验证 v6.3 战略配置字段在数据库保存/加载周期中的完整性"""
+    from src.models import CurrentPortfolioState, TargetAllocationState
+    db_path = str(tmp_path / "test_v6_3.db")
+    
+    # 1. 构造带有战略字段的 Result
+    p = CurrentPortfolioState(current_cash_pct=0.2, qqq_pct=0.8, qld_pct=0.0)
+    t = TargetAllocationState(target_cash_pct=0.1, target_qqq_pct=0.9, target_qld_pct=0.0, target_beta=0.9)
+    audit = [{"state": "BASE_DCA", "realized": 0.89, "target": 0.90, "deviation": 0.01}]
+    
+    # 极简 t1/t2
+    detail = SignalDetail("test", 0.0, 0, (0, 0), False, False)
+    t1 = Tier1Result(score=0, drawdown_52w=detail, ma200_deviation=detail, vix=detail, fear_greed=detail, breadth=detail)
+    t2 = Tier2Result(adjustment=0, put_wall=None, call_wall=None, gamma_flip=None, 
+                    support_confirmed=False, support_broken=False, upside_open=False, 
+                    gamma_positive=False, gamma_source="bs",
+                    put_wall_distance_pct=0.0, call_wall_distance_pct=0.0)
+
+    res = SignalResult(
+        date=date.today(),
+        price=400.0,
+        signal=Signal.NO_SIGNAL,
+        final_score=0,
+        tier1=t1,
+        tier2=t2,
+        explanation="v6.3 persistence test",
+        current_portfolio=p,
+        target_allocation=t,
+        effective_exposure=0.8,
+        interval_beta_audit=audit
+    )
+    
+    # 2. 保存并加载
+    save_signal(res, path=db_path)
+    history = load_history(n=1, path=db_path)
+    loaded = history[0]
+    
+    # 3. 断言
+    assert loaded["effective_exposure"] == 0.8
+    assert loaded["interval_beta_audit"] == audit
+    
+    assert loaded["current_portfolio"]["current_cash_pct"] == 0.2
+    assert loaded["current_portfolio"]["qqq_pct"] == 0.8
+    
+    assert loaded["target_allocation"]["target_cash_pct"] == 0.1
+    assert loaded["target_allocation"]["target_beta"] == 0.9
