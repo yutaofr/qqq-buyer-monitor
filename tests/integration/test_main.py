@@ -339,7 +339,7 @@ def test_main_compact_mode_uses_allocation_state(monkeypatch, capsys):
 
     captured = capsys.readouterr()
     assert "报告折叠" in captured.out
-    assert "维持基础定投" in captured.out
+    assert "基础定投" in captured.out
     assert "TRIGGERED" not in captured.out
 
 

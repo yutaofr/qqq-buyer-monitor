@@ -24,6 +24,35 @@ logging.basicConfig(
 logger = logging.getLogger("qqq_monitor")
 
 
+def _history(args: argparse.Namespace) -> None:
+    """Print the last N historical signal records."""
+    from src.store.db import load_history
+    from src.output.cli import _allocation_label
+    from src.models import AllocationState
+    
+    n = args.history or 10
+    history = load_history(n=n)
+    
+    if not history:
+        print("No historical records found.")
+        return
+        
+    print(f"Showing last {len(history)} records:")
+    for rec in history:
+        date_str = rec.get("date", "unknown")
+        price = rec.get("price", 0.0)
+        state_val = rec.get("allocation_state", "BASE_DCA")
+        score = rec.get("final_score", 0)
+        
+        try:
+            state = AllocationState(state_val)
+            action = _allocation_label(state)
+        except ValueError:
+            action = "未知状态"
+            
+        print(f"[{date_str}] price=${price:,.2f} score={score} allocation={state_val} action={action}")
+
+
 def _run(args: argparse.Namespace) -> None:
     """Execute the full signal pipeline."""
     from src.collector.price import fetch_price_data
@@ -144,20 +173,25 @@ def _run(args: argparse.Namespace) -> None:
         errors.append(f"Macro_v3: {exc}")
         
     # Use cached state if all fetch attempts failed
-    if credit_spread is None and macro_state:
+    if credit_spread is None and macro_state and macro_state.get("credit_spread") is not None:
         credit_spread = macro_state.get("credit_spread")
+        data_quality_meta["credit_spread"] = {"source": "cache:macro_state", "stale_days": cache_stale_days}
             
-    if forward_pe is None and macro_state:
+    if forward_pe is None and macro_state and macro_state.get("forward_pe") is not None:
         forward_pe = macro_state.get("forward_pe")
+        data_quality_meta["forward_pe"] = {"source": "cache:macro_state", "stale_days": cache_stale_days}
             
-    if real_yield is None and macro_state:
+    if real_yield is None and macro_state and macro_state.get("real_yield") is not None:
         real_yield = macro_state.get("real_yield")
+        data_quality_meta["real_yield"] = {"source": "cache:macro_state", "stale_days": cache_stale_days}
             
-    if fcf_yield is None and macro_state:
+    if fcf_yield is None and macro_state and macro_state.get("fcf_yield") is not None:
         fcf_yield = macro_state.get("fcf_yield")
+        data_quality_meta["fcf_yield"] = {"source": "cache:macro_state", "stale_days": cache_stale_days}
             
-    if earnings_revisions_breadth is None and macro_state:
+    if earnings_revisions_breadth is None and macro_state and macro_state.get("earnings_revisions_breadth") is not None:
         earnings_revisions_breadth = macro_state.get("earnings_revisions_breadth")
+        data_quality_meta["earnings_revisions_breadth"] = {"source": "cache:macro_state", "stale_days": cache_stale_days}
         
     # Phase 2: Net Liquidity & MOVE Index
     net_liq, liq_roc = fetch_net_liquidity()

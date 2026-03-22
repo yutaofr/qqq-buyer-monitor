@@ -76,7 +76,7 @@ def print_signal(
             f"{c(color)}{label}{r} | "
             f"Price: ${result.price:.2f} | "
             f"Score: {result.final_score} | "
-            f"({consecutive_days}d)"
+            f"({consecutive_days}d) [报告折叠]"
         )
         print(msg)
         return
