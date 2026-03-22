@@ -266,7 +266,7 @@ class SignalResult:
     # v6.3 Strategic Architecture (Split Reality from Ideal)
     current_portfolio: CurrentPortfolioState = field(default_factory=CurrentPortfolioState)
     target_allocation: TargetAllocationState = field(default_factory=TargetAllocationState)
-    realized_beta: float = 0.0
+    effective_exposure: float = 0.0
     
     # Deprecated fields (kept for db migration bridge)
     @property

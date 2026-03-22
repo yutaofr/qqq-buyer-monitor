@@ -231,8 +231,8 @@ def aggregate(
     confidence = profile["confidence"]
     
     # v6.3.9 Beta Audit: Reality vs Target
-    realized_beta = ctx.current_portfolio.qqq_pct + 2.0 * ctx.current_portfolio.qld_pct
-    beta_drift = realized_beta - ctx.target_allocation.target_beta
+    effective_exposure = ctx.current_portfolio.qqq_pct + 2.0 * ctx.current_portfolio.qld_pct
+    beta_drift = effective_exposure - ctx.target_allocation.target_beta
 
     overlay = ctx.tier2.overlay if ctx.tier2.overlay else OptionsOverlay()
     if overlay.can_reduce_tranche:
@@ -247,7 +247,7 @@ def aggregate(
         # v6.3 rebalancing info from target model
         current_cash=ctx.current_portfolio.current_cash_pct * 100.0,
         target_cash=ctx.target_allocation.target_cash_pct * 100.0,
-        realized_beta=realized_beta,
+        effective_exposure=effective_exposure,
         target_beta=ctx.target_allocation.target_beta
     )
 
@@ -270,7 +270,7 @@ def aggregate(
         logic_trace=ctx.trace,
         current_portfolio=ctx.current_portfolio,
         target_allocation=ctx.target_allocation,
-        realized_beta=realized_beta
+        effective_exposure=effective_exposure
     )
 
 # ── Pipeline Steps ───────────────────────────────────────────────────────────
@@ -484,7 +484,7 @@ def _build_explanation(
     structural_regime: str, tactical_state: str, allocation_state: AllocationState,
     daily_tranche_pct: float, max_total_add_pct: float, cooldown_days: int, confidence: str,
     current_cash: float = 0.0, target_cash: float = 0.0,
-    realized_beta: float = 0.0, target_beta: float = 0.0
+    effective_exposure: float = 0.0, target_beta: float = 0.0
 ) -> str:
     parts: list[str] = []
     t1_score = tier1.score
@@ -586,8 +586,8 @@ def _build_explanation(
         parts.append(f"\n💡 [REBALANCE ACTION] 当前现金比例({current_cash:.1f}%)低于防御目标({target_cash:.1f}%)。建议通过卖出战术仓位补足 {gap:.1f}% 的现金缺口以维持资产负债表安全。")
 
     # v6.3.9 Beta Audit
-    beta_drift = realized_beta - target_beta
+    beta_drift = effective_exposure - target_beta
     drift_status = "符合预期" if abs(beta_drift) < 0.05 else ("风险偏高" if beta_drift > 0 else "敞口不足")
-    parts.append(f"\n📊 [BETA AUDIT] 当前实际 Beta: {realized_beta:.2f} (目标: {target_beta:.2f})；状态: {drift_status}。")
+    parts.append(f"\n📊 [EXPOSURE AUDIT] 当前有效敞口: {effective_exposure:.2f} (目标 Beta: {target_beta:.2f})；状态: {drift_status}。")
 
     return "。".join(parts) + "。"
