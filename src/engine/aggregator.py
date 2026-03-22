@@ -2,7 +2,7 @@
 Allocation policy engine: combines slow-horizon structure, tactical stress,
 and Tier-2 overlay into a long-term QQQ sizing recommendation.
 
-Implements the Decision State Monad pattern for white-box transparency.
+v6.2 Institutional Upgrade: Adds Triple Confirmation Defense Ladder.
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from typing import Optional
 from src.engine.tier0_macro import assess_structural_regime
 from src.models import (
     AllocationState, OptionsOverlay, Signal, SignalResult, 
-    Tier1Result, Tier2Result
+    Tier1Result, Tier2Result, PortfolioState
 )
 
 TRIGGERED_THRESHOLD = 70
@@ -27,16 +27,7 @@ _SIGNAL_RANK = {
     Signal.GREEDY: 0,
 }
 
-_MAX_SIGNAL_BY_ALLOCATION = {
-    AllocationState.PAUSE_CHASING: Signal.NO_SIGNAL,
-    AllocationState.BASE_DCA: Signal.NO_SIGNAL,
-    AllocationState.SLOW_ACCUMULATE: Signal.WATCH,
-    AllocationState.FAST_ACCUMULATE: Signal.TRIGGERED,
-    AllocationState.RISK_CONTAINMENT: Signal.NO_SIGNAL,
-}
-
-_CONFIDENCE_ORDER = {"low": 0, "medium": 1, "high": 2}
-
+# v6.2 Enhanced Allocation Profile
 _ALLOCATION_PROFILE = {
     AllocationState.PAUSE_CHASING: {
         "daily_tranche_pct": 0.0,
@@ -44,6 +35,7 @@ _ALLOCATION_PROFILE = {
         "cooldown_days": 0,
         "required_persistence_days": 1,
         "confidence": "low",
+        "target_cash_pct": 10.0, # Baseline buffer
     },
     AllocationState.BASE_DCA: {
         "daily_tranche_pct": 0.25,
@@ -51,6 +43,7 @@ _ALLOCATION_PROFILE = {
         "cooldown_days": 0,
         "required_persistence_days": 1,
         "confidence": "medium",
+        "target_cash_pct": 5.0,
     },
     AllocationState.SLOW_ACCUMULATE: {
         "daily_tranche_pct": 0.50,
@@ -58,6 +51,7 @@ _ALLOCATION_PROFILE = {
         "cooldown_days": 0,
         "required_persistence_days": 1,
         "confidence": "medium",
+        "target_cash_pct": 5.0,
     },
     AllocationState.FAST_ACCUMULATE: {
         "daily_tranche_pct": 0.75,
@@ -65,6 +59,7 @@ _ALLOCATION_PROFILE = {
         "cooldown_days": 2,
         "required_persistence_days": 2,
         "confidence": "high",
+        "target_cash_pct": 0.0,
     },
     AllocationState.RISK_CONTAINMENT: {
         "daily_tranche_pct": 0.10,
@@ -72,17 +67,63 @@ _ALLOCATION_PROFILE = {
         "cooldown_days": 1,
         "required_persistence_days": 1,
         "confidence": "low",
+        "target_cash_pct": 15.0,
+    },
+    # v6.2 New Defensive States
+    AllocationState.WATCH_DEFENSE: {
+        "daily_tranche_pct": 0.0,
+        "max_total_add_pct": 0.0,
+        "cooldown_days": 1,
+        "required_persistence_days": 1,
+        "confidence": "low",
+        "target_cash_pct": 15.0, # Immediate buffer
+    },
+    AllocationState.DELEVERAGE: {
+        "daily_tranche_pct": 0.0,
+        "max_total_add_pct": 0.0,
+        "cooldown_days": 1,
+        "required_persistence_days": 1,
+        "confidence": "low",
+        "target_cash_pct": 30.0, # Significant deleveraging
+    },
+    AllocationState.CASH_FLIGHT: {
+        "daily_tranche_pct": 0.0,
+        "max_total_add_pct": 0.0,
+        "cooldown_days": 1,
+        "required_persistence_days": 1,
+        "confidence": "low",
+        "target_cash_pct": 50.0, # Extreme survival mode
     },
 }
 
+_MAX_SIGNAL_BY_ALLOCATION = {
+    AllocationState.PAUSE_CHASING: Signal.NO_SIGNAL,
+    AllocationState.BASE_DCA: Signal.NO_SIGNAL,
+    AllocationState.SLOW_ACCUMULATE: Signal.WATCH,
+    AllocationState.FAST_ACCUMULATE: Signal.TRIGGERED,
+    AllocationState.RISK_CONTAINMENT: Signal.NO_SIGNAL,
+    AllocationState.WATCH_DEFENSE: Signal.NO_SIGNAL,
+    AllocationState.DELEVERAGE: Signal.NO_SIGNAL,
+    AllocationState.CASH_FLIGHT: Signal.NO_SIGNAL,
+}
+
+_CONFIDENCE_ORDER = {"low": 0, "medium": 1, "high": 2}
+
 def recommend_allocation(structural: str, tactical: str) -> AllocationState:
     """Legacy wrapper for backward compatibility with tests/callers."""
+    # Build dummy Tier1/Tier2 to satisfy the pipeline
+    t1 = Tier1Result(score=50, drawdown_52w=None, ma200_deviation=None, vix=None, fear_greed=None, breadth=None)
+    t2 = Tier2Result(adjustment=0, put_wall=None, call_wall=None, gamma_flip=None, 
+                    support_confirmed=False, support_broken=False, upside_open=False, 
+                    gamma_positive=True, gamma_source="yf", put_wall_distance_pct=0.0, call_wall_distance_pct=0.0)
+    
     ctx = DecisionContext(
         market_date=date.today(), price=0.0, 
-        tier1=None, tier2=None, # type: ignore
+        tier1=t1, tier2=t2,
         structural_regime=structural, 
         tactical_state=tactical
     )
+    # Run only necessary steps
     ctx = _step_allocation_policy(ctx)
     return ctx.allocation_state
 
@@ -97,11 +138,21 @@ class DecisionContext:
     erp_val: Optional[float] = None
     ma50: Optional[float] = None
     
+    # v6.2 Defensive Confirmation Parameters
+    credit_accel: Optional[float] = None
+    liquidity_roc: Optional[float] = None
+    is_funding_stressed: bool = False
+    
+    # Portfolio Inputs
+    current_cash_pct: float = 0.0
+    
     # State accumulated
     structural_regime: str = "NEUTRAL"
     tactical_state: str = "CALM"
     allocation_state: AllocationState = AllocationState.BASE_DCA
     signal: Signal = Signal.NO_SIGNAL
+    portfolio: PortfolioState = field(default_factory=PortfolioState)
+    target_cash_pct: float = 0.0
     
     # Trace (Evidence Chain)
     trace: list[dict] = field(default_factory=list)
@@ -116,6 +167,11 @@ def aggregate(
     forward_pe: float | None = None,
     real_yield: float | None = None,
     ma50: float | None = None,
+    # v6.2 Defensive parameters (Added defaults for backward compatibility)
+    credit_accel: float | None = None,
+    liquidity_roc: float | None = None,
+    is_funding_stressed: bool = False,
+    current_cash_pct: float = 0.0
 ) -> SignalResult:
     """Entry point for aggregated signal computation using pipeline."""
     
@@ -131,19 +187,25 @@ def aggregate(
         tier2=tier2,
         credit_spread=credit_spread,
         erp_val=erp_val,
-        ma50=ma50
+        ma50=ma50,
+        credit_accel=credit_accel,
+        liquidity_roc=liquidity_roc,
+        is_funding_stressed=is_funding_stressed,
+        current_cash_pct=current_cash_pct
     )
 
     # 2. Run Pipeline Steps
+    ctx = _step_defensive_bypass(ctx) # L1/L2/L3 Triple Confirmation
     ctx = _step_structural_regime(ctx)
     ctx = _step_tactical_state(ctx)
-    ctx = _step_allocation_policy(ctx)
+    ctx = _step_allocation_policy(ctx) # Only runs if not bypassed
+    ctx = _step_portfolio_alignment(ctx) # Adjust target cash and exposure
     ctx = _step_overlay_refinement(ctx)
     ctx = _step_finalize(ctx)
 
     profile = _ALLOCATION_PROFILE[ctx.allocation_state]
     
-    # Compute dynamic parameters (preserving legacy override logic)
+    # Compute dynamic parameters
     daily_tranche_pct = profile["daily_tranche_pct"]
     cooldown_days = profile["cooldown_days"]
     confidence = profile["confidence"]
@@ -157,7 +219,10 @@ def aggregate(
     explanation = _build_explanation(
         ctx.signal, ctx.tier1, ctx.tier2, ctx.tier1.score + ctx.tier2.adjustment,
         ctx.structural_regime, ctx.tactical_state, ctx.allocation_state,
-        daily_tranche_pct, profile["max_total_add_pct"], cooldown_days, confidence
+        daily_tranche_pct, profile["max_total_add_pct"], cooldown_days, confidence,
+        # v6.2 rebalancing info
+        current_cash=ctx.current_cash_pct,
+        target_cash=ctx.target_cash_pct
     )
 
     return SignalResult(
@@ -176,12 +241,45 @@ def aggregate(
         cooldown_days=cooldown_days,
         required_persistence_days=profile["required_persistence_days"],
         confidence=confidence,
-        logic_trace=ctx.trace
+        logic_trace=ctx.trace,
+        portfolio=ctx.portfolio,
+        target_cash_pct=ctx.target_cash_pct
     )
 
 # ── Pipeline Steps ───────────────────────────────────────────────────────────
 
+def _step_defensive_bypass(ctx: DecisionContext) -> DecisionContext:
+    """Implement v6.2 Triple Confirmation Defensive Ladder."""
+    credit_bad = ctx.credit_accel is not None and ctx.credit_accel > 15.0
+    liq_bad = ctx.liquidity_roc is not None and ctx.liquidity_roc < -2.0
+    funding_bad = ctx.is_funding_stressed
+    
+    state = None
+    reason = "No defensive bypass triggered"
+    
+    if credit_bad and liq_bad and funding_bad:
+        state = AllocationState.CASH_FLIGHT
+        reason = "L3 CASH_FLIGHT: Credit + Liquidity + Funding Stress Resonance"
+    elif credit_bad and liq_bad:
+        state = AllocationState.DELEVERAGE
+        reason = "L2 DELEVERAGE: Credit Acceleration + Liquidity Drain Resonance"
+    elif credit_bad:
+        state = AllocationState.WATCH_DEFENSE
+        reason = "L1 WATCH_DEFENSE: Credit Spread Acceleration detected"
+        
+    if state:
+        trace_node = {
+            "step": "defensive_bypass",
+            "decision": state.value,
+            "reason": reason,
+            "evidence": {"accel": ctx.credit_accel, "liq_roc": ctx.liquidity_roc, "funding": funding_bad}
+        }
+        return _update_ctx(ctx, allocation_state=state, trace=ctx.trace + [trace_node])
+    
+    return ctx
+
 def _step_structural_regime(ctx: DecisionContext) -> DecisionContext:
+    # If already in high-level defense, preserve it but still assess regime for data
     regime = assess_structural_regime(ctx.credit_spread, ctx.erp_val)
     trace_node = {
         "step": "structural_regime",
@@ -219,6 +317,10 @@ def _step_tactical_state(ctx: DecisionContext) -> DecisionContext:
     return _update_ctx(ctx, tactical_state=state, trace=ctx.trace + [trace_node])
 
 def _step_allocation_policy(ctx: DecisionContext) -> DecisionContext:
+    # If bypass already set a defensive state, skip logic but allow override if worse
+    if ctx.allocation_state in (AllocationState.WATCH_DEFENSE, AllocationState.DELEVERAGE, AllocationState.CASH_FLIGHT):
+        return ctx
+        
     s = ctx.structural_regime
     t = ctx.tactical_state
     
@@ -256,6 +358,32 @@ def _step_allocation_policy(ctx: DecisionContext) -> DecisionContext:
         "evidence": {"regime": s, "tactical": t}
     }
     return _update_ctx(ctx, allocation_state=res, trace=ctx.trace + [trace_node])
+
+def _step_portfolio_alignment(ctx: DecisionContext) -> DecisionContext:
+    """v6.2 Portfolio State Management."""
+    profile = _ALLOCATION_PROFILE[ctx.allocation_state]
+    target_cash = profile["target_cash_pct"]
+    
+    # Calculate guidance
+    leverage = 1.0
+    if ctx.allocation_state == AllocationState.FAST_ACCUMULATE:
+        leverage = 1.2
+    elif ctx.allocation_state in (AllocationState.WATCH_DEFENSE, AllocationState.DELEVERAGE, AllocationState.CASH_FLIGHT):
+        leverage = 1.0 # Force no leverage
+        
+    portfolio = PortfolioState(
+        current_cash_pct=ctx.current_cash_pct,
+        leverage_ratio=leverage,
+        target_cash_pct=target_cash
+    )
+    
+    trace_node = {
+        "step": "portfolio_alignment",
+        "decision": f"Target Cash: {target_cash}%",
+        "reason": f"Aligned with {ctx.allocation_state.value}",
+        "evidence": {"current": ctx.current_cash_pct, "leverage": leverage}
+    }
+    return _update_ctx(ctx, portfolio=portfolio, target_cash_pct=target_cash, trace=ctx.trace + [trace_node])
 
 def _step_overlay_refinement(ctx: DecisionContext) -> DecisionContext:
     overlay = ctx.tier2.overlay if ctx.tier2.overlay else OptionsOverlay()
@@ -305,6 +433,7 @@ def _step_finalize(ctx: DecisionContext) -> DecisionContext:
     # Greedy override
     if (
         sig == Signal.NO_SIGNAL
+        and ctx.tier1.fear_greed is not None
         and ctx.tier1.fear_greed.value > 75
         and ctx.tier1.score < 10
         and ctx.ma50 is not None
@@ -356,6 +485,7 @@ def _build_explanation(
     signal: Signal, tier1: Tier1Result, tier2: Tier2Result, final_score: int,
     structural_regime: str, tactical_state: str, allocation_state: AllocationState,
     daily_tranche_pct: float, max_total_add_pct: float, cooldown_days: int, confidence: str,
+    current_cash: float = 0.0, target_cash: float = 0.0
 ) -> str:
     """Preserve original Chinese explanation building logic."""
     parts: list[str] = []
@@ -426,6 +556,12 @@ def _build_explanation(
 
     if signal == Signal.GREEDY:
         parts.append(f"🚨 🌟 综合判断：触发【贪婪警告】(GREEDY)！当前市场情绪极度过热（F&G: {tier1.fear_greed.value}），且价格涨幅过快。建议分批止盈，落袋为安，切勿追高。")
+    elif allocation_state == AllocationState.CASH_FLIGHT:
+        parts.append(f"🚨 🚨 综合判断：触发【L3 极端避险】(CASH_FLIGHT)！信贷、流动性与融资压力三重共振恶化。强制停止加仓，建议立即提高现金比例至 50% 以上。")
+    elif allocation_state == AllocationState.DELEVERAGE:
+        parts.append(f"🚨 综合判断：触发【L2 降杠杆】(DELEVERAGE)！信贷恶化与流动性抽离共振。暂停买入，建议逢高减持非核心仓位，提高现金缓冲。")
+    elif allocation_state == AllocationState.WATCH_DEFENSE:
+        parts.append(f"🛡️ 综合判断：触发【L1 防御观察】(WATCH_DEFENSE)！信用利差显著加速，禁止新增杠杆，密切关注流动性共振。")
     elif allocation_state == AllocationState.RISK_CONTAINMENT:
         parts.append(f"🚨 综合判断：当前进入流动性危机风险控制区间。{allocation_note}")
     elif allocation_state == AllocationState.PAUSE_CHASING:
@@ -446,5 +582,10 @@ def _build_explanation(
         if tier1.descent_velocity == "GRIND":
             parts.append("阴跌预警：当前市场处于无量阴跌阶段，尚未出现恐慌性底背离，系统维持观望。")
         parts.append(f"综合判断：维持基础定投，条件尚未满足。{allocation_note}")
+
+    # v6.2 Rebalance Action Guidance
+    if target_cash > 0 and current_cash < target_cash:
+        gap = target_cash - current_cash
+        parts.append(f"\n💡 [REBALANCE ACTION] 当前现金比例({current_cash:.1f}%)低于防御目标({target_cash:.1f}%)。建议通过卖出战术仓位补足 {gap:.1f}% 的现金缺口以维持资产负债表安全。")
 
     return "。".join(parts) + "。"
