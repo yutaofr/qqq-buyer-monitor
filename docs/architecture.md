@@ -1,4 +1,4 @@
-# Architecture Design Document: QQQ Monitor (v5.0)
+# Architecture Design Document: QQQ Monitor (v6.2)
 
 This document provides a technical deep-dive into the internal architecture, data contracts, and design patterns of the `qqq-monitor` system.
 
@@ -6,50 +6,52 @@ This document provides a technical deep-dive into the internal architecture, dat
 
 ## 1. System Components & Responsibility
 
-The system follows a classic **Pipes and Filters** architecture, where data is collected, transformed, and aggregated through a series of specialized engines.
+The system follows a **Functional Pipeline (Monadic)** architecture, where state is passed through a sequence of pure transformers.
 
 | Component | Responsibility |
 | :--- | :--- |
 | **Collector Layer** (`src/collector/`) | Fetching raw data from `yfinance`, `FRED`, and `CNN`. Handles retries and basic parsing. |
 | **Model Layer** (`src/models/`) | Defines the "Data Contract" between collectors and engines (`MarketData`, `SignalResult`). |
-| **Engine Layer** (`src/engine/`) | The core logic. Tier-0 (Macro), Tier-1 (Sentiment), Tier-1.5 (Divergence), and Tier-2 (Options). |
-| **Store Layer** (`src/store/`) | Persistence using SQLite. Manages historical time-series for Z-score and Divergence calculations. |
+| **Engine Layer** (`src/engine/`) | The core logic. Now implemented as a **Decision State Monad** in `aggregator.py`. |
+| **Interpreter Layer** (`src/output/interpreter.py`) | Consumes `logic_trace` to generate human rationales and visual decision trees. |
+| **Store Layer** (`src/store/`) | Persistence using SQLite. Now serializes `logic_trace` for auditability. |
 | **Output Layer** (`src/output/`) | Formatting results for CLI (Human) or JSON (Machine/API). |
 
 ---
 
-## 2. Data Flow & Execution Sequence
+## 2. Data Flow & Execution Sequence (v6.2 Monadic Pipeline)
 
 ```mermaid
-sequenceDiagram
-    participant Main as main.py
-    participant Col as Collector Layer
-    participant DB as SQLite Store
-    participant T0 as Tier-0 (Macro)
-    participant T1 as Tier-1 (Sentiment)
-    participant T2 as Tier-2 (Options)
-    participant Agg as Aggregator
-
-    Main->>DB: Load History (120 days)
-    Main->>DB: Load Latest Macro State (Cache)
-    Main->>Col: Fetch Price, VIX, F&G, Options, Macro
-    Col-->>Main: Raw Data Pack
-    Main->>Main: Calculate Z-Scores & Adaptive Stats
-    Main->>T0: check_macro_regime (Credit Spread, ERP)
-    T0-->>Main: Regime Status (Crisis/Normal/Defense/Aggressive)
-    Main->>T1: calculate_tier1 (MarketData)
-    T1->>T1: Descent Velocity Filter (Panic vs Grind)
-    T1->>T1: Divergence Check (Price vs VIX/Breadth)
-    T1-->>Main: Tier1Result (0-100 Score + Bonuses)
-    Main->>T2: calculate_tier2 (Price, OptionsChain)
-    T2-->>Main: Tier2Result (Adjustment + Hard Veto Flags)
-    Main->>Agg: aggregate(T1, T2, Regime, PrevSignal)
-    Agg->>Agg: Dynamic Thresholding (Schmitt Trigger)
-    Agg-->>Main: SignalResult (STRONG_BUY to NO_SIGNAL)
-    Main->>DB: Save SignalResult (JSON Blob)
-    Main->>DB: Update Macro State Cache
-    Main->>Main: Output Result (CLI/JSON)
+graph TD
+    A[Initialize DecisionContext] --> B[_step_structural_regime]
+    B --> C[_step_tactical_state]
+    C --> D[_step_allocation_policy]
+    D --> E[_step_overlay_refinement]
+    E --> F[_step_finalize]
+    F --> G[SignalResult with logic_trace]
+    G --> H[NarrativeEngine]
+    G --> I[SQLite Persistence]
 ```
+
+---
+
+## 3. Decision State Monad (DSM)
+
+### 3.1 The Monadic Container: `DecisionContext`
+Every decision step accepts a `DecisionContext` and returns a new one with updated state and an appended `trace` node. This ensures immutability and full auditability of the execution path.
+
+### 3.2 Logic Trace Schema
+Each node in the `logic_trace` list follows this structure:
+- `step`: The name of the pipeline stage.
+- `decision`: The categorical output of that stage (e.g., `RICH_TIGHTENING`).
+- `reason`: A technical description of why the decision was made.
+- `evidence`: A dictionary of the raw values used in the decision.
+
+---
+
+## 4. Persistent Logic Trace
+
+Unlike previous versions where internal logic was lost after execution, v6.2 serializes the entire `logic_trace` into the `json_blob` column of the `signals` table. This allows for historical "Logic Audits" to verify if architectural constraints were respected during past market events.
 
 ---
 
