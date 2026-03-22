@@ -80,6 +80,7 @@ class BacktestMethodologySummary:
     # v6.3.12: Interval Beta Audit (AC-4 Fidelity)
     # List of {state, start, end, realized, target, deviation}
     interval_beta_audit: list[dict[str, Any]] = field(default_factory=list)
+    mean_interval_beta_deviation: float = 0.0
     # v6.2 Visualization Support
     daily_timeseries: Optional[pd.DataFrame] = None
     excluded_features: tuple[str, ...] = EXCLUDED_HISTORICAL_FEATURES
@@ -301,6 +302,8 @@ class Backtester:
                     "target": s_target_beta,
                     "deviation": abs(s_realized_beta - s_target_beta)
                 })
+        
+        mean_deviation = np.mean([x["deviation"] for x in interval_beta_audit]) if interval_beta_audit else 0.0
 
         # 4. Final Summary
         tactical_avg_cost = tactical_cost_num / total_tactical_units if total_tactical_units else 0
@@ -323,6 +326,7 @@ class Backtester:
             baseline_mdd=baseline_mdd,
             realized_beta=realized_beta,
             interval_beta_audit=interval_beta_audit,
+            mean_interval_beta_deviation=float(mean_deviation),
             daily_timeseries=daily_ts
         )
 
@@ -526,7 +530,7 @@ def run_backtest() -> None:
     print(f"Realized Beta (Full Sample): {summary.realized_beta:.2f}")
     
     if summary.interval_beta_audit:
-        print("\n--- AC-4 Beta Fidelity Audit (Effective Intervals) ---")
+        print(f"\n--- AC-4 Beta Fidelity Audit (Mean Deviation: {summary.mean_interval_beta_deviation:.4f}) ---")
         # Show only top 10 most recent/relevant intervals for brevity
         for metrics in summary.interval_beta_audit[-10:]:
             print(f"  - {metrics['state']:15} ({metrics['start_date']} to {metrics['end_date']}): Realized={metrics['realized']:.2f}, Target={metrics['target']:.2f}, Dev={metrics['deviation']:.2f}")
