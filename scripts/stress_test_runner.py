@@ -146,8 +146,21 @@ def generate_report(results):
                 report += f"  - {s}: {counts[s]} 周\n"
         report += "\n"
         
+    # 计算全局审计指标
+    all_deviations = [s.mean_interval_beta_deviation for s in results.values() if s]
+    global_mean_dev = np.mean(all_deviations) if all_deviations else 0.0
+    worst_dev = np.max(all_deviations) if all_deviations else 0.0
+    
     report += "## 2. 战略配置有效性结论\n"
-    report += "- **AC-4 贝塔保真度**: 跨所有危机情景的有效区间实现贝塔与目标偏差均值远低于 0.05，证明了 T+0 理想再平衡逻辑在多资产组合中的精准度。\n"
+    
+    # 动态生成 AC-4 结论
+    status = "通过 (PASS)" if worst_dev <= 0.05 else "不通过 (FAIL)"
+    report += f"- **AC-4 贝塔保真度 [{status}]**: 跨所有危机情景的有效区间实现贝塔与目标偏差均值为 {global_mean_dev:.4f}，最差情景偏差为 {worst_dev:.4f} (阈值: 0.05)。"
+    if worst_dev <= 0.05:
+        report += "证明了 T+0 理想再平衡逻辑在多资产组合中的精准度。\n"
+    else:
+        report += "警告：部分情景偏离度超出机构级容忍范围，需检查再平衡频率或杠杆损耗补偿逻辑。\n"
+
     report += "- **2003/2009 反转验证**: 系统不仅在崩盘前锁定了现金，且在信用利差回落、价格底背离确认后，通过**加速定投（Cash Burning）**将存量现金快速转化为权益资产，成功捕捉到了 V 型反转最陡峭的上升段。\n"
     report += "- **资金效率**: 现金回补逻辑避免了资金在底部“闲置”，将防御期存下的‘子弹’精准打在了高置信度买点上。\n"
     
