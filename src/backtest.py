@@ -136,13 +136,22 @@ class Backtester:
                 # Tactical Addition
                 units_to_add = _state_units(state)
                 cost = units_to_add * price
-                # Simplified: assume we always have enough cash for DCA from 'income'
-                # or draw from initial capital if needed
-                units_held += units_to_add
-                tactical_cost_num += price * units_to_add
-                total_tactical_units += units_to_add
                 
-                # Baseline Addition
+                # Check for cash availability
+                if cash >= cost:
+                    cash -= cost
+                    units_held += units_to_add
+                    tactical_cost_num += price * units_to_add
+                    total_tactical_units += units_to_add
+                else:
+                    # Partial add if cash is limited
+                    can_afford_units = cash / price
+                    cash = 0.0
+                    units_held += can_afford_units
+                    tactical_cost_num += price * can_afford_units
+                    total_tactical_units += can_afford_units
+                
+                # Baseline Addition (Assuming infinite baseline cash for pure DCA comparison)
                 baseline_units_held += BASE_WEEKLY_DCA_UNITS
                 baseline_cost_num += price
                 

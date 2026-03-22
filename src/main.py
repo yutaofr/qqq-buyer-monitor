@@ -251,6 +251,9 @@ def _run(args: argparse.Namespace) -> None:
     tier2 = calculate_tier2(market_data.price, market_data.options_df, ohlcv_history=market_data.ohlcv_history)
     
     # v6.2 Full Aggregation with Defensive Parameters
+    import os
+    current_cash = float(os.environ.get("CASH_LEVEL", "0.0"))
+    
     result = aggregate(
         market_data.date, 
         market_data.price, 
@@ -264,7 +267,7 @@ def _run(args: argparse.Namespace) -> None:
         credit_accel=credit_accel,
         liquidity_roc=liq_roc,
         is_funding_stressed=funding_stress.get("is_stressed", False),
-        current_cash_pct=0.0 # Placeholder for actual portfolio state
+        current_cash_pct=current_cash
     )
     result.data_quality = build_data_quality(market_data, feature_meta=data_quality_meta)
 
