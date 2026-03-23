@@ -140,7 +140,7 @@ class Backtester:
         Simulate a full portfolio with cash management and dynamic rebalancing.
         v6.3: Supports Multi-Asset (QQQ + QLD) TAA Mirroring.
         v6.4: Supports custom target_map for candidate scoring or enable_dynamic_search.
-        Optimized: Accepts precomputed_states to avoid redundant tactical derivation.
+        Optimized: Faithful rolling simulation with zero look-ahead bias.
         """
         prices_qqq = ohlcv["Close"].dropna().astype(float)
         if prices_qqq.empty:
@@ -150,8 +150,9 @@ class Backtester:
         prices_qld = simulate_leveraged_price(prices_qqq, leverage=2.0)
         
         # 2. State Derivation (Full Logic)
+        # v6.4 Fix: In dynamic search mode, we derive states on-the-fly to avoid leakage.
+        # But for internal sub-simulations (scoring), we pass precomputed sub-slices.
         if precomputed_states is not None:
-            # Reindex to ensure alignment with current ohlcv slice
             tactical_states = precomputed_states.reindex(prices_qqq.index).ffill()
         else:
             tactical_states = self._derive_states(ohlcv, macro_seeder)
@@ -162,15 +163,11 @@ class Backtester:
         units_qld = 0.0
         baseline_units_held = 0.0
         
-        # Track Daily NAV for MDD
         daily_nav = []
         baseline_nav = []
         daily_stats = []
-        
         add_dates = list(prices_qqq.index[::WEEKLY_ADD_INTERVAL])
         event_metrics = []
-        
-        # Cost tracking
         tactical_cost_num = 0.0
         baseline_cost_num = 0.0
         total_tactical_units = 0.0
@@ -179,32 +176,47 @@ class Backtester:
         mae_values = []
         horizon_numerators = {h: 0.0 for h in FWD_HORIZONS}
         horizon_denominators = {h: 0.0 for h in FWD_HORIZONS}
-
-        # Track volume for turnover
         total_volume_traded = 0.0
         nav_drift_errors = []
 
         # v6.4 Rolling Decision Cache (elimination of look-ahead bias)
         rolling_targets = {}
+        current_target = None
         event_count = 0
+        target_history = [] # AC-4: Daily target tracking for accurate audit
 
         for dt in prices_qqq.index:
             p_qqq = float(prices_qqq.loc[dt])
             p_qld = float(prices_qld.loc[dt])
             state = tactical_states.loc[dt]
             
-            # Robustly handle index types
             current_dt = pd.to_datetime(dt)
             current_date = current_dt.date()
             
-            # Fetch macro features for daily stats
             macro_features = {"credit_accel": 0.0}
             if macro_seeder:
                 macro_features = macro_seeder.get_features_for_date(current_date)
 
             # A. Check for Weekly Addition (Cash Flow Event)
             if dt in add_dates:
-                # ... (rest of the block)
+                # v6.4 Fix: Rolling dynamic search on every add event
+                if enable_dynamic_search:
+                    event_count += 1
+                    if event_count % 100 == 0:
+                        print(f"  - Rolling Search: {current_date} ({event_count} events)...")
+                        
+                    candidates = generate_candidates(state)
+                    dt_loc = prices_qqq.index.get_loc(dt)
+                    if not isinstance(dt_loc, int): dt_loc = dt_loc[0]
+                    # Use 504-day lookback for scoring
+                    start_loc = max(0, dt_loc - 504)
+                    sub_ohlcv = ohlcv.iloc[start_loc:dt_loc+1]
+                    sub_states = tactical_states.iloc[start_loc:dt_loc+1]
+                    
+                    # Score candidates using the historical slice available at 'dt'
+                    scores = self.score_candidates(sub_ohlcv, state, candidates, macro_seeder, precomputed_states=sub_states)
+                    current_target = find_best_allocation(state, scores)
+
                 base_units = _state_units(state)
                 units_to_add = base_units
                 if state in (AllocationState.FAST_ACCUMULATE, AllocationState.SLOW_ACCUMULATE) and cash > (self.initial_capital * 0.1):
@@ -233,29 +245,12 @@ class Backtester:
             # B. Execute DAILY Rebalancing (v6.3.13 Strategic TAA calibration)
             if target_map and state in target_map:
                 target = target_map[state]
-            elif enable_dynamic_search:
-                # Rolling Search: Score candidates using ONLY data available up to 'dt'
-                # v6.4 FIX: Limit lookback to 504 days (2 years) to avoid O(N^2) slowness
-                if state not in rolling_targets or dt in add_dates:
-                    event_count += 1
-                    if event_count % 100 == 0:
-                        print(f"  - Search Progress: {current_date} ({event_count} events)...")
-                        
-                    candidates = generate_candidates(state)
-                    # Fixed lookback window: max 504 days
-                    dt_loc = prices_qqq.index.get_loc(dt)
-                    if not isinstance(dt_loc, int): dt_loc = dt_loc[0] # handle duplicates
-                    start_loc = max(0, dt_loc - 504)
-                    sub_ohlcv = ohlcv.iloc[start_loc:dt_loc+1]
-                    
-                    if len(sub_ohlcv) > 20:
-                        scores = self.score_candidates(sub_ohlcv, state, candidates, macro_seeder, precomputed_states=tactical_states)
-                        rolling_targets[state] = find_best_allocation(state, scores)
-                    else:
-                        rolling_targets[state] = candidates[0]
-                target = rolling_targets[state]
+            elif enable_dynamic_search and current_target:
+                target = current_target
             else:
                 target = get_target_allocation(state)
+            
+            target_history.append(target)
 
             # AC-3 Component Summation Identity Check
             reported_nav_before = (units_qqq * p_qqq) + (units_qld * p_qld) + cash
@@ -269,7 +264,7 @@ class Backtester:
             total_volume_traded += abs(target_qqq_val - (units_qqq * p_qqq))
             total_volume_traded += abs(target_qld_val - (units_qld * p_qld))
 
-            # T+0 Rebalance (Atomic swap)
+            # T+0 Rebalance
             cash = target_cash
             units_qqq = target_qqq_val / p_qqq
             units_qld = target_qld_val / p_qld
@@ -313,7 +308,8 @@ class Backtester:
                 "baseline_nav": b_nav,
                 "cash_pct": (cash / nav * 100.0) if nav > 0 else 100.0,
                 "credit_accel": macro_features.get("credit_accel", 0.0),
-                "state": state.value
+                "state": state.value,
+                "target_beta": target.target_beta # Store for AC-4 audit
             })
 
         # 3. Compute Performance KPIs
@@ -346,13 +342,8 @@ class Backtester:
                 s_cov = np.cov(s_tactical_ret, s_market_ret, ddof=1)[0, 1]
                 s_realized_beta = float(s_cov / s_var_market)
                 
-                # Use target from map or rolling targets if available
-                if target_map and s_state in target_map:
-                    s_target_beta = target_map[s_state].target_beta
-                elif enable_dynamic_search and s_state in rolling_targets:
-                    s_target_beta = rolling_targets[s_state].target_beta
-                else:
-                    s_target_beta = get_target_allocation(s_state).target_beta
+                # AC-4 Fidelity: Use the actual executed targets from this interval
+                s_target_beta = float(group["target_beta"].mean())
                 
                 interval_beta_audit.append({
                     "state": s_state_str,
@@ -367,11 +358,10 @@ class Backtester:
         avg_nav = np.mean(daily_nav) if daily_nav else 1.0
         turnover = total_volume_traded / avg_nav
 
-        # AC-3: NAV Integrity (1.0 - mean relative drift)
-        # We verify identity daily: NAV = Cash + QQQ + QLD
+        # AC-3: Measured NAV Integrity
         nav_integrity_val = 1.0 - np.mean(nav_drift_errors) if nav_drift_errors else 1.0
         if not all(n > 0 for n in daily_nav):
-            nav_integrity_val = 0.0 # Critical solvency failure
+            nav_integrity_val = 0.0
 
         tactical_avg_cost = tactical_cost_num / total_tactical_units if total_tactical_units else 0
         baseline_avg_cost = baseline_cost_num / len(add_dates) if add_dates else 0
@@ -415,6 +405,7 @@ class Backtester:
             target_map = {state: cand}
             summary = self.simulate_portfolio(ohlcv, macro_seeder, target_map=target_map, precomputed_states=precomputed_states)
             
+            # Robustly calculate days
             if hasattr(ohlcv.index, "date") and len(ohlcv.index) > 1:
                 days = (ohlcv.index[-1] - ohlcv.index[0]).days
             elif hasattr(ohlcv.index[0], "days"):
@@ -440,8 +431,6 @@ class Backtester:
                 "nav_integrity": summary.nav_integrity
             }
 
-        # Use ThreadPoolExecutor for lightweight parallel sub-simulations
-        # (simulate_portfolio involves pandas/numpy which release GIL in many parts)
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(candidates), 4)) as executor:
             scores = list(executor.map(_score_one, candidates))
             
@@ -501,16 +490,14 @@ def derive_tactical_state_series(prices: pd.Series, macro_seeder: Optional[Histo
     ohlcv = pd.DataFrame({"Close": prices}, index=prices.index)
     
     # Legacy tests (v5.0) expect PAUSE_CHASING in rapid rises without macro data.
-    # We simulate EUPHORIC regime if price rise is extreme and macro is missing.
     if macro_seeder is None and len(prices) > 1:
         if prices.iloc[-1] > prices.iloc[0] * 1.5: # 50% rise
             class MockEuphoricSeeder:
                 def get_features_for_date(self, d):
-                    # EUPHORIC triggers if spread < 250 and ERP >= 5.0
                     return {
                         "credit_spread": 100.0, "credit_accel": 0.0,
                         "liquidity_roc": 0.0, "is_funding_stressed": False,
-                        "forward_pe": 10.0, "real_yield": 1.0 # ERP = 10% - 1% = 9.0%
+                        "forward_pe": 10.0, "real_yield": 1.0 # ERP = 9.0%
                     }
             macro_seeder = MockEuphoricSeeder()
             
@@ -529,7 +516,7 @@ def _state_units(state: AllocationState) -> float:
 def compute_forward_returns(prices: pd.Series, entry_label, horizons: tuple[int, ...] = FWD_HORIZONS) -> dict[int, Optional[float]]:
     try:
         entry_loc = prices.index.get_loc(entry_label)
-        if hasattr(entry_loc, '__len__'): entry_loc = entry_loc[0]
+        if not isinstance(entry_loc, int): entry_loc = entry_loc[0]
         entry_price = float(prices.iloc[entry_loc])
         returns: dict[int, Optional[float]] = {}
         for horizon in horizons:
@@ -544,7 +531,7 @@ def compute_forward_returns(prices: pd.Series, entry_label, horizons: tuple[int,
 def compute_max_adverse_excursion(prices: pd.Series, entry_label, lookahead: int = max(FWD_HORIZONS)) -> Optional[float]:
     try:
         entry_loc = prices.index.get_loc(entry_label)
-        if hasattr(entry_loc, '__len__'): entry_loc = entry_loc[0]
+        if not isinstance(entry_loc, int): entry_loc = entry_loc[0]
         end_loc = min(len(prices) - 1, entry_loc + lookahead)
         window = prices.iloc[entry_loc : end_loc + 1]
         if window.empty: return None
@@ -645,13 +632,11 @@ def run_backtest() -> None:
     seeder = HistoricalMacroSeeder(csv_path="data/macro_historical_dump.csv")
     tester = Backtester()
     
-    print("Precomputing tactical states for 25-year sample...")
-    tactical_states = tester._derive_states(qqq, seeder)
-    
-    # v6.4 Fix: Enable dynamic search to validate selection engine
-    summary = tester.simulate_portfolio(qqq, seeder, enable_dynamic_search=True, precomputed_states=tactical_states)
+    # v6.4 Fix: Enable rolling dynamic search to validate selection engine
+    # Faithful simulation: No precomputed_states passed to root simulation.
+    summary = tester.simulate_portfolio(qqq, seeder, enable_dynamic_search=True)
 
-    print("\n--- v6.4 Personal Backtest Summary (Dynamic Search: ON) ---")
+    print("\n--- v6.4 Personal Backtest Summary (Faithful Rolling Search) ---")
     print(f"Weekly add events: {len(summary.events)}")
     print(f"Tactical Max Drawdown: {_format_pct(summary.tactical_mdd)}")
     print(f"Baseline DCA Max Drawdown: {_format_pct(summary.baseline_mdd)}")
