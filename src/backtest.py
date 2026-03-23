@@ -7,8 +7,10 @@ v6.4 Personal Allocation Upgrade: Candidate scoring and turnover tracking.
 """
 from __future__ import annotations
 
+import os
 import logging
 import numpy as np
+import concurrent.futures
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional, Dict, List, Any
@@ -131,12 +133,14 @@ class Backtester:
         ohlcv: pd.DataFrame, 
         macro_seeder: Optional[HistoricalMacroSeeder] = None,
         target_map: Optional[Dict[AllocationState, TargetAllocationState]] = None,
-        enable_dynamic_search: bool = False
+        enable_dynamic_search: bool = False,
+        precomputed_states: Optional[pd.Series] = None
     ) -> BacktestMethodologySummary:
         """
         Simulate a full portfolio with cash management and dynamic rebalancing.
         v6.3: Supports Multi-Asset (QQQ + QLD) TAA Mirroring.
         v6.4: Supports custom target_map for candidate scoring or enable_dynamic_search.
+        Optimized: Accepts precomputed_states to avoid redundant tactical derivation.
         """
         prices_qqq = ohlcv["Close"].dropna().astype(float)
         if prices_qqq.empty:
@@ -146,21 +150,12 @@ class Backtester:
         prices_qld = simulate_leveraged_price(prices_qqq, leverage=2.0)
         
         # 2. State Derivation (Full Logic)
-        tactical_states = self._derive_states(ohlcv, macro_seeder)
+        if precomputed_states is not None:
+            # Reindex to ensure alignment with current ohlcv slice
+            tactical_states = precomputed_states.reindex(prices_qqq.index).ffill()
+        else:
+            tactical_states = self._derive_states(ohlcv, macro_seeder)
         
-        # Pre-calculate candidate lookback data if dynamic search enabled
-        # In a real rolling backtest we'd do this day-by-day, but for efficiency
-        # we can cache candidate scores per regime if they don't change too fast.
-        dynamic_targets = {}
-        if enable_dynamic_search:
-            # We use the full sample for scoring in this simplified backtest 
-            # to validate that the selection logic (AC-5 filter etc) works.
-            for state in AllocationState:
-                candidates = generate_candidates(state)
-                # Score using the whole sample to find the "best for this history"
-                scores = self.score_candidates(ohlcv, state, candidates, macro_seeder)
-                dynamic_targets[state] = find_best_allocation(state, scores)
-
         # 3. Portfolio Loop
         cash = self.initial_capital
         units_qqq = 0.0
@@ -189,18 +184,27 @@ class Backtester:
         total_volume_traded = 0.0
         nav_drift_errors = []
 
+        # v6.4 Rolling Decision Cache (elimination of look-ahead bias)
+        rolling_targets = {}
+        event_count = 0
+
         for dt in prices_qqq.index:
             p_qqq = float(prices_qqq.loc[dt])
             p_qld = float(prices_qld.loc[dt])
             state = tactical_states.loc[dt]
             
+            # Robustly handle index types
+            current_dt = pd.to_datetime(dt)
+            current_date = current_dt.date()
+            
             # Fetch macro features for daily stats
             macro_features = {"credit_accel": 0.0}
             if macro_seeder:
-                macro_features = macro_seeder.get_features_for_date(dt.date())
+                macro_features = macro_seeder.get_features_for_date(current_date)
 
             # A. Check for Weekly Addition (Cash Flow Event)
             if dt in add_dates:
+                # ... (rest of the block)
                 base_units = _state_units(state)
                 units_to_add = base_units
                 if state in (AllocationState.FAST_ACCUMULATE, AllocationState.SLOW_ACCUMULATE) and cash > (self.initial_capital * 0.1):
@@ -229,8 +233,27 @@ class Backtester:
             # B. Execute DAILY Rebalancing (v6.3.13 Strategic TAA calibration)
             if target_map and state in target_map:
                 target = target_map[state]
-            elif enable_dynamic_search and state in dynamic_targets:
-                target = dynamic_targets[state]
+            elif enable_dynamic_search:
+                # Rolling Search: Score candidates using ONLY data available up to 'dt'
+                # v6.4 FIX: Limit lookback to 504 days (2 years) to avoid O(N^2) slowness
+                if state not in rolling_targets or dt in add_dates:
+                    event_count += 1
+                    if event_count % 100 == 0:
+                        print(f"  - Search Progress: {current_date} ({event_count} events)...")
+                        
+                    candidates = generate_candidates(state)
+                    # Fixed lookback window: max 504 days
+                    dt_loc = prices_qqq.index.get_loc(dt)
+                    if not isinstance(dt_loc, int): dt_loc = dt_loc[0] # handle duplicates
+                    start_loc = max(0, dt_loc - 504)
+                    sub_ohlcv = ohlcv.iloc[start_loc:dt_loc+1]
+                    
+                    if len(sub_ohlcv) > 20:
+                        scores = self.score_candidates(sub_ohlcv, state, candidates, macro_seeder, precomputed_states=tactical_states)
+                        rolling_targets[state] = find_best_allocation(state, scores)
+                    else:
+                        rolling_targets[state] = candidates[0]
+                target = rolling_targets[state]
             else:
                 target = get_target_allocation(state)
 
@@ -323,11 +346,11 @@ class Backtester:
                 s_cov = np.cov(s_tactical_ret, s_market_ret, ddof=1)[0, 1]
                 s_realized_beta = float(s_cov / s_var_market)
                 
-                # Use target from map or dynamic targets if available
+                # Use target from map or rolling targets if available
                 if target_map and s_state in target_map:
                     s_target_beta = target_map[s_state].target_beta
-                elif enable_dynamic_search and s_state in dynamic_targets:
-                    s_target_beta = dynamic_targets[s_state].target_beta
+                elif enable_dynamic_search and s_state in rolling_targets:
+                    s_target_beta = rolling_targets[s_state].target_beta
                 else:
                     s_target_beta = get_target_allocation(s_state).target_beta
                 
@@ -381,23 +404,22 @@ class Backtester:
         ohlcv: pd.DataFrame, 
         state: AllocationState, 
         candidates: list[TargetAllocationState],
-        macro_seeder: Optional[HistoricalMacroSeeder] = None
+        macro_seeder: Optional[HistoricalMacroSeeder] = None,
+        precomputed_states: Optional[pd.Series] = None
     ) -> list[dict[str, Any]]:
         """
         v6.4 Candidate Scoring API: Evaluates each candidate's performance.
+        Optimized: Parallel execution and precomputed states.
         """
-        scores = []
-        for cand in candidates:
+        def _score_one(cand):
             target_map = {state: cand}
-            summary = self.simulate_portfolio(ohlcv, macro_seeder, target_map=target_map)
+            summary = self.simulate_portfolio(ohlcv, macro_seeder, target_map=target_map, precomputed_states=precomputed_states)
             
-            # Robustly calculate days
             if hasattr(ohlcv.index, "date") and len(ohlcv.index) > 1:
                 days = (ohlcv.index[-1] - ohlcv.index[0]).days
-            elif hasattr(ohlcv.index[0], "days"): # Handle potential Timedelta index
+            elif hasattr(ohlcv.index[0], "days"):
                 days = (ohlcv.index[-1] - ohlcv.index[0]).days
             else:
-                # Fallback for integer index
                 days = len(ohlcv.index)
                 
             if days <= 0: days = 1
@@ -408,7 +430,7 @@ class Backtester:
             def_days = sum(1 for s in summary.daily_timeseries["state"] if AllocationState(s) in defensive_states)
             def_coverage = def_days / len(summary.daily_timeseries)
             
-            scores.append({
+            return {
                 "candidate": cand,
                 "max_drawdown": abs(summary.tactical_mdd),
                 "cagr": float(cagr),
@@ -416,7 +438,13 @@ class Backtester:
                 "turnover": summary.turnover,
                 "defense_coverage": def_coverage,
                 "nav_integrity": summary.nav_integrity
-            })
+            }
+
+        # Use ThreadPoolExecutor for lightweight parallel sub-simulations
+        # (simulate_portfolio involves pandas/numpy which release GIL in many parts)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(candidates), 4)) as executor:
+            scores = list(executor.map(_score_one, candidates))
+            
         return scores
 
     def _calculate_mdd(self, nav_series: List[float]) -> float:
@@ -588,14 +616,40 @@ def _format_pct(value: Optional[float]) -> str:
     return f"{value * 100:.1f}%" if value is not None else "n/a"
 
 def run_backtest() -> None:
-    print(f"Fetching QQQ history from {START_DATE} to {END_DATE}...")
-    qqq = yf.Ticker("QQQ").history(start=START_DATE, end=END_DATE)
-    if qqq.empty: return
+    cache_path = "data/qqq_history_cache.csv"
+    print(f"Loading QQQ history from {cache_path}...")
+    
+    qqq = pd.DataFrame()
+    if os.path.exists(cache_path):
+        try:
+            qqq = pd.read_csv(cache_path, index_col=0)
+            if not qqq.empty:
+                qqq.index = pd.to_datetime(qqq.index, utc=True)
+                last_cached = qqq.index[-1].date().isoformat()
+                print(f"Successfully loaded {len(qqq)} rows (Last date: {last_cached})")
+        except Exception as e:
+            print(f"Cache read failed: {e}")
+
+    if qqq.empty:
+        print(f"Downloading fresh data from yfinance since {cache_path} was missing or empty...")
+        qqq = yf.Ticker("QQQ").history(start=START_DATE, end=END_DATE)
+        if not qqq.empty:
+            os.makedirs("data", exist_ok=True)
+            qqq.to_csv(cache_path)
+            print(f"Cache updated: {cache_path}")
+
+    if qqq.empty:
+        print("Error: No price data available.")
+        return
     
     seeder = HistoricalMacroSeeder(csv_path="data/macro_historical_dump.csv")
     tester = Backtester()
+    
+    print("Precomputing tactical states for 25-year sample...")
+    tactical_states = tester._derive_states(qqq, seeder)
+    
     # v6.4 Fix: Enable dynamic search to validate selection engine
-    summary = tester.simulate_portfolio(qqq, seeder, enable_dynamic_search=True)
+    summary = tester.simulate_portfolio(qqq, seeder, enable_dynamic_search=True, precomputed_states=tactical_states)
 
     print("\n--- v6.4 Personal Backtest Summary (Dynamic Search: ON) ---")
     print(f"Weekly add events: {len(summary.events)}")

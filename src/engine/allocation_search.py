@@ -46,10 +46,9 @@ def find_best_allocation(state: AllocationState, scores: list[dict] = None) -> T
     """
     candidates = generate_candidates(state)
     
-    # Safe Fallback: The most defensive SRD-approved band for this state.
-    # Candidates are generated in a deterministic order (usually most aggressive first).
-    # We take the last one as it's typically the most defensive (lower leverage/higher cash).
-    safe_fallback = candidates[-1]
+    # Safe Fallback: The candidate with the lowest Target Beta for this state.
+    # We sort by target_beta to ensure we pick the most conservative option.
+    safe_fallback = sorted(candidates, key=lambda c: c.target_beta)[0]
 
     if not scores:
         return candidates[0]
