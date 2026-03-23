@@ -99,6 +99,23 @@ class TargetAllocationState:
     target_qld_pct: float = 0.0
     target_beta: float = 0.90
 
+    def to_dict(self) -> dict:
+        return {
+            "target_cash_pct": self.target_cash_pct,
+            "target_qqq_pct": self.target_qqq_pct,
+            "target_qld_pct": self.target_qld_pct,
+            "target_beta": self.target_beta
+        }
+
+    @staticmethod
+    def from_dict(data: dict) -> TargetAllocationState:
+        return TargetAllocationState(
+            target_cash_pct=data.get("target_cash_pct", 0.10),
+            target_qqq_pct=data.get("target_qqq_pct", 0.90),
+            target_qld_pct=data.get("target_qld_pct", 0.0),
+            target_beta=data.get("target_beta", 0.90)
+        )
+
 
 @dataclass(frozen=True)
 class OptionsOverlay:

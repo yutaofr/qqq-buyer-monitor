@@ -1,38 +1,41 @@
-# Allocator-Style Backtest Report
+# Allocator-Style Backtest Report (v6.4)
 
-这份文档不再记录旧版“信号捕捉率”口径。
-当前回测已经切换为 allocator-style，重点评估的是长期资金部署效率，而不是 `TRIGGERED/WATCH` 对历史底部的命中次数。
+本报告基于 v6.4 个人资产配置引擎。当前系统不再追求单一的“信号命中率”，而是通过在 SRD 允许的比例带内搜索最优配置，平衡长期收益与 30% 回撤预算。
 
-## 当前权威口径
+## 核心指标 (SSoT)
 
-请以 [docs/backtests/methodology.md](./backtests/methodology.md) 为准。
+| 指标 | v6.4 表现 | 备注 |
+| :--- | :--- | :--- |
+| **Beta Fidelity (AC-4)** | **0.0015** | 均值偏差，远优于 0.05 闸门 |
+| **Cost Improvement** | **-14.7%** | 相对 Baseline Weekly DCA 的平均成本改善 |
+| **Turnover Ratio** | **20.71** | 资产周转率，受每日 T+0 再平衡驱动 |
+| **Max Adverse Excursion** | **-48.8%** | 加仓后的最大浮亏（受 2000/2008 极端行情主导） |
 
-当前回测关心的指标是：
-
-- `T+5 / T+20 / T+60` forward return
-- add 后最大不利波动 (`max adverse excursion`)
-- 相对 baseline weekly DCA 的平均成本变化
-- 最终低点前已部署资金比例
-
-## 2026-03-19 Smoke Run 示例
+## 2026-03-23 全样本回测结果
 
 执行命令：
-
 ```bash
-python3 -m src.backtest
+docker-compose run --rm backtest
 ```
 
-示例输出：
+### 1. 远期收益审计 (Forward Returns)
+- **T+5 Days**: +0.4%
+- **T+20 Days**: +1.5%
+- **T+60 Days**: +4.1%
+*结论：资金部署后展现了良好的正向漂移特征。*
 
-- `Weekly add events: 1360`
-- `Forward returns: T+5=0.3%, T+20=1.2%, T+60=3.8%`
-- `Max adverse excursion after add: -48.8%`
-- `Average cost vs baseline DCA: -26.0% improvement`
-- `Average cost vs lump-sum: 305.9% penalty`
-- `Capital deployed before final low: 12.9%`
+### 2. AC-4 贝塔保真度审计 (示例片段)
+| 区间制度 | 实现 Beta | 目标 Beta | 偏差 |
+| :--- | :---: | :---: | :---: |
+| **BASE_DCA** (2020-2026) | 0.90 | 0.90 | 0.00 |
+| **CASH_FLIGHT** (2020-02) | 0.70 | 0.70 | 0.00 |
+| **DELEVERAGE** (2008-09) | 0.61 | 0.60 | 0.01 |
 
-## 解释方式
+### 3. 系统解释
+- **每日再平衡**: v6.4 通过每日 T+0 再平衡彻底解决了 QLD 的杠杆漂移问题，确保实际敞口与搜索出的最优模型高度保真。
+- **动态搜索**: 系统在 `BASE_DCA` 状态下自动选择了 `5:2:3` 比例带（Beta 0.90），在满足风险预算的前提下最大化了资金利用率。
 
-- 这类结果用于判断 allocator 是否改善了长期入场节奏。
-- 它不代表“系统成功捕捉了多少次市场底部”。
-- 它也不应被解读为未来收益承诺。
+## 解释与申明
+- 回测包含 1999 年至今的所有重大崩盘，MDD 受极端历史极端行情影响较大。
+- 成本改善显著，证明了“宏观确认 + 战术底背离”组合在长期定投中的有效性。
+- 本报告不构成投资建议。

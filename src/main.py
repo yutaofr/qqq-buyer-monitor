@@ -53,7 +53,7 @@ def _history(args: argparse.Namespace) -> None:
         print(f"[{date_str}] price=${price:,.2f} score={score} allocation={state_val} action={action}")
 
 
-def _run(args: argparse.Namespace) -> None:
+def run_pipeline(args: argparse.Namespace) -> None:
     """Execute the full signal pipeline."""
     from src.collector.price import fetch_price_data
     from src.collector.vix import fetch_vix
@@ -372,10 +372,9 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.history:
-        from src.main import _history
         _history(args)
     else:
-        _run(args)
+        run_pipeline(args)
 
 
 if __name__ == "__main__":

@@ -1,16 +1,14 @@
-# GEMINI.md - QQQ 资产分配监控系统 (v6.3)
+# GEMINI.md - QQQ 个人资产配置监控系统 (v6.4)
 
 ## 项目综述
-`qqq-monitor` 是一款主权/养老金风格的市场监控与资本分配系统。在 v6.3 中，系统完成了从“信号监控”向“战略资产配置（Strategic Asset Allocation）”的跨越。通过 **TAA Mirroring (战略镜像)** 技术，系统不仅识别风险，更能实时审计并对齐投资组合的风险敞口。
+`qqq-monitor` 在 v6.4 中从“机构级战略”进化为“个人投资者决策引擎”。它在原有 TAA 镜像技术基础上，引入了以 **30% 最大可承受回撤 (Drawdown Budget)** 为硬约束的动态搜索机制。系统不再使用静态矩阵，而是通过在多个候选比例带（Candidate Bands）之间进行历史回测评分，自动选择最优的 `QQQ:QLD:Cash` 配置。
 
-### 核心架构 (Institutional Strategic Logic)
-- **Strategic Layer (v6.3 New):** 核心战略层。将市场状态映射至 TAA 矩阵（Cash/QQQ/QLD），并执行 **Daily T+0 Risk Rebalancing**。
-- **Tier 0 (Macro Commander):** 三重确认机制（信用、流动性、融资压力）决定结构性制度（Structural Regime）。
-    - **L1 (WATCH_DEFENSE):** 信用利差加速度预警。
-    - **L2 (DELEVERAGE):** 资产负债表收缩，削减 QLD 敞口。
-    - **L3 (CASH_FLIGHT):** 强制现金占比 >50%，对冲极端宏观风险。
-- **Portfolio Reality vs. Ideal:** 系统通过 `CurrentPortfolioState` 获取现实快照，通过 `TargetAllocationState` 计算理想模型，实时输出 **Effective Exposure (有效敞口)** 审计。
-- **Tier 1 & Tier 2:** 战术情绪与市场结构层，在战略层约束下提供加仓节奏建议。
+### 核心架构 (Personal Allocation Logic)
+- **Personal Layer (v6.4 New):** 个人资产配置层。基于 SRD-6.4 预设比例带，执行 **Deterministic Candidate Selection**。
+- **Candidate Search:** 针对每个市场状态枚举 2-3 个候选配置，并通过回测评分（CAGR、MDD、Turnover、Beta Fidelity）选出最优解。
+- **30% MDD Hard Constraint:** 所有配置必须服务于长期 30% 回撤预算，在极端风险下强制 QLD 归零。
+- **Tier 0 (Macro Commander):** 宏观指挥官。通过信用、流动性、融资压力三重确认决定结构性制度（Structural Regime）。
+- **Effective Exposure Audit:** 实时审计 `Portfolio Reality` (当前持仓) vs `Ideal Model` (搜索出的最优模型)，输出有效敞口偏差。
 
 ### 核心数据口径 (SSoT)
 - **Net Liquidity:** WALCL - WDTGAL - RRPONTSYD (以 10 亿美元为单位)。
@@ -22,15 +20,14 @@
 
 ## 运行与操作
 
-### 1. 实时监控与再平衡审计
+### 1. 实时监控与配置搜索
 ```bash
 docker-compose run --rm app python -m src.main
 ```
 
-### 2. 机构级保真度测试 (AC-4 Audit)
-运行包含实现贝塔归因的压力测试：
+### 2. 全样本回测与贝塔审计
 ```bash
-docker-compose run --rm backtest python scripts/stress_test_runner.py
+docker-compose run --rm backtest
 ```
 
 ### 3. 全量单元/集成测试
@@ -41,7 +38,7 @@ docker-compose run --rm test
 ---
 
 ## 质量与合规准则 (Guardrails)
-- **Beta 保真性:** 系统必须通过每日风险对齐确保实际敞口与 TAA 目标一致，严禁跨日杠杆漂移。
-- **持久化审计:** 所有区间贝塔审计数据（`interval_beta_audit`）必须完整落库，确保历史风控可回溯。
-- **TDD 强制性:** 所有针对分配逻辑的修改必须通过 `tests/unit/test_backtest_v6_3.py` 的 0.05 偏差闸门。
-- **数据稳健:** FRED 接口必须具备 Treasury XML 对 Real Yield 的 Fallback 能力。
+- **30% 回撤预算:** 系统默认配置搜索以个人长期持有为前提，防守状态严禁配置 QLD。
+- **Beta 保真性 (AC-4):** 每日 T+0 再平衡确保实际敞口偏差 $\le 0.05$。
+- **持久化审计:** `current_portfolio`、`target_allocation` 与 `interval_beta_audit` 必须完整入库。
+- **TDD 强制性:** 所有逻辑修改必须通过 `tests/unit/test_backtest_v6_4.py` 及相关套件验证。

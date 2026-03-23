@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from src.main import _run
+from src.main import run_pipeline
 from src.main import _history
 from src.models import AllocationState, OptionsOverlay, Signal, SignalDetail, SignalResult, Tier1Result, Tier2Result
 
@@ -104,7 +104,7 @@ def test_main_json_reports_missing_live_features(monkeypatch, capsys):
     monkeypatch.setattr("src.store.db.get_historical_series", lambda days=120: None)
     monkeypatch.setattr("src.store.db.load_history", lambda n=5: [])
 
-    _run(SimpleNamespace(json=True, no_save=True, no_color=True))
+    run_pipeline(SimpleNamespace(json=True, no_save=True, no_color=True))
 
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
@@ -186,7 +186,7 @@ def test_main_json_marks_cached_macro_values_stale(monkeypatch, capsys):
     monkeypatch.setattr("src.store.db.get_historical_series", lambda days=120: None)
     monkeypatch.setattr("src.store.db.load_history", lambda n=5: [])
 
-    _run(SimpleNamespace(json=True, no_save=True, no_color=True))
+    run_pipeline(SimpleNamespace(json=True, no_save=True, no_color=True))
 
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
@@ -259,7 +259,7 @@ def test_main_json_marks_cached_macro_state_with_cache_source_and_staleness(monk
     monkeypatch.setattr("src.store.db.get_historical_series", lambda days=120: None)
     monkeypatch.setattr("src.store.db.load_history", lambda n=5: [])
 
-    _run(SimpleNamespace(json=True, no_save=True, no_color=True))
+    run_pipeline(SimpleNamespace(json=True, no_save=True, no_color=True))
 
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
@@ -335,7 +335,7 @@ def test_main_compact_mode_uses_allocation_state(monkeypatch, capsys):
         ),
     )
 
-    _run(SimpleNamespace(json=False, no_save=True, no_color=True))
+    run_pipeline(SimpleNamespace(json=False, no_save=True, no_color=True))
 
     captured = capsys.readouterr()
     assert "报告折叠" in captured.out

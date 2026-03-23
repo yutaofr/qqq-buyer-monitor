@@ -11,6 +11,7 @@ from datetime import date
 from typing import Optional
 
 from src.engine.tier0_macro import assess_structural_regime
+from src.engine.allocation_search import find_best_allocation
 from src.models import (
     AllocationState, OptionsOverlay, Signal, SignalResult, 
     Tier1Result, Tier2Result, CurrentPortfolioState, TargetAllocationState
@@ -95,27 +96,9 @@ _ALLOCATION_PROFILE = {
     },
 }
 
-# v6.3.8 Target Asset Allocation Matrix (Ideal Models)
-_TAA_MATRIX = {
-    AllocationState.FAST_ACCUMULATE: (0.05, 0.80, 0.15, 1.10), # [Cash, QQQ, QLD, Beta]
-    AllocationState.SLOW_ACCUMULATE: (0.10, 0.85, 0.05, 0.95),
-    AllocationState.BASE_DCA:        (0.10, 0.90, 0.00, 0.90),
-    AllocationState.WATCH_DEFENSE:   (0.20, 0.80, 0.00, 0.80),
-    AllocationState.DELEVERAGE:      (0.35, 0.65, 0.00, 0.65),
-    AllocationState.CASH_FLIGHT:     (0.60, 0.40, 0.00, 0.40),
-    AllocationState.PAUSE_CHASING:   (0.20, 0.80, 0.00, 0.80),
-    AllocationState.RISK_CONTAINMENT:(0.30, 0.70, 0.00, 0.70),
-}
-
 def get_target_allocation(state: AllocationState) -> TargetAllocationState:
-    """v6.3 TAA Mapper: Converts allocation state to an ideal portfolio model."""
-    c, q, l, b = _TAA_MATRIX.get(state, _TAA_MATRIX[AllocationState.BASE_DCA])
-    return TargetAllocationState(
-        target_cash_pct=float(c),
-        target_qqq_pct=float(q),
-        target_qld_pct=float(l),
-        target_beta=float(b)
-    )
+    """v6.4 Personal Allocation Mapper: Returns the best portfolio model from search."""
+    return find_best_allocation(state)
 
 _MAX_SIGNAL_BY_ALLOCATION = {
     AllocationState.PAUSE_CHASING: Signal.NO_SIGNAL,

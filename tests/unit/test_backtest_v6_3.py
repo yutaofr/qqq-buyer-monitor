@@ -48,7 +48,7 @@ def test_backtest_v6_3_multi_asset_nav_and_rebalancing():
         assert len(summary.interval_beta_audit) > 0
         first_interval = summary.interval_beta_audit[0]
         assert first_interval["state"] == "FAST_ACCUMULATE"
-        assert first_interval["target"] == 1.10
+        assert first_interval["target"] == pytest.approx(1.20)
         # 验证偏差字段存在
         assert "deviation" in first_interval
         assert first_interval["realized"] > 0
