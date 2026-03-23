@@ -301,7 +301,8 @@ def run_pipeline(args: argparse.Namespace) -> None:
         credit_accel=credit_accel,
         liquidity_roc=liq_roc,
         is_funding_stressed=funding_stress.get("is_stressed", False),
-        current_portfolio=portfolio
+        current_portfolio=portfolio,
+        historical_ohlcv=price_data.get("history")
     )
     result.data_quality = build_data_quality(market_data, feature_meta=data_quality_meta)
 

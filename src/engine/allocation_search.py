@@ -48,16 +48,19 @@ def find_best_allocation(state: AllocationState, scores: list[dict] = None) -> T
     # 1. Hard Constraints (AC-4, AC-5)
     valid = []
     for s in scores:
-        # Note: MDD check should be cautious as backtests vary.
-        # We prefer those meeting AC-4 (Beta fidelity).
+        # AC-4: Beta Fidelity (mean deviation <= 0.05)
         is_valid_beta = s["mean_interval_beta_deviation"] <= 0.05
-        # is_valid_mdd = s["max_drawdown"] <= 0.30 
-        # (We allow slight overflow in backtest if it's best we have)
+        # AC-5: 30% Drawdown Budget (Hard Threshold)
+        is_valid_mdd = s["max_drawdown"] <= 0.30 
         
-        if is_valid_beta:
+        if is_valid_beta and is_valid_mdd:
             valid.append(s)
             
-    # If no one is valid by AC-4, take all and pick least bad
+    # If no one is valid by AC-4/AC-5, take all survivors of AC-4 and pick least bad
+    if not valid:
+        valid = [s for s in scores if s["mean_interval_beta_deviation"] <= 0.05]
+        
+    # If still empty, use all scores as fallback
     if not valid:
         valid = scores
         

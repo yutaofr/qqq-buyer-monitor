@@ -11,7 +11,7 @@ from datetime import date
 from typing import Optional
 
 from src.engine.tier0_macro import assess_structural_regime
-from src.engine.allocation_search import find_best_allocation
+from src.engine.allocation_search import find_best_allocation, generate_candidates
 from src.models import (
     AllocationState, OptionsOverlay, Signal, SignalResult, 
     Tier1Result, Tier2Result, CurrentPortfolioState, TargetAllocationState
@@ -148,6 +148,10 @@ class DecisionContext:
     # Portfolio Inputs (v6.3 uses full state)
     current_portfolio: CurrentPortfolioState = field(default_factory=CurrentPortfolioState)
     
+    # v6.4 Search Context
+    historical_ohlcv: Optional[pd.DataFrame] = None
+    candidate_scores: list[dict] = field(default_factory=list)
+    
     # State accumulated
     structural_regime: str = "NEUTRAL"
     tactical_state: str = "CALM"
@@ -174,7 +178,8 @@ def aggregate(
     credit_accel: float | None = None,
     liquidity_roc: float | None = None,
     is_funding_stressed: bool = False,
-    current_portfolio: CurrentPortfolioState | None = None
+    current_portfolio: CurrentPortfolioState | None = None,
+    historical_ohlcv: pd.DataFrame | None = None
 ) -> SignalResult:
     """Entry point for aggregated signal computation using pipeline."""
     
@@ -194,7 +199,8 @@ def aggregate(
         credit_accel=credit_accel,
         liquidity_roc=liquidity_roc,
         is_funding_stressed=is_funding_stressed,
-        current_portfolio=current_portfolio or CurrentPortfolioState()
+        current_portfolio=current_portfolio or CurrentPortfolioState(),
+        historical_ohlcv=historical_ohlcv
     )
 
     # 2. Run Pipeline Steps
@@ -367,15 +373,29 @@ def _step_allocation_policy(ctx: DecisionContext) -> DecisionContext:
     return _update_ctx(ctx, allocation_state=res, trace=ctx.trace + [trace_node])
 
 def _step_strategic_allocation(ctx: DecisionContext) -> DecisionContext:
-    """v6.3 Pipeline Step: Map current state to ideal model."""
-    target_model = get_target_allocation(ctx.allocation_state)
+    """v6.4 Pipeline Step: Search and score candidates, then map to best model."""
+    scores = []
+    if ctx.historical_ohlcv is not None:
+        from src.backtest import Backtester
+        # Use a mini-backtest to score candidates for the current regime
+        tester = Backtester()
+        candidates = generate_candidates(ctx.allocation_state)
+        scores = tester.score_candidates(ctx.historical_ohlcv, ctx.allocation_state, candidates)
+    
+    target_model = find_best_allocation(ctx.allocation_state, scores)
+    
     trace_node = {
         "step": "strategic_allocation",
         "decision": f"Beta: {target_model.target_beta:.2f}",
-        "reason": f"Strategic TAA Model for {ctx.allocation_state.value}",
-        "evidence": {"cash": target_model.target_cash_pct, "qld": target_model.target_qld_pct}
+        "reason": f"Optimal candidate selected for {ctx.allocation_state.value}",
+        "evidence": {
+            "cash": target_model.target_cash_pct, 
+            "qld": target_model.target_qld_pct,
+            "search_active": ctx.historical_ohlcv is not None,
+            "candidate_count": len(scores) if scores else 0
+        }
     }
-    return _update_ctx(ctx, target_allocation=target_model, trace=ctx.trace + [trace_node])
+    return _update_ctx(ctx, target_allocation=target_model, candidate_scores=scores, trace=ctx.trace + [trace_node])
 
 def _step_overlay_refinement(ctx: DecisionContext) -> DecisionContext:
     overlay = ctx.tier2.overlay if ctx.tier2.overlay else OptionsOverlay()
