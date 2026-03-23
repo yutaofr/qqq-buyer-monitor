@@ -158,6 +158,23 @@ class Backtester:
     def __init__(self, initial_capital: float = 100000):
         self.initial_capital = initial_capital
 
+    def _parallel_map(self, worker_func, tasks, *args):
+        """
+        Executes tasks in parallel with a fallback to ThreadPool if ProcessPool fails.
+        Handles 'semaphore permission' errors in restricted environments.
+        """
+        # Try ProcessPool first (True parallelism, bypasses GIL)
+        try:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=min(os.cpu_count() or 1, 8)) as executor:
+                futures = [executor.submit(worker_func, *task_args, *args) for task_args in tasks]
+                return [f.result() for f in futures]
+        except (PermissionError, RuntimeError, OSError) as e:
+            logger.warning(f"ProcessPoolExecutor failed ({e}). Falling back to ThreadPoolExecutor.")
+            # Fallback to ThreadPool (GIL-bound, but safer in restricted sandboxes)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(tasks), 8)) as executor:
+                futures = [executor.submit(worker_func, *task_args, *args) for task_args in tasks]
+                return [f.result() for f in futures]
+
     def run(self, ohlcv: pd.DataFrame, macro_seeder: Optional[HistoricalMacroSeeder] = None) -> List[Dict[str, Any]]:
         """Legacy run method for basic signal verification."""
         summary = self.simulate_portfolio(ohlcv, macro_seeder)
@@ -261,19 +278,14 @@ class Backtester:
                     tasks = []
                     for s_search in AllocationState:
                         for cand in generate_candidates(s_search):
-                            tasks.append((s_search, cand))
+                            tasks.append((ohlcv_slice, s_search, cand, self.initial_capital, states_slice))
                     
-                    # Parallel Execution (Multiprocessing avoids GIL)
-                    with concurrent.futures.ProcessPoolExecutor(max_workers=min(os.cpu_count() or 1, 8)) as executor:
-                        futures = [
-                            executor.submit(_score_candidate_worker, ohlcv_slice, s, c, self.initial_capital, states_slice)
-                            for s, c in tasks
-                        ]
-                        all_scores = [f.result() for f in futures]
+                    # Parallel Execution using robust helper
+                    all_scores = self._parallel_map(_score_candidate_worker, tasks)
                     
                     # Group results back to states for selection
                     for s_search in AllocationState:
-                        s_scores = [sc for sc in all_scores if tasks[all_scores.index(sc)][0] == s_search]
+                        s_scores = [sc for i, sc in enumerate(all_scores) if tasks[i][1] == s_search]
                         rolling_targets[s_search] = find_best_allocation(s_search, s_scores)
 
                 base_units = _state_units(state)
@@ -479,18 +491,16 @@ class Backtester:
     ) -> list[dict[str, Any]]:
         """
         v6.4 Candidate Scoring API: Evaluates each candidate's performance.
-        Optimized: Directs to parallel worker for high performance.
+        Optimized: Directs to parallel worker via robust _parallel_map helper.
         """
         # Data Slimming
         ohlcv_slice = ohlcv[["Close"]]
         
-        # Parallel Execution (Multiprocessing avoids GIL)
-        with concurrent.futures.ProcessPoolExecutor(max_workers=min(os.cpu_count() or 1, 8)) as executor:
-            futures = [
-                executor.submit(_score_candidate_worker, ohlcv_slice, state, c, self.initial_capital, precomputed_states)
-                for c in candidates
-            ]
-            scores = [f.result() for f in futures]
+        # Prepare tasks for parallel execution
+        tasks = [(ohlcv_slice, state, cand, self.initial_capital, precomputed_states) for cand in candidates]
+        
+        # Parallel Execution using robust helper (handles ProcessPool failures)
+        scores = self._parallel_map(_score_candidate_worker, tasks)
             
         return scores
 
