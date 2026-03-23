@@ -83,12 +83,17 @@ def print_signal(
 
     sig_color, sig_label = _SIGNAL_STYLE[result.signal]
 
-    print(f"\n{c(_BOLD)}=== QQQ BUY-SIGNAL MONITOR (v6.3) ==={r}")
+    print(f"\n{c(_BOLD)}=== QQQ BUY-SIGNAL MONITOR (v6.4) ==={r}")
     print(f"Date:      {result.date}")
     print(f"Price:     ${result.price:.2f}")
     print(f"Signal:    {c(sig_color)}{sig_label}{r} (Score: {result.final_score}/100)")
     print(f"Policy:    {c(color)}{label}{r}")
     print(f"Action:    {c(_BOLD)}{_allocation_label(result.allocation_state)}{r}")
+    
+    # v6.4 Search Rationale from Logic Trace
+    search_node = next((n for n in result.logic_trace if n.get("step") == "search"), None)
+    if search_node:
+        print(f"Search:    {search_node['decision']} ({search_node['reason']})")
     
     # Details summary
     print(f"Details:   单日加仓: {result.daily_tranche_pct:.0%}, 滚动上限: {result.max_total_add_pct:.1f}x, 置信度: {result.confidence}")

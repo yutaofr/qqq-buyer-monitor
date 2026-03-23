@@ -53,7 +53,7 @@ def _history(args: argparse.Namespace) -> None:
         print(f"[{date_str}] price=${price:,.2f} score={score} allocation={state_val} action={action}")
 
 
-def _run(args: argparse.Namespace) -> None:
+def run_pipeline(args: argparse.Namespace) -> None:
     """Execute the full signal pipeline."""
     from src.collector.price import fetch_price_data
     from src.collector.vix import fetch_vix
@@ -301,7 +301,8 @@ def _run(args: argparse.Namespace) -> None:
         credit_accel=credit_accel,
         liquidity_roc=liq_roc,
         is_funding_stressed=funding_stress.get("is_stressed", False),
-        current_portfolio=portfolio
+        current_portfolio=portfolio,
+        historical_ohlcv=price_data.get("history")
     )
     result.data_quality = build_data_quality(market_data, feature_meta=data_quality_meta)
 
@@ -372,10 +373,9 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.history:
-        from src.main import _history
         _history(args)
     else:
-        _run(args)
+        run_pipeline(args)
 
 
 if __name__ == "__main__":
