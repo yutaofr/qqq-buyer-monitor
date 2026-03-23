@@ -63,3 +63,6 @@ The system maintains a mean interval beta deviation of **0.0015**. This is achie
 
 ### 4.2 Exposure Transparency
 The CLI output and JSON reports now include the `Search Rationale` (e.g., "Optimal candidate selected for BASE_DCA (Beta: 0.90)").
+
+### 4.3 Recommended Operating Matrix
+For operational use, the repository now keeps a doc-level default matrix package in [docs/backtest_report.md](./backtest_report.md). It summarizes the recommended `QQQ:QLD:Cash` values for each `AllocationState` while still allowing the runtime selector to search within the SRD-allowed band.
