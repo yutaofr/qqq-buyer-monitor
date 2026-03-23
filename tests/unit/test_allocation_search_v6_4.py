@@ -35,8 +35,13 @@ def test_defensive_states_no_qld():
             assert c.target_qld_pct == 0.0
 
 def test_find_best_allocation_fallback():
-    """Search returns a valid TargetAllocationState even if no backtest data is provided yet."""
-    # This is a temporary test before we add backtest scoring
+    """AC-5: Search returns 100% cash (Beta 0.0) when scores are explicitly empty (failed search)."""
+    # Empty list means search was active but found no safe candidates
     best = find_best_allocation(AllocationState.BASE_DCA, [])
     assert isinstance(best, TargetAllocationState)
-    assert best.target_cash_pct in [0.3, 0.2]
+    assert best.target_cash_pct == 1.0
+    assert best.target_beta == 0.0
+
+    # None means no search performed (legacy/live fallback) - returns default band
+    best_default = find_best_allocation(AllocationState.BASE_DCA, None)
+    assert best_default.target_cash_pct in [0.3, 0.2]

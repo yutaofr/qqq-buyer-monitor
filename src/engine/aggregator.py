@@ -374,7 +374,7 @@ def _step_allocation_policy(ctx: DecisionContext) -> DecisionContext:
 
 def _step_strategic_allocation(ctx: DecisionContext) -> DecisionContext:
     """v6.4 Pipeline Step: Search and score candidates, then map to best model."""
-    scores = []
+    scores = None
     if ctx.historical_ohlcv is not None:
         from src.backtest import Backtester
         # Use a mini-backtest to score candidates for the current regime

@@ -53,7 +53,13 @@ def find_best_allocation(state: AllocationState, scores: list[dict] = None) -> T
     # This is the ultimate "Reject" path for AC-5 violations.
     global_safe_fallback = TargetAllocationState(target_cash_pct=1.0, target_qqq_pct=0.0, target_qld_pct=0.0, target_beta=0.0)
 
-    if not scores:
+    # AC-5 Strictness: If search was active but found no safe data, return global fallback.
+    if scores == []:
+        return global_safe_fallback
+    
+    # If no scores provided (live path without history or legacy call), 
+    # return the first candidate as default (v6.3 behavior).
+    if scores is None:
         return candidates[0]
     
     # 1. Hard Constraints (AC-4, AC-5)
