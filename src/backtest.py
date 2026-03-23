@@ -13,7 +13,7 @@ import numpy as np
 import concurrent.futures
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Tuple
 
 import pandas as pd
 import yfinance as yf
@@ -24,6 +24,49 @@ from src.engine.allocation_search import generate_candidates, find_best_allocati
 from src.collector.historical_macro_seeder import HistoricalMacroSeeder
 
 logger = logging.getLogger(__name__)
+
+# v6.4 Optimization: Top-level helper for multiprocessing support
+def _score_candidate_worker(
+    ohlcv_slice: pd.DataFrame,
+    state: AllocationState,
+    cand: TargetAllocationState,
+    initial_capital: float,
+    precomputed_states: Optional[pd.Series] = None
+) -> dict:
+    """Standalone worker function for parallel candidate scoring."""
+    tester = Backtester(initial_capital=initial_capital)
+    # Sub-simulations must have enable_dynamic_search=False to avoid infinite recursion
+    summary = tester.simulate_portfolio(
+        ohlcv_slice, 
+        target_map={state: cand}, 
+        precomputed_states=precomputed_states,
+        enable_dynamic_search=False
+    )
+    
+    if hasattr(ohlcv_slice.index, "date") and len(ohlcv_slice.index) > 1:
+        days = (ohlcv_slice.index[-1] - ohlcv_slice.index[0]).days
+    elif hasattr(ohlcv_slice.index[0], "days"):
+        days = (ohlcv_slice.index[-1] - ohlcv_slice.index[0]).days
+    else:
+        days = len(ohlcv_slice.index)
+        
+    if days <= 0: days = 1
+    final_nav = summary.daily_timeseries["nav"].iloc[-1]
+    cagr = (final_nav / initial_capital) ** (365.0 / days) - 1.0
+    
+    defensive_states = {AllocationState.WATCH_DEFENSE, AllocationState.DELEVERAGE, AllocationState.CASH_FLIGHT}
+    def_days = sum(1 for s in summary.daily_timeseries["state"] if AllocationState(s) in defensive_states)
+    def_coverage = def_days / len(summary.daily_timeseries)
+    
+    return {
+        "candidate": cand,
+        "max_drawdown": abs(summary.tactical_mdd),
+        "cagr": float(cagr),
+        "mean_interval_beta_deviation": summary.mean_interval_beta_deviation,
+        "turnover": summary.turnover,
+        "defense_coverage": def_coverage,
+        "nav_integrity": summary.nav_integrity
+    }
 
 START_DATE = "1999-03-10"
 END_DATE = date.today().isoformat()
@@ -200,22 +243,38 @@ class Backtester:
             # A. Check for Weekly Addition (Cash Flow Event)
             if dt in add_dates:
                 # v6.4 Fix: Rolling dynamic search on every add event
+                # Faithful Simulation: Score ALL possible states using the window up to 'dt'
                 if enable_dynamic_search:
                     event_count += 1
-                    if event_count % 100 == 0:
+                    if event_count % 50 == 0:
                         print(f"  - Rolling Search: {current_date} ({event_count} events)...")
                         
-                    candidates = generate_candidates(state)
                     dt_loc = prices_qqq.index.get_loc(dt)
                     if not isinstance(dt_loc, int): dt_loc = dt_loc[0]
-                    # Use 504-day lookback for scoring
                     start_loc = max(0, dt_loc - 504)
-                    sub_ohlcv = ohlcv.iloc[start_loc:dt_loc+1]
-                    sub_states = tactical_states.iloc[start_loc:dt_loc+1]
                     
-                    # Score candidates using the historical slice available at 'dt'
-                    scores = self.score_candidates(sub_ohlcv, state, candidates, macro_seeder, precomputed_states=sub_states)
-                    current_target = find_best_allocation(state, scores)
+                    # Data Slimming: Only pass necessary data to child processes
+                    ohlcv_slice = ohlcv.iloc[start_loc:dt_loc+1][["Close"]]
+                    states_slice = tactical_states.iloc[start_loc:dt_loc+1]
+                    
+                    # Task Flattening: Map (State, Candidate) to a single parallel batch
+                    tasks = []
+                    for s_search in AllocationState:
+                        for cand in generate_candidates(s_search):
+                            tasks.append((s_search, cand))
+                    
+                    # Parallel Execution (Multiprocessing avoids GIL)
+                    with concurrent.futures.ProcessPoolExecutor(max_workers=min(os.cpu_count() or 1, 8)) as executor:
+                        futures = [
+                            executor.submit(_score_candidate_worker, ohlcv_slice, s, c, self.initial_capital, states_slice)
+                            for s, c in tasks
+                        ]
+                        all_scores = [f.result() for f in futures]
+                    
+                    # Group results back to states for selection
+                    for s_search in AllocationState:
+                        s_scores = [sc for sc in all_scores if tasks[all_scores.index(sc)][0] == s_search]
+                        rolling_targets[s_search] = find_best_allocation(s_search, s_scores)
 
                 base_units = _state_units(state)
                 units_to_add = base_units
@@ -245,8 +304,9 @@ class Backtester:
             # B. Execute DAILY Rebalancing (v6.3.13 Strategic TAA calibration)
             if target_map and state in target_map:
                 target = target_map[state]
-            elif enable_dynamic_search and current_target:
-                target = current_target
+            elif enable_dynamic_search and state in rolling_targets:
+                # v6.4 Fix: Accurate state-conditioned target from cache
+                target = rolling_targets[state]
             else:
                 target = get_target_allocation(state)
             
@@ -399,40 +459,18 @@ class Backtester:
     ) -> list[dict[str, Any]]:
         """
         v6.4 Candidate Scoring API: Evaluates each candidate's performance.
-        Optimized: Parallel execution and precomputed states.
+        Optimized: Directs to parallel worker for high performance.
         """
-        def _score_one(cand):
-            target_map = {state: cand}
-            summary = self.simulate_portfolio(ohlcv, macro_seeder, target_map=target_map, precomputed_states=precomputed_states)
-            
-            # Robustly calculate days
-            if hasattr(ohlcv.index, "date") and len(ohlcv.index) > 1:
-                days = (ohlcv.index[-1] - ohlcv.index[0]).days
-            elif hasattr(ohlcv.index[0], "days"):
-                days = (ohlcv.index[-1] - ohlcv.index[0]).days
-            else:
-                days = len(ohlcv.index)
-                
-            if days <= 0: days = 1
-            final_nav = summary.daily_timeseries["nav"].iloc[-1]
-            cagr = (final_nav / self.initial_capital) ** (365.0 / days) - 1.0
-            
-            defensive_states = {AllocationState.WATCH_DEFENSE, AllocationState.DELEVERAGE, AllocationState.CASH_FLIGHT}
-            def_days = sum(1 for s in summary.daily_timeseries["state"] if AllocationState(s) in defensive_states)
-            def_coverage = def_days / len(summary.daily_timeseries)
-            
-            return {
-                "candidate": cand,
-                "max_drawdown": abs(summary.tactical_mdd),
-                "cagr": float(cagr),
-                "mean_interval_beta_deviation": summary.mean_interval_beta_deviation,
-                "turnover": summary.turnover,
-                "defense_coverage": def_coverage,
-                "nav_integrity": summary.nav_integrity
-            }
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(candidates), 4)) as executor:
-            scores = list(executor.map(_score_one, candidates))
+        # Data Slimming
+        ohlcv_slice = ohlcv[["Close"]]
+        
+        # Parallel Execution (Multiprocessing avoids GIL)
+        with concurrent.futures.ProcessPoolExecutor(max_workers=min(os.cpu_count() or 1, 8)) as executor:
+            futures = [
+                executor.submit(_score_candidate_worker, ohlcv_slice, state, c, self.initial_capital, precomputed_states)
+                for c in candidates
+            ]
+            scores = [f.result() for f in futures]
             
         return scores
 

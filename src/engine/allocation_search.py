@@ -42,13 +42,16 @@ def find_best_allocation(state: AllocationState, scores: list[dict] = None) -> T
     5. If still tied, lower Turnover.
     
     AC-5 Hard Gate: If no candidate meets the 30% MDD budget, it MUST return
-    a safe fallback (The most defensive band available for the current state).
+    a safe fallback (100% Cash).
     """
     candidates = generate_candidates(state)
     
-    # Safe Fallback: The candidate with the lowest Target Beta for this state.
-    # We sort by target_beta to ensure we pick the most conservative option.
-    safe_fallback = sorted(candidates, key=lambda c: c.target_beta)[0]
+    # State-level safest option (lowest beta)
+    state_safest = sorted(candidates, key=lambda c: c.target_beta)[0]
+    
+    # Global Safe Fallback: 100% Cash (Target Beta = 0.0)
+    # This is the ultimate "Reject" path for AC-5 violations.
+    global_safe_fallback = TargetAllocationState(target_cash_pct=1.0, target_qqq_pct=0.0, target_qld_pct=0.0, target_beta=0.0)
 
     if not scores:
         return candidates[0]
@@ -64,9 +67,13 @@ def find_best_allocation(state: AllocationState, scores: list[dict] = None) -> T
         if is_valid_beta and is_valid_mdd:
             valid.append(s)
             
-    # If no candidate meets AC-5, return SAFE_FALLBACK instead of "least bad"
+    # If no candidate meets AC-5, verify if state_safest at least passes.
+    # If even the safest candidate for this state fails, force GLOBAL_SAFE_FALLBACK.
     if not valid:
-        return safe_fallback
+        safest_score = next((s for s in scores if s["candidate"] == state_safest), None)
+        if safest_score and safest_score["max_drawdown"] > 0.30:
+            return global_safe_fallback
+        return state_safest
         
     # 2. Sort by Soft Targets
     # Sort order: CAGR (desc), MDD (asc), BetaDev (asc), Turnover (asc)
