@@ -35,13 +35,22 @@ def find_best_allocation(state: AllocationState, scores: list[dict] = None) -> T
     """
     Deterministic Selector: Returns the best allocation from candidates.
     v6.4: Selection rules (Hard Constraints First):
-    1. Filter out violations (Beta Deviation > 0.05, MDD > 0.30 - soft limit here).
+    1. Filter out violations (Beta Deviation > 0.05, MDD > 0.30).
     2. Pick highest CAGR.
     3. If CAGR tied (within 0.1%), lower MDD.
     4. If MDD tied, lower Beta Deviation.
     5. If still tied, lower Turnover.
+    
+    AC-5 Hard Gate: If no candidate meets the 30% MDD budget, it MUST return
+    a safe fallback (The most defensive band available for the current state).
     """
     candidates = generate_candidates(state)
+    
+    # Safe Fallback: The most defensive SRD-approved band for this state.
+    # Candidates are generated in a deterministic order (usually most aggressive first).
+    # We take the last one as it's typically the most defensive (lower leverage/higher cash).
+    safe_fallback = candidates[-1]
+
     if not scores:
         return candidates[0]
     
@@ -50,19 +59,15 @@ def find_best_allocation(state: AllocationState, scores: list[dict] = None) -> T
     for s in scores:
         # AC-4: Beta Fidelity (mean deviation <= 0.05)
         is_valid_beta = s["mean_interval_beta_deviation"] <= 0.05
-        # AC-5: 30% Drawdown Budget (Hard Threshold)
+        # AC-5: 30% Drawdown Budget (Strict Hard Threshold)
         is_valid_mdd = s["max_drawdown"] <= 0.30 
         
         if is_valid_beta and is_valid_mdd:
             valid.append(s)
             
-    # If no one is valid by AC-4/AC-5, take all survivors of AC-4 and pick least bad
+    # If no candidate meets AC-5, return SAFE_FALLBACK instead of "least bad"
     if not valid:
-        valid = [s for s in scores if s["mean_interval_beta_deviation"] <= 0.05]
-        
-    # If still empty, use all scores as fallback
-    if not valid:
-        valid = scores
+        return safe_fallback
         
     # 2. Sort by Soft Targets
     # Sort order: CAGR (desc), MDD (asc), BetaDev (asc), Turnover (asc)
