@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from datetime import date
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
 
-from src.backtest import Backtester
+from src.backtest import Backtester, run_backtest
 from src.collector.historical_macro_seeder import HistoricalMacroSeeder
 
 
@@ -63,3 +64,58 @@ def test_legacy_macro_file_is_rejected_by_seeder(tmp_path):
 
     with pytest.raises(ValueError, match="credit_spread_bps"):
         HistoricalMacroSeeder(csv_path=str(csv_path))
+
+
+def test_run_backtest_prints_macro_coverage_before_summary(monkeypatch, capsys):
+    qqq = pd.DataFrame(
+        {
+            "Open": [100.0, 101.0],
+            "High": [101.0, 102.0],
+            "Low": [99.0, 100.0],
+            "Close": [100.5, 101.5],
+            "Volume": [1_000_000, 1_100_000],
+        },
+        index=pd.Index(["2024-01-02", "2024-01-03"], name="date"),
+    )
+    macro = _canonical_macro_frame()
+    events: list[str] = []
+
+    def fake_exists(path):
+        return True
+
+    def fake_macro_exists(self):
+        return True
+
+    def fake_read_csv(path, *args, **kwargs):
+        if str(path) == "data/qqq_history_cache.csv":
+            return qqq.copy()
+        if str(path) == "data/macro_historical_dump.csv":
+            return macro.copy()
+        raise AssertionError(f"unexpected path: {path}")
+
+    def fake_simulate(self, *args, **kwargs):
+        events.append("simulate")
+        return SimpleNamespace(
+            events=(),
+            tactical_mdd=-0.10,
+            baseline_mdd=-0.20,
+            realized_beta=0.50,
+            turnover=1.0,
+            nav_integrity=1.0,
+            interval_beta_audit=[],
+            mean_interval_beta_deviation=0.01,
+            forward_returns_by_horizon={5: 0.01, 20: 0.02, 60: 0.03},
+            max_adverse_excursion=-0.05,
+            average_cost_improvement_vs_baseline_dca=0.0,
+        )
+
+    monkeypatch.setattr("src.backtest.os.path.exists", fake_exists)
+    monkeypatch.setattr("src.backtest.Path.exists", fake_macro_exists)
+    monkeypatch.setattr("src.backtest.pd.read_csv", fake_read_csv)
+    monkeypatch.setattr("src.backtest.Backtester.simulate_portfolio", fake_simulate)
+
+    run_backtest()
+
+    output = capsys.readouterr().out
+    assert output.index("--- Canonical Macro Coverage ---") < output.index("--- v6.4 Personal Backtest Summary")
+    assert events == ["simulate"]

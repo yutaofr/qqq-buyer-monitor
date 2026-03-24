@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import logging
+from pathlib import Path
 import numpy as np
 import concurrent.futures
 from dataclasses import dataclass, field
@@ -22,6 +23,7 @@ from src.models import AllocationState, Tier1Result, Tier2Result, PortfolioState
 from src.engine.aggregator import aggregate, _ALLOCATION_PROFILE, get_target_allocation
 from src.engine.allocation_search import generate_candidates, find_best_allocation
 from src.collector.historical_macro_seeder import HistoricalMacroSeeder
+from src.research.data_contracts import summarize_historical_macro_coverage, validate_historical_macro_frame
 
 logger = logging.getLogger(__name__)
 
@@ -744,6 +746,46 @@ def summarize_backtest_methodology(prices: pd.Series, tactical_states: Optional[
 def _format_pct(value: Optional[float]) -> str:
     return f"{value * 100:.1f}%" if value is not None else "n/a"
 
+
+def _load_research_macro_dataset(macro_path: str) -> pd.DataFrame:
+    """Load and validate the canonical research macro dataset."""
+    path = Path(macro_path)
+    if not path.exists():
+        raise FileNotFoundError(
+            "Missing required historical macro dataset: "
+            f"{macro_path}. "
+            "Research backtests require the canonical v7 dataset. "
+            "Build it with `python scripts/build_historical_macro_dataset.py`."
+        )
+
+    macro_df = pd.read_csv(path)
+    validate_historical_macro_frame(macro_df)
+    effective_date = pd.to_datetime(macro_df["effective_date"], errors="coerce")
+    duplicate_rows = macro_df.index[effective_date.duplicated()].tolist()
+    if duplicate_rows:
+        raise ValueError(
+            "Duplicate effective_date values in historical macro dataset: "
+            f"rows {duplicate_rows}"
+        )
+    summary = summarize_historical_macro_coverage(macro_df)
+
+    print("\n--- Canonical Macro Coverage ---")
+    print(f"Rows: {summary['rows']}")
+    print(f"First observation date: {summary['first_observation_date']}")
+    print(f"Last observation date: {summary['last_observation_date']}")
+    print("Coverage:")
+    for key in (
+        "credit_spread_bps",
+        "credit_acceleration_pct_10d",
+        "real_yield_10y_pct",
+        "net_liquidity_usd_bn",
+        "liquidity_roc_pct_4w",
+        "funding_stress_flag",
+    ):
+        print(f"  {key}: {summary['coverage'][key]:.3f}")
+
+    return macro_df
+
 def run_backtest() -> None:
     cache_path = "data/qqq_history_cache.csv"
     macro_path = "data/macro_historical_dump.csv"
@@ -772,16 +814,8 @@ def run_backtest() -> None:
         print("Error: No price data available.")
         return
 
-    if not os.path.exists(macro_path):
-        raise FileNotFoundError(
-            "Missing required historical macro dataset: "
-            f"{macro_path}. "
-            "Research backtests require explicit macro history. "
-            "If you only need a development smoke-test, generate the placeholder file with "
-            "`python scripts/generate_historical_macro.py`."
-        )
-
-    seeder = HistoricalMacroSeeder(csv_path=macro_path)
+    macro_df = _load_research_macro_dataset(macro_path)
+    seeder = HistoricalMacroSeeder(mock_df=macro_df)
     tester = Backtester()
     
     # v6.4 Fix: Enable rolling dynamic search to validate selection engine
