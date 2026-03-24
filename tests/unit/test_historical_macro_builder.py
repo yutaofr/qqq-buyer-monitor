@@ -2,6 +2,7 @@ import pandas as pd
 import pytest
 
 from src.collector import macro, macro_v3
+from src.collector.historical_macro_seeder import HistoricalMacroSeeder
 from src.research import historical_macro_builder as builder
 
 
@@ -10,6 +11,37 @@ def _primary_series_frame(series_id: str, values: list[float], dates: pd.Datetim
         {
             "observation_date": dates,
             series_id: values,
+        }
+    )
+
+
+def _canonical_macro_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "observation_date": ["2024-01-02", "2024-01-03"],
+            "effective_date": ["2024-01-03", "2024-01-04"],
+            "credit_spread_bps": [350.0, 355.0],
+            "credit_acceleration_pct_10d": [0.0, 0.5],
+            "real_yield_10y_pct": [1.25, 1.20],
+            "net_liquidity_usd_bn": [250.0, 249.0],
+            "liquidity_roc_pct_4w": [0.0, -0.4],
+            "funding_stress_flag": [0, 1],
+            "source_credit_spread": ["fred:BAMLH0A0HYM2", "fred:BAMLH0A0HYM2"],
+            "source_real_yield": ["fred:DFII10", "fred:DFII10"],
+            "source_net_liquidity": ["derived:WALCL-WDTGAL-RRPONTSYD", "derived:WALCL-WDTGAL-RRPONTSYD"],
+            "source_funding_stress": ["fred:NFCI", "fred:NFCI"],
+            "build_version": ["v7.0-class-a-research-r1", "v7.0-class-a-research-r1"],
+        }
+    )
+
+
+def _legacy_macro_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "observation_date": ["2024-01-02", "2024-01-03"],
+            "BAMLH0A0HYM2": [3.5, 3.6],
+            "liquidity_roc": [-3.0, -2.5],
+            "is_funding_stressed": [False, True],
         }
     )
 
@@ -223,3 +255,29 @@ def test_build_historical_macro_dataset_raises_on_missing_core_series(monkeypatc
 
     with pytest.raises(ValueError, match="NFCI"):
         builder.build_historical_macro_dataset()
+
+
+def test_historical_macro_seeder_uses_effective_date_visibility():
+    seeder = HistoricalMacroSeeder(mock_df=_canonical_macro_frame())
+
+    before_visible = seeder.get_features_for_date(pd.Timestamp("2024-01-02").date())
+    assert before_visible["credit_spread"] is None
+    assert before_visible["is_funding_stressed"] is False
+
+    visible = seeder.get_features_for_date(pd.Timestamp("2024-01-03").date())
+    assert visible["credit_spread"] == 350.0
+    assert visible["credit_accel"] == 0.0
+    assert visible["real_yield"] == 1.25
+    assert visible["liquidity_roc"] == 0.0
+    assert visible["is_funding_stressed"] is False
+
+
+def test_historical_macro_seeder_preserves_legacy_mock_df_path():
+    seeder = HistoricalMacroSeeder(mock_df=_legacy_macro_frame())
+
+    visible = seeder.get_features_for_date(pd.Timestamp("2024-01-03").date())
+    assert visible["credit_spread"] == 3.6
+    assert visible["credit_accel"] == 0.0
+    assert visible["real_yield"] is None
+    assert visible["liquidity_roc"] == -2.5
+    assert visible["is_funding_stressed"] is True
