@@ -51,16 +51,10 @@ def _safe_beta(
     benchmark = aligned.iloc[:, 1]
 
     if len(aligned) < 2:
-        market_move = float(benchmark.sum())
-        if abs(market_move) > 1e-9:
-            return float(portfolio.sum() / market_move)
         return float(fallback_target)
 
     variance_market = float(np.var(benchmark, ddof=1))
     if variance_market <= 0:
-        market_move = float(benchmark.sum())
-        if abs(market_move) > 1e-9:
-            return float(portfolio.sum() / market_move)
         return float(fallback_target)
 
     covariance = float(np.cov(portfolio, benchmark, ddof=1)[0, 1])

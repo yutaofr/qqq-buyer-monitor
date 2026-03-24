@@ -208,12 +208,8 @@ def test_certifier_beta_fidelity_gate_blocks_certified_status():
             "qld_ret": aligned_qqq * 2.0,
         }
     )
-    macro_history = pd.DataFrame(
-        {
-            "benchmark_ret": pd.Series([0.01] * 252, index=bad_history.index),
-            "nav_integrity": pd.Series([1.0] * 252, index=bad_history.index),
-        }
-    )
+    macro_history = _macro_history(bad_history)
+    macro_history["benchmark_ret"] = 0.01
     candidate_space = [{
         "candidate_id": "beta-bad",
         "allowed_risk_state": "RISK_ON",
@@ -241,13 +237,13 @@ def test_certifier_requires_external_audit_inputs_for_certified_status():
         "qld_pct": 0.10,
         "cash_pct": 0.20,
     }]
-    registry = certify_candidates(
-        price_history=_price_history(),
-        macro_history=None,
-        candidate_space=candidate_space,
-        drawdown_budget=0.30,
-    )
-    assert registry.candidates[0].certification_status != "CERTIFIED"
+    with pytest.raises(ValueError, match="macro_history is required"):
+        certify_candidates(
+            price_history=_price_history(),
+            macro_history=None,
+            candidate_space=candidate_space,
+            drawdown_budget=0.30,
+        )
 
 
 def test_certifier_export_and_reload(tmp_path):
