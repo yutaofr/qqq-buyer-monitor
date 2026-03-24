@@ -8,13 +8,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Optional
 
-from src.engine.tier0_macro import assess_structural_regime
 from src.engine.allocation_search import find_best_allocation, generate_candidates
+from src.engine.tier0_macro import assess_structural_regime
 from src.models import (
-    AllocationState, OptionsOverlay, Signal, SignalResult, 
-    Tier1Result, Tier2Result, CurrentPortfolioState, TargetAllocationState
+    AllocationState,
+    CurrentPortfolioState,
+    OptionsOverlay,
+    Signal,
+    SignalResult,
+    TargetAllocationState,
+    Tier1Result,
+    Tier2Result,
 )
 
 TRIGGERED_THRESHOLD = 70
@@ -116,14 +121,14 @@ _CONFIDENCE_ORDER = {"low": 0, "medium": 1, "high": 2}
 def recommend_allocation(structural: str, tactical: str) -> AllocationState:
     """Legacy wrapper for backward compatibility with tests/callers."""
     t1 = Tier1Result(score=50, drawdown_52w=None, ma200_deviation=None, vix=None, fear_greed=None, breadth=None)
-    t2 = Tier2Result(adjustment=0, put_wall=None, call_wall=None, gamma_flip=None, 
-                    support_confirmed=False, support_broken=False, upside_open=False, 
+    t2 = Tier2Result(adjustment=0, put_wall=None, call_wall=None, gamma_flip=None,
+                    support_confirmed=False, support_broken=False, upside_open=False,
                     gamma_positive=True, gamma_source="yf", put_wall_distance_pct=0.0, call_wall_distance_pct=0.0)
-    
+
     ctx = DecisionContext(
-        market_date=date.today(), price=0.0, 
+        market_date=date.today(), price=0.0,
         tier1=t1, tier2=t2,
-        structural_regime=structural, 
+        structural_regime=structural,
         tactical_state=tactical
     )
     ctx = _step_allocation_policy(ctx)
@@ -136,31 +141,31 @@ class DecisionContext:
     price: float
     tier1: Tier1Result
     tier2: Tier2Result
-    credit_spread: Optional[float] = None
-    erp_val: Optional[float] = None
-    ma50: Optional[float] = None
-    
+    credit_spread: float | None = None
+    erp_val: float | None = None
+    ma50: float | None = None
+
     # v6.2 Defensive Confirmation Parameters
-    credit_accel: Optional[float] = None
-    liquidity_roc: Optional[float] = None
+    credit_accel: float | None = None
+    liquidity_roc: float | None = None
     is_funding_stressed: bool = False
-    
+
     # Portfolio Inputs (v6.3 uses full state)
     current_portfolio: CurrentPortfolioState = field(default_factory=CurrentPortfolioState)
-    
+
     # v6.4 Search Context
-    historical_ohlcv: Optional[pd.DataFrame] = None
+    historical_ohlcv: pd.DataFrame | None = None
     candidate_scores: list[dict] = field(default_factory=list)
-    
+
     # State accumulated
     structural_regime: str = "NEUTRAL"
     tactical_state: str = "CALM"
     allocation_state: AllocationState = AllocationState.BASE_DCA
     signal: Signal = Signal.NO_SIGNAL
-    
+
     # v6.3 Strategic Target
     target_allocation: TargetAllocationState = field(default_factory=TargetAllocationState)
-    
+
     # Trace (Evidence Chain)
     trace: list[dict] = field(default_factory=list)
 
@@ -182,7 +187,7 @@ def aggregate(
     historical_ohlcv: pd.DataFrame | None = None
 ) -> SignalResult:
     """Entry point for aggregated signal computation using pipeline."""
-    
+
     erp_val = None
     if forward_pe is not None and real_yield is not None and forward_pe > 0:
         erp_val = (100.0 / forward_pe) - real_yield
@@ -204,21 +209,21 @@ def aggregate(
     )
 
     # 2. Run Pipeline Steps
-    ctx = _step_defensive_bypass(ctx) 
+    ctx = _step_defensive_bypass(ctx)
     ctx = _step_structural_regime(ctx)
     ctx = _step_tactical_state(ctx)
-    ctx = _step_allocation_policy(ctx) 
+    ctx = _step_allocation_policy(ctx)
     ctx = _step_strategic_allocation(ctx) # v6.3: Map to Target Model
     ctx = _step_overlay_refinement(ctx)
     ctx = _step_finalize(ctx)
 
     profile = _ALLOCATION_PROFILE[ctx.allocation_state]
-    
+
     # Compute dynamic parameters
     daily_tranche_pct = profile["daily_tranche_pct"]
     cooldown_days = profile["cooldown_days"]
     confidence = profile["confidence"]
-    
+
     # v6.3.9 Beta Audit: Reality vs Target
     effective_exposure = ctx.current_portfolio.qqq_pct + 2.0 * ctx.current_portfolio.qld_pct
     beta_drift = effective_exposure - ctx.target_allocation.target_beta
@@ -269,10 +274,10 @@ def _step_defensive_bypass(ctx: DecisionContext) -> DecisionContext:
     credit_bad = ctx.credit_accel is not None and ctx.credit_accel > 15.0
     liq_bad = ctx.liquidity_roc is not None and ctx.liquidity_roc < -2.0
     funding_bad = ctx.is_funding_stressed
-    
+
     state = None
     reason = "No defensive bypass triggered"
-    
+
     if credit_bad and liq_bad and funding_bad:
         state = AllocationState.CASH_FLIGHT
         reason = "L3 CASH_FLIGHT: Credit + Liquidity + Funding Stress Resonance"
@@ -282,7 +287,7 @@ def _step_defensive_bypass(ctx: DecisionContext) -> DecisionContext:
     elif credit_bad:
         state = AllocationState.WATCH_DEFENSE
         reason = "L1 WATCH_DEFENSE: Credit Spread Acceleration detected"
-        
+
     if state:
         trace_node = {
             "step": "defensive_bypass",
@@ -291,7 +296,7 @@ def _step_defensive_bypass(ctx: DecisionContext) -> DecisionContext:
             "evidence": {"accel": ctx.credit_accel, "liq_roc": ctx.liquidity_roc, "funding": funding_bad}
         }
         return _update_ctx(ctx, allocation_state=state, trace=ctx.trace + [trace_node])
-    
+
     return ctx
 
 def _step_structural_regime(ctx: DecisionContext) -> DecisionContext:
@@ -317,14 +322,14 @@ def _step_tactical_state(ctx: DecisionContext) -> DecisionContext:
         state = "PERSISTENT_STRESS"
     elif t1.stress_score >= 20:
         state = "STRESS"
-        
+
     trace_node = {
         "step": "tactical_state",
         "decision": state,
         "reason": f"Tactical state identified as {state}",
         "evidence": {
-            "score": t1.score, 
-            "stress": t1.stress_score, 
+            "score": t1.score,
+            "stress": t1.stress_score,
             "capitulation": t1.capitulation_score,
             "velocity": t1.descent_velocity
         }
@@ -334,13 +339,13 @@ def _step_tactical_state(ctx: DecisionContext) -> DecisionContext:
 def _step_allocation_policy(ctx: DecisionContext) -> DecisionContext:
     if ctx.allocation_state in (AllocationState.WATCH_DEFENSE, AllocationState.DELEVERAGE, AllocationState.CASH_FLIGHT):
         return ctx
-        
+
     s = ctx.structural_regime
     t = ctx.tactical_state
-    
+
     res = AllocationState.BASE_DCA
     reason = "Default calibration"
-    
+
     if s == "CRISIS":
         res, reason = AllocationState.RISK_CONTAINMENT, "Structural CRISIS forces risk containment"
     elif s == "EUPHORIC":
@@ -381,15 +386,15 @@ def _step_strategic_allocation(ctx: DecisionContext) -> DecisionContext:
         tester = Backtester()
         candidates = generate_candidates(ctx.allocation_state)
         scores = tester.score_candidates(ctx.historical_ohlcv, ctx.allocation_state, candidates)
-    
+
     target_model = find_best_allocation(ctx.allocation_state, scores)
-    
+
     trace_node = {
         "step": "strategic_allocation",
         "decision": f"Beta: {target_model.target_beta:.2f}",
         "reason": f"Optimal candidate selected for {ctx.allocation_state.value}",
         "evidence": {
-            "cash": target_model.target_cash_pct, 
+            "cash": target_model.target_cash_pct,
             "qld": target_model.target_qld_pct,
             "search_active": ctx.historical_ohlcv is not None,
             "candidate_count": len(scores) if scores else 0
@@ -405,7 +410,7 @@ def _step_overlay_refinement(ctx: DecisionContext) -> DecisionContext:
         sig = Signal.WATCH
     elif ctx.allocation_state == AllocationState.FAST_ACCUMULATE:
         sig = Signal.TRIGGERED
-        
+
     reason = "Signal derived from allocation state"
     if not overlay.cannot_upgrade_structural_state:
         if score >= TRIGGERED_THRESHOLD:
@@ -414,12 +419,12 @@ def _step_overlay_refinement(ctx: DecisionContext) -> DecisionContext:
         elif score >= WATCH_THRESHOLD:
             sig = Signal.WATCH
             reason = "Score-based upgrade allowed by overlay"
-            
+
     cap = _MAX_SIGNAL_BY_ALLOCATION[ctx.allocation_state]
     if _SIGNAL_RANK[sig] > _SIGNAL_RANK[cap]:
         sig = cap
         reason = f"Signal capped by allocation state: {ctx.allocation_state.value}"
-        
+
     if overlay.can_reduce_tranche and sig == Signal.TRIGGERED:
         sig = Signal.WATCH
         reason = "Downgraded to WATCH due to overlay caution"
@@ -445,7 +450,7 @@ def _step_finalize(ctx: DecisionContext) -> DecisionContext:
     ):
         sig = Signal.GREEDY
         reason = "GREEDY sentiment override"
-        
+
     has_major_div = (
         ctx.tier1.divergence_flags.get("price_revision") or
         ctx.tier1.divergence_flags.get("price_breadth") or
@@ -454,7 +459,7 @@ def _step_finalize(ctx: DecisionContext) -> DecisionContext:
     if sig == Signal.TRIGGERED and has_major_div:
         sig = Signal.STRONG_BUY
         reason = "Divergence confirmation upgrade"
-        
+
     cap = _MAX_SIGNAL_BY_ALLOCATION[ctx.allocation_state]
     if sig != Signal.GREEDY and _SIGNAL_RANK[sig] > _SIGNAL_RANK[cap]:
         sig = cap
@@ -500,7 +505,7 @@ def _build_explanation(
 
     pw, cw = tier2.put_wall, tier2.call_wall
     is_pivot = (pw is not None and cw is not None and pw == cw)
-    
+
     if is_pivot:
         parts.append(f"当前价格处于 Pivot Wall（${pw}）关键争夺区")
         if tier2.support_broken:
@@ -558,11 +563,11 @@ def _build_explanation(
     if signal == Signal.GREEDY:
         parts.append(f"🚨 🌟 综合判断：触发【贪婪警告】(GREEDY)！当前市场情绪极度过热（F&G: {tier1.fear_greed.value}），且价格涨幅过快。建议分批止盈，落袋为安，切勿追高。")
     elif allocation_state == AllocationState.CASH_FLIGHT:
-        parts.append(f"🚨 🚨 综合判断：触发【L3 极端避险】(CASH_FLIGHT)！信贷、流动性与融资压力三重共振恶化。强制停止加仓，建议立即提高现金比例至 50% 以上。")
+        parts.append("🚨 🚨 综合判断：触发【L3 极端避险】(CASH_FLIGHT)！信贷、流动性与融资压力三重共振恶化。强制停止加仓，建议立即提高现金比例至 50% 以上。")
     elif allocation_state == AllocationState.DELEVERAGE:
-        parts.append(f"🚨 综合判断：触发【L2 降杠杆】(DELEVERAGE)！信贷恶化与流动性抽离共振。暂停买入，建议逢高减持非核心仓位，提高现金缓冲。")
+        parts.append("🚨 综合判断：触发【L2 降杠杆】(DELEVERAGE)！信贷恶化与流动性抽离共振。暂停买入，建议逢高减持非核心仓位，提高现金缓冲。")
     elif allocation_state == AllocationState.WATCH_DEFENSE:
-        parts.append(f"🛡️ 综合判断：触发【L1 防御观察】(WATCH_DEFENSE)！信用利差显著加速，禁止新增杠杆，密切关注流动性共振。")
+        parts.append("🛡️ 综合判断：触发【L1 防御观察】(WATCH_DEFENSE)！信用利差显著加速，禁止新增杠杆，密切关注流动性共振。")
     elif allocation_state == AllocationState.RISK_CONTAINMENT:
         parts.append(f"🚨 综合判断：当前进入流动性危机风险控制区间。{allocation_note}")
     elif allocation_state == AllocationState.PAUSE_CHASING:

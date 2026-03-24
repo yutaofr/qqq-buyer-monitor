@@ -91,7 +91,7 @@ def save_signal(result: SignalResult, path: str = DEFAULT_DB_PATH) -> None:
 
 
 def _migrate_blob(blob: dict) -> dict:
-    """Lazy migration for historical JSON blobs to ensure v6.3 compatibility."""
+    """Lazy migration for historical JSON blobs to ensure v6.3/v7.0 compatibility."""
     # Ensure current_portfolio exists
     if "current_portfolio" not in blob:
         old_p = blob.get("portfolio", {})
@@ -116,6 +116,15 @@ def _migrate_blob(blob: dict) -> dict:
     
     if "interval_beta_audit" not in blob:
         blob["interval_beta_audit"] = []
+
+    # v7.0 field migration — null defaults for old records
+    blob.setdefault("risk_state", None)
+    blob.setdefault("deployment_state", None)
+    blob.setdefault("selected_candidate_id", None)
+    blob.setdefault("registry_version", None)
+    blob.setdefault("rebalance_action", {})
+    blob.setdefault("deployment_action", {})
+    blob.setdefault("candidate_selection_audit", [])
         
     return blob
 
@@ -318,6 +327,14 @@ def _to_json_dict(result: SignalResult) -> dict:
             "qqq_pct": _float(result.current_portfolio.qqq_pct),
             "qld_pct": _float(result.current_portfolio.qld_pct),
         },
+        # v7.0 Dual-Controller fields
+        "risk_state": result.risk_state.value if result.risk_state is not None else None,
+        "deployment_state": result.deployment_state.value if result.deployment_state is not None else None,
+        "selected_candidate_id": result.selected_candidate_id,
+        "registry_version": result.registry_version,
+        "rebalance_action": result.rebalance_action,
+        "deployment_action": result.deployment_action,
+        "candidate_selection_audit": result.candidate_selection_audit,
         # Deprecated v6.2 fields
         "portfolio": {
             "current_cash_pct": _float(result.portfolio.current_cash_pct),

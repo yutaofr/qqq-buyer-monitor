@@ -1,14 +1,19 @@
-# QQQ Buy-Signal & Strategic Allocation Monitor (v6.4)
+# QQQ Buy-Signal & Strategic Allocation Monitor (v7.0)
 
-An institutional-grade market monitoring system for the QQQ ETF, designed for long-term sovereign wealth and pension fund allocation strategies. v6.4 introduces the **Personal Allocation Search** layer.
+A production-grade market monitoring system for QQQ ETF allocation, built around the **v7.0 Dual-Controller Architecture**. The system separates risk exposure management from new-cash deployment pace into two independent, auditable controllers.
 
-## 🚀 What's New in v6.4: Personal Allocation Search
-Following the v6.3 strategic allocation layer, this version shifts focus from institutional mirroring to a **30% personal drawdown budget**:
-- **State-Conditioned Candidate Search:** Dynamically scores allowed QQQ/QLD/Cash bands per `AllocationState`.
-- **Daily T+0 Risk Rebalancing:** Separates weekly cash-flow deployment from daily risk alignment, preserving beta fidelity.
-- **Personal Beta Audit (AC-4):** Implements returns-based realized beta tracking with a Mean Absolute Deviation of **0.0069** in the full backtest.
-- **QLD Leverage Simulation:** Accurate modeling of ProShares Ultra QQQ (QLD) including SRD 4.2 compliant daily expense ratio drag.
-- **30% MDD Budget (AC-5):** Hard-gates unsafe candidates and falls back to 100% cash when required.
+## 🚀 What's New in v7.0: Industrial Dual-Controller Architecture
+
+### Risk Controller
+Determines the target equity exposure and re-balance trigger from **Class A macro data** (credit spreads, liquidity, funding stress, real yields). Outputs one of 5 risk states: `RISK_ON → RISK_EXIT`. Only Class A data is decision-critical — Class B/C data cannot influence risk state.
+
+### Deployment Controller
+Decides how to deploy **new incoming cash** independently of the re-balance decision. Outputs one of 5 deployment paces: `DEPLOY_BASE → DEPLOY_PAUSE`. Cannot exceed the exposure ceiling set by the Risk Controller.
+
+### Key Architecture Changes vs v6.x
+- **Offline Certification:** Candidates are certified offline (`src/research/certifier.py`), versioned in a `CandidateRegistry` JSON, and selected deterministically at runtime (no live mini-backtest).
+- **Band-Triggered Rebalance:** Positions are only adjusted when drift exceeds a configurable band or risk state changes. No unconditional daily full re-balance.
+- **Explicit Degraded Mode:** Missing registry → `logic_trace` records `registry_missing`, system stays on v6 allocation. No silent fallback to live search.
 
 ## 📊 Performance & Resilience (v6.4 Backtest)
 Based on full-cycle historical simulations (1999-2026):
