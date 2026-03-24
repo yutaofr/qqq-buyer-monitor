@@ -3,7 +3,9 @@ import pytest
 
 from src.collector import macro, macro_v3
 from src.collector.historical_macro_seeder import HistoricalMacroSeeder
+from src.research.data_contracts import REQUIRED_HISTORICAL_MACRO_COLUMNS, validate_historical_macro_frame
 from src.research import historical_macro_builder as builder
+from scripts import generate_historical_macro
 
 
 def _primary_series_frame(series_id: str, values: list[float], dates: pd.DatetimeIndex) -> pd.DataFrame:
@@ -281,3 +283,36 @@ def test_historical_macro_seeder_preserves_legacy_mock_df_path():
     assert visible["real_yield"] is None
     assert visible["liquidity_roc"] == -2.5
     assert visible["is_funding_stressed"] is True
+
+
+def test_generate_dev_fixture_historical_macro_dataset_emits_canonical_schema(tmp_path):
+    output_path = tmp_path / "macro_historical_dump.csv"
+
+    frame = generate_historical_macro.build_dev_fixture_historical_macro_dataset(output_path=output_path)
+
+    assert output_path.exists()
+    assert list(frame.columns) == list(REQUIRED_HISTORICAL_MACRO_COLUMNS)
+    assert frame["build_version"].nunique() == 1
+    assert frame["build_version"].iat[0] == "dev-fixture"
+    assert frame["source_credit_spread"].nunique() == 1
+    assert frame["source_credit_spread"].iat[0] == "synthetic_fixture"
+    assert frame["source_real_yield"].nunique() == 1
+    assert frame["source_real_yield"].iat[0] == "synthetic_fixture"
+    assert frame["source_net_liquidity"].nunique() == 1
+    assert frame["source_net_liquidity"].iat[0] == "synthetic_fixture"
+    assert frame["source_funding_stress"].nunique() == 1
+    assert frame["source_funding_stress"].iat[0] == "synthetic_fixture"
+    assert (pd.to_datetime(frame["effective_date"]) > pd.to_datetime(frame["observation_date"])).all()
+    validate_historical_macro_frame(frame)
+
+
+def test_generate_dev_fixture_historical_macro_dataset_writes_smokeable_rows(tmp_path):
+    output_path = tmp_path / "macro_historical_dump.csv"
+
+    frame = generate_historical_macro.build_dev_fixture_historical_macro_dataset(output_path=output_path)
+    written = pd.read_csv(output_path)
+
+    assert len(frame) == len(written)
+    assert written["build_version"].eq("dev-fixture").all()
+    assert written["source_credit_spread"].eq("synthetic_fixture").all()
+    assert written["funding_stress_flag"].isin([0, 1]).all()
