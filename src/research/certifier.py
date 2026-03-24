@@ -10,6 +10,7 @@ import pandas as pd
 
 from src.models.candidate import CandidateRegistry, CertifiedCandidate
 from src.models.risk import RiskState
+from src.research.data_contracts import REQUIRED_HISTORICAL_MACRO_COLUMNS, validate_historical_macro_frame
 
 # Required research metrics fields (SRD AC-8)
 REQUIRED_METRICS = {
@@ -28,13 +29,101 @@ _MDD_HARD_LIMIT = 0.30
 
 # Acceptable edge-case: MDD within tolerance above budget → CONDITIONAL
 _MDD_CONDITIONAL_LIMIT = 0.35
+_CLASS_A_COVERAGE_THRESHOLD = 0.95
 _BETA_DEVIATION_CERTIFIED_LIMIT = 0.05
 _BETA_DEVIATION_CONDITIONAL_LIMIT = 0.10
+_CERTIFIER_CLASS_A_COLUMNS = (
+    "credit_spread_bps",
+    "credit_acceleration_pct_10d",
+    "real_yield_10y_pct",
+    "net_liquidity_usd_bn",
+    "liquidity_roc_pct_4w",
+    "funding_stress_flag",
+)
+_CERTIFIER_AUDIT_COLUMNS = ("benchmark_ret", "nav_integrity")
+_CERTIFIER_SUBSET_COLUMNS = (
+    "observation_date",
+    "effective_date",
+    *_CERTIFIER_CLASS_A_COLUMNS,
+    *_CERTIFIER_AUDIT_COLUMNS,
+)
+
+
+def _normalize_macro_history(macro_history: pd.DataFrame) -> pd.DataFrame:
+    """Normalize macro history onto explicit date columns for audit alignment."""
+    frame = macro_history.copy()
+    frame["observation_date"] = pd.to_datetime(frame["observation_date"], errors="coerce")
+    frame["effective_date"] = pd.to_datetime(frame["effective_date"], errors="coerce")
+    frame = frame.sort_values(["effective_date", "observation_date"]).reset_index(drop=True)
+    frame = frame.set_index("effective_date", drop=False)
+    return frame
+
+
+def _validate_macro_history(macro_history: pd.DataFrame | None) -> pd.DataFrame:
+    """Validate the canonical macro subset required by the certifier."""
+    if macro_history is None or macro_history.empty:
+        raise ValueError("macro_history is required for certifier validation")
+
+    has_canonical_contract = all(column in macro_history.columns for column in REQUIRED_HISTORICAL_MACRO_COLUMNS)
+    if has_canonical_contract:
+        validate_historical_macro_frame(macro_history)
+    else:
+        missing_subset = [column for column in _CERTIFIER_SUBSET_COLUMNS if column not in macro_history.columns]
+        if missing_subset:
+            raise ValueError(f"Missing certifier macro columns: {', '.join(missing_subset)}")
+        observation_date = pd.to_datetime(macro_history["observation_date"], errors="coerce")
+        if observation_date.isna().any():
+            bad_rows = macro_history.index[observation_date.isna()].tolist()
+            raise ValueError(f"Invalid datetime values in observation_date: rows {bad_rows}")
+        effective_date = pd.to_datetime(macro_history["effective_date"], errors="coerce")
+        if effective_date.isna().any():
+            bad_rows = macro_history.index[effective_date.isna()].tolist()
+            raise ValueError(f"Invalid datetime values in effective_date: rows {bad_rows}")
+        invalid_order = effective_date < observation_date
+        if invalid_order.any():
+            bad_rows = macro_history.index[invalid_order].tolist()
+            raise ValueError(f"effective_date must be >= observation_date: rows {bad_rows}")
+        for column in _CERTIFIER_CLASS_A_COLUMNS:
+            series = macro_history[column]
+            if column == "funding_stress_flag":
+                invalid_flags = series.dropna().map(lambda value: value not in {0, 1, True, False})
+                if invalid_flags.any():
+                    bad_rows = series.index[series.notna() & invalid_flags].tolist()
+                    raise ValueError(f"Invalid funding_stress_flag values: rows {bad_rows}")
+                continue
+            coerced = pd.to_numeric(series, errors="coerce")
+            invalid_mask = series.notna() & coerced.isna()
+            if invalid_mask.any():
+                bad_rows = macro_history.index[invalid_mask].tolist()
+                raise ValueError(f"Invalid numeric values in {column}: rows {bad_rows}")
+
+    macro_history = _normalize_macro_history(macro_history)
+
+    missing_audit = [column for column in _CERTIFIER_AUDIT_COLUMNS if column not in macro_history.columns]
+    if missing_audit:
+        raise ValueError(f"Missing certifier audit columns: {', '.join(missing_audit)}")
+
+    for column in _CERTIFIER_AUDIT_COLUMNS:
+        if not macro_history[column].notna().any():
+            raise ValueError(f"Missing certifier audit values in {column}")
+
+    low_coverage = {
+        column: float(macro_history[column].notna().mean())
+        for column in _CERTIFIER_CLASS_A_COLUMNS
+        if float(macro_history[column].notna().mean()) < _CLASS_A_COVERAGE_THRESHOLD
+    }
+    if low_coverage:
+        raise ValueError(
+            "Class A macro coverage below threshold: "
+            + ", ".join(f"{column}={coverage:.3f}" for column, coverage in low_coverage.items())
+        )
+
+    return macro_history.copy()
 
 
 def _compute_metrics(
     price_history: pd.DataFrame,
-    macro_history: pd.DataFrame | None,
+    macro_history: pd.DataFrame,
     qqq_pct: float,
     qld_pct: float,
     cash_pct: float,
@@ -43,7 +132,7 @@ def _compute_metrics(
     Compute research metrics for a candidate over the provided price history.
 
     price_history must have columns: ['qqq_ret', 'qld_ret'] with daily returns.
-    macro_history may provide benchmark_ret and nav_integrity audit inputs.
+    macro_history must include benchmark_ret and nav_integrity audit inputs.
     Returns a dict of all REQUIRED_METRICS.
     """
     if price_history is None or price_history.empty:
@@ -76,22 +165,12 @@ def _compute_metrics(
     effective_exposure = qqq_pct + 2.0 * qld_pct
     turnover = abs(effective_exposure - (qqq_pct + qld_pct)) * 0.01  # simplified proxy
 
-    benchmark_ret = pd.Series(dtype=float)
-    if macro_history is not None and not macro_history.empty:
-        for col in ("benchmark_ret", "spy_ret"):
-            if col in macro_history:
-                benchmark_ret = macro_history[col].dropna()
-                if not benchmark_ret.empty:
-                    break
-
-    # Beta fidelity
-    if not benchmark_ret.empty and benchmark_ret.std() > 0:
-        aligned_portfolio = portfolio_ret.reindex(benchmark_ret.index).dropna()
-        aligned_benchmark = benchmark_ret.reindex(aligned_portfolio.index).dropna()
-        if len(aligned_portfolio) > 1 and len(aligned_benchmark) > 1 and aligned_benchmark.std() > 0:
-            beta = aligned_portfolio.corr(aligned_benchmark) * (aligned_portfolio.std() / aligned_benchmark.std())
-        else:
-            beta = 0.0
+    # Beta fidelity against external benchmark series
+    benchmark_ret = pd.to_numeric(macro_history["benchmark_ret"], errors="coerce").reindex(portfolio_ret.index).dropna()
+    aligned_portfolio = portfolio_ret.reindex(benchmark_ret.index).dropna()
+    aligned_benchmark = benchmark_ret.reindex(aligned_portfolio.index).dropna()
+    if len(aligned_portfolio) > 1 and len(aligned_benchmark) > 1 and aligned_benchmark.std() > 0:
+        beta = aligned_portfolio.corr(aligned_benchmark) * (aligned_portfolio.std() / aligned_benchmark.std())
         mean_interval_beta_deviation = abs(beta - effective_exposure)
     else:
         mean_interval_beta_deviation = float("inf")
@@ -100,12 +179,9 @@ def _compute_metrics(
     monthly_dd = drawdown.resample("ME").min() if hasattr(drawdown.index, "freq") else drawdown
     defense_coverage = float((monthly_dd > -0.20).mean())
 
-    # NAV integrity: prefer an external audit input when available.
-    nav_integrity = 0.0
-    if macro_history is not None and not macro_history.empty and "nav_integrity" in macro_history:
-        nav_series = macro_history["nav_integrity"].dropna()
-        if not nav_series.empty:
-            nav_integrity = float(nav_series.iloc[-1])
+    # NAV integrity from external audit input
+    nav_integrity_series = pd.to_numeric(macro_history["nav_integrity"], errors="coerce").dropna()
+    nav_integrity = float(nav_integrity_series.iloc[-1]) if not nav_integrity_series.empty else 0.0
 
     return {
         "max_drawdown": max_drawdown,
@@ -147,7 +223,7 @@ def certify_candidates(
 
     Args:
         price_history: DataFrame with daily returns (columns: qqq_ret, qld_ret).
-        macro_history: DataFrame with macro features (currently unused in skeleton).
+        macro_history: Canonical historical macro dataset plus audit columns.
         candidate_space: List of dicts with keys: candidate_id, allowed_risk_state,
                          qqq_pct, qld_pct, cash_pct.
         drawdown_budget: Maximum allowed portfolio MDD.
@@ -158,6 +234,7 @@ def certify_candidates(
     """
     ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     version = registry_version or f"v7-research-{ts}"
+    macro_history = _validate_macro_history(macro_history)
 
     certified: list[CertifiedCandidate] = []
 
