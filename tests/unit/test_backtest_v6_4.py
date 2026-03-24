@@ -1,8 +1,10 @@
+import warnings
+
 import pytest
 import pandas as pd
 import numpy as np
 from datetime import date, timedelta
-from src.backtest import Backtester, run_backtest, simulate_leveraged_price
+from src.backtest import Backtester, _safe_beta, run_backtest, simulate_leveraged_price
 from src.models import AllocationState, TargetAllocationState
 
 @pytest.fixture
@@ -74,6 +76,20 @@ def test_simulate_leveraged_price_drag():
     assert leveraged.iloc[2] < leveraged.iloc[1]
     # Expected approx 100 * (1 - 0.0000377)^2 = 99.99246...
     assert abs(leveraged.iloc[2] - 99.99246) < 1e-3
+
+
+def test_safe_beta_handles_thin_or_degenerate_samples_without_warning():
+    thin_portfolio = pd.Series([0.01])
+    thin_benchmark = pd.Series([0.02])
+    flat_benchmark = pd.Series([0.0, 0.0, 0.0])
+    varied_portfolio = pd.Series([0.01, -0.02, 0.03])
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("error", RuntimeWarning)
+        assert _safe_beta(thin_portfolio, thin_benchmark) == 0.0
+        assert _safe_beta(varied_portfolio, flat_benchmark) == 0.0
+
+    assert caught == []
 def test_run_backtest_requires_canonical_macro_dataset(monkeypatch, qqq_cache_frame):
     def fake_exists(path):
         return str(path) == "data/qqq_history_cache.csv"

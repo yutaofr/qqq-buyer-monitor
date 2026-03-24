@@ -26,6 +26,7 @@ from src.collector.historical_macro_seeder import HistoricalMacroSeeder
 from src.research.data_contracts import summarize_historical_macro_coverage, validate_historical_macro_frame
 
 logger = logging.getLogger(__name__)
+_PARALLEL_FALLBACK_WARNED = False
 
 
 def _safe_beta(
@@ -204,12 +205,15 @@ class Backtester:
         Handles 'semaphore permission' errors in restricted environments.
         """
         # Try ProcessPool first (True parallelism, bypasses GIL)
+        global _PARALLEL_FALLBACK_WARNED
         try:
             with concurrent.futures.ProcessPoolExecutor(max_workers=min(os.cpu_count() or 1, 8)) as executor:
                 futures = [executor.submit(worker_func, *task_args, *args) for task_args in tasks]
                 return [f.result() for f in futures]
         except (PermissionError, RuntimeError, OSError) as e:
-            logger.warning(f"ProcessPoolExecutor failed ({e}). Falling back to ThreadPoolExecutor.")
+            if not _PARALLEL_FALLBACK_WARNED:
+                logger.warning(f"ProcessPoolExecutor failed ({e}). Falling back to ThreadPoolExecutor.")
+                _PARALLEL_FALLBACK_WARNED = True
             # Fallback to ThreadPool (GIL-bound, but safer in restricted sandboxes)
             with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(tasks), 8)) as executor:
                 futures = [executor.submit(worker_func, *task_args, *args) for task_args in tasks]
