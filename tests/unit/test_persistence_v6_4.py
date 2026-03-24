@@ -2,7 +2,14 @@ import pytest
 import os
 import json
 from datetime import date
-from src.store.db import save_signal, load_history, _to_json_dict, _migrate_blob
+from src.store.db import (
+    save_signal,
+    load_history,
+    save_runtime_inputs,
+    load_latest_runtime_inputs,
+    _to_json_dict,
+    _migrate_blob,
+)
 from src.models import (
     SignalResult, Signal, Tier1Result, Tier2Result, AllocationState,
     CurrentPortfolioState, TargetAllocationState, SignalDetail
@@ -73,3 +80,18 @@ def test_migration_from_v6_2():
     assert "target_allocation" in migrated
     assert migrated["target_allocation"]["target_beta"] == 0.9 # default
     assert "interval_beta_audit" in migrated
+
+
+def test_runtime_inputs_roundtrip(temp_db):
+    """Runtime inputs should persist and reload through SQLite."""
+    save_runtime_inputs(
+        record_date=date(2026, 3, 24),
+        available_new_cash=1250.0,
+        rolling_drawdown=0.31,
+        path=temp_db,
+    )
+
+    inputs = load_latest_runtime_inputs(path=temp_db)
+    assert inputs is not None
+    assert inputs["available_new_cash"] == 1250.0
+    assert inputs["rolling_drawdown"] == 0.31

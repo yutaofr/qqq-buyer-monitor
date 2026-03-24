@@ -43,6 +43,14 @@ CREATE TABLE IF NOT EXISTS macro_states (
 );
 """
 
+CREATE_RUNTIME_INPUTS_SQL = """
+CREATE TABLE IF NOT EXISTS runtime_inputs (
+    date TEXT PRIMARY KEY,
+    available_new_cash REAL,
+    rolling_drawdown REAL
+);
+"""
+
 def init_db(path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     """Initialise (or open) the SQLite database and create the table."""
     db_path = Path(path)
@@ -50,6 +58,7 @@ def init_db(path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.execute(CREATE_TABLE_SQL)
     conn.execute(CREATE_MACRO_TABLE_SQL)
+    conn.execute(CREATE_RUNTIME_INPUTS_SQL)
     
     # v3.0 migrations for existing DB
     for col in ["forward_pe", "real_yield", "fcf_yield", "earnings_revisions_breadth"]:
@@ -240,6 +249,49 @@ def load_latest_macro_state(path: str = DEFAULT_DB_PATH) -> dict | None:
             "real_yield": row[4],
             "fcf_yield": row[5],
             "earnings_revisions_breadth": row[6],
+        }
+    return None
+
+
+def save_runtime_inputs(
+    record_date: date,
+    available_new_cash: float | None = None,
+    rolling_drawdown: float | None = None,
+    path: str = DEFAULT_DB_PATH,
+) -> None:
+    """Save the latest runtime inputs used by the v7 controllers."""
+    conn = init_db(path)
+    conn.execute(
+        """
+        INSERT INTO runtime_inputs (
+            date, available_new_cash, rolling_drawdown
+        )
+        VALUES (?, ?, ?)
+        ON CONFLICT(date) DO UPDATE SET
+            available_new_cash = COALESCE(excluded.available_new_cash, runtime_inputs.available_new_cash),
+            rolling_drawdown = COALESCE(excluded.rolling_drawdown, runtime_inputs.rolling_drawdown)
+        """,
+        (record_date.isoformat(), available_new_cash, rolling_drawdown),
+    )
+    conn.commit()
+    conn.close()
+    logger.debug("Saved runtime inputs for %s", record_date.isoformat())
+
+
+def load_latest_runtime_inputs(path: str = DEFAULT_DB_PATH) -> dict | None:
+    """Return the most recent runtime input dict."""
+    if not Path(path).exists():
+        return None
+    conn = init_db(path)
+    row = conn.execute(
+        "SELECT date, available_new_cash, rolling_drawdown FROM runtime_inputs ORDER BY date DESC LIMIT 1"
+    ).fetchone()
+    conn.close()
+    if row:
+        return {
+            "date": row[0],
+            "available_new_cash": row[1],
+            "rolling_drawdown": row[2],
         }
     return None
 

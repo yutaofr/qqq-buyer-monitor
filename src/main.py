@@ -319,10 +319,21 @@ def run_pipeline(args: argparse.Namespace) -> None:
     from src.engine.feature_pipeline import build_feature_snapshot
     from src.engine.risk_controller import decide_risk_state
     from src.engine.runtime_selector import NoCompliantCandidatesError, choose_target_candidate
+    from src.store.db import load_latest_runtime_inputs
 
     v7_registry_path = os.environ.get("V7_REGISTRY_PATH", "data/candidate_registry_v7.json")
+    runtime_inputs = load_latest_runtime_inputs() or {}
+
+    if runtime_inputs.get("rolling_drawdown") is not None:
+        from dataclasses import replace as _replace
+
+        portfolio = _replace(portfolio, rolling_drawdown=float(runtime_inputs["rolling_drawdown"]))
+
     try:
-        available_new_cash = max(0.0, float(os.environ.get("AVAILABLE_NEW_CASH", "0.0")))
+        if runtime_inputs.get("available_new_cash") is not None:
+            available_new_cash = max(0.0, float(runtime_inputs["available_new_cash"]))
+        else:
+            available_new_cash = max(0.0, float(os.environ.get("AVAILABLE_NEW_CASH", "0.0")))
     except (TypeError, ValueError):
         available_new_cash = 0.0
 

@@ -140,11 +140,20 @@ def test_certifier_drawdown_budget_respected():
 
 def test_certifier_beta_fidelity_gate_blocks_certified_status():
     """Low-MDD but beta-misaligned candidates must not be CERTIFIED."""
-    aligned_qqq = pd.Series([0.001] * 252, index=pd.date_range("2024-01-01", periods=252, freq="B"))
+    aligned_qqq = pd.Series(
+        [0.001 + (i % 5) * 0.0001 for i in range(252)],
+        index=pd.date_range("2024-01-01", periods=252, freq="B"),
+    )
     bad_history = pd.DataFrame(
         {
             "qqq_ret": aligned_qqq,
-            "qld_ret": aligned_qqq,  # deliberately breaks 2x leverage assumption
+            "qld_ret": aligned_qqq * 2.0,
+        }
+    )
+    macro_history = pd.DataFrame(
+        {
+            "benchmark_ret": pd.Series([0.01] * 252, index=bad_history.index),
+            "nav_integrity": pd.Series([1.0] * 252, index=bad_history.index),
         }
     )
     candidate_space = [{
@@ -156,7 +165,7 @@ def test_certifier_beta_fidelity_gate_blocks_certified_status():
     }]
     registry = certify_candidates(
         price_history=bad_history,
-        macro_history=None,
+        macro_history=macro_history,
         candidate_space=candidate_space,
         drawdown_budget=0.30,
     )
