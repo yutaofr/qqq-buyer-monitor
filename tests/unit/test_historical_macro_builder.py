@@ -2,6 +2,16 @@ import pandas as pd
 import pytest
 
 from src.collector import macro, macro_v3
+from src.research import historical_macro_builder as builder
+
+
+def _primary_series_frame(series_id: str, values: list[float], dates: pd.DatetimeIndex) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "observation_date": dates,
+            series_id: values,
+        }
+    )
 
 
 def test_normalize_fred_history_frame_converts_dates_and_values():
@@ -123,3 +133,93 @@ def test_fetch_research_historical_primary_series_ignores_missing_cpff(monkeypat
 
     assert "CPFF" not in frames
     assert set(frames) == set(macro_v3.RESEARCH_PRIMARY_SERIES)
+
+
+def test_build_historical_macro_dataset_derives_canonical_fields(monkeypatch, tmp_path):
+    dates = pd.date_range("2024-01-01", periods=15, freq="B")
+    walcl_dates = pd.date_range("2023-12-27", periods=6, freq="W-WED")
+    bundle = {
+        "BAMLH0A0HYM2": _primary_series_frame(
+            "BAMLH0A0HYM2",
+            [1.00, 1.01, 1.02, 1.03, 1.05, 1.07, 1.08, 1.09, 1.10, 1.11, 1.13, 1.14, 1.15, 1.16, 1.18],
+            dates,
+        ),
+        "DFII10": _primary_series_frame(
+            "DFII10",
+            [2.10 + i * 0.01 for i in range(15)],
+            dates,
+        ),
+        "WALCL": _primary_series_frame(
+            "WALCL",
+            [8000000.0, 8001000.0, 8002500.0, 8004000.0, 8005200.0, 8007000.0],
+            walcl_dates,
+        ),
+        "WDTGAL": _primary_series_frame(
+            "WDTGAL",
+            [500000.0, 500100.0, 500150.0, 500200.0, 500250.0, 500300.0],
+            walcl_dates,
+        ),
+        "RRPONTSYD": _primary_series_frame(
+            "RRPONTSYD",
+            [1000.0, 1010.0, 1020.0, 1030.0, 1040.0, 1050.0],
+            walcl_dates,
+        ),
+        "NFCI": _primary_series_frame(
+            "NFCI",
+            [-0.10, -0.08, -0.05, 0.05, 0.12, 0.15, 0.09, 0.02, -0.01, -0.03, -0.05, -0.06, -0.04, -0.02, 0.01],
+            dates,
+        ),
+    }
+    monkeypatch.setattr(
+        macro_v3,
+        "fetch_research_historical_primary_series",
+        lambda: bundle,
+    )
+
+    output_path = tmp_path / "macro_historical_dump.csv"
+    df = builder.build_historical_macro_dataset(output_path=str(output_path))
+
+    assert output_path.exists()
+    assert list(df.columns) == [
+        "observation_date",
+        "effective_date",
+        "credit_spread_bps",
+        "credit_acceleration_pct_10d",
+        "real_yield_10y_pct",
+        "net_liquidity_usd_bn",
+        "liquidity_roc_pct_4w",
+        "funding_stress_flag",
+        "source_credit_spread",
+        "source_real_yield",
+        "source_net_liquidity",
+        "source_funding_stress",
+        "build_version",
+    ]
+    assert (df["effective_date"] > df["observation_date"]).all()
+    assert df["effective_date"].tolist()[0] == pd.Timestamp("2023-12-28")
+    assert df["credit_spread_bps"].iloc[-1] == pytest.approx(118.0)
+    assert pd.isna(df["credit_acceleration_pct_10d"].iloc[9])
+    assert df["credit_acceleration_pct_10d"].iloc[-1] > 0
+    assert df["liquidity_roc_pct_4w"].notna().any()
+    assert df["funding_stress_flag"].isin([0, 1]).all()
+    assert df["funding_stress_flag"].max() == 1
+    assert df["source_funding_stress"].iloc[0] == "fred:NFCI"
+    assert df["build_version"].nunique() == 1
+
+
+def test_build_historical_macro_dataset_raises_on_missing_core_series(monkeypatch):
+    bundle = {
+        "BAMLH0A0HYM2": _primary_series_frame("BAMLH0A0HYM2", [1.0, 1.1], pd.date_range("2024-01-01", periods=2, freq="B")),
+        "DFII10": _primary_series_frame("DFII10", [2.0, 2.1], pd.date_range("2024-01-01", periods=2, freq="B")),
+        "WALCL": _primary_series_frame("WALCL", [8000000.0, 8001000.0], pd.date_range("2023-12-27", periods=2, freq="W-WED")),
+        "WDTGAL": _primary_series_frame("WDTGAL", [500000.0, 500100.0], pd.date_range("2023-12-27", periods=2, freq="W-WED")),
+        "RRPONTSYD": _primary_series_frame("RRPONTSYD", [1000.0, 1005.0], pd.date_range("2023-12-27", periods=2, freq="W-WED")),
+    }
+    monkeypatch.setattr(
+        macro_v3,
+        "fetch_research_historical_primary_series",
+        lambda: bundle,
+    )
+
+    with pytest.raises(ValueError, match="NFCI"):
+        builder.build_historical_macro_dataset()
