@@ -77,7 +77,7 @@ flowchart TD
         BYPASS -- Low Stress --> L1[L1: WATCH_DEFENSE]
         
         CS & ERP --> REGIME[Structural Regime Decision]
-        REGIME --> S_STATES[CRISIS | TRANSITION_STRESS | NEUTRAL | EUPHORIC]
+        REGIME --> S_STATES["CRISIS | TRANSITION_STRESS | NEUTRAL | EUPHORIC"]
     end
 
     %% TIER 1: TACTICAL ENGINE
@@ -89,8 +89,8 @@ flowchart TD
         BR --> S4[Breadth Capitulation]
         S1 & S2 & S3 & S4 --> T1_SCORE[Tier 1 Score: 0-100]
         
-        PX --> VELOCITY[Descent Velocity: PANIC | GRIND | CALM]
-        T1_SCORE & VELOCITY --> TACTICAL_STATE[Tactical: PANIC | CAPITULATION | STRESS | CALM]
+        PX --> VELOCITY["Descent Velocity: PANIC | GRIND | CALM"]
+        T1_SCORE & VELOCITY --> TACTICAL_STATE["Tactical: PANIC | CAPITULATION | STRESS | CALM"]
     end
 
     %% TIER 2: MARKET STRUCTURE
@@ -109,12 +109,12 @@ flowchart TD
         PX --> BACKTEST
         
         BACKTEST --> AC5_GATE{AC-5: MDD < 30%?}
-        AC5_GATE -- NO --> SAFE_FALLBACK[Global Safe: 100% Cash]
-        AC5_GATE -- YES --> RANKING[Ranking: CAGR > MDD > Beta Fidelity]
+        AC5_GATE -- NO --> SAFE_FALLBACK["Global Safe: 100% Cash"]
+        AC5_GATE -- YES --> RANKING["Ranking: CAGR > MDD > Beta Fidelity"]
     end
 
     %% FINAL EXECUTION
-    RANKING --> FINAL[Final Decision: QQQ : QLD : Cash]
+    RANKING --> FINAL["Final Decision: QQQ : QLD : Cash"]
     L3 & L2 & L1 --> FINAL
     SAFE_FALLBACK --> FINAL
     T2_ADJ --> FINAL
