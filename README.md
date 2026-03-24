@@ -55,12 +55,19 @@ flowchart TD
             FG[Fear & Greed Index]
             BR[A/D Breadth Ratio]
             MA[MA50 & MA200 SMAs]
+            MFI[Money Flow Index - MFI]
+            RSI[Relative Strength Index - RSI]
         end
         subgraph Options_Data [Market Structure]
             OI[Options Open Interest]
             G_FLIP[Gamma Flip Level]
             PW[Put Wall Strike]
             CW[Call Wall Strike]
+            POC[Volume Point of Control - POC]
+        end
+        subgraph Fundamental_Lead [Fundamental Lead]
+            ERB[Earnings Revision Breadth]
+            FCF[FCF Yield]
         end
     end
 
@@ -70,8 +77,9 @@ flowchart TD
         WALCL & TGA & RRP --> LIQ_ROC[Liquidity Rate of Change]
         CS --> CS_ACCEL[Credit Spread Acceleration]
         FPE & RY --> ERP[Equity Risk Premium]
+        FS[Funding Stress] --> BYPASS{Defensive Bypass?}
         
-        CS_ACCEL & LIQ_ROC --> BYPASS{Defensive Bypass?}
+        CS_ACCEL & LIQ_ROC --> BYPASS
         BYPASS -- High Stress --> L3[L3: CASH_FLIGHT]
         BYPASS -- Med Stress --> L2[L2: DELEVERAGE]
         BYPASS -- Low Stress --> L1[L1: WATCH_DEFENSE]
@@ -84,10 +92,17 @@ flowchart TD
     subgraph Tier1 [Tier 1: Tactical Scoring]
         direction TB
         PX & MA --> S1[52w Drawdown & MA200 Dev]
-        VIX --> S2[VIX Absolute & Z-Score]
-        FG --> S3[Fear & Greed Gradient]
-        BR --> S4[Breadth Capitulation]
-        S1 & S2 & S3 & S4 --> T1_SCORE[Tier 1 Score: 0-100]
+        VIX & FG & BR --> S2[Sentiment & Breadth Gradient]
+        
+        %% Divergence Sub-Engine
+        PX & MFI & RSI & ERB --> DIV[Divergence Sub-Engine]
+        DIV --> DIV_BONUS[Bonus Score: +5 to +20]
+        
+        %% Valuation Sub-Engine
+        FPE & FCF --> VAL[Valuation Sub-Engine]
+        VAL --> VAL_ADJ[Adjustment: -10 to +15]
+
+        S1 & S2 & DIV_BONUS & VAL_ADJ --> T1_SCORE[Tier 1 Score: 0-100]
         
         PX --> VELOCITY["Descent Velocity: PANIC | GRIND | CALM"]
         T1_SCORE & VELOCITY --> TACTICAL_STATE["Tactical: PANIC | CAPITULATION | STRESS | CALM"]
@@ -95,7 +110,7 @@ flowchart TD
 
     %% TIER 2: MARKET STRUCTURE
     subgraph Tier2 [Tier 2: Confirmation Layer]
-        PW & CW --> WALLS[Support Confirmed / Broken]
+        PW & CW & POC --> WALLS[Support Confirmed / Broken / POC Bonus]
         G_FLIP & PX --> GAMMA[Gamma Positive / Negative]
         WALLS & GAMMA --> T2_ADJ[Tier 2 Adjustment: -30 to +15]
     end
@@ -121,9 +136,9 @@ flowchart TD
 ```
 
 ### Key Architectural Transitions
-1.  **Defensive Bypass (The Kill Switch):** Before any logical processing, the system checks for **Credit Acceleration** (HY OAS velocity) and **Liquidity Drains** (Fed Assets - TGA - RRP). If high-velocity stress is detected, it enters `CASH_FLIGHT` or `DELEVERAGE` immediately.
+1.  **Defensive Bypass (The Kill Switch):** Before any logical processing, the system checks for **Credit Acceleration** (HY OAS velocity), **Liquidity Drains** (Fed Assets - TGA - RRP), and **Funding Stress**. If high-velocity stress is detected, it enters `CASH_FLIGHT` or `DELEVERAGE` immediately.
 2.  **Structural Regime (The Macro Commander):** Credit Spreads and **Equity Risk Premium (ERP)** define the structural regime. A `CRISIS` state (Spread > 500bps or ERP < 1.0%) forces risk containment regardless of tactical indicators.
-3.  **Tactical State (The Sentiment Filter):** Combines 52w Drawdown, MA200 deviation, VIX Z-scores, and Fear & Greed to distinguish between a "Grind Down" and a "Panic."
+3.  **Tactical State (The Sentiment Filter):** Combines standard metrics with **Divergence (RSI/MFI/ERB)** and **Valuation (PE/FCF)** sub-engines to distinguish between a "Grind Down" and a "Panic."
 4.  **v6.4 Selection Engine (The Personal Layer):** Performs a real-time **Candidate Scoring** mechanism using mini-backtests. Any allocation that has historically exceeded a **30% Drawdown (AC-5)** is discarded. Among survivors, it selects for the highest **CAGR** while ensuring **Beta Fidelity (AC-4)**.
 
 ## 📦 Getting Started
