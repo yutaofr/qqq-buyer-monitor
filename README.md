@@ -38,69 +38,93 @@ The system operates as a **Multi-Tiered Deterministic State Machine**, where hig
 
 ```mermaid
 flowchart TD
-    subgraph Indicators [Raw Market Indicators]
+    %% INPUT LAYER
+    subgraph Raw_Inputs [Indicator & Data Layer]
         direction LR
-        LIQ[Net Liquidity: WALCL - TGA - RRP]
-        CRD[Credit Spread: OAS BAMLH0A0HYM2]
-        VAL[ERP: 1/PE - Real Yield]
-        PX[Price Action: MA50/200 & Velocity]
-        OPT[Options: Gamma & Put/Call Walls]
+        subgraph Macro_Data [Macro & Liquidity]
+            WALCL[Fed Assets: WALCL]
+            TGA[Treasury: WDTGAL]
+            RRP[Reverse Repo: RRPONTSYD]
+            CS[Credit Spread: BAMLH0A0HYM2]
+            RY[Real Yield: DFII10]
+            FPE[Forward P/E Ratio]
+        end
+        subgraph Market_Data [Price & Sentiment]
+            PX[QQQ Price / OHLCV]
+            VIX[VIX Level / Z-Score]
+            FG[Fear & Greed Index]
+            BR[A/D Breadth Ratio]
+            MA[MA50 & MA200 SMAs]
+        end
+        subgraph Options_Data [Market Structure]
+            OI[Options Open Interest]
+            G_FLIP[Gamma Flip Level]
+            PW[Put Wall Strike]
+            CW[Call Wall Strike]
+        end
     end
 
     %% TIER 0: MACRO COMMANDER
     subgraph Tier0 [Tier 0: Structural Regime]
         direction TB
-        CRD_ACCEL{Credit Accel?} -- High --> BYPASS[Defensive Bypass: Cash Flight/Deleverage]
-        CRD & VAL --> REGIME[Structural Regime Decision]
-        REGIME --> S1[CRISIS]
-        REGIME --> S2[TRANSITION STRESS]
-        REGIME --> S3[NEUTRAL]
-        REGIME --> S4[EUPHORIC]
+        WALCL & TGA & RRP --> LIQ_ROC[Liquidity Rate of Change]
+        CS --> CS_ACCEL[Credit Spread Acceleration]
+        FPE & RY --> ERP[Equity Risk Premium]
+        
+        CS_ACCEL & LIQ_ROC --> BYPASS{Defensive Bypass?}
+        BYPASS -- High Stress --> L3[L3: CASH_FLIGHT]
+        BYPASS -- Med Stress --> L2[L2: DELEVERAGE]
+        BYPASS -- Low Stress --> L1[L1: WATCH_DEFENSE]
+        
+        CS & ERP --> REGIME[Structural Regime Decision]
+        REGIME --> S_STATES[CRISIS | TRANSITION_STRESS | NEUTRAL | EUPHORIC]
     end
 
     %% TIER 1: TACTICAL ENGINE
-    subgraph Tier1 [Tier 1: Tactical State]
-        PX --> TACTICAL[Tactical Sentiment Scoring]
-        TACTICAL --> T1[PANIC]
-        TACTICAL --> T2[CAPITULATION]
-        TACTICAL --> T3[STRESS]
-        TACTICAL --> T4[CALM]
+    subgraph Tier1 [Tier 1: Tactical Scoring]
+        direction TB
+        PX & MA --> S1[52w Drawdown & MA200 Dev]
+        VIX --> S2[VIX Absolute & Z-Score]
+        FG --> S3[Fear & Greed Gradient]
+        BR --> S4[Breadth Capitulation]
+        S1 & S2 & S3 & S4 --> T1_SCORE[Tier 1 Score: 0-100]
+        
+        PX --> VELOCITY[Descent Velocity: PANIC | GRIND | CALM]
+        T1_SCORE & VELOCITY --> TACTICAL_STATE[Tactical: PANIC | CAPITULATION | STRESS | CALM]
     end
 
-    %% ALLOCATION POLICY
-    subgraph Policy [Allocation Policy Mapping]
-        S1 & S2 & S3 & S4 --> MERGE{Regime + Tactical?}
-        T1 & T2 & T3 & T4 --> MERGE
-        MERGE --> AS[Allocation State: Fast/Base/Slow/Pause/Risk]
+    %% TIER 2: MARKET STRUCTURE
+    subgraph Tier2 [Tier 2: Confirmation Layer]
+        PW & CW --> WALLS[Support Confirmed / Broken]
+        G_FLIP & PX --> GAMMA[Gamma Positive / Negative]
+        WALLS & GAMMA --> T2_ADJ[Tier 2 Adjustment: -30 to +15]
     end
 
-    %% v6.4 SEARCH ENGINE
-    subgraph Search [v6.4 Personal Allocation Search]
-        AS --> CANDIDATES[Generate SRD-6.4 Bands]
-        CANDIDATES --> BACKTEST[Mini-Backtest Scoring]
-        BACKTEST --> AC5{AC-5: MDD < 30%?}
-        AC5 -- No --> SAFE[Global Safe: 100% Cash]
-        AC5 -- Yes --> SCORE[Score Ranking: CAGR > MDD > Beta Fidelity]
+    %% AGGREGATION & SEARCH
+    subgraph Strategy [v6.4 Personal Allocation Search]
+        S_STATES & TACTICAL_STATE --> ALLOC_STATE[Allocation State]
+        ALLOC_STATE --> CANDIDATES[SRD-6.4 QQQ:QLD:Cash Bands]
+        
+        CANDIDATES --> BACKTEST[Live Path Mini-Backtest]
+        PX --> BACKTEST
+        
+        BACKTEST --> AC5_GATE{AC-5: MDD < 30%?}
+        AC5_GATE -- NO --> SAFE_FALLBACK[Global Safe: 100% Cash]
+        AC5_GATE -- YES --> RANKING[Ranking: CAGR > MDD > Beta Fidelity]
     end
 
-    %% FINAL DECISION
-    SCORE --> FINAL[Final Decision: QQQ : QLD : Cash]
-    BYPASS --> FINAL
-    SAFE --> FINAL
-
-    %% Connections
-    Indicators --> Tier0
-    Indicators --> Tier1
-    Tier1 --> Policy
-    Tier0 --> Policy
-    Policy --> Search
+    %% FINAL EXECUTION
+    RANKING --> FINAL[Final Decision: QQQ : QLD : Cash]
+    L3 & L2 & L1 --> FINAL
+    SAFE_FALLBACK --> FINAL
+    T2_ADJ --> FINAL
 ```
 
 ### Key Architectural Transitions
-1.  **Defensive Bypass (The Kill Switch):** Before any logical processing, the system checks for "Credit Acceleration" and "Liquidity Drains." If high-velocity credit stress is detected, it enters `CASH_FLIGHT` or `DELEVERAGE` immediately, bypassing tactical analysis.
-2.  **Structural Regime (The Macro Commander):** Credit Spreads and Equity Risk Premium (ERP) define the structural regime. A `CRISIS` state forces risk containment regardless of tactical indicators.
-3.  **Tactical State (The Sentiment Filter):** Price velocity and breadth distinguish between a "Grind Down" and a "Panic," determining the aggressiveness of the allocation.
-4.  **v6.4 Selection Engine (The Personal Layer):** Performs a real-time **Candidate Scoring** mechanism. Any allocation that has historically exceeded a **30% Drawdown (AC-5)** is discarded. Among survivors, it selects for the highest **CAGR** with the highest **Beta Fidelity**.
+1.  **Defensive Bypass (The Kill Switch):** Before any logical processing, the system checks for **Credit Acceleration** (HY OAS velocity) and **Liquidity Drains** (Fed Assets - TGA - RRP). If high-velocity stress is detected, it enters `CASH_FLIGHT` or `DELEVERAGE` immediately.
+2.  **Structural Regime (The Macro Commander):** Credit Spreads and **Equity Risk Premium (ERP)** define the structural regime. A `CRISIS` state (Spread > 500bps or ERP < 1.0%) forces risk containment regardless of tactical indicators.
+3.  **Tactical State (The Sentiment Filter):** Combines 52w Drawdown, MA200 deviation, VIX Z-scores, and Fear & Greed to distinguish between a "Grind Down" and a "Panic."
+4.  **v6.4 Selection Engine (The Personal Layer):** Performs a real-time **Candidate Scoring** mechanism using mini-backtests. Any allocation that has historically exceeded a **30% Drawdown (AC-5)** is discarded. Among survivors, it selects for the highest **CAGR** while ensuring **Beta Fidelity (AC-4)**.
 
 ## 📦 Getting Started
 
