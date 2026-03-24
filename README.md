@@ -32,6 +32,76 @@ The v6.4 system uses the following default `QQQ:QLD:Cash` operating matrix, whil
 3.  **Tier 2 (Market Structure):** Real-time Options Walls (Put/Call Walls) and Gamma Flip detection.
 4.  **Strategic Layer:** Search the approved `QQQ:QLD:Cash` bands and execute daily atomic rebalancing.
 
+## 🧭 Decision Architecture (v6.4)
+
+The system operates as a **Multi-Tiered Deterministic State Machine**, where high-order macroeconomic "Structural" states act as constraints on lower-order "Tactical" states, eventually resolving into an optimized asset allocation through a filtered search space.
+
+```mermaid
+flowchart TD
+    subgraph Indicators [Raw Market Indicators]
+        direction LR
+        LIQ[Net Liquidity: WALCL - TGA - RRP]
+        CRD[Credit Spread: OAS BAMLH0A0HYM2]
+        VAL[ERP: 1/PE - Real Yield]
+        PX[Price Action: MA50/200 & Velocity]
+        OPT[Options: Gamma & Put/Call Walls]
+    end
+
+    %% TIER 0: MACRO COMMANDER
+    subgraph Tier0 [Tier 0: Structural Regime]
+        direction TB
+        CRD_ACCEL{Credit Accel?} -- High --> BYPASS[Defensive Bypass: Cash Flight/Deleverage]
+        CRD & VAL --> REGIME[Structural Regime Decision]
+        REGIME --> S1[CRISIS]
+        REGIME --> S2[TRANSITION STRESS]
+        REGIME --> S3[NEUTRAL]
+        REGIME --> S4[EUPHORIC]
+    end
+
+    %% TIER 1: TACTICAL ENGINE
+    subgraph Tier1 [Tier 1: Tactical State]
+        PX --> TACTICAL[Tactical Sentiment Scoring]
+        TACTICAL --> T1[PANIC]
+        TACTICAL --> T2[CAPITULATION]
+        TACTICAL --> T3[STRESS]
+        TACTICAL --> T4[CALM]
+    end
+
+    %% ALLOCATION POLICY
+    subgraph Policy [Allocation Policy Mapping]
+        S1 & S2 & S3 & S4 --> MERGE{Regime + Tactical?}
+        T1 & T2 & T3 & T4 --> MERGE
+        MERGE --> AS[Allocation State: Fast/Base/Slow/Pause/Risk]
+    end
+
+    %% v6.4 SEARCH ENGINE
+    subgraph Search [v6.4 Personal Allocation Search]
+        AS --> CANDIDATES[Generate SRD-6.4 Bands]
+        CANDIDATES --> BACKTEST[Mini-Backtest Scoring]
+        BACKTEST --> AC5{AC-5: MDD < 30%?}
+        AC5 -- No --> SAFE[Global Safe: 100% Cash]
+        AC5 -- Yes --> SCORE[Score Ranking: CAGR > MDD > Beta Fidelity]
+    end
+
+    %% FINAL DECISION
+    SCORE --> FINAL[Final Decision: QQQ : QLD : Cash]
+    BYPASS --> FINAL
+    SAFE --> FINAL
+
+    %% Connections
+    Indicators --> Tier0
+    Indicators --> Tier1
+    Tier1 --> Policy
+    Tier0 --> Policy
+    Policy --> Search
+```
+
+### Key Architectural Transitions
+1.  **Defensive Bypass (The Kill Switch):** Before any logical processing, the system checks for "Credit Acceleration" and "Liquidity Drains." If high-velocity credit stress is detected, it enters `CASH_FLIGHT` or `DELEVERAGE` immediately, bypassing tactical analysis.
+2.  **Structural Regime (The Macro Commander):** Credit Spreads and Equity Risk Premium (ERP) define the structural regime. A `CRISIS` state forces risk containment regardless of tactical indicators.
+3.  **Tactical State (The Sentiment Filter):** Price velocity and breadth distinguish between a "Grind Down" and a "Panic," determining the aggressiveness of the allocation.
+4.  **v6.4 Selection Engine (The Personal Layer):** Performs a real-time **Candidate Scoring** mechanism. Any allocation that has historically exceeded a **30% Drawdown (AC-5)** is discarded. Among survivors, it selects for the highest **CAGR** with the highest **Beta Fidelity**.
+
 ## 📦 Getting Started
 
 ### 1. Setup
