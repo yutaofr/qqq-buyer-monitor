@@ -1,5 +1,6 @@
 import os
 import logging
+from collections.abc import Sequence
 import pandas as pd
 import requests
 import io
@@ -50,6 +51,58 @@ def fetch_fred_data(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
     # 2. CSV Fallback
     logger.info("Official FRED API failed or no key; falling back to CSV scraping for %s...", series_id)
     return fetch_fred_csv(series_id, timeout)
+
+
+def normalize_fred_history_frame(df: pd.DataFrame | None, series_id: str) -> pd.DataFrame:
+    """Normalize a historical FRED series frame to the canonical research shape."""
+    if df is None or df.empty:
+        return pd.DataFrame(columns=["observation_date", series_id])
+
+    frame = df.copy()
+    if "observation_date" not in frame.columns:
+        for candidate in ("date", "DATE"):
+            if candidate in frame.columns:
+                frame = frame.rename(columns={candidate: "observation_date"})
+                break
+
+    if "observation_date" not in frame.columns:
+        raise ValueError(f"FRED frame for {series_id} is missing observation_date")
+    if series_id not in frame.columns:
+        raise ValueError(f"FRED frame for {series_id} is missing {series_id}")
+
+    frame = frame.loc[:, ["observation_date", series_id]].copy()
+    frame["observation_date"] = pd.to_datetime(frame["observation_date"], errors="coerce")
+    frame[series_id] = pd.to_numeric(frame[series_id], errors="coerce")
+    frame = frame.dropna(subset=["observation_date"]).sort_values("observation_date")
+    frame = frame.drop_duplicates(subset=["observation_date"], keep="last").reset_index(drop=True)
+    return frame
+
+
+def fetch_historical_fred_series(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
+    """
+    Fetch a full historical FRED series for research use.
+
+    This path is intentionally limited to FRED transport only. It does not call
+    the runtime heuristic fallbacks used by live signal collection.
+    """
+    raw = fetch_fred_data(series_id, timeout)
+    normalized = normalize_fred_history_frame(raw, series_id)
+    return normalized if not normalized.empty else None
+
+
+def fetch_historical_fred_series_bundle(series_ids: Sequence[str], timeout: int = 15) -> dict[str, pd.DataFrame]:
+    """Fetch multiple historical FRED series and return normalized frames keyed by series id."""
+    frames: dict[str, pd.DataFrame] = {}
+    missing: list[str] = []
+    for series_id in series_ids:
+        frame = fetch_historical_fred_series(series_id, timeout)
+        if frame is None or frame.empty:
+            missing.append(series_id)
+            continue
+        frames[series_id] = frame
+    if missing:
+        raise ValueError(f"Missing historical FRED series: {', '.join(missing)}")
+    return frames
 
 def fetch_fred_csv(series_id: str, timeout: int = 15, retries: int = 3) -> pd.DataFrame | None:
     """Helper to fetch FRED CSV data with timeout and retries."""
@@ -194,4 +247,3 @@ def fetch_credit_spread(series_id: str = "BAMLH0A0HYM2") -> float | None:
     # 4. HYG Proxy Fallback
     logger.info("Treasury unavailable; attempting HYG proxy fallback...")
     return fetch_hyg_proxy()
-

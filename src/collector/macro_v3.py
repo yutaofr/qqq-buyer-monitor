@@ -3,10 +3,27 @@ import logging
 import pandas as pd
 import yfinance as yf
 from typing import Optional, Tuple
-from src.collector.macro import fetch_fred_data, fetch_fred_api
+from src.collector.macro import (
+    fetch_fred_data,
+    fetch_fred_api,
+    fetch_historical_fred_series,
+)
 from src.collector.treasury import fetch_treasury_yields
 
 logger = logging.getLogger(__name__)
+
+RESEARCH_PRIMARY_SERIES: tuple[str, ...] = (
+    "BAMLH0A0HYM2",
+    "DFII10",
+    "WALCL",
+    "WDTGAL",
+    "RRPONTSYD",
+    "NFCI",
+)
+
+RESEARCH_OPTIONAL_SERIES: tuple[str, ...] = (
+    "CPFF",
+)
 
 def fetch_real_yield() -> Optional[float]:
     """Fetch 10-Year Treasury Real Yield (DFII10) with Treasury XML fallback."""
@@ -158,3 +175,34 @@ def fetch_funding_stress() -> dict:
     except Exception as exc:
         logger.error("Failed to fetch funding stress: %s", exc)
         return stress_info
+
+
+def fetch_research_historical_primary_series(
+    series_ids: tuple[str, ...] = RESEARCH_PRIMARY_SERIES,
+    timeout: int = 15,
+) -> dict[str, pd.DataFrame]:
+    """
+    Fetch normalized historical frames for the primary research series.
+
+    This helper is research-safe: it uses FRED historical transport only and
+    does not route through the live heuristic proxies used by signal collection.
+    """
+    frames: dict[str, pd.DataFrame] = {}
+    missing: list[str] = []
+
+    for series_id in series_ids:
+        frame = fetch_historical_fred_series(series_id, timeout=timeout)
+        if frame is None or frame.empty:
+            missing.append(series_id)
+            continue
+        frames[series_id] = frame
+
+    if missing:
+        raise ValueError(f"Missing historical research series: {', '.join(missing)}")
+
+    for series_id in RESEARCH_OPTIONAL_SERIES:
+        frame = fetch_historical_fred_series(series_id, timeout=timeout)
+        if frame is not None and not frame.empty:
+            frames[series_id] = frame
+
+    return frames
