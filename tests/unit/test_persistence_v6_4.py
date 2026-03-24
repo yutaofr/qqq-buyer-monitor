@@ -3,6 +3,7 @@ import os
 import json
 from datetime import date
 from src.store.db import (
+    load_runtime_inputs,
     save_signal,
     load_history,
     save_runtime_inputs,
@@ -95,3 +96,13 @@ def test_runtime_inputs_roundtrip(temp_db):
     assert inputs is not None
     assert inputs["available_new_cash"] == 1250.0
     assert inputs["rolling_drawdown"] == 0.31
+
+
+def test_runtime_inputs_lookup_is_date_scoped(temp_db):
+    save_runtime_inputs(
+        record_date=date(2026, 3, 23),
+        available_new_cash=500.0,
+        rolling_drawdown=0.20,
+        path=temp_db,
+    )
+    assert load_runtime_inputs(record_date=date(2026, 3, 24), path=temp_db) is None

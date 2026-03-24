@@ -83,27 +83,25 @@ def _compute_metrics(
                 benchmark_ret = macro_history[col].dropna()
                 if not benchmark_ret.empty:
                     break
-    if benchmark_ret.empty:
-        benchmark_ret = price_history.get("qqq_ret", pd.Series(dtype=float)).dropna()
 
     # Beta fidelity
-    if benchmark_ret.std() > 0:
+    if not benchmark_ret.empty and benchmark_ret.std() > 0:
         aligned_portfolio = portfolio_ret.reindex(benchmark_ret.index).dropna()
         aligned_benchmark = benchmark_ret.reindex(aligned_portfolio.index).dropna()
         if len(aligned_portfolio) > 1 and len(aligned_benchmark) > 1 and aligned_benchmark.std() > 0:
             beta = aligned_portfolio.corr(aligned_benchmark) * (aligned_portfolio.std() / aligned_benchmark.std())
         else:
             beta = 0.0
+        mean_interval_beta_deviation = abs(beta - effective_exposure)
     else:
-        beta = 0.0
-    mean_interval_beta_deviation = abs(beta - effective_exposure)
+        mean_interval_beta_deviation = float("inf")
 
     # Defense coverage: fraction of months where drawdown < 20%
     monthly_dd = drawdown.resample("ME").min() if hasattr(drawdown.index, "freq") else drawdown
     defense_coverage = float((monthly_dd > -0.20).mean())
 
     # NAV integrity: prefer an external audit input when available.
-    nav_integrity = 1.0
+    nav_integrity = 0.0
     if macro_history is not None and not macro_history.empty and "nav_integrity" in macro_history:
         nav_series = macro_history["nav_integrity"].dropna()
         if not nav_series.empty:

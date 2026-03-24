@@ -175,6 +175,23 @@ def test_certifier_beta_fidelity_gate_blocks_certified_status():
     assert candidate.certification_status != "CERTIFIED"
 
 
+def test_certifier_requires_external_audit_inputs_for_certified_status():
+    candidate_space = [{
+        "candidate_id": "missing-audit",
+        "allowed_risk_state": "RISK_NEUTRAL",
+        "qqq_pct": 0.70,
+        "qld_pct": 0.10,
+        "cash_pct": 0.20,
+    }]
+    registry = certify_candidates(
+        price_history=_price_history(),
+        macro_history=None,
+        candidate_space=candidate_space,
+        drawdown_budget=0.30,
+    )
+    assert registry.candidates[0].certification_status != "CERTIFIED"
+
+
 def test_certifier_export_and_reload(tmp_path):
     """Round-trip: certify → export JSON → reload via load_registry."""
     from src.engine.candidate_registry import load_registry

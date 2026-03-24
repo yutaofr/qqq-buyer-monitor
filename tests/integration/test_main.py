@@ -203,6 +203,68 @@ def test_main_json_marks_cached_macro_values_stale(monkeypatch, capsys):
     assert payload["data_quality"]["earnings_revisions_breadth"]["stale_days"] == 5
 
 
+def test_main_persists_runtime_inputs_when_saving(monkeypatch):
+    price_history = pd.DataFrame(
+        {
+            "Open": [400.0, 401.0],
+            "High": [402.0, 403.0],
+            "Low": [399.0, 400.0],
+            "Close": [401.0, 402.0],
+            "Volume": [1_000_000, 1_100_000],
+        }
+    )
+    persisted: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "src.collector.price.fetch_price_data",
+        lambda: {
+            "date": date(2026, 3, 19),
+            "price": 402.0,
+            "ma200": 395.0,
+            "high_52w": 450.0,
+            "days_since_high": 30,
+            "history": price_history,
+        },
+    )
+    monkeypatch.setenv("AVAILABLE_NEW_CASH", "1200")
+    monkeypatch.setenv("PORTFOLIO_ROLLING_DRAWDOWN", "0.18")
+    monkeypatch.setattr("src.collector.vix.fetch_vix", lambda: 25.0)
+    monkeypatch.setattr("src.collector.fear_greed.fetch_fear_greed", lambda: 28)
+    monkeypatch.setattr("src.collector.options.fetch_options_chain", lambda spot_price: None)
+    monkeypatch.setattr(
+        "src.collector.breadth.fetch_breadth",
+        lambda: {"adv_dec_ratio": 0.45, "pct_above_50d": 0.3, "ndx_concentration": 0.0},
+    )
+    monkeypatch.setattr("src.collector.macro.fetch_credit_spread", lambda: 410.0)
+    monkeypatch.setattr(
+        "src.collector.fundamentals.fetch_forward_pe",
+        lambda: {"trailing_pe": 28.0, "forward_pe": 24.5, "source": "test"},
+    )
+    monkeypatch.setattr("src.collector.macro_v3.fetch_real_yield", lambda: 1.8)
+    monkeypatch.setattr("src.collector.macro_v3.fetch_fcf_yield", lambda: None)
+    monkeypatch.setattr("src.collector.macro_v3.fetch_earnings_revisions_breadth", lambda: None)
+    monkeypatch.setattr("src.collector.macro_v3.fetch_net_liquidity", lambda: (None, None))
+    monkeypatch.setattr("src.collector.macro_v3.fetch_move_index", lambda: None)
+    monkeypatch.setattr("src.collector.macro_v3.fetch_sector_rotation", lambda: None)
+    monkeypatch.setattr("src.collector.macro_v3.fetch_short_volume_proxy", lambda: None)
+    monkeypatch.setattr("src.store.db.load_latest_macro_state", lambda: None)
+    monkeypatch.setattr("src.store.db.get_historical_series", lambda days=120: None)
+    monkeypatch.setattr("src.store.db.load_history", lambda n=5: [])
+    monkeypatch.setattr("src.store.db.load_runtime_inputs", lambda record_date, path="data/signals.db": None)
+    monkeypatch.setattr("src.store.db.save_signal", lambda result: None)
+    monkeypatch.setattr("src.store.db.save_macro_state", lambda **kwargs: None)
+    monkeypatch.setattr(
+        "src.store.db.save_runtime_inputs",
+        lambda **kwargs: persisted.update(kwargs),
+    )
+
+    run_pipeline(SimpleNamespace(json=True, no_save=False, no_color=True))
+
+    assert persisted["record_date"] == date(2026, 3, 19)
+    assert persisted["available_new_cash"] == 1200.0
+    assert persisted["rolling_drawdown"] == 0.18
+
+
 def test_main_json_marks_cached_macro_state_with_cache_source_and_staleness(monkeypatch, capsys):
     price_history = pd.DataFrame(
         {

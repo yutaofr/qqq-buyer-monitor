@@ -25,6 +25,44 @@ from src.collector.historical_macro_seeder import HistoricalMacroSeeder
 
 logger = logging.getLogger(__name__)
 
+
+def _safe_beta(
+    portfolio_returns: pd.Series,
+    benchmark_returns: pd.Series,
+    *,
+    fallback_target: float = 0.0,
+) -> float:
+    """Compute beta defensively for short or degenerate windows."""
+    aligned = pd.concat(
+        [
+            pd.Series(portfolio_returns, dtype=float),
+            pd.Series(benchmark_returns, dtype=float),
+        ],
+        axis=1,
+        join="inner",
+    ).dropna()
+    if aligned.empty:
+        return float(fallback_target)
+
+    portfolio = aligned.iloc[:, 0]
+    benchmark = aligned.iloc[:, 1]
+
+    if len(aligned) < 2:
+        market_move = float(benchmark.sum())
+        if abs(market_move) > 1e-9:
+            return float(portfolio.sum() / market_move)
+        return float(fallback_target)
+
+    variance_market = float(np.var(benchmark, ddof=1))
+    if variance_market <= 0:
+        market_move = float(benchmark.sum())
+        if abs(market_move) > 1e-9:
+            return float(portfolio.sum() / market_move)
+        return float(fallback_target)
+
+    covariance = float(np.cov(portfolio, benchmark, ddof=1)[0, 1])
+    return float(covariance / variance_market)
+
 # v6.4 Optimization: Top-level helper for multiprocessing support
 def _score_candidate_worker(
     ohlcv_slice: pd.DataFrame,
@@ -392,9 +430,7 @@ class Backtester:
         daily_ts["tactical_ret"] = pd.Series(daily_nav, index=prices_qqq.index).pct_change().fillna(0)
         daily_ts["market_ret"] = prices_qqq.pct_change().fillna(0)
         
-        cov_matrix = np.cov(daily_ts["tactical_ret"], daily_ts["market_ret"], ddof=1)
-        variance_market = np.var(daily_ts["market_ret"], ddof=1)
-        realized_beta = float(cov_matrix[0, 1] / variance_market) if variance_market > 0 else 0.0
+        realized_beta = _safe_beta(daily_ts["tactical_ret"], daily_ts["market_ret"])
 
         daily_ts["state_change"] = (daily_ts["state"] != daily_ts["state"].shift(1))
         daily_ts["interval_id"] = daily_ts["state_change"].cumsum()
@@ -406,24 +442,13 @@ class Backtester:
             s_tactical_ret = group["tactical_ret"]
             s_market_ret = group["market_ret"]
             
-            # Use var/cov only if we have enough points, otherwise dev is 0.0 (conservative)
-            s_realized_beta = 0.0
-            if len(group) >= 3:
-                s_var_market = np.var(s_market_ret, ddof=1)
-                if s_var_market > 0:
-                    s_cov = np.cov(s_tactical_ret, s_market_ret, ddof=1)[0, 1]
-                    s_realized_beta = float(s_cov / s_var_market)
-            else:
-                # Thin window: use simple return ratio as proxy for beta if possible
-                m_ret_sum = s_market_ret.sum()
-                if abs(m_ret_sum) > 1e-6:
-                    s_realized_beta = float(s_tactical_ret.sum() / m_ret_sum)
-                else:
-                    # Default to target if no market movement to avoid artificial deviation
-                    s_realized_beta = float(group["target_beta"].mean())
-            
             # AC-4 Fidelity: Use the actual executed targets from this interval
             s_target_beta = float(group["target_beta"].mean())
+            s_realized_beta = _safe_beta(
+                s_tactical_ret,
+                s_market_ret,
+                fallback_target=s_target_beta,
+            )
             
             interval_beta_audit.append({
                 "state": s_state_str,
@@ -721,6 +746,7 @@ def _format_pct(value: Optional[float]) -> str:
 
 def run_backtest() -> None:
     cache_path = "data/qqq_history_cache.csv"
+    macro_path = "data/macro_historical_dump.csv"
     print(f"Loading QQQ history from {cache_path}...")
     
     qqq = pd.DataFrame()
@@ -745,8 +771,17 @@ def run_backtest() -> None:
     if qqq.empty:
         print("Error: No price data available.")
         return
-    
-    seeder = HistoricalMacroSeeder(csv_path="data/macro_historical_dump.csv")
+
+    if not os.path.exists(macro_path):
+        raise FileNotFoundError(
+            "Missing required historical macro dataset: "
+            f"{macro_path}. "
+            "Research backtests require explicit macro history. "
+            "If you only need a development smoke-test, generate the placeholder file with "
+            "`python scripts/generate_historical_macro.py`."
+        )
+
+    seeder = HistoricalMacroSeeder(csv_path=macro_path)
     tester = Backtester()
     
     # v6.4 Fix: Enable rolling dynamic search to validate selection engine

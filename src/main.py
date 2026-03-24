@@ -319,10 +319,10 @@ def run_pipeline(args: argparse.Namespace) -> None:
     from src.engine.feature_pipeline import build_feature_snapshot
     from src.engine.risk_controller import decide_risk_state
     from src.engine.runtime_selector import NoCompliantCandidatesError, choose_target_candidate
-    from src.store.db import load_latest_runtime_inputs
+    from src.store.db import load_runtime_inputs, save_runtime_inputs
 
     v7_registry_path = os.environ.get("V7_REGISTRY_PATH", "data/candidate_registry_v7.json")
-    runtime_inputs = load_latest_runtime_inputs() or {}
+    runtime_inputs = load_runtime_inputs(record_date=market_data.date) or {}
 
     if runtime_inputs.get("rolling_drawdown") is not None:
         from dataclasses import replace as _replace
@@ -522,6 +522,11 @@ def run_pipeline(args: argparse.Namespace) -> None:
     # Persist
     if not args.no_save:
         save_signal(result)
+        save_runtime_inputs(
+            record_date=market_data.date,
+            available_new_cash=available_new_cash,
+            rolling_drawdown=portfolio.rolling_drawdown,
+        )
         if any(v is not None for v in (market_data.credit_spread, market_data.forward_pe, market_data.real_yield)):
             save_macro_state(
                 record_date=market_data.date,

@@ -296,6 +296,25 @@ def load_latest_runtime_inputs(path: str = DEFAULT_DB_PATH) -> dict | None:
     return None
 
 
+def load_runtime_inputs(record_date: date, path: str = DEFAULT_DB_PATH) -> dict | None:
+    """Return runtime inputs for one specific trading date."""
+    if not Path(path).exists():
+        return None
+    conn = init_db(path)
+    row = conn.execute(
+        "SELECT date, available_new_cash, rolling_drawdown FROM runtime_inputs WHERE date = ?",
+        (record_date.isoformat(),),
+    ).fetchone()
+    conn.close()
+    if row:
+        return {
+            "date": row[0],
+            "available_new_cash": row[1],
+            "rolling_drawdown": row[2],
+        }
+    return None
+
+
 def _to_json_dict(result: SignalResult) -> dict:
     """Serialise a SignalResult to a JSON-compatible dict (all native Python types)."""
 

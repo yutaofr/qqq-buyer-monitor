@@ -2,7 +2,7 @@ import pytest
 import pandas as pd
 import numpy as np
 from datetime import date, timedelta
-from src.backtest import Backtester, simulate_leveraged_price
+from src.backtest import Backtester, run_backtest, simulate_leveraged_price
 from src.models import AllocationState, TargetAllocationState
 
 @pytest.fixture
@@ -60,3 +60,23 @@ def test_simulate_leveraged_price_drag():
     assert leveraged.iloc[2] < leveraged.iloc[1]
     # Expected approx 100 * (1 - 0.0000377)^2 = 99.99246...
     assert abs(leveraged.iloc[2] - 99.99246) < 1e-3
+
+
+def test_run_backtest_requires_macro_history_file(monkeypatch):
+    sample = pd.DataFrame(
+        {"Close": [100.0, 101.0, 102.0]},
+        index=pd.date_range("2024-01-01", periods=3, freq="B"),
+    )
+
+    def fake_exists(path):
+        if path == "data/qqq_history_cache.csv":
+            return True
+        if path == "data/macro_historical_dump.csv":
+            return False
+        return False
+
+    monkeypatch.setattr("src.backtest.os.path.exists", fake_exists)
+    monkeypatch.setattr("src.backtest.pd.read_csv", lambda *args, **kwargs: sample)
+
+    with pytest.raises(FileNotFoundError, match="macro_historical_dump.csv"):
+        run_backtest()
