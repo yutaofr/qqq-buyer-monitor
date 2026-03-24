@@ -318,9 +318,13 @@ def run_pipeline(args: argparse.Namespace) -> None:
     from src.engine.execution_policy import build_execution_actions
     from src.engine.feature_pipeline import build_feature_snapshot
     from src.engine.risk_controller import decide_risk_state
-    from src.engine.runtime_selector import choose_target_candidate
+    from src.engine.runtime_selector import NoCompliantCandidatesError, choose_target_candidate
 
     v7_registry_path = os.environ.get("V7_REGISTRY_PATH", "data/candidate_registry_v7.json")
+    try:
+        available_new_cash = max(0.0, float(os.environ.get("AVAILABLE_NEW_CASH", "0.0")))
+    except (TypeError, ValueError):
+        available_new_cash = 0.0
 
     try:
         # Build unified feature snapshot from collected data
@@ -349,7 +353,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
         v7_risk = decide_risk_state(v7_snapshot, portfolio, drawdown_budget=0.30)
 
         # Deployment Controller (Class B + risk ceiling)
-        v7_deploy = decide_deployment_state(v7_snapshot, v7_risk, available_new_cash=0.0)
+        v7_deploy = decide_deployment_state(v7_snapshot, v7_risk, available_new_cash=available_new_cash)
 
         # Load the certified candidate registry
         registry = load_registry(v7_registry_path)
@@ -362,54 +366,95 @@ def run_pipeline(args: argparse.Namespace) -> None:
             from src.models.risk import RiskState as _RS
             prev_risk = _RS(prev_risk_str) if prev_risk_str else None
 
-            v7_selection = choose_target_candidate(portfolio, v7_risk, v7_deploy, candidates)
-            v7_actions = build_execution_actions(
-                portfolio=portfolio,
-                selection=v7_selection,
-                risk_decision=v7_risk,
-                deployment_decision=v7_deploy,
-                previous_risk_state=prev_risk,
-            )
+            try:
+                v7_selection = choose_target_candidate(portfolio, v7_risk, v7_deploy, candidates)
+                v7_actions = build_execution_actions(
+                    portfolio=portfolio,
+                    selection=v7_selection,
+                    risk_decision=v7_risk,
+                    deployment_decision=v7_deploy,
+                    available_new_cash=available_new_cash,
+                    previous_risk_state=prev_risk,
+                )
 
-            # Attach v7 fields to SignalResult
-            result.risk_state = v7_risk.risk_state
-            result.deployment_state = v7_deploy.deployment_state
-            result.selected_candidate_id = v7_selection.selected_candidate.candidate_id
-            result.registry_version = registry.registry_version
-            result.rebalance_action = {
-                "should_rebalance": v7_actions.rebalance_action.should_rebalance,
-                "reason": v7_actions.rebalance_action.reason,
-                "target_qqq_pct": v7_actions.rebalance_action.target_qqq_pct,
-                "target_qld_pct": v7_actions.rebalance_action.target_qld_pct,
-                "target_cash_pct": v7_actions.rebalance_action.target_cash_pct,
-            }
-            result.deployment_action = {
-                "deploy_cash_amount": v7_actions.deployment_action.deploy_cash_amount,
-                "deploy_mode": v7_actions.deployment_action.deploy_mode,
-                "reason": v7_actions.deployment_action.reason,
-            }
-            result.candidate_selection_audit = [
-                {"candidate_id": r["candidate_id"], "reason": r["reason"]}
-                for r in v7_selection.rejected_candidates
-            ]
-            result.logic_trace.append({
-                "v7_risk_state": v7_risk.risk_state.value,
-                "v7_deployment_state": v7_deploy.deployment_state.value,
-                "v7_selected_candidate": v7_selection.selected_candidate.candidate_id,
-                "v7_should_rebalance": v7_actions.rebalance_action.should_rebalance,
-            })
-            logger.info(
-                "v7.0 ▶ risk=%s deploy=%s candidate=%s rebalance=%s",
-                v7_risk.risk_state.value,
-                v7_deploy.deployment_state.value,
-                v7_selection.selected_candidate.candidate_id,
-                v7_actions.rebalance_action.should_rebalance,
-            )
+                # Attach v7 fields to SignalResult
+                result.risk_state = v7_risk.risk_state
+                result.deployment_state = v7_deploy.deployment_state
+                result.selected_candidate_id = v7_selection.selected_candidate.candidate_id
+                result.registry_version = registry.registry_version
+                result.rebalance_action = {
+                    "should_rebalance": v7_actions.rebalance_action.should_rebalance,
+                    "reason": v7_actions.rebalance_action.reason,
+                    "target_qqq_pct": v7_actions.rebalance_action.target_qqq_pct,
+                    "target_qld_pct": v7_actions.rebalance_action.target_qld_pct,
+                    "target_cash_pct": v7_actions.rebalance_action.target_cash_pct,
+                }
+                result.deployment_action = {
+                    "deploy_cash_amount": v7_actions.deployment_action.deploy_cash_amount,
+                    "deploy_mode": v7_actions.deployment_action.deploy_mode,
+                    "reason": v7_actions.deployment_action.reason,
+                }
+                result.candidate_selection_audit = [
+                    {"candidate_id": r["candidate_id"], "reason": r["reason"]}
+                    for r in v7_selection.rejected_candidates
+                ]
+                result.logic_trace.append({
+                    "v7_risk_state": v7_risk.risk_state.value,
+                    "v7_deployment_state": v7_deploy.deployment_state.value,
+                    "v7_selected_candidate": v7_selection.selected_candidate.candidate_id,
+                    "v7_should_rebalance": v7_actions.rebalance_action.should_rebalance,
+                })
+                logger.info(
+                    "v7.0 ▶ risk=%s deploy=%s candidate=%s rebalance=%s",
+                    v7_risk.risk_state.value,
+                    v7_deploy.deployment_state.value,
+                    v7_selection.selected_candidate.candidate_id,
+                    v7_actions.rebalance_action.should_rebalance,
+                )
+            except NoCompliantCandidatesError as exc:
+                from src.models.deployment import DeploymentState as _DS
+                from src.models.risk import RiskState as _RS
+
+                result.risk_state = _RS.RISK_EXIT
+                result.deployment_state = _DS.DEPLOY_PAUSE
+                result.registry_version = registry.registry_version
+                result.selected_candidate_id = None
+                result.rebalance_action = {"should_rebalance": False, "reason": "no_compliant_candidates"}
+                result.deployment_action = {
+                    "deploy_cash_amount": 0.0,
+                    "deploy_mode": "PAUSE",
+                    "reason": "no_compliant_candidates",
+                }
+                result.candidate_selection_audit = [
+                    {"candidate_id": r["candidate_id"], "reason": r["reason"]}
+                    for r in exc.rejected_candidates
+                ]
+                result.logic_trace.append({
+                    "rule": "no_compliant_candidates",
+                    "risk_state": v7_risk.risk_state.value,
+                    "fallback_risk_state": _RS.RISK_EXIT.value,
+                })
+                logger.warning("v7.0: no compliant runtime candidates after hard-cap filter for risk_state=%s", v7_risk.risk_state.value)
         else:
             # No compliant candidates → explicit degraded mode (SRD AC-3)
-            result.risk_state = v7_risk.risk_state
-            result.deployment_state = v7_deploy.deployment_state
-            result.logic_trace.append({"rule": "no_compliant_candidates", "risk_state": v7_risk.risk_state.value})
+            from src.models.deployment import DeploymentState as _DS
+            from src.models.risk import RiskState as _RS
+
+            result.risk_state = _RS.RISK_EXIT
+            result.deployment_state = _DS.DEPLOY_PAUSE
+            result.registry_version = registry.registry_version
+            result.selected_candidate_id = None
+            result.rebalance_action = {"should_rebalance": False, "reason": "no_registry_candidates"}
+            result.deployment_action = {
+                "deploy_cash_amount": 0.0,
+                "deploy_mode": "PAUSE",
+                "reason": "no_registry_candidates",
+            }
+            result.logic_trace.append({
+                "rule": "no_compliant_candidates",
+                "risk_state": v7_risk.risk_state.value,
+                "fallback_risk_state": _RS.RISK_EXIT.value,
+            })
             logger.warning("v7.0: no compliant candidates for risk_state=%s", v7_risk.risk_state.value)
 
     except FileNotFoundError:

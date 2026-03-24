@@ -79,6 +79,19 @@ def test_risk_controller_output_has_reasons():
     assert len(decision.reasons) > 0
 
 
+def test_risk_controller_exits_on_portfolio_drawdown_budget_breach():
+    snap = _snap({
+        "credit_spread": 300.0,
+        "credit_acceleration": 2.0,
+        "liquidity_roc": 1.0,
+        "funding_stress": False,
+    })
+    portfolio = CurrentPortfolioState(rolling_drawdown=0.31)
+    decision = decide_risk_state(snap, portfolio, drawdown_budget=0.30)
+    assert decision.risk_state == RiskState.RISK_EXIT
+    assert any("drawdown_budget_breached" in str(r) for r in decision.reasons)
+
+
 # ── Task 6 ─────────────────────────────────────────────────────────────────────
 
 def test_risk_controller_degrades_conservatively_when_class_a_missing():

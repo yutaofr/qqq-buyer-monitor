@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import UTC, datetime
 from typing import Any
 
@@ -27,6 +28,8 @@ _MDD_HARD_LIMIT = 0.30
 
 # Acceptable edge-case: MDD within tolerance above budget → CONDITIONAL
 _MDD_CONDITIONAL_LIMIT = 0.35
+_BETA_DEVIATION_CERTIFIED_LIMIT = 0.05
+_BETA_DEVIATION_CONDITIONAL_LIMIT = 0.10
 
 
 def _compute_metrics(
@@ -102,10 +105,14 @@ def _certify_status(metrics: dict[str, float], drawdown_budget: float = 0.30) ->
     """Assign CERTIFIED / CONDITIONAL / REJECTED based on hard constraints (SRD §9.4)."""
     mdd = metrics.get("max_drawdown", 1.0)
     nav = metrics.get("nav_integrity", 0.0)
+    beta_dev = metrics.get("mean_interval_beta_deviation", float("inf"))
+    beta_dev = float(beta_dev) if beta_dev is not None else float("inf")
+    if not math.isfinite(beta_dev):
+        beta_dev = float("inf")
 
-    if mdd <= drawdown_budget and nav >= 0.99:
+    if mdd <= drawdown_budget and nav >= 0.99 and beta_dev <= _BETA_DEVIATION_CERTIFIED_LIMIT:
         return "CERTIFIED"
-    if mdd <= _MDD_CONDITIONAL_LIMIT and nav >= 0.95:
+    if mdd <= _MDD_CONDITIONAL_LIMIT and nav >= 0.95 and beta_dev <= _BETA_DEVIATION_CONDITIONAL_LIMIT:
         return "CONDITIONAL"
     return "REJECTED"
 

@@ -138,6 +138,34 @@ def test_certifier_drawdown_budget_respected():
         assert c.certification_status != "CERTIFIED"
 
 
+def test_certifier_beta_fidelity_gate_blocks_certified_status():
+    """Low-MDD but beta-misaligned candidates must not be CERTIFIED."""
+    aligned_qqq = pd.Series([0.001] * 252, index=pd.date_range("2024-01-01", periods=252, freq="B"))
+    bad_history = pd.DataFrame(
+        {
+            "qqq_ret": aligned_qqq,
+            "qld_ret": aligned_qqq,  # deliberately breaks 2x leverage assumption
+        }
+    )
+    candidate_space = [{
+        "candidate_id": "beta-bad",
+        "allowed_risk_state": "RISK_ON",
+        "qqq_pct": 0.0,
+        "qld_pct": 1.0,
+        "cash_pct": 0.0,
+    }]
+    registry = certify_candidates(
+        price_history=bad_history,
+        macro_history=None,
+        candidate_space=candidate_space,
+        drawdown_budget=0.30,
+    )
+    candidate = registry.candidates[0]
+    assert candidate.research_metrics["max_drawdown"] <= 0.30
+    assert candidate.research_metrics["mean_interval_beta_deviation"] > 0.05
+    assert candidate.certification_status != "CERTIFIED"
+
+
 def test_certifier_export_and_reload(tmp_path):
     """Round-trip: certify → export JSON → reload via load_registry."""
     from src.engine.candidate_registry import load_registry

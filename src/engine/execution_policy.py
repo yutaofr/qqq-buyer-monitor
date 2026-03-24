@@ -42,6 +42,7 @@ def build_execution_actions(
     selection: RuntimeSelection,
     risk_decision: RiskDecision,
     deployment_decision: DeploymentDecision,
+    available_new_cash: float = 0.0,
     exposure_band: float = 0.03,
     cash_band: float = 0.03,
     previous_risk_state: RiskState | None = None,
@@ -100,10 +101,11 @@ def build_execution_actions(
     else:
         multiplier = deployment_decision.dca_multiplier
         mode = deployment_decision.deployment_state.value.replace("DEPLOY_", "")
+        deploy_amount = max(0.0, available_new_cash) * multiplier
         deploy_action = DeploymentAction(
-            deploy_cash_amount=multiplier,  # caller scales by actual available cash
+            deploy_cash_amount=deploy_amount,
             deploy_mode=mode,
-            reason=f"dca_multiplier={multiplier}",
+            reason=f"available_new_cash={max(0.0, available_new_cash):.2f};dca_multiplier={multiplier}",
         )
 
     return ExecutionActions(

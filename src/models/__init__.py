@@ -44,6 +44,7 @@ class CurrentPortfolioState:
     current_cash_pct: float = 1.0
     qqq_pct: float = 0.0
     qld_pct: float = 0.0
+    rolling_drawdown: float | None = None
     leverage_ratio: float = 1.0
     gross_exposure_pct: float = 0.0
     net_exposure_pct: float = 0.0
@@ -58,12 +59,22 @@ class CurrentPortfolioState:
         v6.3.8 Defensive Input Protocol: 
         Parses CASH_LEVEL, QQQ_LEVEL, QLD_LEVEL from env with normalization.
         """
+        def _env_float(name: str, default: float | None = None) -> float | None:
+            raw = os.environ.get(name)
+            if raw is None:
+                return default
+            try:
+                return float(raw)
+            except (ValueError, TypeError):
+                return default
+
         try:
             raw_c = float(os.environ.get("CASH_LEVEL", "0.0"))
             raw_q = float(os.environ.get("QQQ_LEVEL", "0.0"))
             raw_l = float(os.environ.get("QLD_LEVEL", "0.0"))
         except (ValueError, TypeError):
             raw_c, raw_q, raw_l = 0.0, 0.0, 0.0
+        raw_drawdown = _env_float("PORTFOLIO_ROLLING_DRAWDOWN", None)
 
         # Legality Clipping (max(0, v))
         vals = np.array([max(0.0, raw_c), max(0.0, raw_q), max(0.0, raw_l)])
@@ -75,6 +86,7 @@ class CurrentPortfolioState:
                 current_cash_pct=1.0,
                 qqq_pct=0.0,
                 qld_pct=0.0,
+                rolling_drawdown=raw_drawdown,
                 gross_exposure_pct=0.0
             )
 
@@ -89,6 +101,7 @@ class CurrentPortfolioState:
             current_cash_pct=float(cash),
             qqq_pct=float(qqq),
             qld_pct=float(qld),
+            rolling_drawdown=raw_drawdown,
             gross_exposure_pct=float(exposure),
             net_exposure_pct=float(exposure),
             leverage_ratio=float(exposure) if exposure > 1.0 else 1.0

@@ -9,6 +9,14 @@ from src.models import CurrentPortfolioState
 from src.models.candidate import CertifiedCandidate
 
 
+class NoCompliantCandidatesError(ValueError):
+    """Raised when a risk state has candidates but none satisfy runtime hard constraints."""
+
+    def __init__(self, rejected_candidates: list[dict]):
+        super().__init__("No compliant candidates available for the requested risk constraints.")
+        self.rejected_candidates = tuple(rejected_candidates)
+
+
 @dataclass(frozen=True)
 class RuntimeSelection:
     """Result of the deterministic runtime candidate selection."""
@@ -55,7 +63,8 @@ def choose_target_candidate(
       3. Minimise turnover profile (via cost function)
       4. No randomness — identical inputs → identical output (NFR-1)
 
-    If no candidates pass the ceiling filter, use "least bad" (SRD AC-5 fallback).
+    If no candidates pass the ceiling filter, raise so the caller can enter an
+    explicit degraded mode instead of violating the hard cap.
     """
     if not candidates:
         raise ValueError("No candidates provided to runtime selector.")
@@ -84,13 +93,12 @@ def choose_target_candidate(
             continue
         compliant.append(c)
 
-    # ── Fallback: if all filtered out, use least-bad (SRD AC-5) ──────────────
-    pool = compliant if compliant else candidates
     if not compliant:
         rejected.append({"candidate_id": "_all_", "reason": "no_compliant_candidates_least_bad_fallback"})
+        raise NoCompliantCandidatesError(rejected)
 
     # ── Rank by adjustment cost (deterministic sort) ──────────────────────────
-    ranked = sorted(pool, key=lambda c: _adjustment_cost(portfolio, c))
+    ranked = sorted(compliant, key=lambda c: _adjustment_cost(portfolio, c))
     best = ranked[0]
     score = _adjustment_cost(portfolio, best)
 

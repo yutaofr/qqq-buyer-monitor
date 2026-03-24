@@ -146,10 +146,28 @@ def test_deployment_action_base_mode():
     actions = build_execution_actions(
         portfolio=portfolio, selection=selection,
         risk_decision=_risk(), deployment_decision=_deploy_base(),
+        available_new_cash=1000.0,
         exposure_band=0.03, cash_band=0.03,
     )
     assert actions.deployment_action.deploy_mode == "BASE"
-    assert actions.deployment_action.deploy_cash_amount == 1.0
+    assert actions.deployment_action.deploy_cash_amount == 1000.0
+
+
+def test_deployment_action_fast_mode_scales_actual_cash_amount():
+    portfolio = _portfolio()
+    selection = _selection_with_target(qqq=0.70, qld=0.10, cash=0.20)
+    fast = DeploymentDecision(DeploymentState.DEPLOY_FAST, 2.0, False, ())
+    actions = build_execution_actions(
+        portfolio=portfolio,
+        selection=selection,
+        risk_decision=_risk(),
+        deployment_decision=fast,
+        available_new_cash=500.0,
+        exposure_band=0.03,
+        cash_band=0.03,
+    )
+    assert actions.deployment_action.deploy_mode == "FAST"
+    assert actions.deployment_action.deploy_cash_amount == 1000.0
 
 
 def test_execution_actions_are_immutable():

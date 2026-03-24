@@ -69,7 +69,7 @@ def decide_risk_state(
         )
 
     # ── 2. Drawdown budget hard constraint ───────────────────────────────────
-    portfolio_drawdown = getattr(portfolio, "_rolling_drawdown", None)
+    portfolio_drawdown = getattr(portfolio, "rolling_drawdown", getattr(portfolio, "_rolling_drawdown", None))
     if portfolio_drawdown is not None:
         if portfolio_drawdown >= drawdown_budget:
             reasons.append({"rule": "drawdown_budget_breached", "drawdown": portfolio_drawdown})

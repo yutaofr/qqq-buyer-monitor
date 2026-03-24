@@ -7,7 +7,7 @@ from src.engine.candidate_registry import load_registry, select_runtime_candidat
 from src.engine.deployment_controller import DeploymentDecision
 from src.engine.feature_pipeline import build_feature_snapshot
 from src.engine.risk_controller import RiskDecision
-from src.engine.runtime_selector import choose_target_candidate, RuntimeSelection
+from src.engine.runtime_selector import RuntimeSelection, choose_target_candidate
 from src.models import CurrentPortfolioState
 from src.models.candidate import CertifiedCandidate
 from src.models.deployment import DeploymentState
@@ -75,7 +75,7 @@ def test_runtime_selector_result_is_immutable():
 
 
 def test_runtime_selector_filters_by_exposure_ceiling():
-    """Candidate with exposure > ceiling must be rejected."""
+    """Candidate with exposure > ceiling must not be selected via fallback."""
     # Create a tight ceiling that only defense-style (low exposure) would fit
     registry = load_registry(FIXTURE)
     candidates = select_runtime_candidates(registry, RiskState.RISK_NEUTRAL)
@@ -84,10 +84,8 @@ def test_runtime_selector_filters_by_exposure_ceiling():
     # neutral-base-001: 0.70 + 2*0.10 = 0.90 → rejected
     # neutral-low-drift: 0.80 + 2*0.05 = 0.90 → rejected (exactly at ceiling edge)
     tight_risk = RiskDecision(RiskState.RISK_NEUTRAL, 0.85, 0.15, ())
-    # Both exceed 0.85 → least-bad fallback
-    selection = choose_target_candidate(_portfolio(), tight_risk, _deploy(), candidates)
-    # Must return something (least-bad, not crash)
-    assert selection.selected_candidate is not None
+    with pytest.raises(ValueError, match="No compliant candidates"):
+        choose_target_candidate(_portfolio(), tight_risk, _deploy(), candidates)
 
 
 def test_runtime_selector_raises_on_empty_candidates():
