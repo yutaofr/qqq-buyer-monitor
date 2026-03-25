@@ -541,7 +541,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="QQQ Buy-Signal Monitor (v6.2 Institutional Upgrade)")
+    parser = argparse.ArgumentParser(description="QQQ Buy-Signal Monitor (v7.0 Dual-Controller)")
     parser.add_argument("--json", action="store_true", help="Output JSON report")
     parser.add_argument("--no-save", action="store_true", help="Skip saving to DB")
     parser.add_argument("--no-color", action="store_true", help="Disable ANSI color output")

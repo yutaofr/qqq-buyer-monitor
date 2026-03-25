@@ -57,6 +57,55 @@ def _allocation_label(state: AllocationState) -> str:
     return "维持现状"
 
 
+def _has_explicit_portfolio(result: SignalResult) -> bool:
+    p = result.current_portfolio
+    return not (
+        p.current_cash_pct == 1.0
+        and p.qqq_pct == 0.0
+        and p.qld_pct == 0.0
+        and p.rolling_drawdown is None
+        and p.leverage_ratio == 1.0
+        and p.gross_exposure_pct == 0.0
+        and p.net_exposure_pct == 0.0
+        and p.core_equity_pct == 0.0
+        and p.tactical_equity_pct == 0.0
+    )
+
+
+def _print_v7_sections(result: SignalResult, c) -> None:
+    """Render the dual-controller summary in two clearly separated sections."""
+    if not (result.registry_version or result.risk_state or result.deployment_state or result.selected_candidate_id):
+        return
+
+    risk = result.risk_state.value if result.risk_state else "n/a"
+    deploy = result.deployment_state.value if result.deployment_state else "n/a"
+    candidate = result.selected_candidate_id or "n/a"
+    registry = result.registry_version or "n/a"
+
+    print(f"\n{c(_BOLD)}资产配置风险管理{c(_RESET)}")
+    print(f"  分析:    风险状态={risk} | 候选={candidate} | registry={registry}")
+    if result.rebalance_action:
+        print(
+            "  决策:    "
+            f"rebalance={result.rebalance_action.get('should_rebalance', False)} | "
+            f"reason={result.rebalance_action.get('reason', 'n/a')}"
+        )
+    t = result.target_allocation
+    print(f"  目标Beta: {t.target_beta:.2f}x")
+
+    print(f"{c(_BOLD)}增量资金买入时机决策{c(_RESET)}")
+    print(f"  分析:    deployment={deploy} | available_new_cash=runtime")
+    if result.deployment_action:
+        print(
+            "  决策:    "
+            f"mode={result.deployment_action.get('deploy_mode', 'n/a')} | "
+            f"amount={result.deployment_action.get('deploy_cash_amount', 0.0):.2f} | "
+            f"reason={result.deployment_action.get('reason', 'n/a')}"
+        )
+    else:
+        print("  决策:    n/a")
+
+
 def print_signal(
     result: SignalResult,
     use_color: bool = True,
@@ -66,6 +115,7 @@ def print_signal(
     """Print a formatted signal summary to stdout."""
     c = lambda code: code if use_color else ""  # noqa: E731
     r = c(_RESET)
+    runtime_version = "v7.0"
 
     t1 = result.tier1
     color, label = _ALLOCATION_STYLE[result.allocation_state]
@@ -83,13 +133,14 @@ def print_signal(
 
     sig_color, sig_label = _SIGNAL_STYLE[result.signal]
 
-    print(f"\n{c(_BOLD)}=== QQQ BUY-SIGNAL MONITOR (v6.4) ==={r}")
+    print(f"\n{c(_BOLD)}=== QQQ BUY-SIGNAL MONITOR ({runtime_version}) ==={r}")
     print(f"Date:      {result.date}")
     print(f"Price:     ${result.price:.2f}")
     print(f"Signal:    {c(sig_color)}{sig_label}{r} (Score: {result.final_score}/100)")
     print(f"Policy:    {c(color)}{label}{r}")
     print(f"Action:    {c(_BOLD)}{_allocation_label(result.allocation_state)}{r}")
-    
+    _print_v7_sections(result, c)
+
     # v6.4 Search Rationale from Logic Trace
     search_node = next((n for n in result.logic_trace if n.get("step") == "search"), None)
     if search_node:
@@ -97,17 +148,13 @@ def print_signal(
     
     # Details summary
     print(f"Details:   单日加仓: {result.daily_tranche_pct:.0%}, 滚动上限: {result.max_total_add_pct:.1f}x, 置信度: {result.confidence}")
-    
+
     # v6.3 Strategic Portfolio Alignment
     p = result.current_portfolio
     t = result.target_allocation
-    if p and (p.current_cash_pct > 0 or p.qqq_pct > 0 or p.qld_pct > 0):
+    if _has_explicit_portfolio(result):
         print(f"Reality:   Cash={p.current_cash_pct*100:.1f}%, QQQ={p.qqq_pct*100:.1f}%, QLD={p.qld_pct*100:.1f}% | Exp={result.effective_exposure:.2f}x")
         print(f"Ideal:     Cash={t.target_cash_pct*100:.1f}%, QQQ={t.target_qqq_pct*100:.1f}%, QLD={t.target_qld_pct*100:.1f}% | Beta={t.target_beta:.2f}x")
-    elif result.target_cash_pct > 0:
-        # Fallback for older records
-        old_p = result.portfolio
-        print(f"Portfolio: Cash={old_p.current_cash_pct:.1f}% -> Target={result.target_cash_pct:.1f}% | Lev={old_p.leverage_ratio:.1f}x")
 
     # Data Quality Summary (v6.2: Logic corrected to match data_quality.py structure)
     if result.data_quality:
