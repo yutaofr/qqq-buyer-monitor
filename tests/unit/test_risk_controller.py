@@ -7,7 +7,21 @@ from src.models import CurrentPortfolioState
 from src.models.risk import RiskState
 
 
-def _snap(values: dict, quality: dict | None = None) -> object:
+def _snap(values: dict, quality: dict | None = None, full: bool = True) -> object:
+    if full:
+        # Baseline for Class A that ensures they are present and "clean"
+        baseline = {
+            "credit_spread": 300.0,
+            "credit_acceleration": 0.0,
+            "net_liquidity": 1000.0,
+            "liquidity_roc": 0.0,
+            "real_yield": 1.5,
+            "funding_stress": False,
+            "close": 400.0,
+        }
+        baseline.update(values)
+        values = baseline
+
     return build_feature_snapshot(
         market_date=date(2026, 3, 24),
         raw_values=values,
@@ -156,3 +170,12 @@ def test_risk_controller_only_consumes_class_a_data():
     d1 = decide_risk_state(snap_with_c, CurrentPortfolioState())
     d2 = decide_risk_state(snap_without_c, CurrentPortfolioState())
     assert d1.risk_state == d2.risk_state
+
+
+def test_risk_controller_absent_class_a_features_degrade():
+    """Absent Class A features (missing from snap) must be counted as missing."""
+    # Entirely empty raw_values should result in all Class A being missing
+    snap = _snap({}, full=False) 
+    decision = decide_risk_state(snap, CurrentPortfolioState(), drawdown_budget=0.30)
+    assert decision.risk_state in {RiskState.RISK_REDUCED, RiskState.RISK_DEFENSE, RiskState.RISK_EXIT}
+    assert any("class_a_missing" in str(r) for r in decision.reasons)

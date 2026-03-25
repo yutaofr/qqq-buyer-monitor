@@ -28,13 +28,12 @@ _DRAWDOWN_EXIT = 0.30
 
 
 def _count_missing_class_a(snapshot: FeatureSnapshot) -> int:
-    """Count how many Class A features are None / unusable."""
+    """Count how many Class A features are None / unusable / absent."""
     return sum(
         1 for name in _CLASS_A
-        if name in snapshot.values and (
-            snapshot.values[name] is None
-            or not snapshot.quality.get(name, {}).get("usable", True)
-        )
+        if name not in snapshot.values 
+        or snapshot.values[name] is None
+        or not snapshot.quality.get(name, {}).get("usable", True)
     )
 
 
