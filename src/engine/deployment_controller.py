@@ -120,10 +120,6 @@ def decide_deployment_state(
     v = snapshot.values
     reasons: list[dict] = []
 
-    # ── 0. No deployment budget → IDLE (v8.0) ───────────────────────────────
-    if available_new_cash <= 0:
-        reasons.append({"rule": "no_deployment_budget"})
-        return _build_decision(DeploymentState.DEPLOY_IDLE, reasons, pause_new_cash=False)
 
     risk_ceiling = _RISK_DEPLOYMENT_CEILING[risk_decision.risk_state]
     capitulation = v.get("capitulation_score", 0) or 0

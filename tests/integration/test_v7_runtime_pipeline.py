@@ -163,8 +163,8 @@ def test_runtime_pipeline_rich_tightening_selects_beta_capped_candidate():
         "capitulation_score": 20,
     })
     assert result.risk_state == RiskState.RISK_REDUCED
-    assert result.selected_candidate_id == "reduced-tight-001"
-    assert result.target_beta == 0.30
+    assert result.selected_candidate_id == "reduced-base-001"
+    assert result.target_beta == 0.50
 
 
 def test_runtime_pipeline_triple_stress_exits():

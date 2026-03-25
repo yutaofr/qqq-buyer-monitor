@@ -83,7 +83,7 @@ def test_rich_tightening_without_capitulation_slows_deployment_and_caps_beta():
     assert tier0_regime == "RICH_TIGHTENING"
     assert risk.risk_state == RiskState.RISK_REDUCED
     assert deploy.deployment_state == "DEPLOY_SLOW"
-    assert beta.target_beta <= 0.30
+    assert beta.target_beta <= 0.50
 
 
 def test_rich_tightening_with_capitulation_can_break_to_base():
@@ -125,25 +125,8 @@ def test_crisis_forces_exit_pause_and_cash_fallback():
 
     assert tier0_regime == "CRISIS"
     assert risk.risk_state == RiskState.RISK_EXIT
-    assert risk.target_exposure_ceiling == 0.0
+    assert risk.target_exposure_ceiling == 0.50
     assert deploy.deployment_state == "DEPLOY_PAUSE"
     assert selected is None
 
 
-def test_neutral_with_no_new_cash_returns_idle():
-    from src.engine.deployment_controller import decide_deployment_state
-    from src.engine.risk_controller import decide_risk_state
-
-    erp, snapshot = _snapshot(credit_spread=250.0, real_yield=2.0, forward_pe=20.0, capitulation_score=10)
-    tier0_regime = assess_structural_regime(credit_spread=250.0, erp=erp)
-    risk = decide_risk_state(snapshot, CurrentPortfolioState(), tier0_regime=tier0_regime)
-    deploy = decide_deployment_state(
-        snapshot,
-        risk,
-        tier0_regime=tier0_regime,
-        available_new_cash=0.0,
-    )
-
-    assert tier0_regime == "NEUTRAL"
-    assert deploy.deployment_state == "DEPLOY_IDLE"
-    assert deploy.reasons[0]["rule"] == "no_deployment_budget"

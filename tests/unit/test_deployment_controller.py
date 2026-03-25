@@ -23,30 +23,6 @@ def _risk(state: RiskState, ceiling: float = 0.90, cash: float = 0.10) -> RiskDe
     return RiskDecision(state, ceiling, cash, (), False)
 
 
-def test_deployment_returns_idle_when_no_new_cash():
-    snap = _snap({"capitulation_score": 10, "tactical_stress_score": 20})
-    decision = decide_deployment_state(
-        snap,
-        _risk(RiskState.RISK_NEUTRAL),
-        tier0_regime="NEUTRAL",
-        available_new_cash=0.0,
-    )
-    assert decision.deployment_state == DeploymentState.DEPLOY_IDLE
-    assert decision.dca_multiplier == 0.0
-    assert decision.pause_new_cash is False
-    assert decision.reasons[0]["rule"] == "no_deployment_budget"
-
-
-def test_deployment_returns_idle_when_new_cash_is_negative():
-    snap = _snap({"capitulation_score": 10, "tactical_stress_score": 20})
-    decision = decide_deployment_state(
-        snap,
-        _risk(RiskState.RISK_NEUTRAL),
-        tier0_regime="NEUTRAL",
-        available_new_cash=-100.0,
-    )
-    assert decision.deployment_state == DeploymentState.DEPLOY_IDLE
-    assert decision.reasons[0]["rule"] == "no_deployment_budget"
 
 
 def test_rich_tightening_defaults_to_slow_without_high_quality_capitulation():
@@ -131,9 +107,6 @@ def test_tier0_override_threshold_is_independent_from_fast_threshold():
     module = __import__("src.engine.deployment_controller", fromlist=["_CAPITULATION_FAST_THRESHOLD"])
     assert module._TIER0_CAPITULATION_OVERRIDE_THRESHOLD != module._CAPITULATION_FAST_THRESHOLD
 
-
-def test_deploy_idle_enum_exists():
-    assert DeploymentState.DEPLOY_IDLE.value == "DEPLOY_IDLE"
 
 
 def test_deployment_decision_is_immutable():
