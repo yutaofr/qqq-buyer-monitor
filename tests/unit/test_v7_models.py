@@ -38,7 +38,6 @@ def test_deployment_state_all_values():
         "DEPLOY_FAST",
         "DEPLOY_PAUSE",
         "DEPLOY_RECOVER",
-        "DEPLOY_IDLE",
     }
 
 
