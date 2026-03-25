@@ -11,7 +11,7 @@
 | **Tier-0 硬约束** | `tier0_regime` 压制 Beta 天花板。 | `decide_risk_state` 接入拦截逻辑。 | TC-RC-001 (CRISIS), TC-RC-002 (RICH)。 | ✅ 完美对齐 |
 | **Tier-0 软约束** | `RICH_TIGHTENING` 下降速，允许突破。 | 实现 `_TIER0_DEFAULT_CEILING` 等核心逻辑。 | TC-DC-003 (默认上限), TC-DC-004 (突破)。 | ✅ 完美对齐 |
 | **决策链线性化** | 四级单向决策链。 | 模块改造顺序严格遵循线性 Pipeline。 | TC-INT-001/002 (端到端集成测试)。 | ✅ 完美对齐 |
-| **新语义 IDLE** | `cash=0` 时显示 `DEPLOY_IDLE`。 | `DeploymentState` 新增枚举与逻辑检查。 | TC-DC-001 (无新钱), TC-DC-010 (枚举存在)。 | ✅ 完美对齐 |
+| **存量/增量解耦** | 仅推荐目标 Beta，严禁金额计算。 | 移除 cash-precheck 依赖，逻辑纯净化。 | TC-INT-004 (属性独立性)。 | ✅ 完美对齐 |
 | **v6 状态解耦** | 废弃 `AllocationState` 驱动的选择。 | `find_best_allocation_v8` 数学约束接口。 | TC-AS-004 (签名检查)。 | ✅ 完美对齐 |
 
 ## 3. 验收标准覆盖 (AC-13 to AC-19)
@@ -19,7 +19,7 @@
 - **AC-13 (CRISIS -> EXIT):** ADD Phase 2.1 明确覆盖。
 - **AC-14 (RICH_TIGHTENING -> 0.30):** ADD Phase 2.1 明确覆盖。
 - **AC-15 (Soft Ceiling Override):** ADD Phase 3.2 明确覆盖（独立阈值 `0.70`）。
-- **AC-16 (DEPLOY_IDLE):** ADD Phase 3.1 明确覆盖。
+- **AC-16 (Decoupling):** [已移除] 存量/增量逻辑物理隔离。
 - **AC-17 (No Amount Output):** ADD Phase 1 彻底删除旧接口。
 - **AC-18 (Consistency):** ADD Phase 12 将其列为强约束。
 - **AC-19 (Portfolio Beta):** ADD Phase 3.2 组合 Beta 计算公式正确。

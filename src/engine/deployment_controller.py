@@ -85,7 +85,6 @@ def _build_decision(
     pause_new_cash: bool = False,
 ) -> DeploymentDecision:
     multiplier_map = {
-        DeploymentState.DEPLOY_IDLE: 0.0,
         DeploymentState.DEPLOY_PAUSE: 0.0,
         DeploymentState.DEPLOY_SLOW: 0.5,
         DeploymentState.DEPLOY_BASE: 1.0,

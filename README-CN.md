@@ -28,10 +28,9 @@ v8.0 明确了系统边界：
 
 ### Deployment Controller
 在 Tier-0 软约束下，输出增量资金部署节奏：
-`DEPLOY_IDLE | DEPLOY_SLOW | DEPLOY_BASE | DEPLOY_FAST | DEPLOY_PAUSE`
+`DEPLOY_SLOW | DEPLOY_BASE | DEPLOY_FAST | DEPLOY_PAUSE`
 
 关键语义：
-- `DEPLOY_IDLE`：没有新增资金
 - `RICH_TIGHTENING`：默认降速，但强超跌时允许提到 `DEPLOY_BASE`
 - `CRISIS`：增量部署完全暂停
 

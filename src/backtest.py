@@ -152,7 +152,6 @@ def _deployment_state_to_legacy_state(deployment_state: str, risk_state: str) ->
         "DEPLOY_BASE": AllocationState.BASE_DCA,
         "DEPLOY_SLOW": AllocationState.SLOW_ACCUMULATE,
         "DEPLOY_PAUSE": AllocationState.PAUSE_CHASING,
-        "DEPLOY_IDLE": AllocationState.PAUSE_CHASING,
         "DEPLOY_RECOVER": AllocationState.BASE_DCA,
     }
     return mapping.get(deployment_state, AllocationState.BASE_DCA)

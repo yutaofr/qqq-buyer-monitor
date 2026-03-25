@@ -29,10 +29,9 @@ Outputs `RiskDecision` with:
 ### Deployment Controller
 Determines how to deploy **new incoming cash** under Tier-0 soft ceilings.
 Outputs one of:
-`DEPLOY_IDLE | DEPLOY_SLOW | DEPLOY_BASE | DEPLOY_FAST | DEPLOY_PAUSE`.
+`DEPLOY_SLOW | DEPLOY_BASE | DEPLOY_FAST | DEPLOY_PAUSE`.
 
 Key v8.0 semantics:
-- `DEPLOY_IDLE` means there is no new cash to deploy.
 - `RICH_TIGHTENING` slows default deployment but still allows left-side entry when capitulation is strong.
 - `CRISIS` fully pauses incremental deployment.
 
