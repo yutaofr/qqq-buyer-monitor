@@ -73,37 +73,45 @@ def _has_explicit_portfolio(result: SignalResult) -> bool:
 
 
 def _print_v7_sections(result: SignalResult, c) -> None:
-    """Render the dual-controller summary in two clearly separated sections."""
+    """Render the v8 recommendation summary in two clearly separated sections."""
     if not (result.registry_version or result.risk_state or result.deployment_state or result.selected_candidate_id):
         return
 
+    tier0 = result.tier0_regime or "n/a"
     risk = result.risk_state.value if result.risk_state else "n/a"
     deploy = result.deployment_state.value if result.deployment_state else "n/a"
     candidate = result.selected_candidate_id or "n/a"
     registry = result.registry_version or "n/a"
+    target_beta = result.target_beta if result.target_beta is not None else result.target_allocation.target_beta
+    should_adjust = result.should_adjust
+    if should_adjust is None:
+        should_adjust = result.rebalance_action.get("should_adjust")
+    adjust_reason = result.rebalance_action.get("reason", "n/a")
+    deploy_mode = result.deployment_action.get("deploy_mode", "n/a")
+    deploy_reason = result.deployment_action.get("reason", "n/a")
 
-    print(f"\n{c(_BOLD)}资产配置风险管理{c(_RESET)}")
-    print(f"  分析:    风险状态={risk} | 候选={candidate} | registry={registry}")
-    if result.rebalance_action:
-        print(
-            "  决策:    "
-            f"rebalance={result.rebalance_action.get('should_rebalance', False)} | "
-            f"reason={result.rebalance_action.get('reason', 'n/a')}"
-        )
+    print(f"\n{c(_BOLD)}风险评估与目标 Beta{c(_RESET)}")
+    print(
+        f"  分析:    Tier-0={tier0} | 风险状态={risk} | "
+        f"候选={candidate} | registry={registry}"
+    )
+    print(
+        "  推荐:    "
+        f"target_beta={target_beta:.2f}x | adjust={should_adjust} | reason={adjust_reason}"
+    )
     t = result.target_allocation
-    print(f"  目标Beta: {t.target_beta:.2f}x")
+    print(
+        "  配比:    "
+        f"QQQ={t.target_qqq_pct*100:.1f}% | "
+        f"QLD={t.target_qld_pct*100:.1f}% | "
+        f"Cash={t.target_cash_pct*100:.1f}%"
+    )
+    print("  ⚠️ 以上为推荐建议，不代表自动执行。")
 
-    print(f"{c(_BOLD)}增量资金买入时机决策{c(_RESET)}")
-    print(f"  分析:    deployment={deploy} | available_new_cash=runtime")
-    if result.deployment_action:
-        print(
-            "  决策:    "
-            f"mode={result.deployment_action.get('deploy_mode', 'n/a')} | "
-            f"amount={result.deployment_action.get('deploy_cash_amount', 0.0):.2f} | "
-            f"reason={result.deployment_action.get('reason', 'n/a')}"
-        )
-    else:
-        print("  决策:    n/a")
+    print(f"{c(_BOLD)}增量入场节奏推荐{c(_RESET)}")
+    print(f"  分析:    deployment={deploy} | Tier-0 soft ceiling={tier0}")
+    print(f"  推荐:    mode={deploy_mode} | reason={deploy_reason}")
+    print("  ⚠️ 以上为推荐建议，不代表自动执行。")
 
 
 def print_signal(
@@ -115,7 +123,7 @@ def print_signal(
     """Print a formatted signal summary to stdout."""
     c = lambda code: code if use_color else ""  # noqa: E731
     r = c(_RESET)
-    runtime_version = "v7.0"
+    runtime_version = "v8.0"
 
     t1 = result.tier1
     color, label = _ALLOCATION_STYLE[result.allocation_state]

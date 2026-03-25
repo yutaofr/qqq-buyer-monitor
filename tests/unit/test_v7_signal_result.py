@@ -63,6 +63,10 @@ def test_signal_result_v7_fields_default_to_none():
     assert result.rebalance_action == {}
     assert result.deployment_action == {}
     assert result.candidate_selection_audit == []
+    assert result.tier0_regime is None
+    assert result.tier0_applied is False
+    assert result.target_beta is None
+    assert result.should_adjust is None
 
 
 def test_signal_result_v7_full_fields():
@@ -80,11 +84,33 @@ def test_signal_result_v7_full_fields():
         deployment_state=DeploymentState.DEPLOY_PAUSE,
         selected_candidate_id="defense-001",
         registry_version="2026-03-24-v7.0-r1",
-        rebalance_action={"should_rebalance": True, "reason": "risk_state_change"},
-        deployment_action={"deploy_cash_amount": 0.0, "mode": "PAUSE"},
+        rebalance_action={"should_adjust": True, "reason": "risk_state_change"},
+        deployment_action={"deploy_mode": "PAUSE", "reason": "risk_ceiling"},
         candidate_selection_audit=[{"candidate_id": "defense-001", "selected": True}],
     )
     assert result.risk_state == RiskState.RISK_DEFENSE
     assert result.selected_candidate_id == "defense-001"
-    assert result.rebalance_action["should_rebalance"] is True
+    assert result.rebalance_action["should_adjust"] is True
     assert len(result.candidate_selection_audit) == 1
+
+
+def test_signal_result_supports_v8_linear_pipeline_fields():
+    t1 = _make_tier1()
+    t2 = _make_tier2()
+    result = SignalResult(
+        date=date(2026, 3, 24),
+        price=100.0,
+        signal=Signal.NO_SIGNAL,
+        final_score=0,
+        tier1=t1,
+        tier2=t2,
+        explanation="",
+        tier0_regime="RICH_TIGHTENING",
+        tier0_applied=True,
+        target_beta=0.30,
+        should_adjust=True,
+    )
+    assert result.tier0_regime == "RICH_TIGHTENING"
+    assert result.tier0_applied is True
+    assert result.target_beta == 0.30
+    assert result.should_adjust is True

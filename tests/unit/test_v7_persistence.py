@@ -39,8 +39,12 @@ def _v7_result() -> SignalResult:
         deployment_state=DeploymentState.DEPLOY_BASE,
         selected_candidate_id="neutral-base-001",
         registry_version="2026-03-24-v7.0-r1",
-        rebalance_action={"should_rebalance": False, "reason": "within_bands"},
-        deployment_action={"deploy_cash_amount": 1.0, "deploy_mode": "BASE"},
+        tier0_regime="NEUTRAL",
+        tier0_applied=False,
+        target_beta=0.90,
+        should_adjust=False,
+        rebalance_action={"should_adjust": False, "reason": "within_band:gap=0.000"},
+        deployment_action={"deploy_mode": "BASE", "reason": "default_base"},
         candidate_selection_audit=[{"candidate_id": "neutral-low-drift", "reason": "higher_adjustment_cost"}],
     )
 
@@ -74,8 +78,19 @@ def test_save_and_reload_v7_actions(tmp_path):
     save_signal(_v7_result(), path=path)
     history = load_history(1, path=path)
     rec = history[0]
-    assert rec["rebalance_action"]["should_rebalance"] is False
+    assert rec["rebalance_action"]["should_adjust"] is False
     assert rec["deployment_action"]["deploy_mode"] == "BASE"
+
+
+def test_save_and_reload_v8_linear_pipeline_fields(tmp_path):
+    path = str(tmp_path / "signals_v8.db")
+    save_signal(_v7_result(), path=path)
+    history = load_history(1, path=path)
+    rec = history[0]
+    assert rec["tier0_regime"] == "NEUTRAL"
+    assert rec["tier0_applied"] is False
+    assert rec["target_beta"] == 0.9
+    assert rec["should_adjust"] is False
 
 
 def test_save_and_reload_v7_audit(tmp_path):
@@ -104,5 +119,9 @@ def test_legacy_result_has_null_v7_fields(tmp_path):
     rec = history[0]
     assert rec["risk_state"] is None
     assert rec["deployment_state"] is None
+    assert rec["tier0_regime"] is None
+    assert rec["tier0_applied"] is False
+    assert rec["target_beta"] is None
+    assert rec["should_adjust"] is None
     assert rec["rebalance_action"] == {}
     assert rec["candidate_selection_audit"] == []

@@ -131,6 +131,10 @@ def _migrate_blob(blob: dict) -> dict:
     blob.setdefault("deployment_state", None)
     blob.setdefault("selected_candidate_id", None)
     blob.setdefault("registry_version", None)
+    blob.setdefault("tier0_regime", None)
+    blob.setdefault("tier0_applied", False)
+    blob.setdefault("target_beta", None)
+    blob.setdefault("should_adjust", None)
     blob.setdefault("rebalance_action", {})
     blob.setdefault("deployment_action", {})
     blob.setdefault("candidate_selection_audit", [])
@@ -403,6 +407,10 @@ def _to_json_dict(result: SignalResult) -> dict:
         "deployment_state": result.deployment_state.value if result.deployment_state is not None else None,
         "selected_candidate_id": result.selected_candidate_id,
         "registry_version": result.registry_version,
+        "tier0_regime": result.tier0_regime,
+        "tier0_applied": result.tier0_applied,
+        "target_beta": _float(result.target_beta),
+        "should_adjust": result.should_adjust,
         "rebalance_action": result.rebalance_action,
         "deployment_action": result.deployment_action,
         "candidate_selection_audit": result.candidate_selection_audit,

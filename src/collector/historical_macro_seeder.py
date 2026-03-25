@@ -65,6 +65,7 @@ class HistoricalMacroSeeder:
         features = {
             "credit_spread": None,
             "credit_accel": 0.0,
+            "net_liquidity": None,
             "liquidity_roc": 0.0,
             "is_funding_stressed": False
         }
@@ -87,12 +88,14 @@ class HistoricalMacroSeeder:
             features["credit_spread"] = self._float_or_default(row.get("credit_spread_bps"))
             features["credit_accel"] = self._float_or_default(row.get("credit_acceleration_pct_10d"), 0.0) or 0.0
             features["real_yield"] = self._float_or_default(row.get("real_yield_10y_pct"))
+            features["net_liquidity"] = self._float_or_default(row.get("net_liquidity_usd_bn"))
             features["liquidity_roc"] = self._float_or_default(row.get("liquidity_roc_pct_4w"), 0.0) or 0.0
             funding_value = row.get("funding_stress_flag")
         else:
             features["credit_spread"] = self._float_or_default(row.get("BAMLH0A0HYM2"))
             features["credit_accel"] = self._float_or_default(row.get("credit_acceleration"), 0.0) or 0.0
             features["real_yield"] = self._float_or_default(row.get("real_yield"), None)
+            features["net_liquidity"] = self._float_or_default(row.get("net_liquidity"), None)
             features["liquidity_roc"] = self._float_or_default(row.get("liquidity_roc"), 0.0) or 0.0
             funding_value = row.get("is_funding_stressed")
 

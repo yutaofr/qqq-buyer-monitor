@@ -313,12 +313,15 @@ def run_pipeline(args: argparse.Namespace) -> None:
     # ── v7.0 Dual-Controller Pipeline ─────────────────────────────────────────
     import os
 
+    from src.engine.allocation_search import find_best_allocation_v8
     from src.engine.candidate_registry import load_registry, select_runtime_candidates
     from src.engine.deployment_controller import decide_deployment_state
-    from src.engine.execution_policy import build_execution_actions
+    from src.engine.execution_policy import build_beta_recommendation
     from src.engine.feature_pipeline import build_feature_snapshot
     from src.engine.risk_controller import decide_risk_state
-    from src.engine.runtime_selector import NoCompliantCandidatesError, choose_target_candidate
+    from src.engine.runtime_selector import RuntimeSelection
+    from src.engine.tier0_macro import assess_structural_regime
+    from src.models import TargetAllocationState
     from src.store.db import load_runtime_inputs, save_runtime_inputs
 
     v7_registry_path = os.environ.get("V7_REGISTRY_PATH", "data/candidate_registry_v7.json")
@@ -360,113 +363,150 @@ def run_pipeline(args: argparse.Namespace) -> None:
             raw_quality=data_quality_meta,
         )
 
-        # Risk Controller (Class A only)
-        v7_risk = decide_risk_state(v7_snapshot, portfolio, drawdown_budget=0.30)
+        erp_value = None
+        if (
+            market_data.forward_pe
+            and market_data.real_yield is not None
+            and market_data.forward_pe > 0
+        ):
+            erp_value = (1.0 / market_data.forward_pe) * 100.0 - market_data.real_yield
 
-        # Deployment Controller (Class B + risk ceiling)
-        v7_deploy = decide_deployment_state(v7_snapshot, v7_risk, available_new_cash=available_new_cash)
+        tier0_regime = assess_structural_regime(
+            credit_spread=market_data.credit_spread,
+            erp=erp_value,
+        )
+
+        # Risk Controller (Class A only + Tier-0 hard constraint)
+        v7_risk = decide_risk_state(
+            v7_snapshot,
+            portfolio,
+            tier0_regime=tier0_regime,
+            drawdown_budget=0.30,
+        )
+
+        # Deployment Controller (Class B + Tier-0 soft ceiling)
+        v7_deploy = decide_deployment_state(
+            v7_snapshot,
+            v7_risk,
+            tier0_regime=tier0_regime,
+            available_new_cash=available_new_cash,
+        )
 
         # Load the certified candidate registry
         registry = load_registry(v7_registry_path)
         candidates = select_runtime_candidates(registry, v7_risk.risk_state)
 
-        # Runtime selector — deterministic, no backtest
-        if candidates:
-            # Previous risk state from DB history for state-change trigger
-            prev_risk_str = history[0].get("risk_state") if history else None
-            from src.models.risk import RiskState as _RS
-            prev_risk = _RS(prev_risk_str) if prev_risk_str else None
+        # Previous risk state from DB history for state-change trigger
+        prev_risk_str = history[0].get("risk_state") if history else None
+        from src.models.risk import RiskState as _RS
 
-            try:
-                v7_selection = choose_target_candidate(portfolio, v7_risk, v7_deploy, candidates)
-                v7_actions = build_execution_actions(
-                    portfolio=portfolio,
-                    selection=v7_selection,
-                    risk_decision=v7_risk,
-                    deployment_decision=v7_deploy,
-                    available_new_cash=available_new_cash,
-                    previous_risk_state=prev_risk,
-                )
+        prev_risk = _RS(prev_risk_str) if prev_risk_str else None
 
-                # Attach v7 fields to SignalResult
-                result.risk_state = v7_risk.risk_state
-                result.deployment_state = v7_deploy.deployment_state
-                result.selected_candidate_id = v7_selection.selected_candidate.candidate_id
-                result.registry_version = registry.registry_version
-                result.rebalance_action = {
-                    "should_rebalance": v7_actions.rebalance_action.should_rebalance,
-                    "reason": v7_actions.rebalance_action.reason,
-                    "target_qqq_pct": v7_actions.rebalance_action.target_qqq_pct,
-                    "target_qld_pct": v7_actions.rebalance_action.target_qld_pct,
-                    "target_cash_pct": v7_actions.rebalance_action.target_cash_pct,
-                }
-                result.deployment_action = {
-                    "deploy_cash_amount": v7_actions.deployment_action.deploy_cash_amount,
-                    "deploy_mode": v7_actions.deployment_action.deploy_mode,
-                    "reason": v7_actions.deployment_action.reason,
-                }
-                result.candidate_selection_audit = [
-                    {"candidate_id": r["candidate_id"], "reason": r["reason"]}
-                    for r in v7_selection.rejected_candidates
-                ]
-                result.logic_trace.append({
-                    "v7_risk_state": v7_risk.risk_state.value,
-                    "v7_deployment_state": v7_deploy.deployment_state.value,
-                    "v7_selected_candidate": v7_selection.selected_candidate.candidate_id,
-                    "v7_should_rebalance": v7_actions.rebalance_action.should_rebalance,
+        result.risk_state = v7_risk.risk_state
+        result.deployment_state = v7_deploy.deployment_state
+        result.registry_version = registry.registry_version
+        result.tier0_regime = tier0_regime
+        result.tier0_applied = v7_risk.tier0_applied
+
+        selected_candidate = find_best_allocation_v8(
+            max_beta_ceiling=v7_risk.target_exposure_ceiling,
+            max_drawdown_budget=registry.drawdown_budget,
+            candidates=candidates,
+        )
+
+        audit: list[dict] = []
+        for candidate in candidates:
+            if candidate.target_effective_exposure > v7_risk.target_exposure_ceiling + 1e-9:
+                audit.append({
+                    "candidate_id": candidate.candidate_id,
+                    "reason": "exceeds_beta_ceiling",
+                    "exposure": candidate.target_effective_exposure,
+                    "ceiling": v7_risk.target_exposure_ceiling,
                 })
-                logger.info(
-                    "v7.0 ▶ risk=%s deploy=%s candidate=%s rebalance=%s",
-                    v7_risk.risk_state.value,
-                    v7_deploy.deployment_state.value,
-                    v7_selection.selected_candidate.candidate_id,
-                    v7_actions.rebalance_action.should_rebalance,
-                )
-            except NoCompliantCandidatesError as exc:
-                from src.models.deployment import DeploymentState as _DS
-                from src.models.risk import RiskState as _RS
-
-                result.risk_state = _RS.RISK_EXIT
-                result.deployment_state = _DS.DEPLOY_PAUSE
-                result.registry_version = registry.registry_version
-                result.selected_candidate_id = None
-                result.rebalance_action = {"should_rebalance": False, "reason": "no_compliant_candidates"}
-                result.deployment_action = {
-                    "deploy_cash_amount": 0.0,
-                    "deploy_mode": "PAUSE",
-                    "reason": "no_compliant_candidates",
-                }
-                result.candidate_selection_audit = [
-                    {"candidate_id": r["candidate_id"], "reason": r["reason"]}
-                    for r in exc.rejected_candidates
-                ]
-                result.logic_trace.append({
-                    "rule": "no_compliant_candidates",
-                    "risk_state": v7_risk.risk_state.value,
-                    "fallback_risk_state": _RS.RISK_EXIT.value,
+            elif candidate.research_metrics.get("max_drawdown", 1.0) > registry.drawdown_budget:
+                audit.append({
+                    "candidate_id": candidate.candidate_id,
+                    "reason": "exceeds_drawdown_budget",
+                    "max_drawdown": candidate.research_metrics.get("max_drawdown"),
+                    "budget": registry.drawdown_budget,
                 })
-                logger.warning("v7.0: no compliant runtime candidates after hard-cap filter for risk_state=%s", v7_risk.risk_state.value)
-        else:
-            # No compliant candidates → explicit degraded mode (SRD AC-3)
-            from src.models.deployment import DeploymentState as _DS
-            from src.models.risk import RiskState as _RS
+            elif selected_candidate is not None and candidate.candidate_id != selected_candidate.candidate_id:
+                audit.append({
+                    "candidate_id": candidate.candidate_id,
+                    "reason": "lower_rank",
+                })
 
-            result.risk_state = _RS.RISK_EXIT
-            result.deployment_state = _DS.DEPLOY_PAUSE
-            result.registry_version = registry.registry_version
-            result.selected_candidate_id = None
-            result.rebalance_action = {"should_rebalance": False, "reason": "no_registry_candidates"}
+        if selected_candidate is not None:
+            selection = RuntimeSelection(
+                selected_candidate=selected_candidate,
+                rejected_candidates=tuple(audit),
+                selection_score=0.0,
+            )
+            beta_rec = build_beta_recommendation(
+                portfolio=portfolio,
+                selection=selection,
+                risk_decision=v7_risk,
+                previous_risk_state=prev_risk,
+            )
+            result.selected_candidate_id = selected_candidate.candidate_id
+            result.target_beta = beta_rec.target_beta
+            result.should_adjust = beta_rec.should_adjust
+            result.target_allocation = TargetAllocationState(
+                target_cash_pct=beta_rec.recommended_cash_pct,
+                target_qqq_pct=beta_rec.recommended_qqq_pct,
+                target_qld_pct=beta_rec.recommended_qld_pct,
+                target_beta=beta_rec.target_beta,
+            )
+            result.rebalance_action = {
+                "should_adjust": beta_rec.should_adjust,
+                "should_rebalance": beta_rec.should_adjust,
+                "reason": beta_rec.adjustment_reason,
+            }
             result.deployment_action = {
-                "deploy_cash_amount": 0.0,
-                "deploy_mode": "PAUSE",
-                "reason": "no_registry_candidates",
+                "deploy_mode": v7_deploy.deployment_state.value.replace("DEPLOY_", ""),
+                "reason": v7_deploy.reasons[0]["rule"] if v7_deploy.reasons else "controller_decision",
+            }
+            result.logic_trace.append({
+                "v8_tier0_regime": tier0_regime,
+                "v8_risk_state": v7_risk.risk_state.value,
+                "v8_deployment_state": v7_deploy.deployment_state.value,
+                "v8_selected_candidate": selected_candidate.candidate_id,
+                "v8_should_adjust": beta_rec.should_adjust,
+            })
+            logger.info(
+                "v8.0 ▶ tier0=%s risk=%s deploy=%s candidate=%s adjust=%s",
+                tier0_regime,
+                v7_risk.risk_state.value,
+                v7_deploy.deployment_state.value,
+                selected_candidate.candidate_id,
+                beta_rec.should_adjust,
+            )
+        else:
+            result.selected_candidate_id = None
+            result.target_beta = 0.0
+            result.should_adjust = False
+            result.target_allocation = TargetAllocationState(
+                target_cash_pct=1.0,
+                target_qqq_pct=0.0,
+                target_qld_pct=0.0,
+                target_beta=0.0,
+            )
+            result.rebalance_action = {"should_adjust": False, "reason": "no_compliant_candidates"}
+            result.deployment_action = {
+                "deploy_mode": v7_deploy.deployment_state.value.replace("DEPLOY_", ""),
+                "reason": "no_compliant_candidates",
             }
             result.logic_trace.append({
                 "rule": "no_compliant_candidates",
                 "risk_state": v7_risk.risk_state.value,
-                "fallback_risk_state": _RS.RISK_EXIT.value,
+                "target_beta": 0.0,
             })
-            logger.warning("v7.0: no compliant candidates for risk_state=%s", v7_risk.risk_state.value)
+            logger.warning(
+                "v8.0: no compliant candidates after beta-ceiling filter for risk_state=%s",
+                v7_risk.risk_state.value,
+            )
+
+        result.candidate_selection_audit = audit
 
     except FileNotFoundError:
         # Registry missing → explicit degraded mode, no silent fallback (SRD §5.3)

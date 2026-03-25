@@ -14,7 +14,7 @@ FIXTURE = "tests/fixtures/candidate_registry_v7.json"
 def test_load_registry_reads_certified_candidates():
     registry = load_registry(FIXTURE)
     assert registry.registry_version == "test-v7-r1"
-    assert len(registry.candidates) == 4
+    assert len(registry.candidates) == 6
 
 
 def test_load_registry_version_and_budget():

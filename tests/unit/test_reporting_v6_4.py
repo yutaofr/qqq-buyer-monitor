@@ -54,31 +54,31 @@ def test_report_json_contains_v6_4_fields(mock_result):
 
 
 def test_cli_output_reflects_v7_runtime_when_available(mock_result, capsys):
+    mock_result.tier0_regime = "NEUTRAL"
     mock_result.risk_state = RiskState.RISK_NEUTRAL
     mock_result.deployment_state = DeploymentState.DEPLOY_BASE
     mock_result.selected_candidate_id = "neutral-base-001"
-    mock_result.registry_version = "2026-03-24-v7.0-r1"
+    mock_result.registry_version = "2026-03-25-v8.0-r1"
+    mock_result.target_beta = 1.00
+    mock_result.should_adjust = True
     mock_result.rebalance_action = {
-        "should_rebalance": True,
+        "should_adjust": True,
         "reason": "risk_state_changed",
-        "target_qqq_pct": 0.70,
-        "target_qld_pct": 0.10,
-        "target_cash_pct": 0.20,
     }
     mock_result.deployment_action = {
-        "deploy_cash_amount": 1000.0,
         "deploy_mode": "FAST",
-        "reason": "available_new_cash=500.00;dca_multiplier=2.0",
+        "reason": "capitulation_fast",
     }
 
     print_signal(mock_result, use_color=False)
     captured = capsys.readouterr()
-    assert "QQQ BUY-SIGNAL MONITOR (v7.0)" in captured.out
-    assert "资产配置风险管理" in captured.out
-    assert "增量资金买入时机决策" in captured.out
-    assert "风险状态=RISK_NEUTRAL" in captured.out
-    assert "目标Beta: 1.00x" in captured.out
+    assert "QQQ BUY-SIGNAL MONITOR (v8.0)" in captured.out
+    assert "风险评估与目标 Beta" in captured.out
+    assert "增量入场节奏推荐" in captured.out
+    assert "Tier-0=NEUTRAL" in captured.out
+    assert "target_beta=1.00x" in captured.out
     assert "mode=FAST" in captured.out
+    assert "amount=" not in captured.out
 
 
 def test_cli_output_hides_default_portfolio_fallback(capsys):

@@ -9,3 +9,4 @@ class DeploymentState(str, Enum):
     DEPLOY_FAST = "DEPLOY_FAST"
     DEPLOY_PAUSE = "DEPLOY_PAUSE"
     DEPLOY_RECOVER = "DEPLOY_RECOVER"
+    DEPLOY_IDLE = "DEPLOY_IDLE"

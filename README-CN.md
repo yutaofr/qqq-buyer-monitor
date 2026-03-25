@@ -1,38 +1,78 @@
-# QQQ 买入信号与战略资产配置监控系统 (v6.4)
+# QQQ 买入信号与资产配置推荐监控系统 (v8.0)
 
-一个专为 QQQ ETF 设计的机构级市场监控系统，旨在为长期主权财富基金和养老基金的配置策略提供决策支持。v6.4 版本引入了 **个人资产配置搜索 (Personal Allocation Search)** 层。
+一个面向 QQQ/QLD/Cash 的生产级推荐引擎，基于 **v8.0 线性决策流水线架构**。
 
-## 🚀 v6.4 新特性：个人资产配置搜索
-继 v6.3 战略配置层之后，本版本将重点从机构镜像转向 **30% 个人回撤预算 (Personal Drawdown Budget)**：
-- **状态感知候选搜索 (State-Conditioned Candidate Search)：** 根据不同的 `AllocationState`（配置状态），动态评估获批的 QQQ/QLD/现金比例带。
-- **每日 T+0 风险再平衡：** 将每周现金流部署与每日风险对齐分离，确保贝塔保真度 (Beta Fidelity)。
-- **个人贝塔审计 (AC-4)：** 实现基于收益率的实际贝塔跟踪，全样本回测中的平均绝对偏差 (MAD) 仅为 **0.0069**。
-- **QLD 杠杆模拟：** 精确建模 ProShares Ultra QQQ (QLD)，包括符合 SRD 4.2 标准的每日费用率损耗。
-- **30% MDD 预算硬约束 (AC-5)：** 对不安全的候选配置进行硬过滤，并在必要时回退至 100% 现金。
+v8.0 明确了系统边界：
+- 只推荐 **组合级目标 Beta**
+- 只推荐 **增量资金入场节奏**
+- **不计算金额**
+- **不管理账户**
+- **不自动执行交易**
 
-## 📊 性能与韧性 (v6.4 回测)
-基于全周期历史模拟 (1999-2026)：
-- **MDD 优化：** 与纯 QQQ 定投 (DCA) 相比，个人配置方案将最大回撤 (MDD) 绝对值降低了 **5.0%**。
-- **防御覆盖：** 在全样本中保持了防御制度 (`CASH_FLIGHT` / `DELEVERAGE`) 的有效性，并在触发 AC-5 约束时表现出可靠的安全回退行为。
-- **统计优势：** 战术加仓信号触发后，T+60 的平均远期收益率保持为正。
+## 🚀 v8.0 核心变化：线性指令链
 
-## 🧭 推荐默认矩阵
-v6.4 系统使用以下默认的 `QQQ:QLD:Cash` 运营矩阵，同时允许运行时的选择器在 SRD 获批的比例带内进行搜索：
+### Tier-0 宏观结构层
+`assess_structural_regime()` 基于信用利差和 ERP 输出：
+`EUPHORIC | NEUTRAL | RICH_TIGHTENING | TRANSITION_STRESS | CRISIS`
 
-- `FAST_ACCUMULATE` (快速累积): `4:4:2`
-- `BASE_DCA` (基准定投): `6:1:3`
-- `SLOW_ACCUMULATE` (缓慢累积): `6:0:4`
-- `WATCH_DEFENSE` (防御观察): `7:0:3`
-- `DELEVERAGE` (去杠杆): `6:0:4`
-- `CASH_FLIGHT` (现金避险): `7:0:3` 或在硬约束触发时切换为 `100% Cash`
+其中：
+- 对 **Risk Controller** 是硬约束
+- 对 **Deployment Controller** 是软约束
+
+### Risk Controller
+基于 Class A 宏观特征和 Tier-0 regime，输出：
+- `risk_state`
+- `target_exposure_ceiling`
+- `target_cash_floor`
+- `tier0_applied`
+
+### Deployment Controller
+在 Tier-0 软约束下，输出增量资金部署节奏：
+`DEPLOY_IDLE | DEPLOY_SLOW | DEPLOY_BASE | DEPLOY_FAST | DEPLOY_PAUSE`
+
+关键语义：
+- `DEPLOY_IDLE`：没有新增资金
+- `RICH_TIGHTENING`：默认降速，但强超跌时允许提到 `DEPLOY_BASE`
+- `CRISIS`：增量部署完全暂停
+
+### Beta Recommendation
+`build_beta_recommendation()` 取代旧的金额执行接口。
+
+系统现在只输出：
+- `target_beta`
+- 推荐 `QQQ / QLD / Cash`
+- `should_adjust`
+- `adjustment_reason`
+
+## 📊 性能与韧性 (v8.0 回测)
+最新全样本回测（`docker compose run --rm backtest`，1999-2026）：
+- **策略最大回撤：** `-6.6%`
+- **Baseline DCA 最大回撤：** `-35.1%`
+- **MDD 改善：** 绝对改善 `28.6%`
+- **Realized Beta：** `0.04`
+- **Turnover Ratio：** `2.13`
+- **NAV Integrity：** `1.000000`
+- **RICH_TIGHTENING 左侧窗口：** `513`
+- **CRISIS 违规部署次数：** `0`
+
+## 🧭 认证候选参考 (v8.0)
+v8.0 运行时不再使用旧 `AllocationState` 默认矩阵，而是从认证注册表中选择：
+
+- `RISK_NEUTRAL`：`neutral-base-001`（`70/10/20`, beta `0.90`）或 `neutral-low-drift`（`80/5/15`, beta `0.90`）
+- `RISK_REDUCED`：`reduced-tight-001`（`30/0/70`, beta `0.30`）或 `reduced-base-001`（`50/0/50`, beta `0.50`）
+- `RISK_DEFENSE`：`defense-001`（`30/0/70`, beta `0.30`）
+- `RISK_EXIT`：若无合规候选，显式退回 `100% Cash`
 
 ## 🛠 核心层级 (Core Tiers)
 1.  **Tier 0 (宏观指挥官):** 监控信用加速、净流动性和融资压力。定义 **结构性制度 (Structural Regime)**。
 2.  **Tier 1 (战术情绪):** VIX Z-Score、恐慌与贪婪指数、多因子估值/价格背离分析。
 3.  **Tier 2 (市场结构):** 实时期权墙 (Put/Call Walls) 和 Gamma Flip 探测。
-4.  **战略层 (Strategic Layer):** 搜索获批的比例带并执行每日原子级再平衡。
+4.  **战略层 (Strategic Layer):** 加载认证候选，遵守 beta ceiling，并输出纯推荐结果。
 
-## 🧭 决策架构深度解析 (v6.4)
+## 🧭 决策架构深度解析 (历史 v6.4 附录)
+
+当前生效的是上面的 v8.0 线性流水线，以及 `docs/v8.0_linear_pipeline_*` 文档。
+下面的图保留为 pre-v8 版本的历史背景说明。
 
 系统作为一个 **多层确定性状态机** 运行，通过“宏观定调、战术择时、结构确认”的三层过滤机制，将复杂的海量指标解析为清晰的投资动作。
 
@@ -183,10 +223,11 @@ docker-compose run --rm backtest python scripts/stress_test_runner.py
 ```
 
 ## 📜 相关文档
-- [SRD v6.4: 个人资产配置](docs/v6.4_personal_allocation_srd.md)
-- [ADD v6.4: 个人资产配置实现方案](docs/v6.4_personal_allocation_add.md)
-- [配置官风格回测报告 (v6.4)](docs/backtest_report.md)
-- [架构设计文档 (v6.4)](docs/architecture.md)
+- [SRD v8.0：线性流水线](docs/v8.0_linear_pipeline_srd.md)
+- [ADD v8.0：实现方案](docs/v8.0_linear_pipeline_add.md)
+- [SDT v8.0：测试设计](docs/v8.0_linear_pipeline_sdt.md)
+- [架构对齐评审](docs/v8_architecture_review.md)
+- [回测报告](docs/backtest_report.md)
 
 ---
 *免责声明：本工具仅用于机构模拟和监控。不构成个人投资建议。*

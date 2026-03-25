@@ -1,6 +1,9 @@
 """
 v6.4 Personal Allocation Search: Generates SRD-approved QQQ:QLD:Cash candidates.
 """
+from __future__ import annotations
+
+from src.models.candidate import CertifiedCandidate
 from src.models import AllocationState, TargetAllocationState
 
 # SRD-defined Candidate Matrix (QQQ, QLD, Cash)
@@ -91,3 +94,31 @@ def find_best_allocation(state: AllocationState, scores: list[dict] = None) -> T
 
     sorted_scores = sorted(valid, key=sort_key)
     return sorted_scores[0]["candidate"]
+
+
+def find_best_allocation_v8(
+    max_beta_ceiling: float,
+    max_drawdown_budget: float = 0.30,
+    candidates: list[CertifiedCandidate] | None = None,
+) -> CertifiedCandidate | None:
+    """v8.0: select from certified candidates using pure mathematical constraints."""
+    if not candidates:
+        return None
+
+    valid = [
+        candidate for candidate in candidates
+        if candidate.target_effective_exposure <= max_beta_ceiling
+        and candidate.research_metrics.get("max_drawdown", 1.0) <= max_drawdown_budget
+    ]
+    if not valid:
+        return None
+
+    def sort_key(candidate: CertifiedCandidate) -> tuple[float, float, float]:
+        metrics = candidate.research_metrics
+        return (
+            -float(metrics.get("cagr", 0.0)),
+            float(metrics.get("max_drawdown", 1.0)),
+            float(metrics.get("mean_interval_beta_deviation", 1.0)),
+        )
+
+    return sorted(valid, key=sort_key)[0]

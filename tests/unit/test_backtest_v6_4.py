@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 from datetime import date, timedelta
 from src.backtest import Backtester, _safe_beta, run_backtest, simulate_leveraged_price
+from src.collector.historical_macro_seeder import HistoricalMacroSeeder
 from src.models import AllocationState, TargetAllocationState
 
 @pytest.fixture
@@ -178,3 +179,40 @@ def test_run_backtest_rejects_duplicate_effective_dates(monkeypatch, qqq_cache_f
 
     with pytest.raises(ValueError, match="Duplicate effective_date values"):
         run_backtest()
+
+
+def test_simulate_portfolio_v8_runtime_path_does_not_call_aggregate(monkeypatch):
+    dates = pd.date_range("2024-01-02", periods=6, freq="B")
+    prices = pd.Series([100.0, 95.0, 90.0, 88.0, 92.0, 94.0], index=dates)
+    ohlcv = pd.DataFrame({"Close": prices}, index=dates)
+    macro = pd.DataFrame(
+        {
+            "observation_date": [d.strftime("%Y-%m-%d") for d in dates],
+            "effective_date": [d.strftime("%Y-%m-%d") for d in dates],
+            "credit_spread_bps": [320.0] * len(dates),
+            "credit_acceleration_pct_10d": [0.0] * len(dates),
+            "real_yield_10y_pct": [1.25] * len(dates),
+            "net_liquidity_usd_bn": [250.0] * len(dates),
+            "liquidity_roc_pct_4w": [0.0] * len(dates),
+            "funding_stress_flag": [0] * len(dates),
+            "source_credit_spread": ["fred:BAMLH0A0HYM2"] * len(dates),
+            "source_real_yield": ["fred:DFII10"] * len(dates),
+            "source_net_liquidity": ["derived"] * len(dates),
+            "source_funding_stress": ["fred:NFCI"] * len(dates),
+            "build_version": ["v7.0-class-a-research-r1"] * len(dates),
+        }
+    )
+    seeder = HistoricalMacroSeeder(mock_df=macro)
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("aggregate should not be used by the v8 backtest path")
+
+    monkeypatch.setattr("src.backtest.aggregate", _boom)
+
+    summary = Backtester(initial_capital=10_000).simulate_portfolio(
+        ohlcv,
+        macro_seeder=seeder,
+        enable_dynamic_search=True,
+    )
+
+    assert {"tier0_regime", "risk_state", "deployment_state", "selected_candidate_id", "target_beta"} <= set(summary.daily_timeseries.columns)
