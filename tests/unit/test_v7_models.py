@@ -32,7 +32,14 @@ def test_risk_state_all_values():
 
 def test_deployment_state_all_values():
     values = {s.value for s in DeploymentState}
-    assert values == {"DEPLOY_BASE", "DEPLOY_SLOW", "DEPLOY_FAST", "DEPLOY_PAUSE", "DEPLOY_RECOVER"}
+    assert values == {
+        "DEPLOY_BASE",
+        "DEPLOY_SLOW",
+        "DEPLOY_FAST",
+        "DEPLOY_PAUSE",
+        "DEPLOY_RECOVER",
+        "DEPLOY_IDLE",
+    }
 
 
 def test_risk_and_deployment_states_are_independent_types():

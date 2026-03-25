@@ -311,6 +311,10 @@ class SignalResult:
     deployment_state: DeploymentState | None = None
     selected_candidate_id: str | None = None
     registry_version: str | None = None
+    tier0_regime: str | None = None
+    tier0_applied: bool = False
+    target_beta: float | None = None
+    should_adjust: bool | None = None
     rebalance_action: dict = field(default_factory=dict)
     deployment_action: dict = field(default_factory=dict)
     candidate_selection_audit: list[dict] = field(default_factory=list)

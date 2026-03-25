@@ -1,11 +1,14 @@
-"""TDD: Deployment Controller — all states and risk ceiling enforcement."""
+"""TDD: v8 deployment controller — tier-0 soft ceiling and idle semantics."""
+from __future__ import annotations
+
 from datetime import date
 
+import pytest
+
+from src.engine.deployment_controller import decide_deployment_state
 from src.engine.feature_pipeline import build_feature_snapshot
-from src.engine.deployment_controller import decide_deployment_state, DeploymentDecision
-from src.engine.risk_controller import RiskDecision
-from src.models.risk import RiskState
 from src.models.deployment import DeploymentState
+from src.models.risk import RiskDecision, RiskState
 
 
 def _snap(values: dict) -> object:
@@ -17,84 +20,129 @@ def _snap(values: dict) -> object:
 
 
 def _risk(state: RiskState, ceiling: float = 0.90, cash: float = 0.10) -> RiskDecision:
-    return RiskDecision(state, ceiling, cash, ())
+    return RiskDecision(state, ceiling, cash, (), False)
 
 
-# ── Task 7 ─────────────────────────────────────────────────────────────────────
-
-def test_deployment_fast_under_neutral_with_capitulation():
-    snap = _snap({"capitulation_score": 40, "tactical_stress_score": 20})
-    deploy = decide_deployment_state(snap, _risk(RiskState.RISK_NEUTRAL), available_new_cash=1000.0)
-    assert deploy.deployment_state == DeploymentState.DEPLOY_FAST
-    assert deploy.dca_multiplier == 2.0
-    assert deploy.pause_new_cash is False
-
-
-def test_deployment_fast_under_risk_on_with_capitulation():
-    snap = _snap({"capitulation_score": 50, "tactical_stress_score": 10})
-    deploy = decide_deployment_state(snap, _risk(RiskState.RISK_ON), available_new_cash=500.0)
-    assert deploy.deployment_state == DeploymentState.DEPLOY_FAST
-
-
-def test_deployment_base_under_clean_neutral():
+def test_deployment_returns_idle_when_no_new_cash():
     snap = _snap({"capitulation_score": 10, "tactical_stress_score": 20})
-    deploy = decide_deployment_state(snap, _risk(RiskState.RISK_NEUTRAL))
-    assert deploy.deployment_state == DeploymentState.DEPLOY_BASE
-    assert deploy.dca_multiplier == 1.0
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_NEUTRAL),
+        tier0_regime="NEUTRAL",
+        available_new_cash=0.0,
+    )
+    assert decision.deployment_state == DeploymentState.DEPLOY_IDLE
+    assert decision.dca_multiplier == 0.0
+    assert decision.pause_new_cash is False
+    assert decision.reasons[0]["rule"] == "no_deployment_budget"
 
 
-def test_deployment_slow_under_risk_reduced():
+def test_deployment_returns_idle_when_new_cash_is_negative():
     snap = _snap({"capitulation_score": 10, "tactical_stress_score": 20})
-    deploy = decide_deployment_state(snap, _risk(RiskState.RISK_REDUCED, 0.75, 0.25))
-    assert deploy.deployment_state == DeploymentState.DEPLOY_SLOW
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_NEUTRAL),
+        tier0_regime="NEUTRAL",
+        available_new_cash=-100.0,
+    )
+    assert decision.deployment_state == DeploymentState.DEPLOY_IDLE
+    assert decision.reasons[0]["rule"] == "no_deployment_budget"
 
 
-def test_deployment_has_reasons():
-    snap = _snap({"capitulation_score": 40, "tactical_stress_score": 20})
-    deploy = decide_deployment_state(snap, _risk(RiskState.RISK_NEUTRAL))
-    assert len(deploy.reasons) > 0
+def test_rich_tightening_defaults_to_slow_without_high_quality_capitulation():
+    snap = _snap({"capitulation_score": 20, "tactical_stress_score": 10})
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_REDUCED, 0.30, 0.70),
+        tier0_regime="RICH_TIGHTENING",
+        available_new_cash=1000.0,
+    )
+    assert decision.deployment_state == DeploymentState.DEPLOY_SLOW
+
+
+def test_rich_tightening_allows_base_when_capitulation_breaks_soft_ceiling():
+    snap = _snap({"capitulation_score": 70, "tactical_stress_score": 10})
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_REDUCED, 0.30, 0.70),
+        tier0_regime="RICH_TIGHTENING",
+        available_new_cash=1000.0,
+    )
+    assert decision.deployment_state == DeploymentState.DEPLOY_BASE
+
+
+def test_transition_stress_defaults_to_slow_without_override():
+    snap = _snap({"capitulation_score": 10, "tactical_stress_score": 10})
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_REDUCED, 0.50, 0.50),
+        tier0_regime="TRANSITION_STRESS",
+        available_new_cash=1000.0,
+    )
+    assert decision.deployment_state == DeploymentState.DEPLOY_SLOW
+
+
+def test_transition_stress_allows_base_when_capitulation_breaks_soft_ceiling():
+    snap = _snap({"capitulation_score": 70, "tactical_stress_score": 10})
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_REDUCED, 0.50, 0.50),
+        tier0_regime="TRANSITION_STRESS",
+        available_new_cash=1000.0,
+    )
+    assert decision.deployment_state == DeploymentState.DEPLOY_BASE
+
+
+def test_crisis_cannot_break_pause_even_with_extreme_capitulation():
+    snap = _snap({"capitulation_score": 90, "tactical_stress_score": 10})
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_EXIT, 0.0, 1.0),
+        tier0_regime="CRISIS",
+        available_new_cash=1000.0,
+    )
+    assert decision.deployment_state == DeploymentState.DEPLOY_PAUSE
+    assert decision.pause_new_cash is True
+
+
+def test_neutral_keeps_fast_path_available():
+    snap = _snap({"capitulation_score": 40, "tactical_stress_score": 10})
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_NEUTRAL),
+        tier0_regime="NEUTRAL",
+        available_new_cash=1000.0,
+    )
+    assert decision.deployment_state == DeploymentState.DEPLOY_FAST
+
+
+def test_euphoric_keeps_fast_path_available():
+    snap = _snap({"capitulation_score": 40, "tactical_stress_score": 10})
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_ON),
+        tier0_regime="EUPHORIC",
+        available_new_cash=1000.0,
+    )
+    assert decision.deployment_state == DeploymentState.DEPLOY_FAST
+
+
+def test_tier0_override_threshold_is_independent_from_fast_threshold():
+    module = __import__("src.engine.deployment_controller", fromlist=["_CAPITULATION_FAST_THRESHOLD"])
+    assert module._TIER0_CAPITULATION_OVERRIDE_THRESHOLD != module._CAPITULATION_FAST_THRESHOLD
+
+
+def test_deploy_idle_enum_exists():
+    assert DeploymentState.DEPLOY_IDLE.value == "DEPLOY_IDLE"
 
 
 def test_deployment_decision_is_immutable():
-    import pytest
-    snap = _snap({})
-    deploy = decide_deployment_state(snap, _risk(RiskState.RISK_NEUTRAL))
+    snap = _snap({"capitulation_score": 40, "tactical_stress_score": 10})
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_NEUTRAL),
+        tier0_regime="NEUTRAL",
+        available_new_cash=1000.0,
+    )
     with pytest.raises((TypeError, AttributeError)):
-        deploy.deployment_state = DeploymentState.DEPLOY_FAST  # type: ignore
-
-
-# ── Task 8 ─────────────────────────────────────────────────────────────────────
-
-def test_deployment_cannot_fast_under_defense():
-    snap = _snap({"capitulation_score": 50, "tactical_stress_score": 50})
-    deploy = decide_deployment_state(snap, _risk(RiskState.RISK_DEFENSE, 0.50, 0.50))
-    assert deploy.deployment_state != DeploymentState.DEPLOY_FAST
-    assert deploy.deployment_state == DeploymentState.DEPLOY_PAUSE
-
-
-def test_deployment_cannot_fast_under_exit():
-    snap = _snap({"capitulation_score": 80, "tactical_stress_score": 10})
-    deploy = decide_deployment_state(snap, _risk(RiskState.RISK_EXIT, 0.25, 0.75))
-    assert deploy.deployment_state == DeploymentState.DEPLOY_PAUSE
-    assert deploy.pause_new_cash is True
-
-
-def test_deployment_ceiling_enforced_on_risk_reduced():
-    """Under RISK_REDUCED, ceiling is DEPLOY_SLOW — FAST must not appear."""
-    snap = _snap({"capitulation_score": 60, "tactical_stress_score": 5})
-    deploy = decide_deployment_state(snap, _risk(RiskState.RISK_REDUCED, 0.75, 0.25))
-    assert deploy.deployment_state in {DeploymentState.DEPLOY_SLOW, DeploymentState.DEPLOY_BASE, DeploymentState.DEPLOY_PAUSE}
-    assert deploy.deployment_state != DeploymentState.DEPLOY_FAST
-
-
-def test_deployment_ceiling_reason_recorded():
-    snap = _snap({"capitulation_score": 50, "tactical_stress_score": 50})
-    deploy = decide_deployment_state(snap, _risk(RiskState.RISK_DEFENSE, 0.50, 0.50))
-    assert any("risk_ceiling" in str(r) for r in deploy.reasons)
-
-
-def test_deployment_high_stress_triggers_pause():
-    snap = _snap({"tactical_stress_score": 80, "capitulation_score": 10})
-    deploy = decide_deployment_state(snap, _risk(RiskState.RISK_NEUTRAL))
-    assert deploy.deployment_state == DeploymentState.DEPLOY_PAUSE
-    assert deploy.pause_new_cash is True
+        decision.deployment_state = DeploymentState.DEPLOY_FAST  # type: ignore[misc]

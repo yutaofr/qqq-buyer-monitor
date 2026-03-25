@@ -1,20 +1,9 @@
 """v7.0 Risk Controller — decides risk state from Class A macro features."""
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from src.engine.feature_pipeline import _CLASS_A, FeatureSnapshot
 from src.models import CurrentPortfolioState
-from src.models.risk import RiskState
-
-
-@dataclass(frozen=True)
-class RiskDecision:
-    """Output of the Risk Controller for one market day."""
-    risk_state: RiskState
-    target_exposure_ceiling: float   # max effective exposure allowed (e.g. 0.90)
-    target_cash_floor: float         # minimum cash allocation (e.g. 0.10)
-    reasons: tuple                   # immutable sequence of evidence dicts
+from src.models.risk import RiskDecision, RiskState
 
 
 # Risk threshold constants (Class A hard rules)
@@ -40,6 +29,7 @@ def _count_missing_class_a(snapshot: FeatureSnapshot) -> int:
 def decide_risk_state(
     snapshot: FeatureSnapshot,
     portfolio: CurrentPortfolioState,
+    tier0_regime: str = "NEUTRAL",
     drawdown_budget: float = 0.30,
 ) -> RiskDecision:
     """
@@ -55,6 +45,37 @@ def decide_risk_state(
     """
     v = snapshot.values
     reasons = []
+
+    # ── 0. Tier-0 hard constraint (v8.0) ────────────────────────────────────
+    if tier0_regime == "CRISIS":
+        reasons.append({"rule": "tier0_crisis", "tier0_regime": tier0_regime})
+        return RiskDecision(
+            risk_state=RiskState.RISK_EXIT,
+            target_exposure_ceiling=0.0,
+            target_cash_floor=1.0,
+            reasons=tuple(reasons),
+            tier0_applied=True,
+        )
+
+    if tier0_regime == "RICH_TIGHTENING":
+        reasons.append({"rule": "tier0_rich_tightening", "tier0_regime": tier0_regime})
+        return RiskDecision(
+            risk_state=RiskState.RISK_REDUCED,
+            target_exposure_ceiling=0.30,
+            target_cash_floor=0.70,
+            reasons=tuple(reasons),
+            tier0_applied=True,
+        )
+
+    if tier0_regime == "TRANSITION_STRESS":
+        reasons.append({"rule": "tier0_transition_stress", "tier0_regime": tier0_regime})
+        return RiskDecision(
+            risk_state=RiskState.RISK_DEFENSE,
+            target_exposure_ceiling=0.50,
+            target_cash_floor=0.50,
+            reasons=tuple(reasons),
+            tier0_applied=True,
+        )
 
     # ── 1. Missing Class A guard (SRD §8.2) ─────────────────────────────────
     n_missing = _count_missing_class_a(snapshot)

@@ -1,43 +1,85 @@
-# QQQ Buy-Signal & Strategic Allocation Monitor (v7.0)
+# QQQ Buy-Signal & Strategic Allocation Monitor (v8.0)
 
-A production-grade market monitoring system for QQQ ETF allocation, built around the **v7.0 Dual-Controller Architecture**. The system separates risk exposure management from new-cash deployment pace into two independent, auditable controllers.
+A production-grade QQQ/QLD/Cash recommendation engine built around the **v8.0 Linear Pipeline Architecture**.
 
-## 🚀 What's New in v7.0: Industrial Dual-Controller Architecture
+The system now has a strict boundary:
+- It recommends **target portfolio beta**.
+- It recommends **incremental cash deployment pace**.
+- It does **not** calculate dollar amounts.
+- It does **not** manage a wallet or execute trades.
+
+## v8.0 Architecture
+
+### Tier-0 Macro Regime
+`assess_structural_regime()` classifies the structural regime from credit spreads and ERP:
+`EUPHORIC | NEUTRAL | RICH_TIGHTENING | TRANSITION_STRESS | CRISIS`.
+
+Tier-0 is the top-level constraint:
+- Hard constraint on the **Risk Controller** beta ceiling.
+- Soft constraint on the **Deployment Controller** pace.
 
 ### Risk Controller
-Determines the target equity exposure and re-balance trigger from **Class A macro data** (credit spreads, liquidity, funding stress, real yields). Outputs one of 5 risk states: `RISK_ON → RISK_EXIT`. Only Class A data is decision-critical — Class B/C data cannot influence risk state.
+Determines the allowed exposure ceiling from **Class A macro data** plus the Tier-0 regime.
+Outputs `RiskDecision` with:
+- `risk_state`
+- `target_exposure_ceiling`
+- `target_cash_floor`
+- `tier0_applied`
 
 ### Deployment Controller
-Decides how to deploy **new incoming cash** independently of the re-balance decision. Outputs one of 5 deployment paces: `DEPLOY_BASE → DEPLOY_PAUSE`. Cannot exceed the exposure ceiling set by the Risk Controller.
+Determines how to deploy **new incoming cash** under Tier-0 soft ceilings.
+Outputs one of:
+`DEPLOY_IDLE | DEPLOY_SLOW | DEPLOY_BASE | DEPLOY_FAST | DEPLOY_PAUSE`.
 
-### Key Architecture Changes vs v6.x
-- **Offline Certification:** Candidates are certified offline (`src/research/certifier.py`), versioned in a `CandidateRegistry` JSON, and selected deterministically at runtime (no live mini-backtest).
-- **Band-Triggered Rebalance:** Positions are only adjusted when drift exceeds a configurable band or risk state changes. No unconditional daily full re-balance.
-- **Explicit Degraded Mode:** Missing registry → `logic_trace` records `registry_missing`, system stays on v6 allocation. No silent fallback to live search.
+Key v8.0 semantics:
+- `DEPLOY_IDLE` means there is no new cash to deploy.
+- `RICH_TIGHTENING` slows default deployment but still allows left-side entry when capitulation is strong.
+- `CRISIS` fully pauses incremental deployment.
 
-## 📊 Performance & Resilience (v6.4 Backtest)
-Based on full-cycle historical simulations (1999-2026):
-- **MDD Improvement:** Personal allocation reduced Maximum Drawdown by **5.0% (absolute)** compared to pure QQQ DCA.
-- **Defense Coverage:** Maintained defensive regimes (`CASH_FLIGHT` / `DELEVERAGE`) across the full sample, with hard-gated safe fallback behavior when needed.
-- **Statistical Edge:** Average T+60 forward returns remain positive after tactical add signals.
+### Beta Recommendation
+`build_beta_recommendation()` replaces the old amount-based execution surface.
 
-## 🧭 Recommended Default Matrix
-The v6.4 system uses the following default `QQQ:QLD:Cash` operating matrix, while still allowing the runtime selector to search within the SRD-approved band:
+The output is recommendation-only:
+- `target_beta`
+- recommended `QQQ / QLD / Cash`
+- `should_adjust`
+- `adjustment_reason`
 
-- `FAST_ACCUMULATE`: `4:4:2`
-- `BASE_DCA`: `6:1:3`
-- `SLOW_ACCUMULATE`: `6:0:4`
-- `WATCH_DEFENSE`: `7:0:3`
-- `DELEVERAGE`: `6:0:4`
-- `CASH_FLIGHT`: `7:0:3` or `100% Cash` in hard-gate rejection
+## Key Changes vs v7.0
+- **Linear pipeline:** `Tier-0 → Risk → Search → Recommend`
+- **No amount output:** removed `build_execution_actions()` and all dollar deployment calculations
+- **Tier-0 hard/soft constraints:** structural regime now directly shapes both stock beta and cash deployment pace
+- **Pure math candidate search:** v8 selection respects `max_beta_ceiling` and drawdown budget before recommendation
+
+## 📊 Performance & Resilience (v8.0 Backtest)
+Latest full-sample backtest (`docker compose run --rm backtest`, 1999-2026):
+- **Tactical Max Drawdown:** `-6.6%`
+- **Baseline DCA Max Drawdown:** `-35.1%`
+- **MDD Improvement:** `28.6%` absolute improvement
+- **Realized Beta:** `0.04`
+- **Turnover Ratio:** `2.13`
+- **NAV Integrity:** `1.000000`
+- **Left-side windows preserved:** `RICH_TIGHTENING left-side windows = 513`
+- **CRISIS deployment breaches:** `0`
+
+## 🧭 Certified Candidate Reference (v8.0)
+v8.0 no longer uses the old `AllocationState` operating matrix at runtime. It selects from the certified registry:
+
+- `RISK_NEUTRAL`: `neutral-base-001` (`70/10/20`, beta `0.90`) or `neutral-low-drift` (`80/5/15`, beta `0.90`)
+- `RISK_REDUCED`: `reduced-tight-001` (`30/0/70`, beta `0.30`) or `reduced-base-001` (`50/0/50`, beta `0.50`)
+- `RISK_DEFENSE`: `defense-001` (`30/0/70`, beta `0.30`)
+- `RISK_EXIT`: explicit `100% Cash` fallback when no compliant candidate survives the beta ceiling
 
 ## 🛠 Core Tiers
 1.  **Tier 0 (Macro Commander):** Monitors Credit Acceleration, Net Liquidity, and Funding Stress. Defines the **Structural Regime**.
 2.  **Tier 1 (Tactical Sentiment):** VIX Z-Scores, Fear & Greed, and multi-factor valuation/price divergences.
 3.  **Tier 2 (Market Structure):** Real-time Options Walls (Put/Call Walls) and Gamma Flip detection.
-4.  **Strategic Layer:** Search the approved `QQQ:QLD:Cash` bands and execute daily atomic rebalancing.
+4.  **Strategic Layer:** Load certified candidates, respect the beta ceiling, and emit recommendation-only outputs.
 
-## 🧭 Decision Architecture (v6.4)
+## 🧭 Decision Architecture (Historical v6.4 Appendix)
+
+The current production architecture is the v8.0 linear pipeline documented above and in `docs/v8.0_linear_pipeline_*`.
+The diagram below is retained only as legacy background for the pre-v8 multi-tier state-machine implementation.
 
 The system operates as a **Multi-Tiered Deterministic State Machine**, where high-order macroeconomic "Structural" states act as constraints on lower-order "Tactical" states, eventually resolving into an optimized asset allocation through a filtered search space.
 
@@ -167,10 +209,11 @@ docker-compose run --rm backtest python scripts/stress_test_runner.py
 ```
 
 ## 📜 Documentation
-- [SRD v6.4: Personal Allocation](docs/v6.4_personal_allocation_srd.md)
-- [ADD v6.4: Personal Allocation Implementation](docs/v6.4_personal_allocation_add.md)
-- [Allocator-Style Backtest Report (v6.4)](docs/backtest_report.md)
-- [Architecture Design Document (v6.4)](docs/architecture.md)
+- [SRD v8.0: Linear Pipeline](docs/v8.0_linear_pipeline_srd.md)
+- [ADD v8.0: Implementation Design](docs/v8.0_linear_pipeline_add.md)
+- [SDT v8.0: Test Design](docs/v8.0_linear_pipeline_sdt.md)
+- [Architecture Review: SRD vs ADD](docs/v8_architecture_review.md)
+- [Allocator-Style Backtest Report](docs/backtest_report.md)
 
 ---
 *Disclaimer: This tool is for institutional simulation and monitoring purposes. Not individual investment advice.*

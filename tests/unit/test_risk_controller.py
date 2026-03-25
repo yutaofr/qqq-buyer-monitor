@@ -179,3 +179,112 @@ def test_risk_controller_absent_class_a_features_degrade():
     decision = decide_risk_state(snap, CurrentPortfolioState(), drawdown_budget=0.30)
     assert decision.risk_state in {RiskState.RISK_REDUCED, RiskState.RISK_DEFENSE, RiskState.RISK_EXIT}
     assert any("class_a_missing" in str(r) for r in decision.reasons)
+
+
+# ── v8.0 Tier-0 Hard Constraint ──────────────────────────────────────────────
+
+def test_risk_controller_crisis_forces_exit_even_when_micro_is_clean():
+    snap = _snap({
+        "credit_spread": 300.0,
+        "credit_acceleration": 0.0,
+        "liquidity_roc": 1.0,
+        "funding_stress": False,
+    })
+    decision = decide_risk_state(
+        snap,
+        CurrentPortfolioState(),
+        tier0_regime="CRISIS",
+        drawdown_budget=0.30,
+    )
+    assert decision.risk_state == RiskState.RISK_EXIT
+    assert decision.target_exposure_ceiling == 0.0
+    assert decision.target_cash_floor == 1.0
+    assert decision.tier0_applied is True
+
+
+def test_risk_controller_rich_tightening_caps_ceiling_at_thirty_percent():
+    snap = _snap({"credit_spread": 300.0, "funding_stress": False})
+    decision = decide_risk_state(
+        snap,
+        CurrentPortfolioState(),
+        tier0_regime="RICH_TIGHTENING",
+        drawdown_budget=0.30,
+    )
+    assert decision.risk_state == RiskState.RISK_REDUCED
+    assert decision.target_exposure_ceiling <= 0.30
+    assert decision.tier0_applied is True
+
+
+def test_risk_controller_transition_stress_forces_defense():
+    snap = _snap({"credit_spread": 300.0, "funding_stress": False})
+    decision = decide_risk_state(
+        snap,
+        CurrentPortfolioState(),
+        tier0_regime="TRANSITION_STRESS",
+        drawdown_budget=0.30,
+    )
+    assert decision.risk_state == RiskState.RISK_DEFENSE
+    assert decision.target_exposure_ceiling == 0.50
+    assert decision.tier0_applied is True
+
+
+def test_risk_controller_neutral_tier0_preserves_v7_clean_behavior():
+    snap = _snap({
+        "credit_spread": 300.0,
+        "credit_acceleration": 2.0,
+        "liquidity_roc": 1.0,
+        "funding_stress": False,
+    })
+    decision = decide_risk_state(
+        snap,
+        CurrentPortfolioState(),
+        tier0_regime="NEUTRAL",
+        drawdown_budget=0.30,
+    )
+    assert decision.risk_state == RiskState.RISK_NEUTRAL
+    assert decision.target_exposure_ceiling == 0.90
+    assert decision.tier0_applied is False
+
+
+def test_risk_controller_tier0_applied_flag_matches_regime():
+    snap = _snap({"credit_spread": 300.0, "funding_stress": False})
+    expected = {
+        "CRISIS": True,
+        "RICH_TIGHTENING": True,
+        "TRANSITION_STRESS": True,
+        "NEUTRAL": False,
+        "EUPHORIC": False,
+    }
+    for regime, applied in expected.items():
+        decision = decide_risk_state(snap, CurrentPortfolioState(), tier0_regime=regime)
+        assert decision.tier0_applied is applied
+
+
+def test_risk_controller_tier0_crisis_overrides_micro_triple_stress_path():
+    snap = _snap({
+        "credit_acceleration": 20.0,
+        "liquidity_roc": -5.0,
+        "funding_stress": True,
+    })
+    decision = decide_risk_state(
+        snap,
+        CurrentPortfolioState(),
+        tier0_regime="CRISIS",
+        drawdown_budget=0.30,
+    )
+    assert decision.risk_state == RiskState.RISK_EXIT
+    assert decision.target_exposure_ceiling == 0.0
+    assert decision.tier0_applied is True
+
+
+def test_risk_decision_v8_tier0_field_is_immutable():
+    import pytest
+
+    snap = _snap({"credit_spread": 300.0})
+    decision = decide_risk_state(
+        snap,
+        CurrentPortfolioState(),
+        tier0_regime="RICH_TIGHTENING",
+    )
+    with pytest.raises((TypeError, AttributeError)):
+        decision.tier0_applied = False  # type: ignore[misc]

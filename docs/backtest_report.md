@@ -1,36 +1,61 @@
-# Allocator-Style Backtest Report (v6.4)
+# Linear Pipeline Backtest Report (v8.0)
 
-本報告記錄了 v6.4 個人資產配置引擎在 1999-2026 全樣本下的表現。系統已成功通過 AC-3、AC-4、AC-5 全量審計，並驗證了 **Faithful Rolling Search (忠實滾動搜索)** 策略。
+本报告记录 v8.0 线性决策流水线在 1999-2026 全样本上的回测结果。
+执行命令：
 
-## 核心指標 (SSoT - 2026-03-23)
+```bash
+docker compose run --rm backtest
+```
 
-| 指標 | v6.4 表現 | 狀態 | 備註 |
+执行日期：`2026-03-25`
+
+## 核心指标
+
+| 指标 | v8.0 表现 | 状态 | 说明 |
 | :--- | :--- | :--- | :--- |
-| **Beta Fidelity (AC-4)** | **0.0101** | ✅ PASS | 滾動搜索模式下的均值偏差，遠優於 0.05 閘門 |
-| **MDD Budget (AC-5)** | **Strict** | ✅ PASS | 強制執行 30% 回撤預算，違規時進入 **100% Cash** 模式 |
-| **NAV Integrity (AC-3)**| **1.000000** | ✅ PASS | **獨立賬本重放審計**，資產一致性完美 |
-| **Cost Improvement** | **-14.7%** | ✅ PASS | 相對 Baseline Weekly DCA 的平均成本改善 |
-| **Turnover Ratio** | **16.14** | — | 滾動再平衡與動態帶切換導致的年化周轉率 |
+| Tactical Max Drawdown | `-6.6%` | ✅ PASS | 明显低于 `30%` 风险预算 |
+| Baseline DCA Max Drawdown | `-35.1%` | — | 对照组 |
+| MDD Improvement | `28.6%` | ✅ PASS | 相对 Baseline DCA 的绝对改善 |
+| Realized Beta | `0.04` | ✅ PASS | staged deployment + risk ceiling 后的全样本实现 beta |
+| Mean Interval Beta Deviation | `0.0004` | ✅ PASS | AC-4 保真度通过 |
+| NAV Integrity | `1.000000` | ✅ PASS | 独立重放一致 |
+| Turnover Ratio | `2.13` | ✅ PASS | 显著低于旧版滚动搜索路径 |
+| RICH_TIGHTENING left-side windows | `513` | ✅ PASS | 证明软约束没有锁死左侧入场 |
+| CRISIS deployment breaches | `0` | ✅ PASS | 危机窗口没有高于 `DEPLOY_PAUSE` 的部署状态 |
 
-## 2. 審計細節
+## 结果解读
 
-### 2.1 滾動動態搜索 (Rolling Oracle)
-v6.4 徹底消除了「看回偏見（Look-ahead bias）」。系統在每個定投日僅利用當前日期之前的 504 天歷史數據對候選比例帶進行重評分。
-- **验证結論**: 在 2000 年與 2008 年極端行情期間，系統通過 AC-5 硬門檻自動觸發了 **Global Safe Fallback**，將目標 Beta 壓制到近乎為 0，成功守住了 30% 的核心回撤預算。
+### 1. 回撤预算已满足
 
-### 2.2 淨值完整度 (AC-3 Ledger Replay)
-系統通過獨立的 `_replay_and_verify_nav` 方法，從空白賬本開始重新模擬整個持倉路徑進行交叉驗證。
-- **结果**: Replay Integrity = 1.000000，證明了持倉、現金流與淨值計算在數學上的絕對嚴謹性。
+v8.0 的 staged deployment 与 Tier-0 / Risk / Deployment 三段式约束已经把全样本最大回撤压到 `-6.6%`。
+这满足了 SDT 中 `TC-BT-003` 对 `MDD <= 30%` 的要求。
 
-### 2.3 貝塔保真度 (AC-4 Audit)
-- **Mean Deviation**: 0.0101
-- **Coverage**: 覆蓋全樣本所有狀態區間，包括早期薄窗口。
+### 2. 左侧窗口被保留
 
-## 3. 性能與穩健性
-- **$O(N)$ 線性擴展**: 全樣本滾動搜索回測在 20 秒內完成。
-- **環境適應性**: 具備多進程並行（ProcessPool）到多線程（ThreadPool）的自動回退能力，確保在受限環境中依然穩定。
+`RICH_TIGHTENING left-side windows = 513`，说明在宏观偏紧阶段，只要价格超跌足够深，部署速度仍可从默认 `DEPLOY_SLOW` 提升到 `DEPLOY_BASE`。
+这满足 `TC-BT-001 / AC-15`。
 
-## 4. 結論
-v6.4 證明了即使在加入複雜的滾動優化與極其嚴苛的風險約束後，系統依然能保持極高的運行效率與執行保真度。當前的分配策略成功平衡了「回撤預算」與「長期複利」，是目前最穩健的個人配置版本。
+### 3. 危机窗口被锁死
 
-更重要的是，這個版本保留了左側買點的進攻性，但把 30% 最大回撤预算作為硬約束，形成「成長優先、風控兜底」的可執行平衡。
+`CRISIS deployment breaches = 0`，说明在 Tier-0=`CRISIS` 时，系统没有出现任何 `DEPLOY_SLOW / BASE / RECOVER / FAST` 的违规部署状态。
+这满足 `TC-BT-002 / AC-13`。
+
+### 4. 回测实现已与生产架构对齐
+
+回测主路径已经不再依赖 v6.4 的 nested mini-backtest / rolling oracle。
+当前逻辑与生产一致：
+
+```text
+Tier-0 -> Risk Controller -> Candidate Registry -> Beta Recommendation
+                    \
+                     -> Deployment Controller
+```
+
+## 结论
+
+v8.0 回测已通过：
+
+- spec compliance
+- architecture 对齐
+- AC-13 / AC-15 / AC-16 / AC-17 / AC-19 相关回测验证
+- 全样本 `MDD <= 30%`
