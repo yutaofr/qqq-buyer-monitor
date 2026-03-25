@@ -2,13 +2,20 @@
 from __future__ import annotations
 
 import os
-import numpy as np
 from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
 from typing import Optional
 
+import numpy as np
 import pandas as pd
+
+from src.models.audit import DecisionAudit
+from src.models.candidate import CandidateRegistry, CertifiedCandidate
+from src.models.deployment import DeploymentState
+
+# v7.0 state models (imported here for re-export convenience)
+from src.models.risk import RiskState
 
 
 class Signal(str, Enum):
@@ -37,6 +44,7 @@ class CurrentPortfolioState:
     current_cash_pct: float = 1.0
     qqq_pct: float = 0.0
     qld_pct: float = 0.0
+    rolling_drawdown: float | None = None
     leverage_ratio: float = 1.0
     gross_exposure_pct: float = 0.0
     net_exposure_pct: float = 0.0
@@ -51,12 +59,22 @@ class CurrentPortfolioState:
         v6.3.8 Defensive Input Protocol: 
         Parses CASH_LEVEL, QQQ_LEVEL, QLD_LEVEL from env with normalization.
         """
+        def _env_float(name: str, default: float | None = None) -> float | None:
+            raw = os.environ.get(name)
+            if raw is None:
+                return default
+            try:
+                return float(raw)
+            except (ValueError, TypeError):
+                return default
+
         try:
             raw_c = float(os.environ.get("CASH_LEVEL", "0.0"))
             raw_q = float(os.environ.get("QQQ_LEVEL", "0.0"))
             raw_l = float(os.environ.get("QLD_LEVEL", "0.0"))
         except (ValueError, TypeError):
             raw_c, raw_q, raw_l = 0.0, 0.0, 0.0
+        raw_drawdown = _env_float("PORTFOLIO_ROLLING_DRAWDOWN", None)
 
         # Legality Clipping (max(0, v))
         vals = np.array([max(0.0, raw_c), max(0.0, raw_q), max(0.0, raw_l)])
@@ -65,23 +83,25 @@ class CurrentPortfolioState:
         # Safe Fallback (AC-1)
         if s <= 0 or not np.isfinite(s):
             return CurrentPortfolioState(
-                current_cash_pct=1.0, 
-                qqq_pct=0.0, 
+                current_cash_pct=1.0,
+                qqq_pct=0.0,
                 qld_pct=0.0,
+                rolling_drawdown=raw_drawdown,
                 gross_exposure_pct=0.0
             )
 
         # Normalization
         norm_vals = vals / s
-        c, q, l = norm_vals[0], norm_vals[1], norm_vals[2]
-        
+        cash, qqq, qld = norm_vals[0], norm_vals[1], norm_vals[2]
+
         # Effective Exposure = QQQ% + 2 * QLD%
-        exposure = q + 2.0 * l
-        
+        exposure = qqq + 2.0 * qld
+
         return CurrentPortfolioState(
-            current_cash_pct=float(c),
-            qqq_pct=float(q),
-            qld_pct=float(l),
+            current_cash_pct=float(cash),
+            qqq_pct=float(qqq),
+            qld_pct=float(qld),
+            rolling_drawdown=raw_drawdown,
             gross_exposure_pct=float(exposure),
             net_exposure_pct=float(exposure),
             leverage_ratio=float(exposure) if exposure > 1.0 else 1.0
@@ -142,32 +162,32 @@ class MarketData:
     pct_above_50d: float  # Fraction of NYSE stocks above 50-day MA (0-1)
     ndx_concentration: float = 0.0  # Spread between QQQ and QQEW 50d dev
     # v5.0 Performance & Flow
-    days_since_52w_high: Optional[int] = None
-    short_vol_ratio: Optional[float] = None # FINRA Institutional Proxy
+    days_since_52w_high: int | None = None
+    short_vol_ratio: float | None = None # FINRA Institutional Proxy
     # v3.0 Macro & Fundamentals
-    credit_spread: Optional[float] = None
-    trailing_pe: Optional[float] = None
-    forward_pe: Optional[float] = None
-    real_yield: Optional[float] = None
-    fcf_yield: Optional[float] = None
-    earnings_revisions_breadth: Optional[float] = None
+    credit_spread: float | None = None
+    trailing_pe: float | None = None
+    forward_pe: float | None = None
+    real_yield: float | None = None
+    fcf_yield: float | None = None
+    earnings_revisions_breadth: float | None = None
     pe_source: str = "yfinance"
-    options_df: Optional[pd.DataFrame] = field(default=None, repr=False)
+    options_df: pd.DataFrame | None = field(default=None, repr=False)
     # v2.0 Divergence historical data (prices, vix, breadth)
-    history_window: Optional[pd.DataFrame] = field(default=None, repr=False)
-    
+    history_window: pd.DataFrame | None = field(default=None, repr=False)
+
     # v4.0 Adaptive Z-Scores
     vix_zscore: float = 0.0
     drawdown_zscore: float = 0.0
-    
+
     # v4.0 Phase 2 Macro Gravity
-    net_liquidity: Optional[float] = None
-    liquidity_roc: Optional[float] = None
-    move_index: Optional[float] = None
-    
+    net_liquidity: float | None = None
+    liquidity_roc: float | None = None
+    move_index: float | None = None
+
     # v4.0 Phase 3: Volatility & Sentiment Extremes
-    ohlcv_history: Optional[pd.DataFrame] = field(default=None, repr=False)
-    sector_rotation: Optional[float] = None
+    ohlcv_history: pd.DataFrame | None = field(default=None, repr=False)
+    sector_rotation: float | None = None
 
 
 @dataclass
@@ -197,38 +217,38 @@ class Tier1Result:
     stress_score: int = 0
     capitulation_score: int = 0
     persistence_score: int = 0
-    
+
     # v3.0 Valuation & FCF
     valuation_bonus: int = 0
     fcf_bonus: int = 0
     short_flow_bonus: int = 0
-    trailing_pe: Optional[float] = None
-    forward_pe: Optional[float] = None
-    fcf_yield: Optional[float] = None
-    real_yield: Optional[float] = None
+    trailing_pe: float | None = None
+    forward_pe: float | None = None
+    fcf_yield: float | None = None
+    real_yield: float | None = None
     pe_source: str = "yfinance"
-    
+
     # NDX Internal Breadth
     ndx_concentration: float = 0.0
     concentration_penalty: int = 0
-    
+
     # v2.0 Divergence additions
     divergence_bonus: int = 0
     divergence_flags: dict = field(default_factory=dict)
-    
+
     # v4.0 Z-Scores
     vix_zscore: float = 0.0
     drawdown_zscore: float = 0.0
-    
+
     # v4.0 Phase 2 Macro Gravity
-    net_liquidity: Optional[float] = None
-    liquidity_roc: Optional[float] = None
-    move_index: Optional[float] = None
+    net_liquidity: float | None = None
+    liquidity_roc: float | None = None
+    move_index: float | None = None
     market_regime: str = "NORMAL"
-    sector_rotation: Optional[float] = None
+    sector_rotation: float | None = None
     # v5.0 Analytics
-    descent_velocity: Optional[str] = None # "PANIC", "GRIND", "NORMAL"
-    short_vol_rank: Optional[float] = None
+    descent_velocity: str | None = None # "PANIC", "GRIND", "NORMAL"
+    short_vol_rank: float | None = None
 
 
 @dataclass
@@ -236,9 +256,9 @@ class Tier2Result:
     """Result from Tier-2 options wall engine."""
 
     adjustment: int  # -40 to +30
-    put_wall: Optional[float]  # strike price
-    call_wall: Optional[float]  # strike price
-    gamma_flip: Optional[float]  # price level
+    put_wall: float | None  # strike price
+    call_wall: float | None  # strike price
+    gamma_flip: float | None  # price level
     # Flags
     support_confirmed: bool
     support_broken: bool
@@ -246,12 +266,12 @@ class Tier2Result:
     gamma_positive: bool
     gamma_source: str  # 'yfinance' or 'bs' (Black-Scholes)
     # Distance metrics (pct from current price)
-    put_wall_distance_pct: Optional[float]
-    call_wall_distance_pct: Optional[float]
-    next_put_wall: Optional[float] = None
-    next_put_wall_distance_pct: Optional[float] = None
+    put_wall_distance_pct: float | None
+    call_wall_distance_pct: float | None
+    next_put_wall: float | None = None
+    next_put_wall_distance_pct: float | None = None
     overlay: OptionsOverlay = field(default_factory=OptionsOverlay)
-    poc: Optional[float] = None  # v6.0 Volume POC price level
+    poc: float | None = None  # v6.0 Volume POC price level
 
 
 @dataclass
@@ -266,9 +286,9 @@ class SignalResult:
     tier2: Tier2Result
     explanation: str
     pe_source: str = "yfinance"
-    
+
     # 2026-03 v3.0 logic extensions
-    erp: Optional[float] = None
+    erp: float | None = None
 
     # 2026-03 allocation-oriented output surface
     allocation_state: AllocationState = AllocationState.BASE_DCA
@@ -279,18 +299,27 @@ class SignalResult:
     confidence: str = "medium"
     data_quality: dict = field(default_factory=dict)
     logic_trace: list[dict] = field(default_factory=list)  # v6.1 Decision evidence chain
-    
+
     # v6.3 Strategic Architecture (Split Reality from Ideal)
     current_portfolio: CurrentPortfolioState = field(default_factory=CurrentPortfolioState)
     target_allocation: TargetAllocationState = field(default_factory=TargetAllocationState)
     effective_exposure: float = 0.0
     interval_beta_audit: list[dict] = field(default_factory=list)
-    
+
+    # v7.0 Dual-Controller fields (all optional for backward compatibility)
+    risk_state: RiskState | None = None
+    deployment_state: DeploymentState | None = None
+    selected_candidate_id: str | None = None
+    registry_version: str | None = None
+    rebalance_action: dict = field(default_factory=dict)
+    deployment_action: dict = field(default_factory=dict)
+    candidate_selection_audit: list[dict] = field(default_factory=list)
+
     # Deprecated fields (kept for db migration bridge)
     @property
     def portfolio(self) -> CurrentPortfolioState:
         return self.current_portfolio
-    
+
     @property
     def target_cash_pct(self) -> float:
         return self.target_allocation.target_cash_pct

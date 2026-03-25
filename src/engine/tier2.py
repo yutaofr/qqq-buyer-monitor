@@ -11,6 +11,7 @@ Then applies confirmation / overlay rules per PRD section 4.2.
 from __future__ import annotations
 
 import logging
+
 import pandas as pd
 
 from src.models import OptionsOverlay, Tier2Result
@@ -33,7 +34,7 @@ SCORE_NEGATIVE_GAMMA_BROKEN = -10  # extra penalty: negative gamma AND support b
 SCORE_POC_SUPPORT = 10             # v6.0 POC support bonus
 
 def calculate_tier2(
-    price: float, 
+    price: float,
     options_df: pd.DataFrame | None,
     ohlcv_history: pd.DataFrame | None = None
 ) -> Tier2Result:
@@ -52,8 +53,8 @@ def calculate_tier2(
     gamma_flip = _find_gamma_flip(options_df, price)
 
     result = evaluate_tier2_rules(
-        price, put_wall, call_wall, gamma_flip, 
-        options_df=options_df, 
+        price, put_wall, call_wall, gamma_flip,
+        options_df=options_df,
         gamma_source=gamma_source,
         ohlcv_history=ohlcv_history
     )
@@ -99,7 +100,7 @@ def evaluate_tier2_rules(
             alt_call_wall = None
             if options_df is not None:
                 alt_call_wall = _find_next_wall_above(options_df, "call", price)
-            
+
             if alt_call_wall is not None:
                 dist = (alt_call_wall - price) / price
                 if dist >= UPSIDE_MIN_PCT:
@@ -168,8 +169,6 @@ def evaluate_tier2_rules(
         next_put_wall_distance_pct=round(next_put_wall_distance_pct, 4) if next_put_wall_distance_pct is not None else None,
         overlay=overlay,
     )
-    return result
-
 
 def _find_wall(df: pd.DataFrame, option_type: str) -> float | None:
     """Return the strike with the highest Open Interest for the given side."""
@@ -289,7 +288,7 @@ def _evaluate_poc_only(price: float, ohlcv_history: pd.DataFrame | None) -> Tier
     adjustment = 0
     support_confirmed = False
     poc_val = None
-    
+
     if ohlcv_history is not None and not ohlcv_history.empty:
         vp_hist = ohlcv_history.tail(252)
         poc_val = calculate_volume_poc(vp_hist)
@@ -299,7 +298,7 @@ def _evaluate_poc_only(price: float, ohlcv_history: pd.DataFrame | None) -> Tier
                 logger.info("v6.0 FALLBACK POC SUPPORT: Price within 2%% of POC ($%.2f)", poc_val)
                 adjustment += SCORE_POC_SUPPORT
                 support_confirmed = True
-                
+
     result = _neutral_result()
     result.adjustment = adjustment
     result.support_confirmed = support_confirmed

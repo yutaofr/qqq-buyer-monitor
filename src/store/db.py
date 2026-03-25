@@ -43,6 +43,14 @@ CREATE TABLE IF NOT EXISTS macro_states (
 );
 """
 
+CREATE_RUNTIME_INPUTS_SQL = """
+CREATE TABLE IF NOT EXISTS runtime_inputs (
+    date TEXT PRIMARY KEY,
+    available_new_cash REAL,
+    rolling_drawdown REAL
+);
+"""
+
 def init_db(path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     """Initialise (or open) the SQLite database and create the table."""
     db_path = Path(path)
@@ -50,6 +58,7 @@ def init_db(path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.execute(CREATE_TABLE_SQL)
     conn.execute(CREATE_MACRO_TABLE_SQL)
+    conn.execute(CREATE_RUNTIME_INPUTS_SQL)
     
     # v3.0 migrations for existing DB
     for col in ["forward_pe", "real_yield", "fcf_yield", "earnings_revisions_breadth"]:
@@ -91,7 +100,7 @@ def save_signal(result: SignalResult, path: str = DEFAULT_DB_PATH) -> None:
 
 
 def _migrate_blob(blob: dict) -> dict:
-    """Lazy migration for historical JSON blobs to ensure v6.3 compatibility."""
+    """Lazy migration for historical JSON blobs to ensure v6.3/v7.0 compatibility."""
     # Ensure current_portfolio exists
     if "current_portfolio" not in blob:
         old_p = blob.get("portfolio", {})
@@ -116,6 +125,15 @@ def _migrate_blob(blob: dict) -> dict:
     
     if "interval_beta_audit" not in blob:
         blob["interval_beta_audit"] = []
+
+    # v7.0 field migration — null defaults for old records
+    blob.setdefault("risk_state", None)
+    blob.setdefault("deployment_state", None)
+    blob.setdefault("selected_candidate_id", None)
+    blob.setdefault("registry_version", None)
+    blob.setdefault("rebalance_action", {})
+    blob.setdefault("deployment_action", {})
+    blob.setdefault("candidate_selection_audit", [])
         
     return blob
 
@@ -235,6 +253,68 @@ def load_latest_macro_state(path: str = DEFAULT_DB_PATH) -> dict | None:
     return None
 
 
+def save_runtime_inputs(
+    record_date: date,
+    available_new_cash: float | None = None,
+    rolling_drawdown: float | None = None,
+    path: str = DEFAULT_DB_PATH,
+) -> None:
+    """Save the latest runtime inputs used by the v7 controllers."""
+    conn = init_db(path)
+    conn.execute(
+        """
+        INSERT INTO runtime_inputs (
+            date, available_new_cash, rolling_drawdown
+        )
+        VALUES (?, ?, ?)
+        ON CONFLICT(date) DO UPDATE SET
+            available_new_cash = COALESCE(excluded.available_new_cash, runtime_inputs.available_new_cash),
+            rolling_drawdown = COALESCE(excluded.rolling_drawdown, runtime_inputs.rolling_drawdown)
+        """,
+        (record_date.isoformat(), available_new_cash, rolling_drawdown),
+    )
+    conn.commit()
+    conn.close()
+    logger.debug("Saved runtime inputs for %s", record_date.isoformat())
+
+
+def load_latest_runtime_inputs(path: str = DEFAULT_DB_PATH) -> dict | None:
+    """Return the most recent runtime input dict."""
+    if not Path(path).exists():
+        return None
+    conn = init_db(path)
+    row = conn.execute(
+        "SELECT date, available_new_cash, rolling_drawdown FROM runtime_inputs ORDER BY date DESC LIMIT 1"
+    ).fetchone()
+    conn.close()
+    if row:
+        return {
+            "date": row[0],
+            "available_new_cash": row[1],
+            "rolling_drawdown": row[2],
+        }
+    return None
+
+
+def load_runtime_inputs(record_date: date, path: str = DEFAULT_DB_PATH) -> dict | None:
+    """Return runtime inputs for one specific trading date."""
+    if not Path(path).exists():
+        return None
+    conn = init_db(path)
+    row = conn.execute(
+        "SELECT date, available_new_cash, rolling_drawdown FROM runtime_inputs WHERE date = ?",
+        (record_date.isoformat(),),
+    ).fetchone()
+    conn.close()
+    if row:
+        return {
+            "date": row[0],
+            "available_new_cash": row[1],
+            "rolling_drawdown": row[2],
+        }
+    return None
+
+
 def _to_json_dict(result: SignalResult) -> dict:
     """Serialise a SignalResult to a JSON-compatible dict (all native Python types)."""
 
@@ -318,6 +398,14 @@ def _to_json_dict(result: SignalResult) -> dict:
             "qqq_pct": _float(result.current_portfolio.qqq_pct),
             "qld_pct": _float(result.current_portfolio.qld_pct),
         },
+        # v7.0 Dual-Controller fields
+        "risk_state": result.risk_state.value if result.risk_state is not None else None,
+        "deployment_state": result.deployment_state.value if result.deployment_state is not None else None,
+        "selected_candidate_id": result.selected_candidate_id,
+        "registry_version": result.registry_version,
+        "rebalance_action": result.rebalance_action,
+        "deployment_action": result.deployment_action,
+        "candidate_selection_audit": result.candidate_selection_audit,
         # Deprecated v6.2 fields
         "portfolio": {
             "current_cash_pct": _float(result.portfolio.current_cash_pct),

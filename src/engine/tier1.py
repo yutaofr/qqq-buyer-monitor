@@ -7,12 +7,16 @@ All thresholds are defined as module-level constants for easy M4 tuning.
 from __future__ import annotations
 
 import logging
+
 logger = logging.getLogger(__name__)
 
-from src.models import MarketData, SignalDetail, Tier1Result
 from src.engine.divergence import check_divergences
-from src.engine.fundamentals import calculate_valuation_weight, calculate_fcf_bonus
-from src.utils.stats import calculate_zscore, calculate_mean_reversion_score, calculate_sma_deviation_zscore
+from src.engine.fundamentals import calculate_fcf_bonus, calculate_valuation_weight
+from src.models import MarketData, SignalDetail, Tier1Result
+from src.utils.stats import (
+    calculate_mean_reversion_score,
+    calculate_sma_deviation_zscore,
+)
 
 # ── Gradient thresholds (low, high) ──────────────────────────────────────────
 # Signal 1: 52-week high drawdown  (higher = more bullish)
@@ -66,12 +70,12 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
     """
     regime = identify_regime(data.vix_zscore)
     descent_v, days_to_dd = calculate_descent_velocity(data)
-    logger.info("Current Market Regime: %s (VIX Z=%.2f, Descent: %s [%d days])", 
+    logger.info("Current Market Regime: %s (VIX Z=%.2f, Descent: %s [%d days])",
                 regime, data.vix_zscore, descent_v, days_to_dd)
     # Signal 1: 52-week drawdown
     drawdown = (data.high_52w - data.price) / data.high_52w
     s1_pts, s1_half, s1_full = _score_higher_better(drawdown, *DRAWDOWN_THRESHOLDS)
-    
+
     # v4.0 Adaptive Boost: if volatility is low, Z-score might trigger even if absolute is low
     if data.drawdown_zscore >= DRAWDOWN_Z_THRESHOLDS[1]:
         s1_pts = max(s1_pts, 20)
@@ -93,7 +97,7 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
     ma200_dev = (data.price - data.ma200) / data.ma200
     # Deviation is negative for "more bullish"; flip sign for lower_better logic
     s2_pts, s2_half, s2_full = _score_lower_better(ma200_dev, *MA200_THRESHOLDS)
-    
+
     # v6.0 Adaptive Boost for MA200 deviation
     ma200_z = 0.0
     if data.ohlcv_history is not None:
@@ -104,7 +108,7 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         elif ma200_z <= MA200_Z_THRESHOLDS[0]:
             s2_pts = max(s2_pts, 10)
             s2_half = True
-    
+
     s2 = SignalDetail(
         name="ma200_deviation",
         value=round(ma200_dev, 4),
@@ -116,7 +120,7 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
 
     # Signal 3: VIX
     s3_pts, s3_half, s3_full = _score_higher_better(data.vix, *VIX_THRESHOLDS)
-    
+
     # v4.0 Adaptive Boost for VIX
     if data.vix_zscore >= VIX_Z_THRESHOLDS[1]:
         s3_pts = max(s3_pts, 20)
@@ -152,13 +156,13 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
     s5_pts, s5_half, s5_full = _score_lower_better(
         data.adv_dec_ratio, BREADTH_RATIO_T[0], BREADTH_RATIO_T[1]
     )
-    
+
     # v4.2 QUIET Regime Boost: In low-vol environments, breadth is the most reliable filter
     if regime == "QUIET":
         if s5_pts > 0:
             logger.info("Regime BOOST: Increasing Breadth weight in QUIET environment.")
             s5_pts = min(s5_pts + 10, 20)
-        
+
         # Also boost Fear & Greed if it's showing some fear in a quiet market
         if s4_pts > 0:
             s4_pts = min(s4_pts + 10, 20)
@@ -183,8 +187,8 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
     divergence_flags = {}
     if getattr(data, 'history_window', None) is not None and not data.history_window.empty:
         div_res = check_divergences(
-            data.price, 
-            data.vix, 
+            data.price,
+            data.vix,
             float(data.adv_dec_ratio),
             data.history_window,
             getattr(data, 'earnings_revisions_breadth', None),
@@ -206,7 +210,7 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         # If we had a deep history of PE, we'd pass it here. For MVP, we use static thresholds in fundamentals.py
         valuation_bonus = calculate_valuation_weight(data.forward_pe, None)
         total += valuation_bonus
-        
+
     fcf_bonus = 0
     if getattr(data, 'fcf_yield', None) is not None:
         fcf_bonus = calculate_fcf_bonus(data.fcf_yield)
@@ -226,10 +230,10 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         if drawdown > 0.05:
             liquidity_bonus = 10
             divergence_flags["liquidity_divergence"] = True
-            
+
     total += liquidity_bonus
     divergence_bonus += liquidity_bonus
-    
+
     # v4.0 Phase 2: Bond Volatility (MOVE) Bonus
     # High bond vol (>110) during an equity drawdown often signals capitulation
     move_bonus = 0
@@ -237,7 +241,7 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         if drawdown > 0.05:
             move_bonus = 10
             divergence_flags["bond_vol_spike"] = True
-            
+
     total += move_bonus
     divergence_bonus += move_bonus
 
@@ -267,10 +271,10 @@ def calculate_tier1(data: MarketData) -> Tier1Result:
         if mr_score < -2.0: # Significant downside deviation (mean reversion likely)
             mr_bonus = 10
             divergence_flags["mean_reversion_regime"] = True
-            
+
     total += mr_bonus
     divergence_bonus += mr_bonus
-    
+
     return Tier1Result(
         score=total,
         drawdown_52w=s1,
@@ -319,19 +323,19 @@ def calculate_descent_velocity(data: MarketData) -> tuple[str, int]:
     """
     if data.days_since_52w_high is None:
         return "NORMAL", 0
-    
+
     days = data.days_since_52w_high
     drawdown = (data.high_52w - data.price) / data.high_52w
-    
+
     if drawdown < 0.05:
         return "NORMAL", days
-        
+
     # PANIC: 10% drop in < 15 days, or 5% in < 7 days
     if (drawdown >= 0.10 and days < 15) or (drawdown >= 0.05 and days < 7):
         return "PANIC", days
-    
+
     # GRIND: 10% drop that took more than 45 days
     if drawdown >= 0.10 and days > 45:
         return "GRIND", days
-        
+
     return "NORMAL", days

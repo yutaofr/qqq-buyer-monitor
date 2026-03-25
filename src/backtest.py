@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import logging
+from pathlib import Path
 import numpy as np
 import concurrent.futures
 from dataclasses import dataclass, field
@@ -22,8 +23,42 @@ from src.models import AllocationState, Tier1Result, Tier2Result, PortfolioState
 from src.engine.aggregator import aggregate, _ALLOCATION_PROFILE, get_target_allocation
 from src.engine.allocation_search import generate_candidates, find_best_allocation
 from src.collector.historical_macro_seeder import HistoricalMacroSeeder
+from src.research.data_contracts import summarize_historical_macro_coverage, validate_historical_macro_frame
 
 logger = logging.getLogger(__name__)
+_PARALLEL_FALLBACK_WARNED = False
+
+
+def _safe_beta(
+    portfolio_returns: pd.Series,
+    benchmark_returns: pd.Series,
+    *,
+    fallback_target: float = 0.0,
+) -> float:
+    """Compute beta defensively for short or degenerate windows."""
+    aligned = pd.concat(
+        [
+            pd.Series(portfolio_returns, dtype=float),
+            pd.Series(benchmark_returns, dtype=float),
+        ],
+        axis=1,
+        join="inner",
+    ).dropna()
+    if aligned.empty:
+        return float(fallback_target)
+
+    portfolio = aligned.iloc[:, 0]
+    benchmark = aligned.iloc[:, 1]
+
+    if len(aligned) < 2:
+        return float(fallback_target)
+
+    variance_market = float(np.var(benchmark, ddof=1))
+    if variance_market <= 0:
+        return float(fallback_target)
+
+    covariance = float(np.cov(portfolio, benchmark, ddof=1)[0, 1])
+    return float(covariance / variance_market)
 
 # v6.4 Optimization: Top-level helper for multiprocessing support
 def _score_candidate_worker(
@@ -164,12 +199,15 @@ class Backtester:
         Handles 'semaphore permission' errors in restricted environments.
         """
         # Try ProcessPool first (True parallelism, bypasses GIL)
+        global _PARALLEL_FALLBACK_WARNED
         try:
             with concurrent.futures.ProcessPoolExecutor(max_workers=min(os.cpu_count() or 1, 8)) as executor:
                 futures = [executor.submit(worker_func, *task_args, *args) for task_args in tasks]
                 return [f.result() for f in futures]
         except (PermissionError, RuntimeError, OSError) as e:
-            logger.warning(f"ProcessPoolExecutor failed ({e}). Falling back to ThreadPoolExecutor.")
+            if not _PARALLEL_FALLBACK_WARNED:
+                logger.warning(f"ProcessPoolExecutor failed ({e}). Falling back to ThreadPoolExecutor.")
+                _PARALLEL_FALLBACK_WARNED = True
             # Fallback to ThreadPool (GIL-bound, but safer in restricted sandboxes)
             with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(tasks), 8)) as executor:
                 futures = [executor.submit(worker_func, *task_args, *args) for task_args in tasks]
@@ -392,9 +430,7 @@ class Backtester:
         daily_ts["tactical_ret"] = pd.Series(daily_nav, index=prices_qqq.index).pct_change().fillna(0)
         daily_ts["market_ret"] = prices_qqq.pct_change().fillna(0)
         
-        cov_matrix = np.cov(daily_ts["tactical_ret"], daily_ts["market_ret"], ddof=1)
-        variance_market = np.var(daily_ts["market_ret"], ddof=1)
-        realized_beta = float(cov_matrix[0, 1] / variance_market) if variance_market > 0 else 0.0
+        realized_beta = _safe_beta(daily_ts["tactical_ret"], daily_ts["market_ret"])
 
         daily_ts["state_change"] = (daily_ts["state"] != daily_ts["state"].shift(1))
         daily_ts["interval_id"] = daily_ts["state_change"].cumsum()
@@ -406,24 +442,13 @@ class Backtester:
             s_tactical_ret = group["tactical_ret"]
             s_market_ret = group["market_ret"]
             
-            # Use var/cov only if we have enough points, otherwise dev is 0.0 (conservative)
-            s_realized_beta = 0.0
-            if len(group) >= 3:
-                s_var_market = np.var(s_market_ret, ddof=1)
-                if s_var_market > 0:
-                    s_cov = np.cov(s_tactical_ret, s_market_ret, ddof=1)[0, 1]
-                    s_realized_beta = float(s_cov / s_var_market)
-            else:
-                # Thin window: use simple return ratio as proxy for beta if possible
-                m_ret_sum = s_market_ret.sum()
-                if abs(m_ret_sum) > 1e-6:
-                    s_realized_beta = float(s_tactical_ret.sum() / m_ret_sum)
-                else:
-                    # Default to target if no market movement to avoid artificial deviation
-                    s_realized_beta = float(group["target_beta"].mean())
-            
             # AC-4 Fidelity: Use the actual executed targets from this interval
             s_target_beta = float(group["target_beta"].mean())
+            s_realized_beta = _safe_beta(
+                s_tactical_ret,
+                s_market_ret,
+                fallback_target=s_target_beta,
+            )
             
             interval_beta_audit.append({
                 "state": s_state_str,
@@ -719,8 +744,49 @@ def summarize_backtest_methodology(prices: pd.Series, tactical_states: Optional[
 def _format_pct(value: Optional[float]) -> str:
     return f"{value * 100:.1f}%" if value is not None else "n/a"
 
+
+def _load_research_macro_dataset(macro_path: str) -> pd.DataFrame:
+    """Load and validate the canonical research macro dataset."""
+    path = Path(macro_path)
+    if not path.exists():
+        raise FileNotFoundError(
+            "Missing required historical macro dataset: "
+            f"{macro_path}. "
+            "Research backtests require the canonical v7 dataset. "
+            "Build it with `python scripts/build_historical_macro_dataset.py`."
+        )
+
+    macro_df = pd.read_csv(path)
+    validate_historical_macro_frame(macro_df)
+    effective_date = pd.to_datetime(macro_df["effective_date"], errors="coerce")
+    duplicate_rows = macro_df.index[effective_date.duplicated()].tolist()
+    if duplicate_rows:
+        raise ValueError(
+            "Duplicate effective_date values in historical macro dataset: "
+            f"rows {duplicate_rows}"
+        )
+    summary = summarize_historical_macro_coverage(macro_df)
+
+    print("\n--- Canonical Macro Coverage ---")
+    print(f"Rows: {summary['rows']}")
+    print(f"First observation date: {summary['first_observation_date']}")
+    print(f"Last observation date: {summary['last_observation_date']}")
+    print("Coverage:")
+    for key in (
+        "credit_spread_bps",
+        "credit_acceleration_pct_10d",
+        "real_yield_10y_pct",
+        "net_liquidity_usd_bn",
+        "liquidity_roc_pct_4w",
+        "funding_stress_flag",
+    ):
+        print(f"  {key}: {summary['coverage'][key]:.3f}")
+
+    return macro_df
+
 def run_backtest() -> None:
     cache_path = "data/qqq_history_cache.csv"
+    macro_path = "data/macro_historical_dump.csv"
     print(f"Loading QQQ history from {cache_path}...")
     
     qqq = pd.DataFrame()
@@ -745,8 +811,9 @@ def run_backtest() -> None:
     if qqq.empty:
         print("Error: No price data available.")
         return
-    
-    seeder = HistoricalMacroSeeder(csv_path="data/macro_historical_dump.csv")
+
+    macro_df = _load_research_macro_dataset(macro_path)
+    seeder = HistoricalMacroSeeder(mock_df=macro_df)
     tester = Backtester()
     
     # v6.4 Fix: Enable rolling dynamic search to validate selection engine
