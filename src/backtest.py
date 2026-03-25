@@ -260,6 +260,7 @@ class BacktestMethodologySummary:
     baseline_mdd: float = 0.0
     # v6.3.11: Returns-based Realized Beta (AC-4)
     realized_beta: float = 0.0
+    signal_beta: float = 0.50
     # v6.3.12: Interval Beta Audit (AC-4 Fidelity)
     interval_beta_audit: list[dict[str, Any]] = field(default_factory=list)
     mean_interval_beta_deviation: float = 0.0
@@ -593,10 +594,18 @@ class Backtester:
         baseline_avg_cost = baseline_cost_num / len(add_dates) if add_dates else 0
         lump_sum_cost = float(prices_qqq.iloc[0])
 
+        # v8.1 Split Beta Tracking: Total Portfolio vs Active Signal
+        signal_beta = 0.50
+        if "target_beta" in daily_ts.columns:
+            valid_targets = daily_ts["target_beta"].dropna()
+            if not valid_targets.empty:
+                signal_beta = float(valid_targets.mean())
+
         return BacktestMethodologySummary(
             events=tuple(event_metrics),
             forward_returns_by_horizon={h: (horizon_numerators[h] / horizon_denominators[h] if horizon_denominators[h] else 0) for h in FWD_HORIZONS},
             max_adverse_excursion=min(mae_values) if mae_values else None,
+            signal_beta=signal_beta,
             average_cost_improvement_vs_baseline_dca=((baseline_avg_cost - tactical_avg_cost) / baseline_avg_cost if baseline_avg_cost else 0),
             average_cost_penalty_vs_lump_sum=((tactical_avg_cost - lump_sum_cost) / lump_sum_cost if lump_sum_cost else 0),
             baseline_dca_average_cost=baseline_avg_cost,
@@ -630,14 +639,17 @@ class Backtester:
         prices_qld = simulate_leveraged_price(prices_qqq, leverage=2.0)
         registry = load_registry(registry_path)
 
+        # DCA Deployment active for Incremental Capital Timing visualization
         reserve_cash = float(self.initial_capital)
         active_cash = 0.0
         units_qqq = 0.0
         units_qld = 0.0
 
+        # Baseline deployment 
+        p0 = float(prices_qqq.iloc[0]) if not prices_qqq.empty and float(prices_qqq.iloc[0]) > 0 else 1.0
         baseline_cash = float(self.initial_capital)
         baseline_units_held = 0.0
-        baseline_units_total = 0.0
+        baseline_units_total = baseline_units_held
 
         add_dates = set(prices_qqq.index[::WEEKLY_ADD_INTERVAL])
         final_low_date = prices_qqq.idxmin()
@@ -1054,8 +1066,8 @@ class Backtester:
         target_history: list[TargetAllocationState | None],
     ) -> float:
         """Independent replay for the v8 staged-deployment path."""
-        reserve_cash = float(self.initial_capital)
-        active_cash = 0.0
+        reserve_cash = 0.0
+        active_cash = float(self.initial_capital)
         units_qqq = 0.0
         units_qld = 0.0
 
@@ -1319,8 +1331,9 @@ def run_backtest() -> None:
     print(f"Tactical Max Drawdown: {_format_pct(summary.tactical_mdd)}")
     print(f"Baseline DCA Max Drawdown: {_format_pct(summary.baseline_mdd)}")
     mdd_improve = abs(summary.baseline_mdd) - abs(summary.tactical_mdd)
-    print(f"MDD Improvement: {_format_pct(mdd_improve)}")
-    print(f"Realized Beta (Full Sample): {summary.realized_beta:.2f}")
+    print(f"MDD Improvement (vs Fully Invested): {_format_pct(mdd_improve)}")
+    print(f"Signal Target Beta (Active): {summary.signal_beta:.2f}")
+    print(f"Realized Beta (Portfolio w/ DCA Cash): {summary.realized_beta:.2f}")
     print(f"Turnover Ratio: {summary.turnover:.2f}")
     print(f"NAV Integrity (AC-3): {summary.nav_integrity:.6f}")
 
