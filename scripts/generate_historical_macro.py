@@ -10,7 +10,7 @@ from src.research.data_contracts import REQUIRED_HISTORICAL_MACRO_COLUMNS, valid
 
 BUILD_VERSION = "dev-fixture"
 SOURCE_TAG = "synthetic_fixture"
-DEFAULT_OUTPUT_PATH = Path("data/macro_historical_dump.csv")
+DEFAULT_OUTPUT_PATH = Path("data/dev/macro_historical_fixture.csv")
 
 
 def _build_dev_fixture_frame() -> pd.DataFrame:

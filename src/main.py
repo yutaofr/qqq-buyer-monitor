@@ -472,7 +472,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
         # Registry missing → explicit degraded mode, no silent fallback (SRD §5.3)
         result.logic_trace.append({"rule": "registry_missing", "v7_registry_path": v7_registry_path})
         logger.warning("v7.0 registry not found at '%s' — running in degraded mode (v6 allocation only)", v7_registry_path)
-    except Exception as exc:  # noqa: BLE001
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
         result.logic_trace.append({"rule": "v7_pipeline_error", "error": str(exc)})
         logger.warning("v7.0 pipeline error (non-fatal, v6 allocation still valid): %s", exc)
     # ── end v7.0 ──────────────────────────────────────────────────────────────
