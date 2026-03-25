@@ -300,10 +300,8 @@ class SignalResult:
     data_quality: dict = field(default_factory=dict)
     logic_trace: list[dict] = field(default_factory=list)  # v6.1 Decision evidence chain
 
-    # v6.3 Strategic Architecture (Split Reality from Ideal)
-    current_portfolio: CurrentPortfolioState = field(default_factory=CurrentPortfolioState)
+    # v6.3 Strategic Architecture (Ideal Target)
     target_allocation: TargetAllocationState = field(default_factory=TargetAllocationState)
-    effective_exposure: float = 0.0
     interval_beta_audit: list[dict] = field(default_factory=list)
 
     # v7.0 Dual-Controller fields (all optional for backward compatibility)
@@ -320,9 +318,6 @@ class SignalResult:
     candidate_selection_audit: list[dict] = field(default_factory=list)
 
     # Deprecated fields (kept for db migration bridge)
-    @property
-    def portfolio(self) -> CurrentPortfolioState:
-        return self.current_portfolio
 
     @property
     def target_cash_pct(self) -> float:

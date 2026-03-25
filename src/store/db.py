@@ -389,18 +389,11 @@ def _to_json_dict(result: SignalResult) -> dict:
         "erp": _float(result.erp),
         "logic_trace": result.logic_trace,
         # v6.3 Strategic Portfolio & Rebalancing
-        "effective_exposure": _float(result.effective_exposure),
-        "interval_beta_audit": result.interval_beta_audit,
         "target_allocation": {
             "target_cash_pct": _float(result.target_allocation.target_cash_pct),
             "target_qqq_pct": _float(result.target_allocation.target_qqq_pct),
             "target_qld_pct": _float(result.target_allocation.target_qld_pct),
             "target_beta": _float(result.target_allocation.target_beta),
-        },
-        "current_portfolio": {
-            "current_cash_pct": _float(result.current_portfolio.current_cash_pct),
-            "qqq_pct": _float(result.current_portfolio.qqq_pct),
-            "qld_pct": _float(result.current_portfolio.qld_pct),
         },
         # v7.0 Dual-Controller fields
         "risk_state": result.risk_state.value if result.risk_state is not None else None,
@@ -414,13 +407,4 @@ def _to_json_dict(result: SignalResult) -> dict:
         "rebalance_action": result.rebalance_action,
         "deployment_action": result.deployment_action,
         "candidate_selection_audit": result.candidate_selection_audit,
-        # Deprecated v6.2 fields
-        "portfolio": {
-            "current_cash_pct": _float(result.portfolio.current_cash_pct),
-            "leverage_ratio": _float(result.portfolio.leverage_ratio),
-            "gross_exposure_pct": _float(result.portfolio.gross_exposure_pct),
-            "net_exposure_pct": _float(result.portfolio.net_exposure_pct),
-            "core_equity_pct": _float(result.portfolio.core_equity_pct),
-            "tactical_equity_pct": _float(result.portfolio.tactical_equity_pct),
-        }
     }

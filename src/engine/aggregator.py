@@ -150,9 +150,6 @@ class DecisionContext:
     liquidity_roc: float | None = None
     is_funding_stressed: bool = False
 
-    # Portfolio Inputs (v6.3 uses full state)
-    current_portfolio: CurrentPortfolioState = field(default_factory=CurrentPortfolioState)
-
     # v6.4 Search Context
     historical_ohlcv: pd.DataFrame | None = None
     candidate_scores: list[dict] = field(default_factory=list)
@@ -183,7 +180,6 @@ def aggregate(
     credit_accel: float | None = None,
     liquidity_roc: float | None = None,
     is_funding_stressed: bool = False,
-    current_portfolio: CurrentPortfolioState | None = None,
     historical_ohlcv: pd.DataFrame | None = None
 ) -> SignalResult:
     """Entry point for aggregated signal computation using pipeline."""
@@ -204,7 +200,6 @@ def aggregate(
         credit_accel=credit_accel,
         liquidity_roc=liquidity_roc,
         is_funding_stressed=is_funding_stressed,
-        current_portfolio=current_portfolio or CurrentPortfolioState(),
         historical_ohlcv=historical_ohlcv
     )
 
@@ -224,10 +219,6 @@ def aggregate(
     cooldown_days = profile["cooldown_days"]
     confidence = profile["confidence"]
 
-    # v6.3.9 Beta Audit: Reality vs Target
-    effective_exposure = ctx.current_portfolio.qqq_pct + 2.0 * ctx.current_portfolio.qld_pct
-    beta_drift = effective_exposure - ctx.target_allocation.target_beta
-
     overlay = ctx.tier2.overlay if ctx.tier2.overlay else OptionsOverlay()
     if overlay.can_reduce_tranche:
         daily_tranche_pct = round(daily_tranche_pct * overlay.tranche_multiplier, 4)
@@ -239,9 +230,7 @@ def aggregate(
         ctx.structural_regime, ctx.tactical_state, ctx.allocation_state,
         daily_tranche_pct, profile["max_total_add_pct"], cooldown_days, confidence,
         # v6.3 rebalancing info from target model
-        current_cash=ctx.current_portfolio.current_cash_pct * 100.0,
         target_cash=ctx.target_allocation.target_cash_pct * 100.0,
-        effective_exposure=effective_exposure,
         target_beta=ctx.target_allocation.target_beta
     )
 
@@ -262,9 +251,7 @@ def aggregate(
         required_persistence_days=profile["required_persistence_days"],
         confidence=confidence,
         logic_trace=ctx.trace,
-        current_portfolio=ctx.current_portfolio,
-        target_allocation=ctx.target_allocation,
-        effective_exposure=effective_exposure
+        target_allocation=ctx.target_allocation
     )
 
 # ── Pipeline Steps ───────────────────────────────────────────────────────────
@@ -491,8 +478,7 @@ def _build_explanation(
     signal: Signal, tier1: Tier1Result, tier2: Tier2Result, final_score: int,
     structural_regime: str, tactical_state: str, allocation_state: AllocationState,
     daily_tranche_pct: float, max_total_add_pct: float, cooldown_days: int, confidence: str,
-    current_cash: float = 0.0, target_cash: float = 0.0,
-    effective_exposure: float = 0.0, target_beta: float = 0.0
+    target_cash: float = 0.0, target_beta: float = 0.0
 ) -> str:
     parts: list[str] = []
     t1_score = tier1.score
@@ -589,13 +575,6 @@ def _build_explanation(
             parts.append("阴跌预警：当前市场处于无量阴跌阶段，尚未出现恐慌性底背离，系统维持观望。")
         parts.append(f"综合判断：维持基础定投，条件尚未满足。{allocation_note}")
 
-    if target_cash > 0 and current_cash < target_cash:
-        gap = target_cash - current_cash
-        parts.append(f"\n💡 [REBALANCE ACTION] 当前现金比例({current_cash:.1f}%)低于防御目标({target_cash:.1f}%)。建议通过卖出战术仓位补足 {gap:.1f}% 的现金缺口以维持资产负债表安全。")
-
-    # v6.3.9 Beta Audit
-    beta_drift = effective_exposure - target_beta
-    drift_status = "符合预期" if abs(beta_drift) < 0.05 else ("风险偏高" if beta_drift > 0 else "敞口不足")
-    parts.append(f"\n📊 [EXPOSURE AUDIT] 当前有效敞口: {effective_exposure:.2f} (目标 Beta: {target_beta:.2f})；状态: {drift_status}。")
+    parts.append(f"\n📊 [TARGET EXPOSURE] 建议目标现金比率: {target_cash:.1f}%, 建议目标 Beta: {target_beta:.2f}。")
 
     return "。".join(parts) + "。"

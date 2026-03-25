@@ -288,10 +288,6 @@ def run_pipeline(args: argparse.Namespace) -> None:
     tier1 = calculate_tier1(market_data)
     tier2 = calculate_tier2(market_data.price, market_data.options_df, ohlcv_history=market_data.ohlcv_history)
 
-    # v6.3 Full Aggregation with Strategic Portfolio State
-    from src.models import CurrentPortfolioState
-    portfolio = CurrentPortfolioState.from_env()
-
     result = aggregate(
         market_data.date,
         market_data.price,
@@ -305,7 +301,6 @@ def run_pipeline(args: argparse.Namespace) -> None:
         credit_accel=credit_accel,
         liquidity_roc=liq_roc,
         is_funding_stressed=funding_stress.get("is_stressed", False),
-        current_portfolio=portfolio,
         historical_ohlcv=price_data.get("history")
     )
     result.data_quality = build_data_quality(market_data, feature_meta=data_quality_meta)
@@ -327,10 +322,16 @@ def run_pipeline(args: argparse.Namespace) -> None:
     v7_registry_path = os.environ.get("V7_REGISTRY_PATH", "data/candidate_registry_v7.json")
     runtime_inputs = load_runtime_inputs(record_date=market_data.date) or {}
 
-    if runtime_inputs.get("rolling_drawdown") is not None:
-        from dataclasses import replace as _replace
-
-        portfolio = _replace(portfolio, rolling_drawdown=float(runtime_inputs["rolling_drawdown"]))
+    rolling_drawdown = None
+    try:
+        if runtime_inputs.get("rolling_drawdown") is not None:
+            rolling_drawdown = float(runtime_inputs["rolling_drawdown"])
+        elif os.environ.get("ROLLING_DRAWDOWN") is not None:
+            rolling_drawdown = float(os.environ.get("ROLLING_DRAWDOWN"))
+        elif os.environ.get("PORTFOLIO_ROLLING_DRAWDOWN") is not None:
+            rolling_drawdown = float(os.environ.get("PORTFOLIO_ROLLING_DRAWDOWN"))
+    except (TypeError, ValueError):
+        pass
 
     try:
         if runtime_inputs.get("available_new_cash") is not None:
@@ -376,10 +377,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
             erp=erp_value,
         )
 
-        # Risk Controller (Class A only + Tier-0 hard constraint)
         v7_risk = decide_risk_state(
             v7_snapshot,
-            portfolio,
+            rolling_drawdown=rolling_drawdown,
             tier0_regime=tier0_regime,
             drawdown_budget=0.30,
         )
@@ -443,7 +443,6 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 selection_score=0.0,
             )
             beta_rec = build_beta_recommendation(
-                portfolio=portfolio,
                 selection=selection,
                 risk_decision=v7_risk,
                 previous_risk_state=prev_risk,
@@ -570,7 +569,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
         save_runtime_inputs(
             record_date=market_data.date,
             available_new_cash=available_new_cash,
-            rolling_drawdown=portfolio.rolling_drawdown,
+            rolling_drawdown=rolling_drawdown,
         )
         if any(v is not None for v in (market_data.credit_spread, market_data.forward_pe, market_data.real_yield)):
             save_macro_state(

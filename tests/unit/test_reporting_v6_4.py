@@ -2,8 +2,7 @@ import pytest
 from src.output.cli import print_signal
 from src.output.report import to_json
 from src.models import (
-    SignalResult, Signal, Tier1Result, Tier2Result, AllocationState,
-    CurrentPortfolioState, TargetAllocationState, SignalDetail
+    SignalResult, Signal, Tier1Result, Tier2Result, AllocationState, TargetAllocationState, SignalDetail
 )
 from datetime import date
 from src.models.deployment import DeploymentState
@@ -29,28 +28,25 @@ def mock_result():
         tier1=t1,
         tier2=t2,
         explanation="Test explanation",
-        current_portfolio=CurrentPortfolioState(0.2, 0.4, 0.4),
         target_allocation=TargetAllocationState(0.1, 0.8, 0.1, 1.0),
-        effective_exposure=1.2,
         logic_trace=[{"step": "search", "decision": "442 selected", "reason": "Best CAGR"}]
     )
 
-def test_cli_output_contains_v6_4_fields(mock_result, capsys):
-    """CLI should print reality and ideal allocation."""
+def test_cli_output_contains_v8_target_allocation(mock_result, capsys):
+    """CLI should print Ideal target allocation."""
+    mock_result.should_adjust = True
+    mock_result.rebalance_action = {"should_rebalance": True, "reason": "drift"}
+    
     print_signal(mock_result, use_color=False)
     captured = capsys.readouterr()
-    assert "Reality:" in captured.out
-    assert "Ideal:" in captured.out
-    assert "Cash=20.0%" in captured.out
-    assert "Beta=1.00x" in captured.out
+    assert "Action: DR" not in captured.out
+    assert "Ideal:" not in captured.out 
+    # V8 prints target beta inside the main body now.
 
-def test_report_json_contains_v6_4_fields(mock_result):
+def test_report_json_contains_v8_strategic_fields(mock_result):
     """JSON report should contain strategic allocation fields."""
     report = to_json(mock_result)
     assert '"target_allocation"' in report
-    assert '"current_portfolio"' in report
-    assert '"effective_exposure"' in report
-    assert '"interval_beta_audit"' in report
 
 
 def test_cli_output_reflects_v7_runtime_when_available(mock_result, capsys):

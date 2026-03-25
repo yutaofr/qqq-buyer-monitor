@@ -41,4 +41,4 @@ docker-compose run --rm test
 - **AC-5 风险预算:** 任何配置候选若在历史回测中 MDD > 30%，必须被硬约束过滤（除非所有候选均不达标，则取 least bad）。
 - **AC-4 Beta 保真性:** 每日 T+0 再平衡确保实际敞口与搜索出的理想模型偏差 $\le 0.05$。
 - **AC-3 数据真实性:** NAV 审计必须基于真实持仓计算，严禁使用硬编码 Integrity。
-- **持久化审计:** `current_portfolio`、`target_allocation`、`interval_beta_audit` 必须完整入库。
+- **持久化审计:** `target_allocation`、`interval_beta_audit` 必须完整入库。

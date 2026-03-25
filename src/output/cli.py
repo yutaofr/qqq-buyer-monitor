@@ -84,8 +84,6 @@ def build_v8_explanation(result: SignalResult) -> str:
     adjust_reason = result.rebalance_action.get("reason", "n/a")
     deploy_reason = result.deployment_action.get("reason", "n/a")
     t = result.target_allocation
-    p = result.current_portfolio
-    current_beta = p.qqq_pct + 2.0 * p.qld_pct
 
     parts = [
         f"v8.0 线性流水线：Tier-0={tier0}",
@@ -100,24 +98,9 @@ def build_v8_explanation(result: SignalResult) -> str:
         f"配比 QQQ={t.target_qqq_pct*100:.1f}%",
         f"QLD={t.target_qld_pct*100:.1f}%",
         f"Cash={t.target_cash_pct*100:.1f}%",
-        f"当前有效敞口={current_beta:.2f}x",
     ]
     return " | ".join(parts)
 
-
-def _has_explicit_portfolio(result: SignalResult) -> bool:
-    p = result.current_portfolio
-    return not (
-        p.current_cash_pct == 1.0
-        and p.qqq_pct == 0.0
-        and p.qld_pct == 0.0
-        and p.rolling_drawdown is None
-        and p.leverage_ratio == 1.0
-        and p.gross_exposure_pct == 0.0
-        and p.net_exposure_pct == 0.0
-        and p.core_equity_pct == 0.0
-        and p.tactical_equity_pct == 0.0
-    )
 
 
 def _print_v7_sections(result: SignalResult, c) -> None:
@@ -210,12 +193,9 @@ def print_signal(
     if not v8_runtime:
         print(f"Details:   单日加仓: {result.daily_tranche_pct:.0%}, 滚动上限: {result.max_total_add_pct:.1f}x, 置信度: {result.confidence}")
 
-    # v6.3 Strategic Portfolio Alignment
-    p = result.current_portfolio
+    # v8.0 Strategic Portfolio Alignment
     t = result.target_allocation
-    if _has_explicit_portfolio(result):
-        print(f"Reality:   Cash={p.current_cash_pct*100:.1f}%, QQQ={p.qqq_pct*100:.1f}%, QLD={p.qld_pct*100:.1f}% | Exp={result.effective_exposure:.2f}x")
-        print(f"Ideal:     Cash={t.target_cash_pct*100:.1f}%, QQQ={t.target_qqq_pct*100:.1f}%, QLD={t.target_qld_pct*100:.1f}% | Beta={t.target_beta:.2f}x")
+    print(f"Target:    Cash={t.target_cash_pct*100:.1f}%, QQQ={t.target_qqq_pct*100:.1f}%, QLD={t.target_qld_pct*100:.1f}% | Beta={t.target_beta:.2f}x")
 
     # Data Quality Summary (v6.2: Logic corrected to match data_quality.py structure)
     if result.data_quality:

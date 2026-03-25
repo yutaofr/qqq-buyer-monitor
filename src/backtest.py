@@ -719,17 +719,9 @@ class Backtester:
                 erp=None,
             )
 
-            sleeve_portfolio = _build_active_portfolio(
-                active_cash,
-                units_qqq,
-                units_qld,
-                p_qqq,
-                p_qld,
-                rolling_drawdown=rolling_drawdown,
-            )
             risk = decide_risk_state(
                 snapshot,
-                sleeve_portfolio,
+                rolling_drawdown=rolling_drawdown,
                 tier0_regime=tier0_regime,
                 drawdown_budget=registry.drawdown_budget,
             )
@@ -779,16 +771,7 @@ class Backtester:
                     rejected_candidates=(),
                     selection_score=0.0,
                 )
-                sleeve_after_transfer = _build_active_portfolio(
-                    active_cash,
-                    units_qqq,
-                    units_qld,
-                    p_qqq,
-                    p_qld,
-                    rolling_drawdown=rolling_drawdown,
-                )
                 recommendation = build_beta_recommendation(
-                    portfolio=sleeve_after_transfer,
                     selection=selection,
                     risk_decision=risk,
                     previous_risk_state=previous_risk_state,

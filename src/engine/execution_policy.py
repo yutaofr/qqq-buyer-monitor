@@ -4,7 +4,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.engine.runtime_selector import RuntimeSelection
-from src.models import CurrentPortfolioState
 from src.models.risk import RiskDecision, RiskState
 
 
@@ -23,18 +22,14 @@ class BetaRecommendation:
 
 
 def build_beta_recommendation(
-    portfolio: CurrentPortfolioState,
     selection: RuntimeSelection,
     risk_decision: RiskDecision,
-    exposure_band: float = 0.03,
     previous_risk_state: RiskState | None = None,
 ) -> BetaRecommendation:
     """Build the v8.0 recommendation surface from runtime selection + risk state."""
 
     target = selection.selected_candidate
-    current_exposure = portfolio.qqq_pct + 2.0 * portfolio.qld_pct
     target_exposure = target.qqq_pct + 2.0 * target.qld_pct
-    exposure_gap = abs(current_exposure - target_exposure)
     risk_state_changed = (
         previous_risk_state is not None
         and previous_risk_state != risk_decision.risk_state
@@ -46,12 +41,9 @@ def build_beta_recommendation(
             f"risk_state_changed:{previous_risk_state.value}"
             f"->{risk_decision.risk_state.value}"
         )
-    elif exposure_gap > exposure_band:
-        should_adjust = True
-        reason = f"exposure_drift:{exposure_gap:.3f}>{exposure_band}"
     else:
-        should_adjust = False
-        reason = f"within_band:gap={exposure_gap:.3f}"
+        should_adjust = True
+        reason = "align_to_target"
 
     return BetaRecommendation(
         target_beta=target_exposure,

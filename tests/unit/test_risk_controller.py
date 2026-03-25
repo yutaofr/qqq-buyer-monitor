@@ -3,7 +3,6 @@ from datetime import date
 
 from src.engine.feature_pipeline import build_feature_snapshot
 from src.engine.risk_controller import decide_risk_state, RiskDecision
-from src.models import CurrentPortfolioState
 from src.models.risk import RiskState
 
 
@@ -38,7 +37,7 @@ def test_risk_controller_triple_stress_exits():
         "liquidity_roc": -3.0,
         "funding_stress": True,
     })
-    decision = decide_risk_state(snap, CurrentPortfolioState(), drawdown_budget=0.30)
+    decision = decide_risk_state(snap, drawdown_budget=0.30)
     assert decision.risk_state == RiskState.RISK_EXIT
     assert decision.target_cash_floor >= 0.50
     assert decision.target_exposure_ceiling == 0.50
@@ -50,7 +49,7 @@ def test_risk_controller_dual_stress_defense():
         "credit_spread": 550.0,   # danger
         "funding_stress": True,   # stress
     })
-    decision = decide_risk_state(snap, CurrentPortfolioState(), drawdown_budget=0.30)
+    decision = decide_risk_state(snap, drawdown_budget=0.30)
     assert decision.risk_state == RiskState.RISK_DEFENSE
 
 
@@ -60,7 +59,7 @@ def test_risk_controller_single_stress_reduced():
         "liquidity_roc": 0.5,     # fine
         "funding_stress": False,
     })
-    decision = decide_risk_state(snap, CurrentPortfolioState(), drawdown_budget=0.30)
+    decision = decide_risk_state(snap, drawdown_budget=0.30)
     assert decision.risk_state == RiskState.RISK_REDUCED
 
 
@@ -71,7 +70,7 @@ def test_risk_controller_clean_macro_neutral():
         "liquidity_roc": 1.0,
         "funding_stress": False,
     })
-    decision = decide_risk_state(snap, CurrentPortfolioState(), drawdown_budget=0.30)
+    decision = decide_risk_state(snap, drawdown_budget=0.30)
     assert decision.risk_state == RiskState.RISK_NEUTRAL
     assert decision.target_exposure_ceiling == 1.00
 
@@ -79,7 +78,7 @@ def test_risk_controller_clean_macro_neutral():
 def test_risk_decision_is_immutable():
     import pytest
     snap = _snap({"credit_spread": 300.0})
-    decision = decide_risk_state(snap, CurrentPortfolioState())
+    decision = decide_risk_state(snap)
     with pytest.raises((TypeError, AttributeError)):
         decision.risk_state = RiskState.RISK_EXIT  # type: ignore
 
@@ -90,7 +89,7 @@ def test_risk_controller_output_has_reasons():
         "liquidity_roc": -4.0,
         "funding_stress": True,
     })
-    decision = decide_risk_state(snap, CurrentPortfolioState())
+    decision = decide_risk_state(snap)
     assert len(decision.reasons) > 0
 
 
@@ -101,8 +100,7 @@ def test_risk_controller_exits_on_portfolio_drawdown_budget_breach():
         "liquidity_roc": 1.0,
         "funding_stress": False,
     })
-    portfolio = CurrentPortfolioState(rolling_drawdown=0.31)
-    decision = decide_risk_state(snap, portfolio, drawdown_budget=0.30)
+    decision = decide_risk_state(snap, rolling_drawdown=0.31, drawdown_budget=0.30)
     assert decision.risk_state == RiskState.RISK_EXIT
     assert any("drawdown_budget_breached" in str(r) for r in decision.reasons)
 
@@ -116,7 +114,7 @@ def test_risk_controller_degrades_conservatively_when_class_a_missing():
         "liquidity_roc": None,
         "funding_stress": None,
     })
-    decision = decide_risk_state(snap, CurrentPortfolioState(), drawdown_budget=0.30)
+    decision = decide_risk_state(snap, drawdown_budget=0.30)
     assert decision.risk_state in {RiskState.RISK_REDUCED, RiskState.RISK_DEFENSE, RiskState.RISK_EXIT}
 
 
@@ -126,7 +124,7 @@ def test_risk_controller_missing_data_capped_at_risk_reduced():
         "credit_spread": None,
         "net_liquidity": None,
     })
-    decision = decide_risk_state(snap, CurrentPortfolioState(), drawdown_budget=0.30)
+    decision = decide_risk_state(snap, drawdown_budget=0.30)
     assert decision.risk_state != RiskState.RISK_NEUTRAL
     assert decision.risk_state != RiskState.RISK_ON
 
@@ -136,7 +134,7 @@ def test_risk_controller_missing_data_reason_recorded():
         "credit_spread": None,
         "liquidity_roc": None,
     })
-    decision = decide_risk_state(snap, CurrentPortfolioState())
+    decision = decide_risk_state(snap)
     assert any("class_a_missing" in str(r) for r in decision.reasons)
 
 
@@ -148,7 +146,7 @@ def test_risk_controller_single_missing_class_a_still_evaluates():
         "liquidity_roc": 1.0,
         "funding_stress": False,
     })
-    decision = decide_risk_state(snap, CurrentPortfolioState())
+    decision = decide_risk_state(snap)
     # Should still evaluate normally (clean → RISK_NEUTRAL)
     assert decision.risk_state in {RiskState.RISK_NEUTRAL, RiskState.RISK_REDUCED}
 
@@ -168,8 +166,8 @@ def test_risk_controller_only_consumes_class_a_data():
         "liquidity_roc": 1.0,
         "funding_stress": False,
     })
-    d1 = decide_risk_state(snap_with_c, CurrentPortfolioState())
-    d2 = decide_risk_state(snap_without_c, CurrentPortfolioState())
+    d1 = decide_risk_state(snap_with_c)
+    d2 = decide_risk_state(snap_without_c)
     assert d1.risk_state == d2.risk_state
 
 
@@ -177,7 +175,7 @@ def test_risk_controller_absent_class_a_features_degrade():
     """Absent Class A features (missing from snap) must be counted as missing."""
     # Entirely empty raw_values should result in all Class A being missing
     snap = _snap({}, full=False) 
-    decision = decide_risk_state(snap, CurrentPortfolioState(), drawdown_budget=0.30)
+    decision = decide_risk_state(snap, drawdown_budget=0.30)
     assert decision.risk_state in {RiskState.RISK_REDUCED, RiskState.RISK_DEFENSE, RiskState.RISK_EXIT}
     assert any("class_a_missing" in str(r) for r in decision.reasons)
 
@@ -193,7 +191,6 @@ def test_risk_controller_crisis_forces_exit_even_when_micro_is_clean():
     })
     decision = decide_risk_state(
         snap,
-        CurrentPortfolioState(),
         tier0_regime="CRISIS",
         drawdown_budget=0.30,
     )
@@ -207,7 +204,6 @@ def test_risk_controller_rich_tightening_caps_ceiling_at_thirty_percent():
     snap = _snap({"credit_spread": 300.0, "funding_stress": False})
     decision = decide_risk_state(
         snap,
-        CurrentPortfolioState(),
         tier0_regime="RICH_TIGHTENING",
         drawdown_budget=0.30,
     )
@@ -220,7 +216,6 @@ def test_risk_controller_transition_stress_forces_defense():
     snap = _snap({"credit_spread": 300.0, "funding_stress": False})
     decision = decide_risk_state(
         snap,
-        CurrentPortfolioState(),
         tier0_regime="TRANSITION_STRESS",
         drawdown_budget=0.30,
     )
@@ -238,7 +233,6 @@ def test_risk_controller_neutral_tier0_preserves_v7_clean_behavior():
     })
     decision = decide_risk_state(
         snap,
-        CurrentPortfolioState(),
         tier0_regime="NEUTRAL",
         drawdown_budget=0.30,
     )
@@ -257,7 +251,7 @@ def test_risk_controller_tier0_applied_flag_matches_regime():
         "EUPHORIC": False,
     }
     for regime, applied in expected.items():
-        decision = decide_risk_state(snap, CurrentPortfolioState(), tier0_regime=regime)
+        decision = decide_risk_state(snap, tier0_regime=regime)
         assert decision.tier0_applied is applied
 
 
@@ -269,7 +263,6 @@ def test_risk_controller_tier0_crisis_overrides_micro_triple_stress_path():
     })
     decision = decide_risk_state(
         snap,
-        CurrentPortfolioState(),
         tier0_regime="CRISIS",
         drawdown_budget=0.30,
     )
@@ -284,7 +277,6 @@ def test_risk_decision_v8_tier0_field_is_immutable():
     snap = _snap({"credit_spread": 300.0})
     decision = decide_risk_state(
         snap,
-        CurrentPortfolioState(),
         tier0_regime="RICH_TIGHTENING",
     )
     with pytest.raises((TypeError, AttributeError)):

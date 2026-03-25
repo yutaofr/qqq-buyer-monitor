@@ -5,7 +5,6 @@ from datetime import date
 
 from src.engine.feature_pipeline import build_feature_snapshot
 from src.engine.tier0_macro import assess_structural_regime
-from src.models import CurrentPortfolioState
 from src.models.candidate import CertifiedCandidate
 from src.models.risk import RiskState
 
@@ -59,8 +58,8 @@ def test_rich_tightening_without_capitulation_slows_deployment_and_caps_beta():
 
     erp, snapshot = _snapshot(credit_spread=320.0, real_yield=2.0, forward_pe=25.0, capitulation_score=20)
     tier0_regime = assess_structural_regime(credit_spread=320.0, erp=erp)
-    portfolio = CurrentPortfolioState()
-    risk = decide_risk_state(snapshot, portfolio, tier0_regime=tier0_regime)
+    
+    risk = decide_risk_state(snapshot, tier0_regime=tier0_regime)
     deploy = decide_deployment_state(
         snapshot,
         risk,
@@ -75,7 +74,6 @@ def test_rich_tightening_without_capitulation_slows_deployment_and_caps_beta():
         ],
     )
     beta = build_beta_recommendation(
-        portfolio=portfolio,
         selection=RuntimeSelection(selected, (), 0.0),
         risk_decision=risk,
     )
@@ -92,7 +90,7 @@ def test_rich_tightening_with_capitulation_can_break_to_base():
 
     erp, snapshot = _snapshot(credit_spread=320.0, real_yield=2.0, forward_pe=25.0, capitulation_score=70)
     tier0_regime = assess_structural_regime(credit_spread=320.0, erp=erp)
-    risk = decide_risk_state(snapshot, CurrentPortfolioState(), tier0_regime=tier0_regime)
+    risk = decide_risk_state(snapshot, tier0_regime=tier0_regime)
     deploy = decide_deployment_state(
         snapshot,
         risk,
@@ -111,7 +109,7 @@ def test_crisis_forces_exit_pause_and_cash_fallback():
 
     erp, snapshot = _snapshot(credit_spread=520.0, real_yield=2.0, forward_pe=25.0, capitulation_score=90)
     tier0_regime = assess_structural_regime(credit_spread=520.0, erp=erp)
-    risk = decide_risk_state(snapshot, CurrentPortfolioState(), tier0_regime=tier0_regime)
+    risk = decide_risk_state(snapshot, tier0_regime=tier0_regime)
     deploy = decide_deployment_state(
         snapshot,
         risk,

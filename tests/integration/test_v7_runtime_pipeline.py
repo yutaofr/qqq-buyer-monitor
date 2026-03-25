@@ -12,7 +12,6 @@ from src.engine.risk_controller import decide_risk_state
 from src.engine.runtime_selector import RuntimeSelection
 from src.engine.tier0_macro import assess_structural_regime
 from src.models import (
-    CurrentPortfolioState,
     Signal,
     SignalDetail,
     SignalResult,
@@ -53,12 +52,10 @@ def _base_result() -> SignalResult:
 def _run_runtime_pipeline(
     values: dict,
     *,
-    portfolio: CurrentPortfolioState | None = None,
     available_new_cash: float = 1000.0,
     forward_pe: float = 25.0,
     real_yield: float = 2.0,
 ):
-    portfolio = portfolio or CurrentPortfolioState()
     result = _base_result()
 
     baseline = {
@@ -80,7 +77,7 @@ def _run_runtime_pipeline(
     )
     erp = (1.0 / forward_pe) * 100.0 - real_yield
     tier0_regime = assess_structural_regime(baseline.get("credit_spread"), erp)
-    risk = decide_risk_state(snapshot, portfolio, tier0_regime=tier0_regime)
+    risk = decide_risk_state(snapshot, tier0_regime=tier0_regime)
     deploy = decide_deployment_state(
         snapshot,
         risk,
@@ -104,7 +101,6 @@ def _run_runtime_pipeline(
 
     if selected is not None:
         recommendation = build_beta_recommendation(
-            portfolio=portfolio,
             selection=RuntimeSelection(selected, (), 0.0),
             risk_decision=risk,
         )

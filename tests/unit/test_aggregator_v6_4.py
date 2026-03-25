@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import date
 from src.engine.aggregator import aggregate, get_target_allocation
-from src.models import AllocationState, TargetAllocationState, Tier1Result, Tier2Result, CurrentPortfolioState
+from src.models import AllocationState, TargetAllocationState, Tier1Result, Tier2Result
 
 @pytest.fixture
 def sample_ohlcv():

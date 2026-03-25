@@ -1,6 +1,6 @@
-# QQQ Buy-Signal & Strategic Allocation Monitor (v8.0)
+# QQQ Buy-Signal & Strategic Allocation Monitor (v8.1)
 
-A production-grade QQQ/QLD/Cash recommendation engine built around the **v8.0 Linear Pipeline Architecture**.
+A production-grade QQQ/QLD/Cash recommendation engine built around the **v8.1 Linear Pipeline Architecture**.
 
 The system now has a strict boundary:
 - It recommends **target portfolio beta**.
@@ -8,7 +8,7 @@ The system now has a strict boundary:
 - It does **not** calculate dollar amounts.
 - It does **not** manage a wallet or execute trades.
 
-## v8.0 Architecture
+## v8.1 Architecture
 
 ### Tier-0 Macro Regime
 `assess_structural_regime()` classifies the structural regime from credit spreads and ERP:
@@ -31,7 +31,7 @@ Determines how to deploy **new incoming cash** under Tier-0 soft ceilings.
 Outputs one of:
 `DEPLOY_SLOW | DEPLOY_BASE | DEPLOY_FAST | DEPLOY_PAUSE`.
 
-Key v8.0 semantics:
+Key v8.1 semantics:
 - `RICH_TIGHTENING` slows default deployment but still allows left-side entry when capitulation is strong.
 - `CRISIS` fully pauses incremental deployment.
 
@@ -50,7 +50,7 @@ The output is recommendation-only:
 - **Tier-0 hard/soft constraints:** structural regime now directly shapes both stock beta and cash deployment pace
 - **Pure math candidate search:** v8 selection respects `max_beta_ceiling` and drawdown budget before recommendation
 
-## 📊 Performance & Resilience (v8.0 Backtest)
+## 📊 Performance & Resilience (v8.1 Backtest)
 Latest full-sample backtest (`docker compose run --rm backtest`, 1999-2026):
 - **Tactical Max Drawdown:** `-6.6%`
 - **Baseline DCA Max Drawdown:** `-35.1%`

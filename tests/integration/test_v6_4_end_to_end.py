@@ -41,15 +41,13 @@ def test_v6_4_end_to_end_flow(mock_env):
     t2 = Tier2Result(10, 400.0, 450.0, 410.0, True, False, True, True, "yf", 0.02, 0.05)
     
     # Current portfolio: 100% cash
-    from src.models import CurrentPortfolioState
-    current = CurrentPortfolioState.from_env()
+        
     
     result = aggregate(
         market_date=date(2026, 3, 23),
         price=420.0,
         tier1=t1,
         tier2=t2,
-        current_portfolio=current
     )
     
     # 2. Verify result fields

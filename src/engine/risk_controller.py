@@ -28,7 +28,7 @@ def _count_missing_class_a(snapshot: FeatureSnapshot) -> int:
 
 def decide_risk_state(
     snapshot: FeatureSnapshot,
-    portfolio: CurrentPortfolioState,
+    rolling_drawdown: float | None = None,
     tier0_regime: str = "NEUTRAL",
     drawdown_budget: float = 0.30,
 ) -> RiskDecision:
@@ -89,18 +89,17 @@ def decide_risk_state(
         )
 
     # ── 2. Drawdown budget hard constraint ───────────────────────────────────
-    portfolio_drawdown = getattr(portfolio, "rolling_drawdown", getattr(portfolio, "_rolling_drawdown", None))
-    if portfolio_drawdown is not None:
-        if portfolio_drawdown >= drawdown_budget:
-            reasons.append({"rule": "drawdown_budget_breached", "drawdown": portfolio_drawdown})
+    if rolling_drawdown is not None:
+        if rolling_drawdown >= drawdown_budget:
+            reasons.append({"rule": "drawdown_budget_breached", "drawdown": rolling_drawdown})
             return RiskDecision(
                 risk_state=RiskState.RISK_EXIT,
                 target_exposure_ceiling=0.50,
                 target_cash_floor=0.50,
                 reasons=tuple(reasons),
             )
-        if portfolio_drawdown >= _DRAWDOWN_DEFENSE:
-            reasons.append({"rule": "drawdown_defense_band", "drawdown": portfolio_drawdown})
+        if rolling_drawdown >= _DRAWDOWN_DEFENSE:
+            reasons.append({"rule": "drawdown_defense_band", "drawdown": rolling_drawdown})
 
     # ── Extract Class A signals ──────────────────────────────────────────────
     credit_spread = v.get("credit_spread")

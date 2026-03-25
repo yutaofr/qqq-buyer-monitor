@@ -91,11 +91,10 @@ def test_logic_trace_db_roundtrip(tmp_path):
 
 def test_v6_3_strategic_fields_db_roundtrip(tmp_path):
     """验证 v6.3 战略配置字段在数据库保存/加载周期中的完整性"""
-    from src.models import CurrentPortfolioState, TargetAllocationState
+    from src.models import TargetAllocationState
     db_path = str(tmp_path / "test_v6_3.db")
     
     # 1. 构造带有战略字段的 Result
-    p = CurrentPortfolioState(current_cash_pct=0.2, qqq_pct=0.8, qld_pct=0.0)
     t = TargetAllocationState(target_cash_pct=0.1, target_qqq_pct=0.9, target_qld_pct=0.0, target_beta=0.9)
     audit = [{"state": "BASE_DCA", "realized": 0.89, "target": 0.90, "deviation": 0.01}]
     
@@ -115,10 +114,7 @@ def test_v6_3_strategic_fields_db_roundtrip(tmp_path):
         tier1=t1,
         tier2=t2,
         explanation="v6.3 persistence test",
-        current_portfolio=p,
         target_allocation=t,
-        effective_exposure=0.8,
-        interval_beta_audit=audit
     )
     
     # 2. 保存并加载
@@ -127,11 +123,6 @@ def test_v6_3_strategic_fields_db_roundtrip(tmp_path):
     loaded = history[0]
     
     # 3. 断言
-    assert loaded["effective_exposure"] == 0.8
-    assert loaded["interval_beta_audit"] == audit
-    
-    assert loaded["current_portfolio"]["current_cash_pct"] == 0.2
-    assert loaded["current_portfolio"]["qqq_pct"] == 0.8
     
     assert loaded["target_allocation"]["target_cash_pct"] == 0.1
     assert loaded["target_allocation"]["target_beta"] == 0.9

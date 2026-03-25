@@ -6,18 +6,10 @@ import importlib
 import pytest
 
 from src.engine.runtime_selector import RuntimeSelection
-from src.models import CurrentPortfolioState
 from src.models.candidate import CertifiedCandidate
 from src.models.risk import RiskState
 
 
-def _portfolio(qqq: float = 0.70, qld: float = 0.10, cash: float = 0.20) -> CurrentPortfolioState:
-    return CurrentPortfolioState(
-        qqq_pct=qqq,
-        qld_pct=qld,
-        current_cash_pct=cash,
-        gross_exposure_pct=qqq + 2 * qld,
-    )
 
 
 def _risk(state: RiskState = RiskState.RISK_NEUTRAL, *, tier0_applied: bool = False):
@@ -54,7 +46,6 @@ def test_build_execution_actions_interface_has_been_deleted():
 
 def test_beta_recommendation_has_no_amount_fields():
     recommendation = _build_beta_recommendation(
-        portfolio=_portfolio(),
         selection=_selection_with_target(0.60, 0.15, 0.25),
         risk_decision=_risk(),
     )
@@ -64,7 +55,6 @@ def test_beta_recommendation_has_no_amount_fields():
 
 def test_beta_recommendation_computes_portfolio_beta():
     recommendation = _build_beta_recommendation(
-        portfolio=_portfolio(),
         selection=_selection_with_target(0.60, 0.15, 0.25),
         risk_decision=_risk(),
     )
@@ -74,32 +64,17 @@ def test_beta_recommendation_computes_portfolio_beta():
     assert recommendation.recommended_cash_pct == pytest.approx(0.25)
 
 
-def test_should_not_adjust_within_exposure_band():
+def test_should_adjust_defaults_to_true_for_alignment():
     recommendation = _build_beta_recommendation(
-        portfolio=_portfolio(qqq=0.70, qld=0.10, cash=0.20),  # exposure = 0.90
-        selection=_selection_with_target(0.72, 0.09, 0.19),  # exposure = 0.90
+        selection=_selection_with_target(0.80, 0.05, 0.15),
         risk_decision=_risk(),
-        exposure_band=0.03,
-        previous_risk_state=RiskState.RISK_NEUTRAL,
-    )
-    assert recommendation.should_adjust is False
-    assert "within_band" in recommendation.adjustment_reason
-
-
-def test_should_adjust_on_exposure_drift():
-    recommendation = _build_beta_recommendation(
-        portfolio=_portfolio(qqq=0.60, qld=0.05, cash=0.35),  # exposure = 0.70
-        selection=_selection_with_target(0.80, 0.05, 0.15),  # exposure = 0.90
-        risk_decision=_risk(),
-        exposure_band=0.03,
     )
     assert recommendation.should_adjust is True
-    assert "exposure_drift" in recommendation.adjustment_reason
+    assert "align_to_target" in recommendation.adjustment_reason
 
 
 def test_should_adjust_on_risk_state_change():
     recommendation = _build_beta_recommendation(
-        portfolio=_portfolio(),
         selection=_selection_with_target(0.70, 0.10, 0.20),
         risk_decision=_risk(RiskState.RISK_DEFENSE),
         previous_risk_state=RiskState.RISK_NEUTRAL,
@@ -110,7 +85,6 @@ def test_should_adjust_on_risk_state_change():
 
 def test_beta_recommendation_is_immutable():
     recommendation = _build_beta_recommendation(
-        portfolio=_portfolio(),
         selection=_selection_with_target(0.70, 0.10, 0.20),
         risk_decision=_risk(),
     )
