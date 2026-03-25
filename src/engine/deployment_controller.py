@@ -54,7 +54,6 @@ _DEPLOY_RANK = {
     DeploymentState.DEPLOY_BASE: 2,
     DeploymentState.DEPLOY_SLOW: 1,
     DeploymentState.DEPLOY_PAUSE: 0,
-    DeploymentState.DEPLOY_IDLE: -1,
 }
 
 
