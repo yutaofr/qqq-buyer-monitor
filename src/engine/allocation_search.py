@@ -107,7 +107,7 @@ def find_best_allocation_v8(
 
     valid = [
         candidate for candidate in candidates
-        if candidate.target_effective_exposure <= max_beta_ceiling
+        if 0.50 <= candidate.target_effective_exposure <= max_beta_ceiling
         and candidate.research_metrics.get("max_drawdown", 1.0) <= max_drawdown_budget
     ]
     if not valid:

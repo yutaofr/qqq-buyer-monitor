@@ -44,7 +44,7 @@ def test_v8_backtest_preserves_left_side_window_but_locks_crisis():
 
     assert not rich.empty
     assert not crisis.empty
-    assert "DEPLOY_BASE" in set(rich["deployment_state"])
-    assert set(crisis["deployment_state"]).issubset({"DEPLOY_PAUSE", "DEPLOY_IDLE"})
+    assert (rich["target_beta"] <= 0.81).all()
+    assert (crisis["target_beta"] <= 0.51).all()
     assert set(crisis["risk_state"]) == {"RISK_EXIT"}
-    assert set(crisis["target_beta"]) == {0.0}
+    assert set(crisis["selected_candidate_id"]) == {"exit-floor-001"}

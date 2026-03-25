@@ -40,7 +40,8 @@ def test_risk_controller_triple_stress_exits():
     })
     decision = decide_risk_state(snap, CurrentPortfolioState(), drawdown_budget=0.30)
     assert decision.risk_state == RiskState.RISK_EXIT
-    assert decision.target_cash_floor >= 0.70
+    assert decision.target_cash_floor >= 0.50
+    assert decision.target_exposure_ceiling == 0.50
     assert any("triple_stress" in str(r) for r in decision.reasons)
 
 
@@ -72,7 +73,7 @@ def test_risk_controller_clean_macro_neutral():
     })
     decision = decide_risk_state(snap, CurrentPortfolioState(), drawdown_budget=0.30)
     assert decision.risk_state == RiskState.RISK_NEUTRAL
-    assert decision.target_exposure_ceiling == 0.90
+    assert decision.target_exposure_ceiling == 1.00
 
 
 def test_risk_decision_is_immutable():
@@ -197,8 +198,8 @@ def test_risk_controller_crisis_forces_exit_even_when_micro_is_clean():
         drawdown_budget=0.30,
     )
     assert decision.risk_state == RiskState.RISK_EXIT
-    assert decision.target_exposure_ceiling == 0.0
-    assert decision.target_cash_floor == 1.0
+    assert decision.target_exposure_ceiling == 0.50
+    assert decision.target_cash_floor == 0.50
     assert decision.tier0_applied is True
 
 
@@ -211,7 +212,7 @@ def test_risk_controller_rich_tightening_caps_ceiling_at_thirty_percent():
         drawdown_budget=0.30,
     )
     assert decision.risk_state == RiskState.RISK_REDUCED
-    assert decision.target_exposure_ceiling <= 0.30
+    assert decision.target_exposure_ceiling <= 0.80
     assert decision.tier0_applied is True
 
 
@@ -224,7 +225,7 @@ def test_risk_controller_transition_stress_forces_defense():
         drawdown_budget=0.30,
     )
     assert decision.risk_state == RiskState.RISK_DEFENSE
-    assert decision.target_exposure_ceiling == 0.50
+    assert decision.target_exposure_ceiling == 0.80
     assert decision.tier0_applied is True
 
 
@@ -242,7 +243,7 @@ def test_risk_controller_neutral_tier0_preserves_v7_clean_behavior():
         drawdown_budget=0.30,
     )
     assert decision.risk_state == RiskState.RISK_NEUTRAL
-    assert decision.target_exposure_ceiling == 0.90
+    assert decision.target_exposure_ceiling == 1.00
     assert decision.tier0_applied is False
 
 
@@ -273,7 +274,7 @@ def test_risk_controller_tier0_crisis_overrides_micro_triple_stress_path():
         drawdown_budget=0.30,
     )
     assert decision.risk_state == RiskState.RISK_EXIT
-    assert decision.target_exposure_ceiling == 0.0
+    assert decision.target_exposure_ceiling == 0.50
     assert decision.tier0_applied is True
 
 

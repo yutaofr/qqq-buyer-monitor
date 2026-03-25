@@ -630,14 +630,17 @@ class Backtester:
         prices_qld = simulate_leveraged_price(prices_qqq, leverage=2.0)
         registry = load_registry(registry_path)
 
-        reserve_cash = float(self.initial_capital)
-        active_cash = 0.0
+        # Always Invested Assumption for v8 Recommendations
+        reserve_cash = 0.0
+        active_cash = float(self.initial_capital)
         units_qqq = 0.0
         units_qld = 0.0
 
-        baseline_cash = float(self.initial_capital)
-        baseline_units_held = 0.0
-        baseline_units_total = 0.0
+        # Lump sum baseline deployment 
+        p0 = float(prices_qqq.iloc[0]) if not prices_qqq.empty and float(prices_qqq.iloc[0]) > 0 else 1.0
+        baseline_cash = 0.0
+        baseline_units_held = float(self.initial_capital) / p0
+        baseline_units_total = baseline_units_held
 
         add_dates = set(prices_qqq.index[::WEEKLY_ADD_INTERVAL])
         final_low_date = prices_qqq.idxmin()
@@ -1054,8 +1057,8 @@ class Backtester:
         target_history: list[TargetAllocationState | None],
     ) -> float:
         """Independent replay for the v8 staged-deployment path."""
-        reserve_cash = float(self.initial_capital)
-        active_cash = 0.0
+        reserve_cash = 0.0
+        active_cash = float(self.initial_capital)
         units_qqq = 0.0
         units_qld = 0.0
 

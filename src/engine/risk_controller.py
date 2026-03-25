@@ -46,13 +46,13 @@ def decide_risk_state(
     v = snapshot.values
     reasons = []
 
-    # ── 0. Tier-0 hard constraint (v8.0) ────────────────────────────────────
+    # ── 0. Tier-0 hard constraint (v8.1) ────────────────────────────────────
     if tier0_regime == "CRISIS":
         reasons.append({"rule": "tier0_crisis", "tier0_regime": tier0_regime})
         return RiskDecision(
             risk_state=RiskState.RISK_EXIT,
-            target_exposure_ceiling=0.0,
-            target_cash_floor=1.0,
+            target_exposure_ceiling=0.50,
+            target_cash_floor=0.50,
             reasons=tuple(reasons),
             tier0_applied=True,
         )
@@ -61,8 +61,8 @@ def decide_risk_state(
         reasons.append({"rule": "tier0_rich_tightening", "tier0_regime": tier0_regime})
         return RiskDecision(
             risk_state=RiskState.RISK_REDUCED,
-            target_exposure_ceiling=0.30,
-            target_cash_floor=0.70,
+            target_exposure_ceiling=0.80,
+            target_cash_floor=0.20,
             reasons=tuple(reasons),
             tier0_applied=True,
         )
@@ -71,8 +71,8 @@ def decide_risk_state(
         reasons.append({"rule": "tier0_transition_stress", "tier0_regime": tier0_regime})
         return RiskDecision(
             risk_state=RiskState.RISK_DEFENSE,
-            target_exposure_ceiling=0.50,
-            target_cash_floor=0.50,
+            target_exposure_ceiling=0.80,
+            target_cash_floor=0.20,
             reasons=tuple(reasons),
             tier0_applied=True,
         )
@@ -83,8 +83,8 @@ def decide_risk_state(
         reasons.append({"rule": "class_a_missing", "missing_count": n_missing})
         return RiskDecision(
             risk_state=RiskState.RISK_REDUCED,
-            target_exposure_ceiling=0.60,
-            target_cash_floor=0.40,
+            target_exposure_ceiling=0.80,
+            target_cash_floor=0.20,
             reasons=tuple(reasons),
         )
 
@@ -95,8 +95,8 @@ def decide_risk_state(
             reasons.append({"rule": "drawdown_budget_breached", "drawdown": portfolio_drawdown})
             return RiskDecision(
                 risk_state=RiskState.RISK_EXIT,
-                target_exposure_ceiling=0.25,
-                target_cash_floor=0.75,
+                target_exposure_ceiling=0.50,
+                target_cash_floor=0.50,
                 reasons=tuple(reasons),
             )
         if portfolio_drawdown >= _DRAWDOWN_DEFENSE:
@@ -121,8 +121,8 @@ def decide_risk_state(
                         "liq_roc": liq_roc, "funding_stress": funding_stress})
         return RiskDecision(
             risk_state=RiskState.RISK_EXIT,
-            target_exposure_ceiling=0.25,
-            target_cash_floor=0.75,
+            target_exposure_ceiling=0.50,
+            target_cash_floor=0.50,
             reasons=tuple(reasons),
         )
 
@@ -132,8 +132,8 @@ def decide_risk_state(
         reasons.append({"rule": "dual_stress", "stress_count": stress_count})
         return RiskDecision(
             risk_state=RiskState.RISK_DEFENSE,
-            target_exposure_ceiling=0.50,
-            target_cash_floor=0.50,
+            target_exposure_ceiling=0.70,
+            target_cash_floor=0.30,
             reasons=tuple(reasons),
         )
 
@@ -142,16 +142,21 @@ def decide_risk_state(
         reasons.append({"rule": "single_stress", "stress_count": stress_count})
         return RiskDecision(
             risk_state=RiskState.RISK_REDUCED,
-            target_exposure_ceiling=0.75,
-            target_cash_floor=0.25,
+            target_exposure_ceiling=0.85,
+            target_cash_floor=0.15,
             reasons=tuple(reasons),
         )
 
     # ── 6. Clean environment ──────────────────────────────────────────────────
     reasons.append({"rule": "clean_macro"})
+    
+    # In v8.1, NEUTRAL allows up to 1.0. EUPHORIC would allow up to 1.2
+    ceiling = 1.2 if tier0_regime == "EUPHORIC" else 1.0
+    cash_floor = max(0.0, 1.0 - ceiling)
+
     return RiskDecision(
         risk_state=RiskState.RISK_NEUTRAL,
-        target_exposure_ceiling=0.90,
-        target_cash_floor=0.10,
+        target_exposure_ceiling=ceiling,
+        target_cash_floor=cash_floor,
         reasons=tuple(reasons),
     )
