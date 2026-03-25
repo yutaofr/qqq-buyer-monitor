@@ -99,6 +99,7 @@ def test_run_backtest_prints_macro_coverage_before_summary(monkeypatch, capsys):
             events=(),
             tactical_mdd=-0.10,
             baseline_mdd=-0.20,
+            signal_beta=0.50,
             realized_beta=0.50,
             turnover=1.0,
             nav_integrity=1.0,
