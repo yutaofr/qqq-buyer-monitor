@@ -146,3 +146,4 @@ def test_neutral_with_no_new_cash_returns_idle():
 
     assert tier0_regime == "NEUTRAL"
     assert deploy.deployment_state == "DEPLOY_IDLE"
+    assert deploy.reasons[0]["rule"] == "no_deployment_budget"

@@ -77,7 +77,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
     from src.engine.tier1 import calculate_tier1
     from src.engine.tier2 import calculate_tier2
     from src.models import MarketData, Signal
-    from src.output.cli import print_signal
+    from src.output.cli import build_v8_explanation, is_v8_runtime_result, print_signal
     from src.output.interpreter import NarrativeEngine
     from src.output.report import to_json
     from src.store.db import (
@@ -517,9 +517,13 @@ def run_pipeline(args: argparse.Namespace) -> None:
         logger.warning("v7.0 pipeline error (non-fatal, v6 allocation still valid): %s", exc)
     # ── end v7.0 ──────────────────────────────────────────────────────────────
 
-    # v6.2 Narrative Guardrail: Filter bullish bias in defensive states
+    # v6.2 Narrative Guardrail for legacy output; v8 uses a dedicated recommendation-only summary.
     interpreter = NarrativeEngine()
-    result.explanation = interpreter.format_explanation(result.explanation, result.allocation_state)
+    v8_runtime = is_v8_runtime_result(result)
+    if v8_runtime:
+        result.explanation = build_v8_explanation(result)
+    else:
+        result.explanation = interpreter.format_explanation(result.explanation, result.allocation_state)
 
     consecutive_days = 1
     current_allocation_state = result.allocation_state.value
@@ -553,11 +557,12 @@ def run_pipeline(args: argparse.Namespace) -> None:
             compact=compact_mode,
             consecutive_days=consecutive_days
         )
-        try:
-            interpreter.print_narrative(result.logic_trace)
-            interpreter.print_decision_tree(result.logic_trace)
-        except Exception as exc:
-            logger.warning("Narrative interpreter failed: %s", exc)
+        if not v8_runtime:
+            try:
+                interpreter.print_narrative(result.logic_trace)
+                interpreter.print_decision_tree(result.logic_trace)
+            except Exception as exc:
+                logger.warning("Narrative interpreter failed: %s", exc)
 
     # Persist
     if not args.no_save:

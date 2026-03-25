@@ -61,6 +61,7 @@ def test_cli_output_reflects_v7_runtime_when_available(mock_result, capsys):
     mock_result.registry_version = "2026-03-25-v8.0-r1"
     mock_result.target_beta = 1.00
     mock_result.should_adjust = True
+    mock_result.explanation = "旧版：允许小幅加仓。单日加仓: 50%。目标 Beta: 0.60。"
     mock_result.rebalance_action = {
         "should_adjust": True,
         "reason": "risk_state_changed",
@@ -78,7 +79,10 @@ def test_cli_output_reflects_v7_runtime_when_available(mock_result, capsys):
     assert "Tier-0=NEUTRAL" in captured.out
     assert "target_beta=1.00x" in captured.out
     assert "mode=FAST" in captured.out
-    assert "amount=" not in captured.out
+    assert "Action:" not in captured.out
+    assert "Policy:" not in captured.out
+    assert "单日加仓" not in captured.out
+    assert "目标 Beta: 0.60" not in captured.out
 
 
 def test_cli_output_hides_default_portfolio_fallback(capsys):

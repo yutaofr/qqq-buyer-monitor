@@ -34,6 +34,7 @@ def test_deployment_returns_idle_when_no_new_cash():
     assert decision.deployment_state == DeploymentState.DEPLOY_IDLE
     assert decision.dca_multiplier == 0.0
     assert decision.pause_new_cash is False
+    assert decision.reasons[0]["rule"] == "no_deployment_budget"
 
 
 def test_deployment_returns_idle_when_new_cash_is_negative():
@@ -45,6 +46,7 @@ def test_deployment_returns_idle_when_new_cash_is_negative():
         available_new_cash=-100.0,
     )
     assert decision.deployment_state == DeploymentState.DEPLOY_IDLE
+    assert decision.reasons[0]["rule"] == "no_deployment_budget"
 
 
 def test_rich_tightening_defaults_to_slow_without_high_quality_capitulation():

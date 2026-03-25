@@ -57,6 +57,54 @@ def _allocation_label(state: AllocationState) -> str:
     return "维持现状"
 
 
+def is_v8_runtime_result(result: SignalResult) -> bool:
+    """Return True when the v8 linear pipeline fields are populated."""
+    return any(
+        [
+            result.risk_state is not None,
+            result.deployment_state is not None,
+            result.selected_candidate_id is not None,
+            result.registry_version is not None,
+            result.tier0_regime is not None,
+            result.target_beta is not None,
+            result.should_adjust is not None,
+        ]
+    )
+
+
+def build_v8_explanation(result: SignalResult) -> str:
+    """Build a concise v8 explanation without legacy amount-based wording."""
+    tier0 = result.tier0_regime or "n/a"
+    risk = result.risk_state.value if result.risk_state else "n/a"
+    deploy = result.deployment_state.value if result.deployment_state else "n/a"
+    candidate = result.selected_candidate_id or "n/a"
+    registry = result.registry_version or "n/a"
+    target_beta = result.target_beta if result.target_beta is not None else result.target_allocation.target_beta
+    should_adjust = result.should_adjust if result.should_adjust is not None else False
+    adjust_reason = result.rebalance_action.get("reason", "n/a")
+    deploy_reason = result.deployment_action.get("reason", "n/a")
+    t = result.target_allocation
+    p = result.current_portfolio
+    current_beta = p.qqq_pct + 2.0 * p.qld_pct
+
+    parts = [
+        f"v8.0 线性流水线：Tier-0={tier0}",
+        f"风险={risk}",
+        f"候选={candidate}",
+        f"registry={registry}",
+        f"target_beta={target_beta:.2f}x",
+        f"adjust={should_adjust}",
+        f"reason={adjust_reason}",
+        f"deploy={deploy}",
+        f"deploy_reason={deploy_reason}",
+        f"配比 QQQ={t.target_qqq_pct*100:.1f}%",
+        f"QLD={t.target_qld_pct*100:.1f}%",
+        f"Cash={t.target_cash_pct*100:.1f}%",
+        f"当前有效敞口={current_beta:.2f}x",
+    ]
+    return " | ".join(parts)
+
+
 def _has_explicit_portfolio(result: SignalResult) -> bool:
     p = result.current_portfolio
     return not (
@@ -145,9 +193,13 @@ def print_signal(
     print(f"Date:      {result.date}")
     print(f"Price:     ${result.price:.2f}")
     print(f"Signal:    {c(sig_color)}{sig_label}{r} (Score: {result.final_score}/100)")
-    print(f"Policy:    {c(color)}{label}{r}")
-    print(f"Action:    {c(_BOLD)}{_allocation_label(result.allocation_state)}{r}")
-    _print_v7_sections(result, c)
+    v8_runtime = is_v8_runtime_result(result)
+    if v8_runtime:
+        _print_v7_sections(result, c)
+    else:
+        print(f"Policy:    {c(color)}{label}{r}")
+        print(f"Action:    {c(_BOLD)}{_allocation_label(result.allocation_state)}{r}")
+        _print_v7_sections(result, c)
 
     # v6.4 Search Rationale from Logic Trace
     search_node = next((n for n in result.logic_trace if n.get("step") == "search"), None)
@@ -155,7 +207,8 @@ def print_signal(
         print(f"Search:    {search_node['decision']} ({search_node['reason']})")
     
     # Details summary
-    print(f"Details:   单日加仓: {result.daily_tranche_pct:.0%}, 滚动上限: {result.max_total_add_pct:.1f}x, 置信度: {result.confidence}")
+    if not v8_runtime:
+        print(f"Details:   单日加仓: {result.daily_tranche_pct:.0%}, 滚动上限: {result.max_total_add_pct:.1f}x, 置信度: {result.confidence}")
 
     # v6.3 Strategic Portfolio Alignment
     p = result.current_portfolio
@@ -186,5 +239,5 @@ def print_signal(
         print(f"  - Breadth:    {t1.breadth.value*100:5.1f}% ({t1.breadth.points:2d} pts)")
 
     print(f"\n{c(_CYAN)}Rationale:{r}")
-    print(result.explanation)
+    print(build_v8_explanation(result) if v8_runtime else result.explanation)
     print(f"{c(_BOLD)}---{r}")
