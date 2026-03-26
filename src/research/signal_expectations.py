@@ -197,6 +197,8 @@ def build_market_expectation_matrix(
                 "erp": features.get("erp"),
                 "capitulation_score": _derive_capitulation_score(price_drawdown),
                 "tactical_stress_score": _derive_tactical_stress_score(prices, loc),
+                "five_day_return": float(five_day_return.iloc[loc]),
+                "twenty_day_return": float(twenty_day_return.iloc[loc]),
             }
         )
 

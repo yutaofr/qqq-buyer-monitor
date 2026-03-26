@@ -341,6 +341,14 @@ def run_pipeline(args: argparse.Namespace) -> None:
     except (TypeError, ValueError):
         available_new_cash = 0.0
 
+    five_day_return = 0.0
+    twenty_day_return = 0.0
+    if market_data.ohlcv_history is not None and "Close" in market_data.ohlcv_history:
+        close_history = market_data.ohlcv_history["Close"].dropna().astype(float)
+        if not close_history.empty:
+            five_day_return = float(close_history.pct_change(5).fillna(0.0).iloc[-1])
+            twenty_day_return = float(close_history.pct_change(20).fillna(0.0).iloc[-1])
+
     try:
         # Build unified feature snapshot from collected data
         v7_snapshot = build_feature_snapshot(
@@ -358,6 +366,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 "fear_greed": market_data.fear_greed,
                 "tactical_stress_score": tier1.stress_score,
                 "capitulation_score": tier1.capitulation_score,
+                "rolling_drawdown": rolling_drawdown,
+                "five_day_return": five_day_return,
+                "twenty_day_return": twenty_day_return,
                 "persistence_score": tier1.persistence_score,
                 "sector_rotation": market_data.sector_rotation,
             },

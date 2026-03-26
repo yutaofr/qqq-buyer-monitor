@@ -34,6 +34,8 @@ SIGNAL_EXPECTATION_OPTIONAL_NUMERIC_COLUMNS: tuple[str, ...] = (
     "erp",
     "capitulation_score",
     "tactical_stress_score",
+    "five_day_return",
+    "twenty_day_return",
 )
 _ALLOWED_DEPLOYMENT_STATES = {state.value for state in DeploymentState}
 

@@ -448,6 +448,8 @@ class Backtester:
         if prices_qqq.empty:
             raise ValueError("Empty price data")
 
+        five_day_returns = prices_qqq.pct_change(5).fillna(0.0)
+        twenty_day_returns = prices_qqq.pct_change(20).fillna(0.0)
         registry = load_registry(registry_path)
         expected = _coerce_alignment_frame(expected_matrix, prices_qqq.index)
         previous_risk_state: RiskState | None = None
@@ -483,6 +485,14 @@ class Backtester:
                 row.get("rolling_drawdown"),
                 inferred_market_drawdown,
             )
+            five_day_return = _coerce_optional_float(
+                row.get("five_day_return"),
+                float(five_day_returns.iloc[loc]),
+            ) or 0.0
+            twenty_day_return = _coerce_optional_float(
+                row.get("twenty_day_return"),
+                float(twenty_day_returns.iloc[loc]),
+            ) or 0.0
             available_new_cash = _coerce_optional_float(
                 row.get("available_new_cash"),
                 BASE_WEEKLY_DCA_UNITS * p_qqq,
@@ -504,6 +514,9 @@ class Backtester:
                     "fear_greed": None,
                     "tactical_stress_score": tactical_stress_score,
                     "capitulation_score": capitulation_score,
+                    "rolling_drawdown": rolling_drawdown,
+                    "five_day_return": five_day_return,
+                    "twenty_day_return": twenty_day_return,
                     "persistence_score": 0,
                 },
                 raw_quality={},
@@ -559,6 +572,8 @@ class Backtester:
                     _EXPECTED_TARGET_BETA_COLUMN: _coerce_optional_float(row.get(_EXPECTED_TARGET_BETA_COLUMN)),
                     _EXPECTED_DEPLOYMENT_COLUMN: _coerce_optional_str(row.get(_EXPECTED_DEPLOYMENT_COLUMN)),
                     "rolling_drawdown": rolling_drawdown,
+                    "five_day_return": five_day_return,
+                    "twenty_day_return": twenty_day_return,
                     "available_new_cash": available_new_cash,
                     "tier0_regime": tier0_regime,
                     "risk_state": risk.risk_state.value,
@@ -989,6 +1004,8 @@ class Backtester:
         deployed_before_low = 0.0
         total_volume_traded = 0.0
         peak_nav = float(self.initial_capital)
+        five_day_returns = prices_qqq.pct_change(5).fillna(0.0)
+        twenty_day_returns = prices_qqq.pct_change(20).fillna(0.0)
 
         previous_risk_state: RiskState | None = None
 
@@ -1017,6 +1034,8 @@ class Backtester:
             rolling_drawdown = max(nav_drawdown, market_drawdown)
             capitulation_score = _derive_capitulation_score(price_drawdown)
             tactical_stress_score = _derive_tactical_stress_score(prices_qqq, loc)
+            five_day_return = float(five_day_returns.iloc[loc])
+            twenty_day_return = float(twenty_day_returns.iloc[loc])
 
             snapshot = build_feature_snapshot(
                 market_date=current_date,
@@ -1033,6 +1052,9 @@ class Backtester:
                     "fear_greed": None,
                     "tactical_stress_score": tactical_stress_score,
                     "capitulation_score": capitulation_score,
+                    "rolling_drawdown": rolling_drawdown,
+                    "five_day_return": five_day_return,
+                    "twenty_day_return": twenty_day_return,
                     "persistence_score": 0,
                 },
                 raw_quality={},
@@ -1162,6 +1184,9 @@ class Backtester:
                     "used_beta_floor_fallback": used_floor_fallback,
                     "target_beta": target_beta_total,
                     "deployment_cash": transfer_cash,
+                    "rolling_drawdown": rolling_drawdown,
+                    "five_day_return": five_day_return,
+                    "twenty_day_return": twenty_day_return,
                 }
             )
 
