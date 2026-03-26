@@ -169,6 +169,7 @@ def test_run_backtest_reports_authorized_and_unauthorized_crisis_metrics(monkeyp
                 "tier0_regime": ["CRISIS", "CRISIS", "NEUTRAL"],
                 "deployment_state": ["DEPLOY_FAST", "DEPLOY_PAUSE", "DEPLOY_BASE"],
                 "blood_chip_override_active": [True, False, False],
+                "deployment_reason_path": ["liquidity_reversal", None, None],
                 "nav": [10_000.0, 10_050.0, 10_100.0],
                 "close": [100.5, 101.0, 101.5],
                 "state": ["BASE_DCA", "BASE_DCA", "BASE_DCA"],
@@ -217,6 +218,7 @@ def test_run_backtest_reports_authorized_and_unauthorized_crisis_metrics(monkeyp
     output = capsys.readouterr().out
     assert "CRISIS blood-chip overrides: 1" in output
     assert "CRISIS unauthorized breaches: 0" in output
+    assert "CRISIS blood-chip override paths: liquidity_reversal=1" in output
 
 
 def test_run_signal_audits_returns_dual_alignment_summaries(tmp_path, capsys):

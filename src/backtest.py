@@ -131,6 +131,13 @@ def _deployment_reason_rule(decision: DeploymentDecision) -> str:
     return str(decision.reasons[0].get("rule", "controller_decision"))
 
 
+def _deployment_reason_path(decision: DeploymentDecision) -> str | None:
+    for reason in decision.reasons:
+        if reason.get("rule") == "blood_chip_crisis_override":
+            return _coerce_optional_str(reason.get("path"))
+    return _coerce_optional_str(decision.reasons[0].get("path")) if decision.reasons else None
+
+
 def _blood_chip_override_active(decision: DeploymentDecision) -> bool:
     return any(reason.get("rule") == "blood_chip_crisis_override" for reason in decision.reasons)
 
@@ -618,6 +625,7 @@ class Backtester:
                 available_new_cash=available_new_cash,
             )
             deployment_reason_rule = _deployment_reason_rule(deploy)
+            deployment_reason_path = _deployment_reason_path(deploy)
             blood_chip_override_active = _blood_chip_override_active(deploy)
 
             candidates = select_runtime_candidates(registry, risk.risk_state)
@@ -675,6 +683,7 @@ class Backtester:
                     "deployment_state": deploy.deployment_state.value,
                     "deployment_multiplier": float(deploy.dca_multiplier),
                     "deployment_reason_rule": deployment_reason_rule,
+                    "deployment_reason_path": deployment_reason_path,
                     "blood_chip_override_active": blood_chip_override_active,
                     "selected_candidate_id": selected_candidate_id,
                     "raw_target_beta": raw_target_beta,
@@ -1184,6 +1193,7 @@ class Backtester:
                 available_new_cash=base_cash_budget,
             )
             deployment_reason_rule = _deployment_reason_rule(deploy)
+            deployment_reason_path = _deployment_reason_path(deploy)
             blood_chip_override_active = _blood_chip_override_active(deploy)
 
             transfer_cash = 0.0
@@ -1305,6 +1315,7 @@ class Backtester:
                     "risk_state": risk.risk_state.value,
                     "deployment_state": deploy.deployment_state.value,
                     "deployment_reason_rule": deployment_reason_rule,
+                    "deployment_reason_path": deployment_reason_path,
                     "blood_chip_override_active": blood_chip_override_active,
                     "tier0_regime": tier0_regime,
                     "selected_candidate_id": selected_candidate_id,
@@ -2006,9 +2017,21 @@ def run_backtest(
             & (daily_ts["deployment_state"].isin(["DEPLOY_SLOW", "DEPLOY_BASE", "DEPLOY_RECOVER", "DEPLOY_FAST"]))
             & ~blood_chip_flags
         ]
+        crisis_override_paths = (
+            crisis_blood_chip_overrides.get("deployment_reason_path", pd.Series(dtype=object))
+            .dropna()
+            .astype(str)
+            .value_counts()
+            .sort_index()
+        )
         print(f"RICH_TIGHTENING left-side windows: {len(rich_overrides)}")
         print(f"CRISIS blood-chip overrides: {len(crisis_blood_chip_overrides)}")
         print(f"CRISIS unauthorized breaches: {len(crisis_unauthorized_breaches)}")
+        if not crisis_override_paths.empty:
+            path_summary = ", ".join(
+                f"{path}={count}" for path, count in crisis_override_paths.items()
+            )
+            print(f"CRISIS blood-chip override paths: {path_summary}")
 
     if summary.interval_beta_audit:
         print(f"\n--- AC-4 Beta Fidelity Audit (Mean Deviation: {summary.mean_interval_beta_deviation:.4f}) ---")

@@ -72,8 +72,13 @@ def test_v8_backtest_tracks_authorized_crisis_blood_chip_overrides_without_chang
     assert not crisis.empty
     assert "blood_chip_override_active" in summary.daily_timeseries.columns
     assert "deployment_reason_rule" in summary.daily_timeseries.columns
+    assert "deployment_reason_path" in summary.daily_timeseries.columns
     assert (crisis["target_beta"] <= 0.51).all()
     assert (crisis.loc[crisis["blood_chip_override_active"], "deployment_state"] == "DEPLOY_FAST").all()
+    assert (
+        crisis.loc[crisis["blood_chip_override_active"], "deployment_reason_path"]
+        == "liquidity_reversal"
+    ).all()
     assert (
         crisis.loc[~crisis["blood_chip_override_active"], "deployment_state"] == "DEPLOY_PAUSE"
     ).all()

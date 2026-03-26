@@ -81,11 +81,13 @@ def test_build_signal_timeseries_marks_authorized_crisis_blood_chip_override():
     final_row = signals.iloc[-1]
     assert "blood_chip_override_active" in signals.columns
     assert "deployment_reason_rule" in signals.columns
+    assert "deployment_reason_path" in signals.columns
     assert final_row["risk_state"] == "RISK_EXIT"
     assert final_row["signal_target_beta"] == pytest.approx(0.5)
     assert final_row["deployment_state"] == "DEPLOY_FAST"
     assert bool(final_row["blood_chip_override_active"]) is True
     assert final_row["deployment_reason_rule"] == "blood_chip_crisis_override"
+    assert final_row["deployment_reason_path"] == "liquidity_reversal"
 
 
 def test_build_signal_timeseries_does_not_promote_nan_soft_signals_to_override():

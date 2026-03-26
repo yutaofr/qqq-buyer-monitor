@@ -105,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         "used_beta_floor_fallback",
         "blood_chip_override_active",
         "deployment_reason_rule",
+        "deployment_reason_path",
     ):
         if column in deployment_summary.daily_timeseries.columns:
             daily[column] = deployment_summary.daily_timeseries[column]
@@ -114,6 +115,18 @@ def main(argv: list[str] | None = None) -> int:
         "blood_chip_override_active",
         pd.Series(False, index=daily.index),
     ).fillna(False).astype(bool)
+    crisis_override_path_counts = (
+        daily.loc[
+            (daily["tier0_regime"] == "CRISIS")
+            & blood_chip_override_flags
+            & (daily["deployment_state"] != "DEPLOY_PAUSE"),
+            "deployment_reason_path",
+        ]
+        .dropna()
+        .astype(str)
+        .value_counts()
+        .sort_index()
+    )
     summary = {
         "acceptance": {
             "beta_mae": float(beta_summary.mean_absolute_error),
@@ -139,6 +152,10 @@ def main(argv: list[str] | None = None) -> int:
                     & (daily["deployment_state"] != "DEPLOY_PAUSE")
                 ).sum()
             ),
+            "crisis_blood_chip_override_paths": {
+                str(path): int(count)
+                for path, count in crisis_override_path_counts.items()
+            },
         },
         "coverage": {
             "rows": coverage["rows"],
@@ -184,6 +201,11 @@ def main(argv: list[str] | None = None) -> int:
         f"blood_chip_overrides={summary['acceptance']['crisis_blood_chip_overrides']}, "
         f"unauthorized_breaches={summary['acceptance']['crisis_unauthorized_breaches']}"
     )
+    if not crisis_override_path_counts.empty:
+        path_summary = ", ".join(
+            f"{path}={count}" for path, count in crisis_override_path_counts.items()
+        )
+        print(f"CRISIS override paths: {path_summary}")
     for name, window_summary in summary["windows"].items():
         print(
             f"{name}: rows={window_summary['rows']}, "
