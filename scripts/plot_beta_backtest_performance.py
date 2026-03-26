@@ -35,18 +35,21 @@ def plot_beta_backtest_performance() -> None:
     logging.getLogger().setLevel(logging.ERROR)
 
     tester = Backtester(initial_capital=100_000)
-    summary = tester.simulate_portfolio(qqq, seeder, enable_dynamic_search=True, registry_path="data/candidate_registry_v7.json")
-    daily_ts = summary.daily_timeseries
+    signal_daily_ts = tester.build_signal_timeseries(
+        qqq,
+        macro_seeder=seeder,
+        registry_path="data/candidate_registry_v7.json",
+    )
 
-    if daily_ts is None or daily_ts.empty:
-        print("Failed to run backtest or retrieve daily_timeseries.")
+    if signal_daily_ts.empty:
+        print("Failed to build signal_timeseries for stock-beta visualization.")
         return
 
     out_paths = [
         "artifacts/v8.1_beta_recommendation_performance.png",
         "docs/images/v8.1_beta_recommendation_performance.png",
     ]
-    saved_paths = save_beta_backtest_figure(daily_ts, summary, out_paths)
+    saved_paths = save_beta_backtest_figure(signal_daily_ts, None, out_paths)
     for path in saved_paths:
         print(f"Successfully generated visualization to: {path}")
 

@@ -1829,22 +1829,24 @@ def run_backtest(
     print(f"Average cost vs baseline DCA: {_format_pct(summary.average_cost_improvement_vs_baseline_dca)} improvement")
     print("-" * 40)
 
-    daily_ts = getattr(summary, "daily_timeseries", None)
-    if isinstance(daily_ts, pd.DataFrame) and not daily_ts.empty:
-        beta_col = "target_beta" if "target_beta" in daily_ts.columns else "signal_target_beta" if "signal_target_beta" in daily_ts.columns else None
-        if beta_col and "close" in daily_ts.columns:
-            saved_paths = save_beta_backtest_figure(
-                daily_ts,
-                summary,
-                [
-                    "artifacts/v8.1_beta_recommendation_performance.png",
-                    "docs/images/v8.1_beta_recommendation_performance.png",
-                ],
-            )
-            print(
-                "Beta recommendation visualization saved to: "
-                + ", ".join(str(path) for path in saved_paths)
-            )
+    signal_daily_ts = tester.build_signal_timeseries(
+        qqq,
+        macro_seeder=seeder,
+        registry_path=registry_path,
+    )
+    if not signal_daily_ts.empty:
+        saved_paths = save_beta_backtest_figure(
+            signal_daily_ts,
+            None,
+            [
+                "artifacts/v8.1_beta_recommendation_performance.png",
+                "docs/images/v8.1_beta_recommendation_performance.png",
+            ],
+        )
+        print(
+            "Stock-beta recommendation visualization saved to: "
+            + ", ".join(str(path) for path in saved_paths)
+        )
 
 
 def main(argv: list[str] | None = None) -> int:

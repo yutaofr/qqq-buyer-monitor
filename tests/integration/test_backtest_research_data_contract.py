@@ -109,16 +109,32 @@ def test_run_backtest_prints_macro_coverage_before_summary(monkeypatch, capsys):
             average_cost_improvement_vs_baseline_dca=0.0,
         )
 
+    def fake_build_signal_timeseries(self, *args, **kwargs):
+        events.append("signal-timeseries")
+        return pd.DataFrame(
+            {
+                "close": [100.5, 101.5],
+                "signal_target_beta": [0.5, 0.5],
+            },
+            index=pd.to_datetime(["2024-01-02", "2024-01-03"], utc=True),
+        )
+
+    def fake_save_beta_backtest_figure(*args, **kwargs):
+        events.append("save-figure")
+        return []
+
     monkeypatch.setattr("src.backtest.os.path.exists", fake_exists)
     monkeypatch.setattr("src.backtest.Path.exists", fake_macro_exists)
     monkeypatch.setattr("src.backtest.pd.read_csv", fake_read_csv)
     monkeypatch.setattr("src.backtest.Backtester.simulate_portfolio", fake_simulate)
+    monkeypatch.setattr("src.backtest.Backtester.build_signal_timeseries", fake_build_signal_timeseries)
+    monkeypatch.setattr("src.backtest.save_beta_backtest_figure", fake_save_beta_backtest_figure)
 
     run_backtest()
 
     output = capsys.readouterr().out
     assert output.index("--- Canonical Macro Coverage ---") < output.index("--- v8.1 Linear Pipeline Backtest Summary")
-    assert events == ["simulate"]
+    assert events == ["simulate", "signal-timeseries", "save-figure"]
 
 
 def test_run_signal_audits_returns_dual_alignment_summaries(tmp_path, capsys):
