@@ -59,13 +59,14 @@ def build_beta_backtest_figure(daily_ts: pd.DataFrame, summary: Any | None = Non
         color="#00ff9d",
         linewidth=1.8,
     )
-    ax_beta.scatter(
+    ax_beta.plot(
         frame.index,
         frame[beta_col],
         label="Target Beta",
         color="#ff9900",
-        s=16,
+        linewidth=2.0,
         alpha=0.9,
+        drawstyle="steps-post",
         zorder=4,
     )
     ax_price.set_ylabel("QQQ Price ($)", fontsize=12)
