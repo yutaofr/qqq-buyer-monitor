@@ -1,5 +1,5 @@
 """
-QQQ Monitor — main entry point (v8.1 Dual-Controller).
+QQQ Monitor — main entry point (v8.2 Dual-Controller).
 
 Usage:
     python -m src.main                  # run full pipeline
@@ -305,7 +305,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
     )
     result.data_quality = build_data_quality(market_data, feature_meta=data_quality_meta)
 
-    # ── v8.1 Dual-Controller Pipeline ─────────────────────────────────────────
+    # ── v8.2 Dual-Controller Pipeline ─────────────────────────────────────────
     import os
 
     from src.engine.allocation_search import select_candidate_with_floor_fallback_v8
@@ -538,7 +538,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 "v8_should_adjust": advisory_decision.should_adjust,
             })
             logger.info(
-                "v8.1 ▶ tier0=%s risk=%s deploy=%s candidate=%s raw_beta=%.2f advised_beta=%.2f adjust=%s",
+                "v8.2 ▶ tier0=%s risk=%s deploy=%s candidate=%s raw_beta=%.2f advised_beta=%.2f adjust=%s",
                 tier0_regime,
                 v7_risk.risk_state.value,
                 v7_deploy.deployment_state.value,
@@ -558,11 +558,11 @@ def run_pipeline(args: argparse.Namespace) -> None:
     except FileNotFoundError:
         # Registry missing → explicit degraded mode, no silent fallback (SRD §5.3)
         result.logic_trace.append({"rule": "registry_missing", "v7_registry_path": v7_registry_path})
-        logger.warning("v8.1 registry not found at '%s' — running in degraded mode (v6 allocation only)", v7_registry_path)
+        logger.warning("v8.2 registry not found at '%s' — running in degraded mode (v6 allocation only)", v7_registry_path)
     except (ValueError, KeyError) as exc:
         result.logic_trace.append({"rule": "v7_pipeline_error", "error": str(exc)})
-        logger.warning("v8.1 pipeline error (non-fatal, v6 allocation still valid): %s", exc)
-    # ── end v8.1 ──────────────────────────────────────────────────────────────
+        logger.warning("v8.2 pipeline error (non-fatal, v6 allocation still valid): %s", exc)
+    # ── end v8.2 ──────────────────────────────────────────────────────────────
 
     # v6.2 Narrative Guardrail for legacy output; v8 uses a dedicated recommendation-only summary.
     interpreter = NarrativeEngine()
@@ -633,7 +633,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="QQQ Buy-Signal Monitor (v8.1 Dual-Controller)")
+    parser = argparse.ArgumentParser(description="QQQ Buy-Signal Monitor (v8.2 Dual-Controller)")
     parser.add_argument("--json", action="store_true", help="Output JSON report")
     parser.add_argument("--no-save", action="store_true", help="Skip saving to DB")
     parser.add_argument("--no-color", action="store_true", help="Disable ANSI color output")
