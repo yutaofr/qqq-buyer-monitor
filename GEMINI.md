@@ -1,14 +1,13 @@
-# GEMINI.md - QQQ 个人资产配置监控系统 (v6.4)
+# GEMINI.md - QQQ 个人资产配置监控系统 (v8.2)
 
 ## 项目综述
-`qqq-monitor` 在 v6.4 中从“机构级战略”进化为“个人投资者决策引擎”。它在原有 TAA 镜像技术基础上，引入了以 **30% 最大可承受回撤 (Drawdown Budget)** 为硬约束的动态搜索机制。系统不再使用静态矩阵，而是通过在多个候选比例带（Candidate Bands）之间进行实时回测评分，自动选择最优的 `QQQ:QLD:Cash` 配置。
+`qqq-monitor` 在 v8.2 中进化为“个人投资者决策引擎”，采用 **v8.2 线性流水线架构**。它集成了宏观层 (Tier-0)、战术层 (Tier-1) 与市场结构层 (Tier-2)，输出纯净的 Beta 建议与增量资金入场节奏。
 
 ### 核心架构 (Personal Allocation Logic)
-- **Personal Layer (v6.4 New):** 个人资产配置层。基于 SRD-6.4 预设比例带，在 `aggregate()` 运行中执行 **Live Path Candidate Scoring**。
-- **Dynamic Selection Engine:** 针对每个市场状态枚举候选配置，通过 mini-backtest 评分（CAGR、MDD、Turnover、Beta Fidelity）选出最优解。
-- **30% MDD Hard Constraint:** 所有配置必须服务于长期 30% 回撤预算（AC-5），在回测搜索中剔除 MDD > 30% 的候选。
-- **AC-3 NAV Integrity:** 实时审计资产净值完整性，杜绝硬编码占位，确保模拟仓位与现金流严格对齐。
-- **Tier 0 (Macro Commander):** 宏观指挥官。通过信用、流动性、融资压力三重确认决定结构性制度。
+- **Tier 0 (Macro Commander):** 宏观指挥官。通过信用利差与 ERP 决定结构性制度 (`CRISIS | TRANSITION_STRESS | RICH_TIGHTENING | NEUTRAL | EUPHORIC`)，作为 Beta 上限与入场节奏的顶层约束。
+- **Risk Controller:** 风险控制层。基于 Class A 宏观数据与 Tier-0 状态，动态调整风险敞口上限与现金底仓。
+- **Deployment Controller:** 资金部署引擎。基于 Class B 战术数据，在满足风险约束的前提下，优化新增资金的入场节奏 (`FAST | BASE | SLOW | PAUSE`)。
+- **Search & Recommendation:** 搜索与推荐引擎。在认证候选库中检索符合 Beta 上限的最优配置，输出不含金额的纯净建议。
 
 ### 核心数据口径 (SSoT)
 - **Net Liquidity:** WALCL - WDTGAL - RRPONTSYD (以 10 亿美元为单位)。

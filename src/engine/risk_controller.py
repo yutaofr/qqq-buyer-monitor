@@ -51,7 +51,7 @@ def decide_risk_state(
     v = snapshot.values
     reasons = []
 
-    # ── 0. Tier-0 hard constraint (v8.1) ────────────────────────────────────
+    # ── 0. Tier-0 hard constraint (v8.2) ────────────────────────────────────
     if tier0_regime == "CRISIS":
         reasons.append({"rule": "tier0_crisis", "tier0_regime": tier0_regime})
         return RiskDecision(

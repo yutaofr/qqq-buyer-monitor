@@ -1,6 +1,6 @@
-# QQQ Buy-Signal & Strategic Allocation Monitor (v8.1)
+# QQQ Buy-Signal & Strategic Allocation Monitor (v8.2)
 
-A production-grade QQQ/QLD/Cash recommendation engine built around the **v8.1 Linear Pipeline Architecture**.
+A production-grade QQQ/QLD/Cash recommendation engine built around the **v8.2 Linear Pipeline Architecture**.
 
 The system now has a strict boundary:
 - It recommends **target portfolio beta**.
@@ -8,7 +8,7 @@ The system now has a strict boundary:
 - It does **not** calculate dollar amounts.
 - It does **not** manage a wallet or execute trades.
 
-## v8.1 Architecture
+## v8.2 Architecture
 
 ### Tier-0 Macro Regime
 `assess_structural_regime()` classifies the structural regime from credit spreads and ERP:
@@ -42,9 +42,9 @@ Deployment meanings:
 - `DEPLOY_FAST`: aggressive deployment pace; use after a strong dislocation or clear left-side opportunity.
 - `DEPLOY_PAUSE`: no new deployment; keep incremental cash on hold.
 
-Key v8.1 semantics:
+Key v8.2 semantics:
 - `RICH_TIGHTENING` slows default deployment but still allows left-side entry when capitulation is strong.
-- `CRISIS` fully pauses incremental deployment.
+- `CRISIS` fully pauses incremental deployment unless specific "Blood-chip" capitulation is detected.
 
 ### Beta Recommendation
 `build_beta_recommendation()` replaces the old amount-based execution surface.
@@ -79,8 +79,8 @@ Latest verified real-history runs:
 
 Production acceptance should instead be based on the two signal-alignment audits below.
 
-## 🧭 Certified Candidate Reference (v8.1)
-v8.1 no longer uses the old `AllocationState` operating matrix at runtime. It selects from the certified registry:
+## 🧭 Certified Candidate Reference (v8.2)
+v8.2 no longer uses the old `AllocationState` operating matrix at runtime. It selects from the certified registry:
 
 - `RISK_NEUTRAL`: `neutral-base-001` (`70/10/20`, beta `0.90`) or `neutral-low-drift` (`80/5/15`, beta `0.90`)
 - `RISK_REDUCED`: `reduced-tight-001` (`80/0/20`, beta `0.80`) or `reduced-base-001` (`50/0/50`, beta `0.50`)
@@ -94,110 +94,89 @@ v8.1 no longer uses the old `AllocationState` operating matrix at runtime. It se
 3.  **Tier 2 (Market Structure):** Real-time Options Walls (Put/Call Walls) and Gamma Flip detection.
 4.  **Strategic Layer:** Load certified candidates, respect the beta ceiling, and emit recommendation-only outputs.
 
-## 🧭 Decision Architecture (Historical v6.4 Appendix)
+## 🧭 Decision Architecture (v8.2)
 
-The current production architecture is the v8.1 linear pipeline documented above. The `docs/v8.0_linear_pipeline_*` files are archived baseline references for the v8.0/v8.1 redesign.
-The diagram below is retained only as legacy background for the pre-v8 multi-tier state-machine implementation.
-
-The system operates as a **Multi-Tiered Deterministic State Machine**, where high-order macroeconomic "Structural" states act as constraints on lower-order "Tactical" states, eventually resolving into an optimized asset allocation through a filtered search space.
+The current production architecture is the v8.2 linear pipeline documented above. The `docs/v8.0_linear_pipeline_*` files are archived baseline references for the v8.0/v8.1/v8.2 redesign progression.
+The diagram below reflects the exhaustive v8.2 decision logic, including Tier-0 regimes, multi-factor risk stress, and deployment overrides.
 
 ```mermaid
 flowchart TD
-    %% INPUT LAYER
-    subgraph Raw_Inputs [Indicator & Data Layer]
+    subgraph Data_Layer [Input: Class A & B Features]
         direction LR
-        subgraph Macro_Data [Macro & Liquidity]
-            WALCL[Fed Assets: WALCL]
-            TGA[Treasury: WDTGAL]
-            RRP[Reverse Repo: RRPONTSYD]
-            CS[Credit Spread: BAMLH0A0HYM2]
-            RY[Real Yield: DFII10]
-            FPE[Forward P/E Ratio]
-        end
-        subgraph Market_Data [Price & Sentiment]
-            PX[QQQ Price / OHLCV]
-            VIX[VIX Level / Z-Score]
-            FG[Fear & Greed Index]
-            BR[A/D Breadth Ratio]
-            MA[MA50 & MA200 SMAs]
-            MFI[Money Flow Index - MFI]
-            RSI[Relative Strength Index - RSI]
-        end
-        subgraph Options_Data [Market Structure]
-            OI[Options Open Interest]
-            G_FLIP[Gamma Flip Level]
-            PW[Put Wall Strike]
-            CW[Call Wall Strike]
-            POC[Volume Point of Control - POC]
-        end
-        subgraph Fundamental_Lead [Fundamental Lead]
-            ERB[Earnings Revision Breadth]
-            FCF[FCF Yield]
-        end
+        Macro[Macro: CS, CA, LROC, FS, ERP, RY]
+        Tactical[Tactical: VIX, F&G, Breadth, DD, Returns]
+        Structure[Structure: Walls, Gamma, POC]
     end
 
-    %% TIER 0: MACRO COMMANDER
-    subgraph Tier0 [Tier 0: Structural Regime]
+    Data_Layer --> T0_Commander
+
+    subgraph T0_Commander [Tier-0: Structural Regime]
         direction TB
-        WALCL & TGA & RRP --> LIQ_ROC[Liquidity Rate of Change]
-        CS --> CS_ACCEL[Credit Spread Acceleration]
-        FPE & RY --> ERP[Equity Risk Premium]
-        FS[Funding Stress] --> BYPASS{Defensive Bypass?}
-        
-        CS_ACCEL & LIQ_ROC --> BYPASS
-        BYPASS -- High Stress --> L3[L3: CASH_FLIGHT]
-        BYPASS -- Med Stress --> L2[L2: DELEVERAGE]
-        BYPASS -- Low Stress --> L1[L1: WATCH_DEFENSE]
-        
-        CS & ERP --> REGIME[Structural Regime Decision]
-        REGIME --> S_STATES["CRISIS | TRANSITION_STRESS | NEUTRAL | EUPHORIC"]
+        T0_Logic{"CS & ERP Ladder"}
+        T0_Logic --> CRISIS["CRISIS (CS>=650 | ERP<1.0)"]
+        T0_Logic --> TRANSITION_STRESS["TRANSITION (CS>=550 | CS>=500 & ERP<2.5)"]
+        T0_Logic --> RICH_TIGHTENING["RICH_TIGHT (CS>=450 | ERP<2.5)"]
+        T0_Logic --> EUPHORIC["EUPHORIC (CS<250 & ERP>=5.0)"]
+        T0_Logic --> NEUTRAL["NEUTRAL (Default)"]
     end
 
-    %% TIER 1: TACTICAL ENGINE
-    subgraph Tier1 [Tier 1: Tactical Scoring]
+    T0_Commander --> Risk_Controller
+
+    subgraph Risk_Controller [Risk Controller: Exposure Ceiling]
         direction TB
-        PX & MA --> S1[52w Drawdown & MA200 Dev]
-        VIX & FG & BR --> S2[Sentiment & Breadth Gradient]
+        Veto{Hard Veto?}
+        Veto -- Missing CS/Data --> RISK_REDUCED
+        Veto -- T0:CRISIS / DD >= 30% --> RISK_EXIT
         
-        %% Divergence Sub-Engine
-        PX & MFI & RSI & ERB --> DIV[Divergence Sub-Engine]
-        DIV --> DIV_BONUS[Bonus Score: +5 to +20]
+        Stress{Stress Bucket?}
+        Stress -- Triple:CA+LROC+FS --> RISK_EXIT
+        Stress -- Dual:2x Stress --> RISK_DEFENSE
+        Stress -- Single/Warn --> RISK_REDUCED
         
-        %% Valuation Sub-Engine
-        FPE & FCF --> VAL[Valuation Sub-Engine]
-        VAL --> VAL_ADJ[Adjustment: -10 to +15]
-
-        S1 & S2 & DIV_BONUS & VAL_ADJ --> T1_SCORE[Tier 1 Score: 0-100]
-        
-        PX --> VELOCITY["Descent Velocity: PANIC | GRIND | CALM"]
-        T1_SCORE & VELOCITY --> TACTICAL_STATE["Tactical: PANIC | CAPITULATION | STRESS | CALM"]
+        Clean{Clean / Euphoric?}
+        Clean -- T0:EUPHORIC / Tight Credit --> RISK_ON
+        Clean -- Default --> RISK_NEUTRAL
     end
 
-    %% TIER 2: MARKET STRUCTURE
-    subgraph Tier2 [Tier 2: Confirmation Layer]
-        PW & CW & POC --> WALLS[Support Confirmed / Broken / POC Bonus]
-        G_FLIP & PX --> GAMMA[Gamma Positive / Negative]
-        WALLS & GAMMA --> T2_ADJ[Tier 2 Adjustment: -30 to +15]
+    Risk_Controller --> Search_Engine
+    T0_Commander --> Deployment_Controller
+
+    subgraph Search_Engine [Search: Candidate Registry]
+        Registry[(Certified Registry)]
+        Registry --> Scoping{Scope by Risk State}
+        Scoping --> Selection{Filtered Search}
+        Selection -- Respect Ceiling/Budget --> Best_Candidate
     end
 
-    %% AGGREGATION & SEARCH
-    subgraph Strategy [v6.4 Personal Allocation Search]
-        S_STATES & TACTICAL_STATE --> ALLOC_STATE[Allocation State]
-        ALLOC_STATE --> CANDIDATES[SRD-6.4 QQQ:QLD:Cash Bands]
+    subgraph Deployment_Controller [Deployment: Incremental Pace]
+        direction TB
+        D_Ceiling["Effective Ceiling: min(Risk, Tier0)"]
         
-        CANDIDATES --> BACKTEST[Live Path Mini-Backtest]
-        PX --> BACKTEST
+        D_Logic{Pace Logic}
+        D_Logic -- "Tactical Stress (>=70) / Price Chasing" --> D_PAUSE
+        D_Logic -- "Blood-Chip Crisis Override" --> D_FAST
+        D_Logic -- "Left-Tail confirmation" --> D_FAST
+        D_Logic -- "Structural Stress (CS/CA/LROC/DD)" --> D_SLOW
+        D_Logic -- "Pullback confirmation" --> D_FAST
         
-        BACKTEST --> AC5_GATE{AC-5: MDD < 30%?}
-        AC5_GATE -- NO --> SAFE_FALLBACK["Global Safe: 100% Cash"]
-        AC5_GATE -- YES --> RANKING["Ranking: CAGR > MDD > Beta Fidelity"]
+        Defaults{Defaults}
+        Defaults -- "RISK_DEFENSE" --> D_SLOW
+        Defaults -- "RISK_REDUCED + Shallow DD" --> D_BASE
+        Defaults -- "Other RISK_REDUCED" --> D_SLOW
+        Defaults -- "Normal" --> D_BASE
+
+        D_Ceiling --> D_Logic
     end
 
-    %% FINAL EXECUTION
-    RANKING --> FINAL["Final Decision: QQQ : QLD : Cash"]
-    L3 & L2 & L1 --> FINAL
-    SAFE_FALLBACK --> FINAL
-    T2_ADJ --> FINAL
+    Best_Candidate --> Recommendation
+    Deployment_Controller --> Recommendation
+
+    subgraph Recommendation [Output: Recommendation Surface]
+        target_beta[Target Portfolio Beta]
+        advised_beta[Advised Beta w/ Friction]
+        deployment_multiplier[Deployment Pace Multiplier]
+        allocation[Recomm. QQQ/QLD/Cash %]
+    end
 ```
 
 ### Key Architectural Transitions

@@ -80,7 +80,7 @@ def test_cli_output_reflects_v7_runtime_when_available(mock_result, capsys):
 
     print_signal(mock_result, use_color=False)
     captured = capsys.readouterr()
-    assert "QQQ BUY-SIGNAL MONITOR (v8.1)" in captured.out
+    assert "QQQ BUY-SIGNAL MONITOR (v8.2)" in captured.out
     assert "风险评估与目标 Beta" in captured.out
     assert "增量入场节奏推荐" in captured.out
     assert "Tier-0=NEUTRAL" in captured.out

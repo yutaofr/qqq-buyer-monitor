@@ -16,7 +16,7 @@ Core application code lives in `src/`. Use `src/engine/` for decision logic, `sr
 - `docker compose run --rm app|test|backtest`: use the containerized workflow documented in the README.
 
 ## Coding Style & Naming Conventions
-Target Python 3.12+ and keep lines within the Ruff limit of 100 characters. Follow standard Python conventions: 4-space indentation, `snake_case` for functions/modules, `PascalCase` for classes, and descriptive constant names in `UPPER_SNAKE_CASE`. Keep logic deterministic and side effects isolated near collectors, storage, and CLI/output layers. The current product boundary is the v8.1 linear pipeline: stock beta recommendation plus incremental deployment timing.
+Target Python 3.12+ and keep lines within the Ruff limit of 100 characters. Follow standard Python conventions: 4-space indentation, `snake_case` for functions/modules, `PascalCase` for classes, and descriptive constant names in `UPPER_SNAKE_CASE`. Keep logic deterministic and side effects isolated near collectors, storage, and CLI/output layers. The current product boundary is the v8.2 linear pipeline: stock beta recommendation plus incremental deployment timing.
 
 ## Testing Guidelines
 Pytest discovers files named `test_*.py`. Mirror the source layout when adding tests, and prefer unit tests for pure engine logic plus integration tests for full pipeline behavior. Add regression coverage for any change in recommendation semantics, persistence behavior, or backtest math before merging.

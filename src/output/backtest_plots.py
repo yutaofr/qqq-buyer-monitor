@@ -127,7 +127,7 @@ def build_beta_backtest_figure(daily_ts: pd.DataFrame, summary: Any | None = Non
     ax_beta.legend(loc="upper left", frameon=False, fontsize=10, ncols=2)
 
     average_signal_beta = float(advised_beta.dropna().mean()) if advised_beta.notna().any() else 0.0
-    title = "v8.1 QQQ Stock-Beta Recommendation vs QQQ Price"
+    title = "v8.2 QQQ Stock-Beta Recommendation vs QQQ Price"
     if summary is not None and hasattr(summary, "signal_beta"):
         average_signal_beta = float(summary.signal_beta)
     title = f"{title}\nAverage Signal Beta: {average_signal_beta:.2f}"
