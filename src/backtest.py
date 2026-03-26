@@ -35,6 +35,7 @@ from src.engine.risk_controller import decide_risk_state
 from src.engine.runtime_selector import RuntimeSelection
 from src.engine.tier0_macro import assess_structural_regime
 from src.collector.historical_macro_seeder import HistoricalMacroSeeder
+from src.output.backtest_plots import save_beta_backtest_figure
 from src.models.risk import RiskState
 from src.models.deployment import DeploymentState
 from src.research.data_contracts import (
@@ -1169,6 +1170,7 @@ class Backtester:
             daily_stats.append(
                 {
                     "date": dt,
+                    "close": p_qqq,
                     "nav": total_nav,
                     "baseline_nav": baseline_total_nav,
                     "cash_pct": ((reserve_cash + active_cash) / total_nav * 100.0) if total_nav > 0 else 100.0,
@@ -1826,6 +1828,23 @@ def run_backtest(
     print(f"Max adverse excursion after add: {_format_pct(summary.max_adverse_excursion)}")
     print(f"Average cost vs baseline DCA: {_format_pct(summary.average_cost_improvement_vs_baseline_dca)} improvement")
     print("-" * 40)
+
+    daily_ts = getattr(summary, "daily_timeseries", None)
+    if isinstance(daily_ts, pd.DataFrame) and not daily_ts.empty:
+        beta_col = "target_beta" if "target_beta" in daily_ts.columns else "signal_target_beta" if "signal_target_beta" in daily_ts.columns else None
+        if beta_col and "close" in daily_ts.columns:
+            saved_paths = save_beta_backtest_figure(
+                daily_ts,
+                summary,
+                [
+                    "artifacts/v8.1_beta_recommendation_performance.png",
+                    "docs/images/v8.1_beta_recommendation_performance.png",
+                ],
+            )
+            print(
+                "Beta recommendation visualization saved to: "
+                + ", ".join(str(path) for path in saved_paths)
+            )
 
 
 def main(argv: list[str] | None = None) -> int:
