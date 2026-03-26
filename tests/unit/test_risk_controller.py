@@ -2,7 +2,7 @@
 from datetime import date
 
 from src.engine.feature_pipeline import build_feature_snapshot
-from src.engine.risk_controller import decide_risk_state, RiskDecision
+from src.engine.risk_controller import decide_risk_state
 from src.models.risk import RiskState
 
 
@@ -39,8 +39,8 @@ def test_risk_controller_triple_stress_exits():
     })
     decision = decide_risk_state(snap, drawdown_budget=0.30)
     assert decision.risk_state == RiskState.RISK_EXIT
-    assert decision.target_cash_floor >= 0.50
-    assert decision.target_exposure_ceiling == 0.50
+    assert decision.target_cash_floor == 1.00
+    assert decision.target_exposure_ceiling == 0.00
     assert any("triple_stress" in str(r) for r in decision.reasons)
 
 
@@ -73,6 +73,23 @@ def test_risk_controller_clean_macro_neutral():
     decision = decide_risk_state(snap, drawdown_budget=0.30)
     assert decision.risk_state == RiskState.RISK_NEUTRAL
     assert decision.target_exposure_ceiling == 1.00
+
+
+def test_risk_controller_clean_euphoric_unlocks_risk_on():
+    snap = _snap({
+        "credit_spread": 220.0,
+        "credit_acceleration": 2.0,
+        "liquidity_roc": 1.0,
+        "funding_stress": False,
+    })
+    decision = decide_risk_state(
+        snap,
+        tier0_regime="EUPHORIC",
+        drawdown_budget=0.30,
+    )
+    assert decision.risk_state == RiskState.RISK_ON
+    assert decision.target_exposure_ceiling == 1.20
+    assert decision.target_cash_floor == 0.00
 
 
 def test_risk_decision_is_immutable():
@@ -174,7 +191,7 @@ def test_risk_controller_only_consumes_class_a_data():
 def test_risk_controller_absent_class_a_features_degrade():
     """Absent Class A features (missing from snap) must be counted as missing."""
     # Entirely empty raw_values should result in all Class A being missing
-    snap = _snap({}, full=False) 
+    snap = _snap({}, full=False)
     decision = decide_risk_state(snap, drawdown_budget=0.30)
     assert decision.risk_state in {RiskState.RISK_REDUCED, RiskState.RISK_DEFENSE, RiskState.RISK_EXIT}
     assert any("class_a_missing" in str(r) for r in decision.reasons)
@@ -195,8 +212,8 @@ def test_risk_controller_crisis_forces_exit_even_when_micro_is_clean():
         drawdown_budget=0.30,
     )
     assert decision.risk_state == RiskState.RISK_EXIT
-    assert decision.target_exposure_ceiling == 0.50
-    assert decision.target_cash_floor == 0.50
+    assert decision.target_exposure_ceiling == 0.00
+    assert decision.target_cash_floor == 1.00
     assert decision.tier0_applied is True
 
 
@@ -267,7 +284,7 @@ def test_risk_controller_tier0_crisis_overrides_micro_triple_stress_path():
         drawdown_budget=0.30,
     )
     assert decision.risk_state == RiskState.RISK_EXIT
-    assert decision.target_exposure_ceiling == 0.50
+    assert decision.target_exposure_ceiling == 0.00
     assert decision.tier0_applied is True
 
 

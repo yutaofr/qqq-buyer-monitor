@@ -2,9 +2,7 @@
 from __future__ import annotations
 
 from src.engine.feature_pipeline import _CLASS_A, FeatureSnapshot
-from src.models import CurrentPortfolioState
 from src.models.risk import RiskDecision, RiskState
-
 
 # Risk threshold constants (Class A hard rules)
 _CREDIT_SPREAD_WARN = 400.0          # bps – elevated but not critical
@@ -20,7 +18,7 @@ def _count_missing_class_a(snapshot: FeatureSnapshot) -> int:
     """Count how many Class A features are None / unusable / absent."""
     return sum(
         1 for name in _CLASS_A
-        if name not in snapshot.values 
+        if name not in snapshot.values
         or snapshot.values[name] is None
         or not snapshot.quality.get(name, {}).get("usable", True)
     )
@@ -51,8 +49,8 @@ def decide_risk_state(
         reasons.append({"rule": "tier0_crisis", "tier0_regime": tier0_regime})
         return RiskDecision(
             risk_state=RiskState.RISK_EXIT,
-            target_exposure_ceiling=0.50,
-            target_cash_floor=0.50,
+            target_exposure_ceiling=0.00,
+            target_cash_floor=1.00,
             reasons=tuple(reasons),
             tier0_applied=True,
         )
@@ -94,8 +92,8 @@ def decide_risk_state(
             reasons.append({"rule": "drawdown_budget_breached", "drawdown": rolling_drawdown})
             return RiskDecision(
                 risk_state=RiskState.RISK_EXIT,
-                target_exposure_ceiling=0.50,
-                target_cash_floor=0.50,
+                target_exposure_ceiling=0.00,
+                target_cash_floor=1.00,
                 reasons=tuple(reasons),
             )
         if rolling_drawdown >= _DRAWDOWN_DEFENSE:
@@ -120,8 +118,8 @@ def decide_risk_state(
                         "liq_roc": liq_roc, "funding_stress": funding_stress})
         return RiskDecision(
             risk_state=RiskState.RISK_EXIT,
-            target_exposure_ceiling=0.50,
-            target_cash_floor=0.50,
+            target_exposure_ceiling=0.00,
+            target_cash_floor=1.00,
             reasons=tuple(reasons),
         )
 
@@ -148,13 +146,13 @@ def decide_risk_state(
 
     # ── 6. Clean environment ──────────────────────────────────────────────────
     reasons.append({"rule": "clean_macro"})
-    
-    # In v8.1, NEUTRAL allows up to 1.0. EUPHORIC would allow up to 1.2
-    ceiling = 1.2 if tier0_regime == "EUPHORIC" else 1.0
+
+    risk_state = RiskState.RISK_ON if tier0_regime == "EUPHORIC" else RiskState.RISK_NEUTRAL
+    ceiling = 1.2 if risk_state == RiskState.RISK_ON else 1.0
     cash_floor = max(0.0, 1.0 - ceiling)
 
     return RiskDecision(
-        risk_state=RiskState.RISK_NEUTRAL,
+        risk_state=risk_state,
         target_exposure_ceiling=ceiling,
         target_cash_floor=cash_floor,
         reasons=tuple(reasons),

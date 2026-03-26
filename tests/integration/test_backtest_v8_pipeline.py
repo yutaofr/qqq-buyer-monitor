@@ -45,6 +45,6 @@ def test_v8_backtest_preserves_left_side_window_but_locks_crisis():
     assert not rich.empty
     assert not crisis.empty
     assert (rich["target_beta"] <= 0.81).all()
-    assert (crisis["target_beta"] <= 0.51).all()
+    assert (crisis["target_beta"] <= 0.01).all()
     assert set(crisis["risk_state"]) == {"RISK_EXIT"}
-    assert set(crisis["selected_candidate_id"]) == {"exit-floor-001"}
+    assert set(crisis["selected_candidate_id"]) == {"exit-cash-001"}

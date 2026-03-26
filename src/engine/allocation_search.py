@@ -3,8 +3,8 @@ v6.4 Personal Allocation Search: Generates SRD-approved QQQ:QLD:Cash candidates.
 """
 from __future__ import annotations
 
-from src.models.candidate import CertifiedCandidate
 from src.models import AllocationState, TargetAllocationState
+from src.models.candidate import CertifiedCandidate
 
 # SRD-defined Candidate Matrix (QQQ, QLD, Cash)
 # Each entry is (QQQ%, QLD%, Cash%)
@@ -43,7 +43,7 @@ def find_best_allocation(state: AllocationState, scores: list[dict] = None) -> T
     3. If CAGR tied (within 0.1%), lower MDD.
     4. If MDD tied, lower Beta Deviation.
     5. If still tied, lower Turnover.
-    
+
     AC-5 Hard Gate: If no candidate meets the 30% MDD budget, it MUST return
     a safe fallback (100% Cash).
     """
@@ -107,7 +107,7 @@ def find_best_allocation_v8(
 
     valid = [
         candidate for candidate in candidates
-        if 0.50 <= candidate.target_effective_exposure <= max_beta_ceiling
+        if 0.00 <= candidate.target_effective_exposure <= max_beta_ceiling
         and candidate.research_metrics.get("max_drawdown", 1.0) <= max_drawdown_budget
     ]
     if not valid:

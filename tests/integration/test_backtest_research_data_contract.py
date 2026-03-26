@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from datetime import date
 from types import SimpleNamespace
 
 import pandas as pd
 import pytest
 
-from src.backtest import Backtester, run_backtest
+from src.backtest import Backtester, run_backtest, run_signal_audits
 from src.collector.historical_macro_seeder import HistoricalMacroSeeder
 
 
@@ -120,3 +119,109 @@ def test_run_backtest_prints_macro_coverage_before_summary(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert output.index("--- Canonical Macro Coverage ---") < output.index("--- v8.0 Linear Pipeline Backtest Summary")
     assert events == ["simulate"]
+
+
+def test_run_signal_audits_returns_dual_alignment_summaries(tmp_path, capsys):
+    dates = pd.date_range("2024-01-02", periods=9, freq="B")
+    qqq = pd.DataFrame({"Close": [100.0, 89.0, 79.0, 75.0, 70.0, 68.0, 67.0, 66.0, 65.0]}, index=dates)
+    cache_path = tmp_path / "qqq_history_cache.csv"
+    qqq.to_csv(cache_path)
+
+    macro = pd.DataFrame(
+        {
+            "observation_date": [d.strftime("%Y-%m-%d") for d in dates],
+            "effective_date": [d.strftime("%Y-%m-%d") for d in dates],
+            "credit_spread_bps": [220.0, 220.0, 220.0, 320.0, 320.0, 520.0, 520.0, 520.0, 520.0],
+            "credit_acceleration_pct_10d": [0.0] * len(dates),
+            "real_yield_10y_pct": [1.25] * len(dates),
+            "net_liquidity_usd_bn": [250.0] * len(dates),
+            "liquidity_roc_pct_4w": [0.0] * len(dates),
+            "funding_stress_flag": [0] * len(dates),
+            "source_credit_spread": ["fred:BAMLH0A0HYM2"] * len(dates),
+            "source_real_yield": ["fred:DFII10"] * len(dates),
+            "source_net_liquidity": ["derived:WALCL-WDTGAL-RRPONTSYD"] * len(dates),
+            "source_funding_stress": ["fred:NFCI"] * len(dates),
+            "build_version": ["v7.0-class-a-research-r1"] * len(dates),
+        }
+    )
+    macro_path = tmp_path / "macro_historical_dump.csv"
+    macro.to_csv(macro_path, index=False)
+
+    expectations = pd.DataFrame(
+        {
+            "date": dates,
+            "expected_target_beta": [1.0, 1.0, 1.0, 0.5, 0.5, 0.0, 0.0, 0.0, 0.0],
+            "expected_deployment_state": [
+                "DEPLOY_BASE",
+                "DEPLOY_FAST",
+                "DEPLOY_FAST",
+                "DEPLOY_BASE",
+                "DEPLOY_BASE",
+                "DEPLOY_PAUSE",
+                "DEPLOY_PAUSE",
+                "DEPLOY_PAUSE",
+                "DEPLOY_PAUSE",
+            ],
+        }
+    )
+    expectation_path = tmp_path / "expectations.csv"
+    expectations.to_csv(expectation_path, index=False)
+
+    results = run_signal_audits(
+        str(expectation_path),
+        cache_path=str(cache_path),
+        macro_path=str(macro_path),
+        registry_path="data/candidate_registry_v7.json",
+    )
+
+    output = capsys.readouterr().out
+    assert "--- Target Beta Alignment Audit ---" in output
+    assert "--- Deployment Alignment Audit ---" in output
+    assert set(results) == {"beta", "deployment"}
+    assert results["beta"].mean_absolute_error == pytest.approx(0.0)
+    assert results["deployment"].exact_match_ratio == pytest.approx(1.0)
+
+
+def test_run_signal_audits_rejects_synthetic_macro_dataset_for_acceptance(tmp_path):
+    dates = pd.date_range("2024-01-02", periods=2, freq="B")
+    qqq = pd.DataFrame({"Close": [100.0, 99.0]}, index=dates)
+    cache_path = tmp_path / "qqq_history_cache.csv"
+    qqq.to_csv(cache_path)
+
+    macro = pd.DataFrame(
+        {
+            "observation_date": [d.strftime("%Y-%m-%d") for d in dates],
+            "effective_date": [d.strftime("%Y-%m-%d") for d in dates],
+            "credit_spread_bps": [350.0, 350.0],
+            "credit_acceleration_pct_10d": [0.0, 0.0],
+            "real_yield_10y_pct": [1.5, 1.5],
+            "net_liquidity_usd_bn": [250.0, 250.0],
+            "liquidity_roc_pct_4w": [0.0, 0.0],
+            "funding_stress_flag": [0, 0],
+            "source_credit_spread": ["synthetic_fixture", "synthetic_fixture"],
+            "source_real_yield": ["synthetic_fixture", "synthetic_fixture"],
+            "source_net_liquidity": ["synthetic_fixture", "synthetic_fixture"],
+            "source_funding_stress": ["synthetic_fixture", "synthetic_fixture"],
+            "build_version": ["dev-fixture", "dev-fixture"],
+        }
+    )
+    macro_path = tmp_path / "macro_historical_dump.csv"
+    macro.to_csv(macro_path, index=False)
+
+    expectations = pd.DataFrame(
+        {
+            "date": dates,
+            "expected_target_beta": [0.5, 0.5],
+        }
+    )
+    expectation_path = tmp_path / "expectations.csv"
+    expectations.to_csv(expectation_path, index=False)
+
+    with pytest.raises(ValueError, match="non-synthetic macro dataset"):
+        run_signal_audits(
+            str(expectation_path),
+            mode="beta",
+            cache_path=str(cache_path),
+            macro_path=str(macro_path),
+            registry_path="data/candidate_registry_v7.json",
+        )

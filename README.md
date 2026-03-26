@@ -26,6 +26,10 @@ Outputs `RiskDecision` with:
 - `target_cash_floor`
 - `tier0_applied`
 
+Key semantics:
+- `EUPHORIC` unlocks `RISK_ON` and allows `>1.0` target beta when the registry has compliant candidates.
+- `CRISIS` and hard drawdown breaches map to `RISK_EXIT`, which now means a real `0.0` exposure ceiling, not a half-invested floor.
+
 ### Deployment Controller
 Determines how to deploy **new incoming cash** under Tier-0 soft ceilings.
 Outputs one of:
@@ -61,13 +65,14 @@ Latest full-sample backtest (`docker compose run --rm backtest`, 1999-2026):
 - **Left-side windows preserved:** `RICH_TIGHTENING left-side windows = 513`
 - **CRISIS deployment breaches:** `0`
 
-## 🧭 Certified Candidate Reference (v8.0)
+## 🧭 Certified Candidate Reference (v8.1)
 v8.0 no longer uses the old `AllocationState` operating matrix at runtime. It selects from the certified registry:
 
 - `RISK_NEUTRAL`: `neutral-base-001` (`70/10/20`, beta `0.90`) or `neutral-low-drift` (`80/5/15`, beta `0.90`)
-- `RISK_REDUCED`: `reduced-tight-001` (`30/0/70`, beta `0.30`) or `reduced-base-001` (`50/0/50`, beta `0.50`)
-- `RISK_DEFENSE`: `defense-001` (`30/0/70`, beta `0.30`)
-- `RISK_EXIT`: explicit `100% Cash` fallback when no compliant candidate survives the beta ceiling
+- `RISK_REDUCED`: `reduced-tight-001` (`80/0/20`, beta `0.80`) or `reduced-base-001` (`50/0/50`, beta `0.50`)
+- `RISK_DEFENSE`: `defense-001` (`30/0/70`, beta `0.30`) or `defense-002` (`50/0/50`, beta `0.50`)
+- `RISK_EXIT`: `exit-cash-001` (`0/0/100`, beta `0.00`)
+- `RISK_ON`: `euphoric-base-001` (`60/25/15`, beta `1.10`) or `euphoric-max-001` (`80/20/0`, beta `1.20`)
 
 ## 🛠 Core Tiers
 1.  **Tier 0 (Macro Commander):** Monitors Credit Acceleration, Net Liquidity, and Funding Stress. Defines the **Structural Regime**.
@@ -206,6 +211,41 @@ docker-compose run --rm app
 # Run multi-scenario stress tests with AC-4 Beta Fidelity reports
 docker-compose run --rm backtest python scripts/stress_test_runner.py
 ```
+
+## Signal Audit Workflow
+
+The production system has two independent decision surfaces and they should be audited separately:
+
+1. `target_beta`: stock of assets risk-budget recommendation
+2. `deployment_state`: incremental cash entry timing and pace
+
+Use an expectation matrix CSV with a `date` column plus one or both of:
+- `expected_target_beta`
+- `expected_deployment_state`
+
+Optional runtime-state inputs may also be supplied in the same file. This allows state-conditioned expectation surfaces instead of naive date-only labels:
+- `rolling_drawdown`
+- `available_new_cash`
+- `erp`
+- `capitulation_score`
+- `tactical_stress_score`
+
+Run the audits:
+
+```bash
+# Audit both decision surfaces against an expected signal matrix
+python -m src.backtest --mode both --expectations data/expected_signals.csv
+
+# Audit only target-beta alignment
+python -m src.backtest --mode beta --expectations data/expected_beta.csv
+
+# Audit only deployment alignment
+python -m src.backtest --mode deployment --expectations data/expected_deployment.csv
+```
+
+The workflow prints canonical macro coverage and expectation-matrix coverage before the audit summaries.
+
+Acceptance audits should use the canonical research macro dataset. Synthetic `dev-fixture` macro data is blocked by default and only allowed with `--allow-synthetic-macro` for smoke tests. The legacy `--mode portfolio` path remains available for research, but production acceptance should be based on the two signal-alignment audits above.
 
 ## 📜 Documentation
 - [SRD v8.0: Linear Pipeline](docs/v8.0_linear_pipeline_srd.md)

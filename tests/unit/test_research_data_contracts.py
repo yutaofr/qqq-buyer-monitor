@@ -3,8 +3,11 @@ import pytest
 
 from src.research.data_contracts import (
     REQUIRED_HISTORICAL_MACRO_COLUMNS,
+    SIGNAL_EXPECTATION_REQUIRED_COLUMNS,
     summarize_historical_macro_coverage,
+    summarize_signal_expectation_coverage,
     validate_historical_macro_frame,
+    validate_signal_expectation_frame,
 )
 
 
@@ -29,6 +32,19 @@ def canonical_frame() -> pd.DataFrame:
     )
 
 
+@pytest.fixture
+def expectation_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "date": ["2024-01-02", "2024-01-03", "2024-01-04"],
+            "expected_target_beta": [1.0, 0.5, 0.0],
+            "expected_deployment_state": ["DEPLOY_FAST", "DEPLOY_BASE", "DEPLOY_PAUSE"],
+            "rolling_drawdown": [0.05, 0.15, 0.32],
+            "available_new_cash": [1000.0, 1000.0, 1000.0],
+        }
+    )
+
+
 def test_required_historical_macro_columns_are_stable():
     assert list(REQUIRED_HISTORICAL_MACRO_COLUMNS) == [
         "observation_date",
@@ -45,6 +61,10 @@ def test_required_historical_macro_columns_are_stable():
         "source_funding_stress",
         "build_version",
     ]
+
+
+def test_required_signal_expectation_columns_are_stable():
+    assert list(SIGNAL_EXPECTATION_REQUIRED_COLUMNS) == ["date"]
 
 
 def test_validate_historical_macro_frame_accepts_canonical_schema(canonical_frame):
@@ -79,3 +99,36 @@ def test_summarize_historical_macro_coverage_reports_basic_metrics(canonical_fra
     assert summary["last_observation_date"] == pd.Timestamp("2024-01-04")
     assert summary["coverage"]["credit_spread_bps"] == 1.0
     assert summary["coverage"]["funding_stress_flag"] == 1.0
+
+
+def test_validate_signal_expectation_frame_accepts_dual_surface(expectation_frame):
+    validate_signal_expectation_frame(expectation_frame)
+
+
+def test_validate_signal_expectation_frame_rejects_missing_expectation_columns(expectation_frame):
+    bad = expectation_frame.drop(columns=["expected_target_beta", "expected_deployment_state"])
+    with pytest.raises(ValueError, match="expected_target_beta"):
+        validate_signal_expectation_frame(bad)
+
+
+def test_validate_signal_expectation_frame_rejects_unknown_deployment_state(expectation_frame):
+    bad = expectation_frame.copy()
+    bad.loc[1, "expected_deployment_state"] = "DEPLOY_YOLO"
+    with pytest.raises(ValueError, match="Unknown deployment state"):
+        validate_signal_expectation_frame(bad)
+
+
+def test_validate_signal_expectation_frame_rejects_duplicate_dates(expectation_frame):
+    bad = pd.concat([expectation_frame, expectation_frame.iloc[[1]]], ignore_index=True)
+    with pytest.raises(ValueError, match="Duplicate date values"):
+        validate_signal_expectation_frame(bad)
+
+
+def test_summarize_signal_expectation_coverage_reports_basic_metrics(expectation_frame):
+    summary = summarize_signal_expectation_coverage(expectation_frame)
+
+    assert summary["rows"] == 3
+    assert summary["first_date"] == pd.Timestamp("2024-01-02")
+    assert summary["last_date"] == pd.Timestamp("2024-01-04")
+    assert summary["coverage"]["expected_target_beta"] == 1.0
+    assert summary["coverage"]["expected_deployment_state"] == 1.0

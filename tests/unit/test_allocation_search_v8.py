@@ -51,6 +51,18 @@ def test_allocation_search_returns_none_when_nothing_fits_ceiling():
     assert find_best_allocation_v8(max_beta_ceiling=0.30, candidates=candidates) is None
 
 
+def test_allocation_search_allows_zero_beta_exit_candidate():
+    from src.engine.allocation_search import find_best_allocation_v8
+
+    candidates = [
+        _candidate("exp-050", 0.50, cagr=0.10, mdd=0.16),
+        _candidate("exp-000", 0.00, cagr=0.02, mdd=0.01),
+    ]
+    best = find_best_allocation_v8(max_beta_ceiling=0.00, candidates=candidates)
+    assert best is not None
+    assert best.candidate_id == "exp-000"
+
+
 def test_allocation_search_prefers_higher_cagr_after_constraints():
     from src.engine.allocation_search import find_best_allocation_v8
 

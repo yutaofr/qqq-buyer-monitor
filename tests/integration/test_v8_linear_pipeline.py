@@ -58,7 +58,7 @@ def test_rich_tightening_without_capitulation_slows_deployment_and_caps_beta():
 
     erp, snapshot = _snapshot(credit_spread=320.0, real_yield=2.0, forward_pe=25.0, capitulation_score=20)
     tier0_regime = assess_structural_regime(credit_spread=320.0, erp=erp)
-    
+
     risk = decide_risk_state(snapshot, tier0_regime=tier0_regime)
     deploy = decide_deployment_state(
         snapshot,
@@ -123,8 +123,6 @@ def test_crisis_forces_exit_pause_and_cash_fallback():
 
     assert tier0_regime == "CRISIS"
     assert risk.risk_state == RiskState.RISK_EXIT
-    assert risk.target_exposure_ceiling == 0.50
+    assert risk.target_exposure_ceiling == 0.00
     assert deploy.deployment_state == "DEPLOY_PAUSE"
     assert selected is None
-
-
