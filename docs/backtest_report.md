@@ -41,8 +41,8 @@ python scripts/run_signal_acceptance_report.py
 
 为了把存量资产 beta 回测也做成和增量部署回测一样的审计视图，当前报告增加了一张专门的 beta 对比图。
 
-- 上图对比 QQQ 收盘价与系统给出的 beta 建议路径。
-- 下图展示 beta 建议带、beta floor / cap，以及宏观 regime 的关键标记。
+- 图的数据源来自纯信号审计路径 `build_signal_timeseries()`，不是组合 NAV 回测。
+- 图中只保留 `QQQ` 收盘价和系统给出的 `signal_target_beta` 散点路径。
 
 生成命令：
 
