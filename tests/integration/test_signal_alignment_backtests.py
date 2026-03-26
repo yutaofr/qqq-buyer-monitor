@@ -67,6 +67,27 @@ def test_build_signal_timeseries_returns_pure_beta_and_deployment_signals():
     ]
 
 
+def test_build_signal_timeseries_marks_authorized_crisis_blood_chip_override():
+    dates = pd.date_range("2024-01-02", periods=25, freq="B")
+    prices = pd.Series([100.0 - (i * 1.25) for i in range(25)], index=dates)
+    ohlcv = pd.DataFrame({"Close": prices}, index=dates)
+    macro = _canonical_macro_frame(dates, [320.0] * 20 + [680.0] * 5)
+    macro["credit_acceleration_pct_10d"] = [0.0] * 20 + [-1.0] * 5
+    macro["liquidity_roc_pct_4w"] = [0.0] * 20 + [1.0] * 5
+    seeder = HistoricalMacroSeeder(mock_df=macro)
+
+    signals = Backtester().build_signal_timeseries(ohlcv, macro_seeder=seeder)
+
+    final_row = signals.iloc[-1]
+    assert "blood_chip_override_active" in signals.columns
+    assert "deployment_reason_rule" in signals.columns
+    assert final_row["risk_state"] == "RISK_EXIT"
+    assert final_row["signal_target_beta"] == pytest.approx(0.5)
+    assert final_row["deployment_state"] == "DEPLOY_FAST"
+    assert bool(final_row["blood_chip_override_active"]) is True
+    assert final_row["deployment_reason_rule"] == "blood_chip_crisis_override"
+
+
 def test_build_signal_timeseries_unlocks_risk_on_under_tight_spreads_without_erp():
     dates = pd.date_range("2024-01-02", periods=3, freq="B")
     prices = pd.Series([100.0, 101.0, 102.0], index=dates)

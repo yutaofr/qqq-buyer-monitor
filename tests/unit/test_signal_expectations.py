@@ -76,6 +76,26 @@ def test_expectation_matrix_pauses_deployment_in_crisis():
     assert final_row["expected_deployment_state"] == "DEPLOY_PAUSE"
 
 
+def test_expectation_matrix_unlocks_fast_deployment_during_crisis_liquidity_reversal():
+    dates = pd.date_range("2024-01-02", periods=25, freq="B")
+    prices = pd.DataFrame({"Close": [100.0 - (i * 1.25) for i in range(25)]}, index=dates)
+    macro = _canonical_macro_frame(
+        dates,
+        spreads=[320.0] * 20 + [680.0] * 5,
+        accelerations=[0.0] * 20 + [-1.0] * 5,
+        liquidity=[0.0] * 20 + [1.0] * 5,
+    )
+
+    frame = build_market_expectation_matrix(
+        prices,
+        macro_seeder=HistoricalMacroSeeder(mock_df=macro),
+    )
+
+    final_row = frame.iloc[-1]
+    assert final_row["expected_target_beta"] == 0.5
+    assert final_row["expected_deployment_state"] == "DEPLOY_FAST"
+
+
 def test_expectation_matrix_unlocks_risk_on_in_clean_tight_credit():
     dates = pd.date_range("2024-01-02", periods=25, freq="B")
     prices = pd.DataFrame({"Close": [100.0 + i for i in range(25)]}, index=dates)

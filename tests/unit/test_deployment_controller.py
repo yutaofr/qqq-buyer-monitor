@@ -126,6 +126,99 @@ def test_crisis_cannot_break_pause_even_with_extreme_capitulation():
     assert decision.pause_new_cash is True
 
 
+def test_crisis_liquidity_reversal_override_unlocks_fast_deployment():
+    snap = _snap(
+        {
+            "credit_spread": 680.0,
+            "credit_acceleration": -1.0,
+            "liquidity_roc": 1.0,
+            "capitulation_score": 20,
+            "tactical_stress_score": 10,
+            "rolling_drawdown": 0.18,
+            "five_day_return": -0.03,
+            "twenty_day_return": -0.10,
+        }
+    )
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_EXIT, 0.50, 0.50),
+        tier0_regime="CRISIS",
+        available_new_cash=1000.0,
+    )
+    assert decision.deployment_state == DeploymentState.DEPLOY_FAST
+    assert decision.pause_new_cash is False
+    assert any(reason["rule"] == "blood_chip_crisis_override" for reason in decision.reasons)
+
+
+def test_crisis_panic_exhaustion_override_unlocks_fast_deployment():
+    snap = _snap(
+        {
+            "credit_spread": 680.0,
+            "capitulation_score": 30,
+            "tactical_stress_score": 10,
+            "rolling_drawdown": 0.22,
+            "five_day_return": -0.04,
+            "twenty_day_return": -0.11,
+            "price_vix_divergence": True,
+        }
+    )
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_EXIT, 0.50, 0.50),
+        tier0_regime="CRISIS",
+        available_new_cash=1000.0,
+    )
+    assert decision.deployment_state == DeploymentState.DEPLOY_FAST
+    assert any(reason["rule"] == "blood_chip_crisis_override" for reason in decision.reasons)
+
+
+def test_crisis_smart_money_support_override_unlocks_fast_deployment():
+    snap = _snap(
+        {
+            "credit_spread": 680.0,
+            "capitulation_score": 20,
+            "tactical_stress_score": 10,
+            "rolling_drawdown": 0.19,
+            "five_day_return": -0.03,
+            "twenty_day_return": -0.09,
+            "price_mfi_divergence": True,
+            "near_volume_poc": True,
+        }
+    )
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_EXIT, 0.50, 0.50),
+        tier0_regime="CRISIS",
+        available_new_cash=1000.0,
+    )
+    assert decision.deployment_state == DeploymentState.DEPLOY_FAST
+    assert any(reason["rule"] == "blood_chip_crisis_override" for reason in decision.reasons)
+
+
+def test_crisis_override_is_blocked_when_tactical_stress_says_pause():
+    snap = _snap(
+        {
+            "credit_spread": 680.0,
+            "credit_acceleration": -1.0,
+            "liquidity_roc": 1.0,
+            "capitulation_score": 30,
+            "tactical_stress_score": 80,
+            "rolling_drawdown": 0.18,
+            "five_day_return": -0.03,
+            "twenty_day_return": -0.10,
+        }
+    )
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_EXIT, 0.50, 0.50),
+        tier0_regime="CRISIS",
+        available_new_cash=1000.0,
+    )
+    assert decision.deployment_state == DeploymentState.DEPLOY_PAUSE
+    assert decision.pause_new_cash is True
+    assert any(reason["rule"] == "tactical_stress_pause" for reason in decision.reasons)
+
+
 def test_neutral_keeps_fast_path_available():
     snap = _snap(
         {

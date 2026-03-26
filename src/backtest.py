@@ -11,16 +11,16 @@ import argparse
 import concurrent.futures
 import logging
 import os
-from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Optional, Dict, List, Any
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import yfinance as yf
 
-from src.models import AllocationState, CurrentPortfolioState, Tier1Result, Tier2Result, TargetAllocationState
+from src.collector.historical_macro_seeder import HistoricalMacroSeeder
 from src.engine.aggregator import aggregate, get_target_allocation
 from src.engine.allocation_search import (
     find_best_allocation,
@@ -28,7 +28,7 @@ from src.engine.allocation_search import (
     select_candidate_with_floor_fallback_v8,
 )
 from src.engine.candidate_registry import load_registry, select_runtime_candidates
-from src.engine.deployment_controller import decide_deployment_state
+from src.engine.deployment_controller import DeploymentDecision, decide_deployment_state
 from src.engine.execution_policy import (
     AdvisoryState,
     build_advisory_rebalance_decision,
@@ -39,10 +39,16 @@ from src.engine.feature_pipeline import build_feature_snapshot
 from src.engine.risk_controller import decide_risk_state
 from src.engine.runtime_selector import RuntimeSelection
 from src.engine.tier0_macro import assess_structural_regime
-from src.collector.historical_macro_seeder import HistoricalMacroSeeder
-from src.output.backtest_plots import save_beta_backtest_figure
-from src.models.risk import RiskState
+from src.models import (
+    AllocationState,
+    CurrentPortfolioState,
+    TargetAllocationState,
+    Tier1Result,
+    Tier2Result,
+)
 from src.models.deployment import DeploymentState
+from src.models.risk import RiskState
+from src.output.backtest_plots import save_beta_backtest_figure
 from src.research.data_contracts import (
     summarize_historical_macro_coverage,
     summarize_signal_expectation_coverage,
@@ -111,6 +117,16 @@ def _coerce_optional_str(value: object) -> str | None:
     if value is None or pd.isna(value):
         return None
     return str(value)
+
+
+def _deployment_reason_rule(decision: DeploymentDecision) -> str:
+    if not decision.reasons:
+        return "controller_decision"
+    return str(decision.reasons[0].get("rule", "controller_decision"))
+
+
+def _blood_chip_override_active(decision: DeploymentDecision) -> bool:
+    return any(reason.get("rule") == "blood_chip_crisis_override" for reason in decision.reasons)
 
 
 def _safe_beta(
@@ -285,33 +301,34 @@ def _score_candidate_worker(
     state: AllocationState,
     cand: TargetAllocationState,
     initial_capital: float,
-    precomputed_states: Optional[pd.Series] = None
+    precomputed_states: pd.Series | None = None
 ) -> dict:
     """Standalone worker function for parallel candidate scoring."""
     tester = Backtester(initial_capital=initial_capital)
     # Sub-simulations must have enable_dynamic_search=False to avoid infinite recursion
     summary = tester.simulate_portfolio(
-        ohlcv_slice, 
-        target_map={state: cand}, 
+        ohlcv_slice,
+        target_map={state: cand},
         precomputed_states=precomputed_states,
         enable_dynamic_search=False
     )
-    
+
     if hasattr(ohlcv_slice.index, "date") and len(ohlcv_slice.index) > 1:
         days = (ohlcv_slice.index[-1] - ohlcv_slice.index[0]).days
     elif hasattr(ohlcv_slice.index[0], "days"):
         days = (ohlcv_slice.index[-1] - ohlcv_slice.index[0]).days
     else:
         days = len(ohlcv_slice.index)
-        
-    if days <= 0: days = 1
+
+    if days <= 0:
+        days = 1
     final_nav = summary.daily_timeseries["nav"].iloc[-1]
     cagr = (final_nav / initial_capital) ** (365.0 / days) - 1.0
-    
+
     defensive_states = {AllocationState.WATCH_DEFENSE, AllocationState.DELEVERAGE, AllocationState.CASH_FLIGHT}
     def_days = sum(1 for s in summary.daily_timeseries["state"] if AllocationState(s) in defensive_states)
     def_coverage = def_days / len(summary.daily_timeseries)
-    
+
     return {
         "candidate": cand,
         "max_drawdown": abs(summary.tactical_mdd),
@@ -349,8 +366,8 @@ class AllocationEventMetrics:
     price: float
     state: AllocationState
     units: float
-    forward_returns: dict[int, Optional[float]]
-    max_adverse_excursion: Optional[float]
+    forward_returns: dict[int, float | None]
+    max_adverse_excursion: float | None
     tier0_regime: str | None = None
     risk_state: str | None = None
     deployment_state: str | None = None
@@ -368,7 +385,7 @@ class BacktestMethodologySummary:
     """Methodology summary for allocator-style backtests."""
     events: tuple[AllocationEventMetrics, ...]
     forward_returns_by_horizon: dict[int, float]
-    max_adverse_excursion: Optional[float]
+    max_adverse_excursion: float | None
     average_cost_improvement_vs_baseline_dca: float
     average_cost_penalty_vs_lump_sum: float
     baseline_dca_average_cost: float
@@ -391,7 +408,7 @@ class BacktestMethodologySummary:
     estimated_cost_drag: float = 0.0
     nav_integrity: float = 1.0
     # v6.2 Visualization Support
-    daily_timeseries: Optional[pd.DataFrame] = None
+    daily_timeseries: pd.DataFrame | None = None
     excluded_features: tuple[str, ...] = EXCLUDED_HISTORICAL_FEATURES
 
     @property
@@ -430,14 +447,14 @@ def simulate_leveraged_price(prices: pd.Series, leverage: float = 2.0) -> pd.Ser
     drag = 0.0000377
     returns = prices.pct_change().fillna(0)
     leveraged_returns = (returns * leverage) - drag
-    leveraged_returns.iloc[0] = 0.0 
-    
+    leveraged_returns.iloc[0] = 0.0
+
     multipliers = (1 + leveraged_returns).cumprod()
     return prices.iloc[0] * multipliers
 
 class Backtester:
     """Encapsulates backtesting logic with macro injection and portfolio simulation."""
-    
+
     def __init__(self, initial_capital: float = 100000):
         self.initial_capital = initial_capital
 
@@ -461,7 +478,7 @@ class Backtester:
                 futures = [executor.submit(worker_func, *task_args, *args) for task_args in tasks]
                 return [f.result() for f in futures]
 
-    def run(self, ohlcv: pd.DataFrame, macro_seeder: Optional[HistoricalMacroSeeder] = None) -> List[Dict[str, Any]]:
+    def run(self, ohlcv: pd.DataFrame, macro_seeder: HistoricalMacroSeeder | None = None) -> list[dict[str, Any]]:
         """Legacy run method for basic signal verification."""
         summary = self.simulate_portfolio(ohlcv, macro_seeder)
         results = []
@@ -478,7 +495,7 @@ class Backtester:
         self,
         ohlcv: pd.DataFrame,
         *,
-        macro_seeder: Optional[HistoricalMacroSeeder] = None,
+        macro_seeder: HistoricalMacroSeeder | None = None,
         registry_path: str = "data/candidate_registry_v7.json",
         expected_matrix: pd.DataFrame | pd.Series | None = None,
     ) -> pd.DataFrame:
@@ -564,6 +581,11 @@ class Backtester:
                     "five_day_return": five_day_return,
                     "twenty_day_return": twenty_day_return,
                     "persistence_score": 0,
+                    "price_vix_divergence": bool(row.get("price_vix_divergence", False)),
+                    "price_mfi_divergence": bool(row.get("price_mfi_divergence", False)),
+                    "short_squeeze_potential": bool(row.get("short_squeeze_potential", False)),
+                    "bond_vol_spike": bool(row.get("bond_vol_spike", False)),
+                    "near_volume_poc": bool(row.get("near_volume_poc", False)),
                 },
                 raw_quality={},
             )
@@ -583,6 +605,8 @@ class Backtester:
                 tier0_regime=tier0_regime,
                 available_new_cash=available_new_cash,
             )
+            deployment_reason_rule = _deployment_reason_rule(deploy)
+            blood_chip_override_active = _blood_chip_override_active(deploy)
 
             candidates = select_runtime_candidates(registry, risk.risk_state)
             selected_candidate, used_floor_fallback = select_candidate_with_floor_fallback_v8(
@@ -638,6 +662,8 @@ class Backtester:
                     "risk_state": risk.risk_state.value,
                     "deployment_state": deploy.deployment_state.value,
                     "deployment_multiplier": float(deploy.dca_multiplier),
+                    "deployment_reason_rule": deployment_reason_rule,
+                    "blood_chip_override_active": blood_chip_override_active,
                     "selected_candidate_id": selected_candidate_id,
                     "raw_target_beta": raw_target_beta,
                     "signal_target_beta": signal_target_beta,
@@ -659,7 +685,7 @@ class Backtester:
         ohlcv: pd.DataFrame,
         *,
         expected_matrix: pd.DataFrame | pd.Series,
-        macro_seeder: Optional[HistoricalMacroSeeder] = None,
+        macro_seeder: HistoricalMacroSeeder | None = None,
         registry_path: str = "data/candidate_registry_v7.json",
         tolerance: float = 0.10,
     ) -> TargetBetaAlignmentSummary:
@@ -696,7 +722,7 @@ class Backtester:
         ohlcv: pd.DataFrame,
         *,
         expected_matrix: pd.DataFrame | pd.Series,
-        macro_seeder: Optional[HistoricalMacroSeeder] = None,
+        macro_seeder: HistoricalMacroSeeder | None = None,
         registry_path: str = "data/candidate_registry_v7.json",
     ) -> DeploymentAlignmentSummary:
         """Score the incremental deployment decision path against an expected signal time series."""
@@ -730,12 +756,12 @@ class Backtester:
         )
 
     def simulate_portfolio(
-        self, 
-        ohlcv: pd.DataFrame, 
-        macro_seeder: Optional[HistoricalMacroSeeder] = None,
-        target_map: Optional[Dict[AllocationState, TargetAllocationState]] = None,
+        self,
+        ohlcv: pd.DataFrame,
+        macro_seeder: HistoricalMacroSeeder | None = None,
+        target_map: dict[AllocationState, TargetAllocationState] | None = None,
         enable_dynamic_search: bool = False,
-        precomputed_states: Optional[pd.Series] = None,
+        precomputed_states: pd.Series | None = None,
         registry_path: str = "data/candidate_registry_v7.json",
     ) -> BacktestMethodologySummary:
         """
@@ -757,7 +783,7 @@ class Backtester:
 
         # 1. Asset Price Simulation
         prices_qld = simulate_leveraged_price(prices_qqq, leverage=2.0)
-        
+
         # 2. State Derivation (Full Logic)
         # v6.4 Fix: In dynamic search mode, we derive states on-the-fly to avoid leakage.
         # But for internal sub-simulations (scoring), we pass precomputed sub-slices.
@@ -765,13 +791,13 @@ class Backtester:
             tactical_states = precomputed_states.reindex(prices_qqq.index).ffill()
         else:
             tactical_states = self._derive_states(ohlcv, macro_seeder)
-        
+
         # 3. Portfolio Loop
         cash = self.initial_capital
         units_qqq = 0.0
         units_qld = 0.0
         baseline_units_held = 0.0
-        
+
         daily_nav = []
         baseline_nav = []
         daily_stats = []
@@ -790,7 +816,6 @@ class Backtester:
 
         # v6.4 Rolling Decision Cache (elimination of look-ahead bias)
         rolling_targets = {}
-        current_target = None
         event_count = 0
         target_history = [] # AC-4: Daily target tracking for accurate audit
 
@@ -798,10 +823,10 @@ class Backtester:
             p_qqq = float(prices_qqq.loc[dt])
             p_qld = float(prices_qld.loc[dt])
             state = tactical_states.loc[dt]
-            
+
             current_dt = pd.to_datetime(dt)
             current_date = current_dt.date()
-            
+
             macro_features = {"credit_accel": 0.0}
             if macro_seeder:
                 macro_features = macro_seeder.get_features_for_date(current_date)
@@ -814,24 +839,25 @@ class Backtester:
                     event_count += 1
                     if event_count % 50 == 0:
                         print(f"  - Rolling Search: {current_date} ({event_count} events)...")
-                        
+
                     dt_loc = prices_qqq.index.get_loc(dt)
-                    if not isinstance(dt_loc, int): dt_loc = dt_loc[0]
+                    if not isinstance(dt_loc, int):
+                        dt_loc = dt_loc[0]
                     start_loc = max(0, dt_loc - 504)
-                    
+
                     # Data Slimming: Only pass necessary data to child processes
                     ohlcv_slice = ohlcv.iloc[start_loc:dt_loc+1][["Close"]]
                     states_slice = tactical_states.iloc[start_loc:dt_loc+1]
-                    
+
                     # Task Flattening: Map (State, Candidate) to a single parallel batch
                     tasks = []
                     for s_search in AllocationState:
                         for cand in generate_candidates(s_search):
                             tasks.append((ohlcv_slice, s_search, cand, self.initial_capital, states_slice))
-                    
+
                     # Parallel Execution using robust helper
                     all_scores = self._parallel_map(_score_candidate_worker, tasks)
-                    
+
                     # Group results back to states for selection
                     for s_search in AllocationState:
                         s_scores = [sc for i, sc in enumerate(all_scores) if tasks[i][1] == s_search]
@@ -840,8 +866,8 @@ class Backtester:
                 base_units = _state_units(state)
                 units_to_add = base_units
                 if state in (AllocationState.FAST_ACCUMULATE, AllocationState.SLOW_ACCUMULATE) and cash > (self.initial_capital * 0.1):
-                    units_to_add += 1.0 
-                
+                    units_to_add += 1.0
+
                 cost = units_to_add * p_qqq
                 if cash >= cost:
                     cash -= cost
@@ -854,11 +880,11 @@ class Backtester:
                     units_qqq += can_afford_units
                     tactical_cost_num += p_qqq * can_afford_units
                     total_tactical_units += can_afford_units
-                
+
                 total_volume_traded += cost
                 baseline_units_held += BASE_WEEKLY_DCA_UNITS
                 baseline_cost_num += p_qqq
-                
+
                 if dt <= final_low_date:
                     deployed_before_low += units_to_add
 
@@ -870,17 +896,17 @@ class Backtester:
                 target = rolling_targets[state]
             else:
                 target = get_target_allocation(state)
-            
+
             target_history.append(target)
 
             # AC-3 Component Summation Identity Check
             reported_nav_before = (units_qqq * p_qqq) + (units_qld * p_qld) + cash
-            
+
             # Ideal State
             target_cash = reported_nav_before * target.target_cash_pct
             target_qqq_val = reported_nav_before * target.target_qqq_pct
             target_qld_val = reported_nav_before * target.target_qld_pct
-            
+
             # Track volume for turnover
             total_volume_traded += abs(target_qqq_val - (units_qqq * p_qqq))
             total_volume_traded += abs(target_qld_val - (units_qld * p_qld))
@@ -889,27 +915,28 @@ class Backtester:
             cash = target_cash
             units_qqq = target_qqq_val / p_qqq
             units_qld = target_qld_val / p_qld
-            
+
             # Verify identity post-rebalance
             final_nav_step = (units_qqq * p_qqq) + (units_qld * p_qld) + cash
             drift = abs(final_nav_step - reported_nav_before)
             nav_drift_errors.append(drift / reported_nav_before if reported_nav_before > 0 else 0.0)
-            
+
             # C. Check for Weekly Metrics Collection
             if dt in add_dates:
                 fwd_ret = compute_forward_returns(prices_qqq, dt)
                 mae = compute_max_adverse_excursion(prices_qqq, dt)
-                if mae is not None: mae_values.append(mae)
-                
+                if mae is not None:
+                    mae_values.append(mae)
+
                 for h, val in fwd_ret.items():
                     if val is not None:
                         horizon_numerators[h] += val * units_to_add
                         horizon_denominators[h] += units_to_add
-                
+
                 event_metrics.append(AllocationEventMetrics(
                     date=dt, price=p_qqq, state=state, units=units_to_add,
                     forward_returns=fwd_ret, max_adverse_excursion=mae,
-                    cash_balance=cash, 
+                    cash_balance=cash,
                     equity_value=units_qqq * p_qqq,
                     qld_value=units_qld * p_qld,
                     net_asset_value=reported_nav_before,
@@ -922,7 +949,7 @@ class Backtester:
             b_nav = baseline_units_held * p_qqq
             daily_nav.append(nav)
             baseline_nav.append(b_nav)
-            
+
             daily_stats.append({
                 "date": dt,
                 "nav": nav,
@@ -937,22 +964,21 @@ class Backtester:
         tactical_mdd = self._calculate_mdd(daily_nav)
         baseline_mdd = self._calculate_mdd(baseline_nav)
         daily_ts = pd.DataFrame(daily_stats).set_index("date")
-        
+
         daily_ts["tactical_ret"] = pd.Series(daily_nav, index=prices_qqq.index).pct_change().fillna(0)
         daily_ts["market_ret"] = prices_qqq.pct_change().fillna(0)
-        
+
         realized_beta = _safe_beta(daily_ts["tactical_ret"], daily_ts["market_ret"])
 
         daily_ts["state_change"] = (daily_ts["state"] != daily_ts["state"].shift(1))
         daily_ts["interval_id"] = daily_ts["state_change"].cumsum()
-        
+
         interval_beta_audit = []
-        for interval_id, group in daily_ts.groupby("interval_id"):
+        for _interval_id, group in daily_ts.groupby("interval_id"):
             s_state_str = group["state"].iloc[0]
-            s_state = AllocationState(s_state_str)
             s_tactical_ret = group["tactical_ret"]
             s_market_ret = group["market_ret"]
-            
+
             # AC-4 Fidelity: Use the actual executed targets from this interval
             s_target_beta = float(group["target_beta"].mean())
             s_realized_beta = _safe_beta(
@@ -960,7 +986,7 @@ class Backtester:
                 s_market_ret,
                 fallback_target=s_target_beta,
             )
-            
+
             interval_beta_audit.append({
                 "state": s_state_str,
                 "start_date": group.index[0].isoformat() if hasattr(group.index[0], "isoformat") else str(group.index[0]),
@@ -969,7 +995,7 @@ class Backtester:
                 "target": s_target_beta,
                 "deviation": abs(s_realized_beta - s_target_beta)
             })
-        
+
         mean_deviation = np.mean([x["deviation"] for x in interval_beta_audit]) if interval_beta_audit else 0.0
         avg_nav = np.mean(daily_nav) if daily_nav else 1.0
         turnover = total_volume_traded / avg_nav
@@ -980,13 +1006,13 @@ class Backtester:
             prices_qqq, prices_qld, target_history, add_dates, tactical_states
         )
         final_sim_nav = daily_nav[-1] if daily_nav else self.initial_capital
-        
+
         # Measured Integrity: 1.0 - Relative Error
         if final_sim_nav > 0:
             nav_integrity_val = 1.0 - (abs(independent_nav - final_sim_nav) / final_sim_nav)
         else:
             nav_integrity_val = 0.0
-        
+
         # Enforce hard failure if solvency was breached
         if not all(n > 0 for n in daily_nav):
             nav_integrity_val = 0.0
@@ -1029,7 +1055,7 @@ class Backtester:
         self,
         ohlcv: pd.DataFrame,
         *,
-        macro_seeder: Optional[HistoricalMacroSeeder],
+        macro_seeder: HistoricalMacroSeeder | None,
         registry_path: str,
     ) -> BacktestMethodologySummary:
         """v8.1 linear pipeline backtest: Tier-0 -> Risk -> Search -> Beta + Deployment."""
@@ -1046,8 +1072,7 @@ class Backtester:
         units_qqq = 0.0
         units_qld = 0.0
 
-        # Baseline deployment 
-        p0 = float(prices_qqq.iloc[0]) if not prices_qqq.empty and float(prices_qqq.iloc[0]) > 0 else 1.0
+        # Baseline deployment
         baseline_cash = float(self.initial_capital)
         baseline_units_held = 0.0
         baseline_units_total = baseline_units_held
@@ -1146,6 +1171,8 @@ class Backtester:
                 tier0_regime=tier0_regime,
                 available_new_cash=base_cash_budget,
             )
+            deployment_reason_rule = _deployment_reason_rule(deploy)
+            blood_chip_override_active = _blood_chip_override_active(deploy)
 
             transfer_cash = 0.0
             units_to_add = 0.0
@@ -1265,6 +1292,8 @@ class Backtester:
                     "state": risk.risk_state.value,
                     "risk_state": risk.risk_state.value,
                     "deployment_state": deploy.deployment_state.value,
+                    "deployment_reason_rule": deployment_reason_rule,
+                    "blood_chip_override_active": blood_chip_override_active,
                     "tier0_regime": tier0_regime,
                     "selected_candidate_id": selected_candidate_id,
                     "used_beta_floor_fallback": used_floor_fallback,
@@ -1405,12 +1434,12 @@ class Backtester:
         )
 
     def score_candidates(
-        self, 
-        ohlcv: pd.DataFrame, 
-        state: AllocationState, 
+        self,
+        ohlcv: pd.DataFrame,
+        state: AllocationState,
         candidates: list[TargetAllocationState],
-        macro_seeder: Optional[HistoricalMacroSeeder] = None,
-        precomputed_states: Optional[pd.Series] = None
+        macro_seeder: HistoricalMacroSeeder | None = None,
+        precomputed_states: pd.Series | None = None
     ) -> list[dict[str, Any]]:
         """
         v6.4 Candidate Scoring API: Evaluates each candidate's performance.
@@ -1418,53 +1447,54 @@ class Backtester:
         """
         # Data Slimming
         ohlcv_slice = ohlcv[["Close"]]
-        
+
         # Prepare tasks for parallel execution
         tasks = [(ohlcv_slice, state, cand, self.initial_capital, precomputed_states) for cand in candidates]
-        
+
         # Parallel Execution using robust helper (handles ProcessPool failures)
         scores = self._parallel_map(_score_candidate_worker, tasks)
-            
+
         return scores
 
-    def _calculate_mdd(self, nav_series: List[float]) -> float:
+    def _calculate_mdd(self, nav_series: list[float]) -> float:
         """Calculate Maximum Drawdown from a NAV series."""
-        if not nav_series: return 0.0
+        if not nav_series:
+            return 0.0
         nav = np.array(nav_series)
         running_max = np.maximum.accumulate(nav)
         drawdowns = np.where(running_max > 0, (nav - running_max) / running_max, 0.0)
         return float(np.min(drawdowns))
 
     def _replay_and_verify_nav(
-        self, 
-        prices_qqq: pd.Series, 
-        prices_qld: pd.Series, 
-        target_history: List[TargetAllocationState],
-        add_dates: List[pd.Timestamp],
+        self,
+        prices_qqq: pd.Series,
+        prices_qld: pd.Series,
+        target_history: list[TargetAllocationState],
+        add_dates: list[pd.Timestamp],
         tactical_states: pd.Series
     ) -> float:
         """
         Independent AC-3 Ledger Audit.
-        Re-simulates the entire path from a blank slate using only the 
+        Re-simulates the entire path from a blank slate using only the
         recorded targets and cash flow events.
         """
         l_cash = self.initial_capital
         l_units_qqq = 0.0
         l_units_qld = 0.0
-        
+
         for i, dt in enumerate(prices_qqq.index):
             p_qqq = float(prices_qqq.iloc[i])
             p_qld = float(prices_qld.iloc[i])
             target = target_history[i]
             state = tactical_states.iloc[i]
-            
+
             # 1. Process External Cash Flow (Weekly Add)
             if dt in add_dates:
                 units = _state_units(state)
                 # handle cash re-deployment logic precisely
                 if state in (AllocationState.FAST_ACCUMULATE, AllocationState.SLOW_ACCUMULATE) and l_cash > (self.initial_capital * 0.1):
                     units += 1.0
-                
+
                 cost = units * p_qqq
                 if l_cash >= cost:
                     l_cash -= cost
@@ -1473,15 +1503,16 @@ class Backtester:
                     can_buy = l_cash / p_qqq
                     l_cash = 0.0
                     l_units_qqq += can_buy
-            
+
             # 2. Daily Rebalance (Risk Swap)
             nav = (l_units_qqq * p_qqq) + (l_units_qld * p_qld) + l_cash
-            if nav <= 0: continue
-            
+            if nav <= 0:
+                continue
+
             l_cash = nav * target.target_cash_pct
             l_units_qqq = (nav * target.target_qqq_pct) / p_qqq
             l_units_qld = (nav * target.target_qld_pct) / p_qld
-            
+
         return (l_units_qqq * prices_qqq.iloc[-1]) + (l_units_qld * prices_qld.iloc[-1]) + l_cash
 
     def _replay_and_verify_nav_v8(
@@ -1498,7 +1529,7 @@ class Backtester:
         units_qqq = 0.0
         units_qld = 0.0
 
-        for i, dt in enumerate(prices_qqq.index):
+        for i, _dt in enumerate(prices_qqq.index):
             p_qqq = float(prices_qqq.iloc[i])
             p_qld = float(prices_qld.iloc[i])
 
@@ -1515,16 +1546,16 @@ class Backtester:
 
         return reserve_cash + active_cash + (units_qqq * prices_qqq.iloc[-1]) + (units_qld * prices_qld.iloc[-1])
 
-    def _derive_states(self, ohlcv: pd.DataFrame, macro_seeder: Optional[HistoricalMacroSeeder]) -> pd.Series:
+    def _derive_states(self, ohlcv: pd.DataFrame, macro_seeder: HistoricalMacroSeeder | None) -> pd.Series:
         """Derive allocation states using full v6.2 logic."""
         prices = ohlcv["Close"].astype(float)
         drawdown = prices / prices.cummax() - 1.0
-        
-        states: List[AllocationState] = []
+
+        states: list[AllocationState] = []
         for dt, price in prices.items():
             # Robustly handle index types
             current_date = dt.date() if hasattr(dt, "date") else date.today()
-            
+
             macro_features = {
                 "credit_spread": None, "credit_accel": 0.0,
                 "liquidity_roc": 0.0, "is_funding_stressed": False,
@@ -1532,19 +1563,41 @@ class Backtester:
             }
             if macro_seeder:
                 macro_features = macro_seeder.get_features_for_date(current_date)
-            
+
             t1_score = 50
             dd = float(drawdown.loc[dt])
-            if dd <= -0.20: t1_score = 80
-            elif dd <= -0.10: t1_score = 65
-            
-            t1 = Tier1Result(score=t1_score, drawdown_52w=None, ma200_deviation=None, vix=None, fear_greed=None, breadth=None)
-            t2 = Tier2Result(adjustment=0, put_wall=None, call_wall=None, gamma_flip=None, 
-                            support_confirmed=False, support_broken=False, upside_open=False, 
-                            gamma_positive=True, gamma_source="yf", put_wall_distance_pct=0.0, call_wall_distance_pct=0.0)
-            
+            if dd <= -0.20:
+                t1_score = 80
+            elif dd <= -0.10:
+                t1_score = 65
+
+            t1 = Tier1Result(
+                score=t1_score,
+                drawdown_52w=None,
+                ma200_deviation=None,
+                vix=None,
+                fear_greed=None,
+                breadth=None,
+            )
+            t2 = Tier2Result(
+                adjustment=0,
+                put_wall=None,
+                call_wall=None,
+                gamma_flip=None,
+                support_confirmed=False,
+                support_broken=False,
+                upside_open=False,
+                gamma_positive=True,
+                gamma_source="yf",
+                put_wall_distance_pct=0.0,
+                call_wall_distance_pct=0.0,
+            )
+
             result = aggregate(
-                market_date=current_date, price=float(price), tier1=t1, tier2=t2,
+                market_date=current_date,
+                price=float(price),
+                tier1=t1,
+                tier2=t2,
                 credit_spread=macro_features.get("credit_spread"),
                 credit_accel=macro_features.get("credit_accel"),
                 liquidity_roc=macro_features.get("liquidity_roc"),
@@ -1553,13 +1606,13 @@ class Backtester:
                 real_yield=macro_features.get("real_yield")
             )
             states.append(result.allocation_state)
-            
+
         return pd.Series(states, index=prices.index)
 
-def derive_tactical_state_series(prices: pd.Series, macro_seeder: Optional[HistoricalMacroSeeder] = None) -> pd.Series:
+def derive_tactical_state_series(prices: pd.Series, macro_seeder: HistoricalMacroSeeder | None = None) -> pd.Series:
     """Wrapper for Backtester()._derive_states to satisfy legacy tests."""
     ohlcv = pd.DataFrame({"Close": prices}, index=prices.index)
-    
+
     # Legacy tests (v5.0) expect PAUSE_CHASING in rapid rises without macro data.
     if macro_seeder is None and len(prices) > 1:
         if prices.iloc[-1] > prices.iloc[0] * 1.5: # 50% rise
@@ -1571,25 +1624,30 @@ def derive_tactical_state_series(prices: pd.Series, macro_seeder: Optional[Histo
                         "forward_pe": 10.0, "real_yield": 1.0 # ERP = 9.0%
                     }
             macro_seeder = MockEuphoricSeeder()
-            
+
     return Backtester()._derive_states(ohlcv, macro_seeder)
 
 def _coerce_state(value: object) -> AllocationState:
-    if isinstance(value, AllocationState): return value
-    if value is None: return AllocationState.BASE_DCA
-    try: return AllocationState(str(value))
-    except ValueError: return AllocationState.BASE_DCA
+    if isinstance(value, AllocationState):
+        return value
+    if value is None:
+        return AllocationState.BASE_DCA
+    try:
+        return AllocationState(str(value))
+    except ValueError:
+        return AllocationState.BASE_DCA
 
 def _state_units(state: AllocationState) -> float:
     bonus = STATE_BONUS_UNITS.get(state, 0.0)
     return max(0.0, BASE_WEEKLY_DCA_UNITS + bonus)
 
-def compute_forward_returns(prices: pd.Series, entry_label, horizons: tuple[int, ...] = FWD_HORIZONS) -> dict[int, Optional[float]]:
+def compute_forward_returns(prices: pd.Series, entry_label, horizons: tuple[int, ...] = FWD_HORIZONS) -> dict[int, float | None]:
     try:
         entry_loc = prices.index.get_loc(entry_label)
-        if not isinstance(entry_loc, int): entry_loc = entry_loc[0]
+        if not isinstance(entry_loc, int):
+            entry_loc = entry_loc[0]
         entry_price = float(prices.iloc[entry_loc])
-        returns: dict[int, Optional[float]] = {}
+        returns: dict[int, float | None] = {}
         for horizon in horizons:
             exit_loc = entry_loc + horizon
             if exit_loc >= len(prices):
@@ -1597,27 +1655,31 @@ def compute_forward_returns(prices: pd.Series, entry_label, horizons: tuple[int,
                 continue
             returns[horizon] = float(prices.iloc[exit_loc]) / entry_price - 1.0
         return returns
-    except Exception: return {h: None for h in horizons}
+    except Exception:
+        return {h: None for h in horizons}
 
-def compute_max_adverse_excursion(prices: pd.Series, entry_label, lookahead: int = max(FWD_HORIZONS)) -> Optional[float]:
+def compute_max_adverse_excursion(prices: pd.Series, entry_label, lookahead: int = max(FWD_HORIZONS)) -> float | None:
     try:
         entry_loc = prices.index.get_loc(entry_label)
-        if not isinstance(entry_loc, int): entry_loc = entry_loc[0]
+        if not isinstance(entry_loc, int):
+            entry_loc = entry_loc[0]
         end_loc = min(len(prices) - 1, entry_loc + lookahead)
         window = prices.iloc[entry_loc : end_loc + 1]
-        if window.empty: return None
+        if window.empty:
+            return None
         entry_price = float(prices.iloc[entry_loc])
         return float(window.min() / entry_price - 1.0)
-    except Exception: return None
+    except Exception:
+        return None
 
-def simulate_allocator(prices: pd.Series, tactical_states: Optional[pd.Series] = None, interval: int = WEEKLY_ADD_INTERVAL) -> BacktestMethodologySummary:
+def simulate_allocator(prices: pd.Series, tactical_states: pd.Series | None = None, interval: int = WEEKLY_ADD_INTERVAL) -> BacktestMethodologySummary:
     prices = prices.astype(float).dropna()
     if tactical_states is None:
         tactical_states = pd.Series(AllocationState.BASE_DCA, index=prices.index)
-    
+
     aligned_states = tactical_states.reindex(prices.index, method="ffill").fillna(AllocationState.BASE_DCA)
     add_dates = list(prices.index[::interval])
-    
+
     total_capital_units = 0.0
     tactical_cost_num = 0.0
     baseline_cost_num = 0.0
@@ -1636,23 +1698,25 @@ def simulate_allocator(prices: pd.Series, tactical_states: Optional[pd.Series] =
         mae = compute_max_adverse_excursion(prices, dt)
 
         event_metrics.append(AllocationEventMetrics(
-            date=dt, price=price, state=state, units=units, 
+            date=dt, price=price, state=state, units=units,
             forward_returns=fwd_ret, max_adverse_excursion=mae
         ))
         total_capital_units += units
         tactical_cost_num += price * units
         baseline_cost_num += price
-        if dt <= final_low_date: deployed_before_low += units
+        if dt <= final_low_date:
+            deployed_before_low += units
         for h, val in fwd_ret.items():
             if val is not None:
                 horizon_nums[h] += val * units
                 horizon_dens[h] += units
-        if mae is not None: mae_values.append(mae)
+        if mae is not None:
+            mae_values.append(mae)
 
     tactical_avg_cost = tactical_cost_num / total_capital_units if total_capital_units else 0
     baseline_avg_cost = baseline_cost_num / len(add_dates) if add_dates else 0
     lump_sum_cost = float(prices.iloc[0])
-    
+
     return BacktestMethodologySummary(
         events=tuple(event_metrics),
         forward_returns_by_horizon={h: (horizon_nums[h] / horizon_dens[h] if horizon_dens[h] else 0) for h in FWD_HORIZONS},
@@ -1667,10 +1731,10 @@ def simulate_allocator(prices: pd.Series, tactical_states: Optional[pd.Series] =
         total_capital_units=total_capital_units
     )
 
-def summarize_backtest_methodology(prices: pd.Series, tactical_states: Optional[pd.Series] = None, interval: int = WEEKLY_ADD_INTERVAL) -> BacktestMethodologySummary:
+def summarize_backtest_methodology(prices: pd.Series, tactical_states: pd.Series | None = None, interval: int = WEEKLY_ADD_INTERVAL) -> BacktestMethodologySummary:
     return simulate_allocator(prices, tactical_states=tactical_states, interval=interval)
 
-def _format_pct(value: Optional[float]) -> str:
+def _format_pct(value: float | None) -> str:
     return f"{value * 100:.1f}%" if value is not None else "n/a"
 
 
@@ -1916,18 +1980,29 @@ def run_backtest(
             (daily_ts["tier0_regime"] == "RICH_TIGHTENING")
             & (daily_ts["deployment_state"].isin(["DEPLOY_BASE", "DEPLOY_FAST"]))
         ]
-        crisis_breaches = daily_ts[
+        blood_chip_flags = daily_ts.get(
+            "blood_chip_override_active",
+            pd.Series(False, index=daily_ts.index, dtype=bool),
+        ).fillna(False).astype(bool)
+        crisis_blood_chip_overrides = daily_ts[
             (daily_ts["tier0_regime"] == "CRISIS")
+            & blood_chip_flags
             & (daily_ts["deployment_state"].isin(["DEPLOY_SLOW", "DEPLOY_BASE", "DEPLOY_RECOVER", "DEPLOY_FAST"]))
         ]
+        crisis_unauthorized_breaches = daily_ts[
+            (daily_ts["tier0_regime"] == "CRISIS")
+            & (daily_ts["deployment_state"].isin(["DEPLOY_SLOW", "DEPLOY_BASE", "DEPLOY_RECOVER", "DEPLOY_FAST"]))
+            & ~blood_chip_flags
+        ]
         print(f"RICH_TIGHTENING left-side windows: {len(rich_overrides)}")
-        print(f"CRISIS deployment breaches: {len(crisis_breaches)}")
-    
+        print(f"CRISIS blood-chip overrides: {len(crisis_blood_chip_overrides)}")
+        print(f"CRISIS unauthorized breaches: {len(crisis_unauthorized_breaches)}")
+
     if summary.interval_beta_audit:
         print(f"\n--- AC-4 Beta Fidelity Audit (Mean Deviation: {summary.mean_interval_beta_deviation:.4f}) ---")
         for metrics in summary.interval_beta_audit[-10:]:
             print(f"  - {metrics['state']:15} ({metrics['start_date']} to {metrics['end_date']}): Realized={metrics['realized']:.2f}, Target={metrics['target']:.2f}, Dev={metrics['deviation']:.2f}")
-    
+
     print("-" * 40)
     print("Forward returns: " + ", ".join(f"T+{h}={_format_pct(summary.forward_returns_by_horizon[h])}" for h in FWD_HORIZONS))
     print(f"Max adverse excursion after add: {_format_pct(summary.max_adverse_excursion)}")

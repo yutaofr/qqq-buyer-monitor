@@ -24,6 +24,12 @@ _SHALLOW_PULLBACK_FAST_FIVE_DAY_RETURN_THRESHOLD = 0.0
 _STRESS_DRAWDOWN_SLOW_THRESHOLD = 0.15
 _DEEP_DRAWDOWN_PAUSE_THRESHOLD = 0.25
 _SHALLOW_RICH_TIGHTENING_BASE_THRESHOLD = 0.15
+_BLOOD_CHIP_CRISIS_DRAWDOWN_THRESHOLD = 0.15
+_BLOOD_CHIP_LIQUIDITY_ROC_THRESHOLD = 0.5
+_BLOOD_CHIP_LIQUIDITY_TWENTY_DAY_RETURN_THRESHOLD = -0.08
+_BLOOD_CHIP_EXHAUSTION_DRAWDOWN_THRESHOLD = 0.20
+_BLOOD_CHIP_EXHAUSTION_CAPITULATION_THRESHOLD = 30
+_BLOOD_CHIP_SMART_MONEY_DRAWDOWN_THRESHOLD = 0.18
 
 
 @dataclass(frozen=True)
@@ -110,6 +116,79 @@ def _build_decision(
     )
 
 
+def _detect_blood_chip_crisis_override(
+    snapshot: FeatureSnapshot,
+    risk_decision: RiskDecision,
+    *,
+    tier0_regime: str,
+) -> dict | None:
+    """Return structured evidence when CRISIS new-cash override is allowed."""
+    if tier0_regime != "CRISIS" or risk_decision.risk_state != RiskState.RISK_EXIT:
+        return None
+
+    v = snapshot.values
+    rolling_drawdown = v.get("rolling_drawdown")
+    tactical_stress = int(v.get("tactical_stress_score", 0) or 0)
+    if (
+        rolling_drawdown is None
+        or float(rolling_drawdown) < _BLOOD_CHIP_CRISIS_DRAWDOWN_THRESHOLD
+        or tactical_stress >= _STRESS_PAUSE_THRESHOLD
+    ):
+        return None
+
+    credit_accel = float(v.get("credit_acceleration", 0.0) or 0.0)
+    liquidity_roc = float(v.get("liquidity_roc", 0.0) or 0.0)
+    twenty_day_return = v.get("twenty_day_return")
+    capitulation_score = int(v.get("capitulation_score", 0) or 0)
+    price_vix_divergence = bool(v.get("price_vix_divergence") or False)
+    short_squeeze_potential = bool(v.get("short_squeeze_potential") or False)
+    bond_vol_spike = bool(v.get("bond_vol_spike") or False)
+    price_mfi_divergence = bool(v.get("price_mfi_divergence") or False)
+    near_volume_poc = bool(v.get("near_volume_poc") or False)
+
+    if (
+        liquidity_roc > _BLOOD_CHIP_LIQUIDITY_ROC_THRESHOLD
+        and credit_accel <= 0.0
+        and twenty_day_return is not None
+        and float(twenty_day_return) <= _BLOOD_CHIP_LIQUIDITY_TWENTY_DAY_RETURN_THRESHOLD
+    ):
+        return {
+            "path": "liquidity_reversal",
+            "rolling_drawdown": float(rolling_drawdown),
+            "credit_acceleration": credit_accel,
+            "liquidity_roc": liquidity_roc,
+            "twenty_day_return": float(twenty_day_return),
+        }
+
+    if (
+        float(rolling_drawdown) >= _BLOOD_CHIP_EXHAUSTION_DRAWDOWN_THRESHOLD
+        and capitulation_score >= _BLOOD_CHIP_EXHAUSTION_CAPITULATION_THRESHOLD
+        and (price_vix_divergence or short_squeeze_potential or bond_vol_spike)
+    ):
+        return {
+            "path": "panic_exhaustion",
+            "rolling_drawdown": float(rolling_drawdown),
+            "capitulation_score": capitulation_score,
+            "price_vix_divergence": price_vix_divergence,
+            "short_squeeze_potential": short_squeeze_potential,
+            "bond_vol_spike": bond_vol_spike,
+        }
+
+    if (
+        float(rolling_drawdown) >= _BLOOD_CHIP_SMART_MONEY_DRAWDOWN_THRESHOLD
+        and price_mfi_divergence
+        and near_volume_poc
+    ):
+        return {
+            "path": "smart_money_support",
+            "rolling_drawdown": float(rolling_drawdown),
+            "price_mfi_divergence": price_mfi_divergence,
+            "near_volume_poc": near_volume_poc,
+        }
+
+    return None
+
+
 def decide_deployment_state(
     snapshot: FeatureSnapshot,
     risk_decision: RiskDecision,
@@ -141,6 +220,11 @@ def decide_deployment_state(
     rolling_drawdown = v.get("rolling_drawdown")
     five_day_return = v.get("five_day_return")
     twenty_day_return = v.get("twenty_day_return")
+    blood_chip_override = _detect_blood_chip_crisis_override(
+        snapshot,
+        risk_decision,
+        tier0_regime=tier0_regime,
+    )
 
     has_left_tail_confirmation = (
         rolling_drawdown is not None
@@ -160,21 +244,25 @@ def decide_deployment_state(
     tier0_ceiling = tier0_override_ceiling if can_override_tier0 else tier0_default_ceiling
     effective_ceiling = _combine_ceilings(risk_ceiling, tier0_ceiling)
 
-    # ── 1. Hard risk ceiling block ────────────────────────────────────────────
-    if risk_decision.risk_state == RiskState.RISK_EXIT:
-        reasons.append({"rule": "risk_ceiling", "risk_state": risk_decision.risk_state.value})
-        return _build_decision(DeploymentState.DEPLOY_PAUSE, reasons, pause_new_cash=True)
-
-    if credit_spread is None:
-        reasons.append({"rule": "missing_credit_spread_pause"})
-        return _build_decision(DeploymentState.DEPLOY_PAUSE, reasons, pause_new_cash=True)
-
-    # ── 2. High tactical stress or price chasing → PAUSE ─────────────────────
+    # ── 1. High tactical stress or price chasing → PAUSE ─────────────────────
     if tactical_stress >= _STRESS_PAUSE_THRESHOLD:
         proposed = DeploymentState.DEPLOY_PAUSE
         final = _cap_to_ceiling(proposed, effective_ceiling, reasons)
         reasons.append({"rule": "tactical_stress_pause", "stress_score": tactical_stress})
         return _build_decision(final, reasons, pause_new_cash=True)
+
+    if credit_spread is None:
+        reasons.append({"rule": "missing_credit_spread_pause"})
+        return _build_decision(DeploymentState.DEPLOY_PAUSE, reasons, pause_new_cash=True)
+
+    # ── 2. Hard risk ceiling block with CRISIS blood-chip exception ──────────
+    if blood_chip_override is not None:
+        reasons.append({"rule": "blood_chip_crisis_override", **blood_chip_override})
+        return _build_decision(DeploymentState.DEPLOY_FAST, reasons, pause_new_cash=False)
+
+    if risk_decision.risk_state == RiskState.RISK_EXIT:
+        reasons.append({"rule": "risk_ceiling", "risk_state": risk_decision.risk_state.value})
+        return _build_decision(DeploymentState.DEPLOY_PAUSE, reasons, pause_new_cash=True)
 
     if float(credit_spread) >= _CREDIT_SPREAD_CRISIS or (
         rolling_drawdown is not None and rolling_drawdown >= _DEEP_DRAWDOWN_PAUSE_THRESHOLD

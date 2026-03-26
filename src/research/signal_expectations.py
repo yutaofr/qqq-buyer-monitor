@@ -17,6 +17,10 @@ _CREDIT_SPREAD_CRISIS = 650.0
 _CREDIT_SPREAD_RISK_ON = 450.0
 _CREDIT_ACCEL_STRESS = 15.0
 _LIQUIDITY_STRESS = -5.0
+_BLOOD_CHIP_CRISIS_DRAWDOWN = 0.15
+_BLOOD_CHIP_LIQUIDITY_ROC = 0.5
+_BLOOD_CHIP_TWENTY_DAY_RETURN = -0.08
+_STRESS_PAUSE_THRESHOLD = 70
 
 
 def _rolling_market_drawdown(prices: pd.Series, loc: int, *, window: int = _DRAWDOWN_WINDOW) -> float:
@@ -104,6 +108,8 @@ def _expected_deployment_state(
     rolling_drawdown: float,
     five_day_return: float,
     twenty_day_return: float,
+    capitulation_score: int,
+    tactical_stress_score: int,
 ) -> str:
     """
     Independent incremental-cash expectation surface.
@@ -115,6 +121,16 @@ def _expected_deployment_state(
     """
     if credit_spread is None:
         return DeploymentState.DEPLOY_PAUSE.value
+    if tactical_stress_score >= _STRESS_PAUSE_THRESHOLD:
+        return DeploymentState.DEPLOY_PAUSE.value
+    if (
+        credit_spread >= _CREDIT_SPREAD_CRISIS
+        and rolling_drawdown >= _BLOOD_CHIP_CRISIS_DRAWDOWN
+        and liquidity_roc > _BLOOD_CHIP_LIQUIDITY_ROC
+        and credit_accel <= 0.0
+        and twenty_day_return <= _BLOOD_CHIP_TWENTY_DAY_RETURN
+    ):
+        return DeploymentState.DEPLOY_FAST.value
     if credit_spread >= _CREDIT_SPREAD_CRISIS or rolling_drawdown >= 0.25:
         return DeploymentState.DEPLOY_PAUSE.value
     if rolling_drawdown >= 0.12 and twenty_day_return <= -0.08 and credit_spread < _CREDIT_SPREAD_CRISIS:
@@ -191,6 +207,8 @@ def build_market_expectation_matrix(
                     rolling_drawdown=rolling_drawdown,
                     five_day_return=float(five_day_return.iloc[loc]),
                     twenty_day_return=float(twenty_day_return.iloc[loc]),
+                    capitulation_score=_derive_capitulation_score(price_drawdown),
+                    tactical_stress_score=_derive_tactical_stress_score(prices, loc),
                 ),
                 "rolling_drawdown": rolling_drawdown,
                 "available_new_cash": BASE_WEEKLY_DCA_UNITS * float(prices.iloc[loc]),

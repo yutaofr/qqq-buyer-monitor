@@ -156,7 +156,7 @@ def test_rich_tightening_with_left_tail_confirmation_can_break_to_fast():
     assert deploy.deployment_state == "DEPLOY_FAST"
 
 
-def test_crisis_forces_exit_pause_and_cash_fallback():
+def test_crisis_keeps_exit_beta_floor_but_can_unlock_blood_chip_fast_deploy():
     from src.engine.allocation_search import find_best_allocation_v8
     from src.engine.deployment_controller import decide_deployment_state
     from src.engine.risk_controller import decide_risk_state
@@ -186,5 +186,6 @@ def test_crisis_forces_exit_pause_and_cash_fallback():
     assert tier0_regime == "CRISIS"
     assert risk.risk_state == RiskState.RISK_EXIT
     assert risk.target_exposure_ceiling == 0.50
-    assert deploy.deployment_state == "DEPLOY_PAUSE"
+    assert deploy.deployment_state == "DEPLOY_FAST"
+    assert any(reason["rule"] == "blood_chip_crisis_override" for reason in deploy.reasons)
     assert selected is None

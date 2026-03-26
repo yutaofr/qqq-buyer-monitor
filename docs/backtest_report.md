@@ -1,6 +1,6 @@
-# Linear Pipeline Backtest Report (v8.1, current main)
+# Linear Pipeline Backtest Report (v8.2 crisis blood-chip override)
 
-本报告记录当前 `main` 上的线性决策流水线在 1999-2026 全样本上的最新回测结果。
+本报告记录当前 v8.2 分支上线性决策流水线在 1999-2026 全样本上的最新回测结果。
 执行命令：
 
 ```bash
@@ -33,9 +33,10 @@ python scripts/run_signal_acceptance_report.py
 
 | 指标 | 当前表现 | 状态 | 说明 |
 | :--- | :--- | :--- | :--- |
-| Deployment Exact Match | `99.96%` | ✅ PASS | 期望状态完全匹配 |
-| Within One Step | `99.99%` | ✅ PASS | 邻近等级匹配率 |
-| CRISIS Deployment Breaches | `0` | ✅ PASS | 危机窗口未越级部署 |
+| Deployment Exact Match | `100.00%` | ✅ PASS | 期望状态完全匹配 |
+| Within One Step | `100.00%` | ✅ PASS | 邻近等级匹配率 |
+| CRISIS Blood-Chip Overrides | `1` | ✅ PASS | 危机窗口只出现授权的战术现金 override |
+| CRISIS Unauthorized Breaches | `0` | ✅ PASS | 危机窗口没有未授权越级部署 |
 
 ## 存量 Beta 回测图
 
@@ -65,19 +66,20 @@ python scripts/plot_beta_backtest_performance.py
 | Baseline DCA Max Drawdown | `-35.1%` | — | 对照组 |
 | MDD Improvement | `7.2%` | ✅ PASS | 相对 Baseline DCA 的绝对改善 |
 | Realized Beta | `0.18` | ✅ PASS | staged deployment + risk ceiling 后的全样本实现 beta |
-| Mean Interval Beta Deviation | `0.0031` | ✅ PASS | AC-4 保真度通过 |
+| Mean Interval Beta Deviation | `0.0032` | ✅ PASS | AC-4 保真度通过 |
 | NAV Integrity | `1.000000` | ✅ PASS | 独立重放一致 |
 | Turnover Ratio (Advised) | `13.40` | ✅ PASS | friction 后实际建议换手 |
 | Turnover Ratio (Raw Daily Align) | `826.47` | ✅ PASS | 未加 friction 的原始对照换手 |
 | Estimated Friction Drag | `0.2010` | ✅ PASS | advisory 换手对应的非税摩擦近似拖累 |
 | RICH_TIGHTENING left-side windows | `647` | ✅ PASS | 证明软约束没有锁死左侧入场 |
-| CRISIS deployment breaches | `0` | ✅ PASS | 危机窗口没有高于 `DEPLOY_PAUSE` 的部署状态 |
+| CRISIS blood-chip overrides | `1` | ✅ PASS | 危机窗口出现 1 次授权的现金回补 override |
+| CRISIS unauthorized breaches | `0` | ✅ PASS | 危机窗口没有未授权高于 `DEPLOY_PAUSE` 的部署状态 |
 
 ## 结果解读
 
 ### 0. 双回测已对齐
 
-当前 `main` 的验收口径已经分离为：
+当前 v8.2 的验收口径已经分离为：
 
 - `target_beta` 只看存量资产 beta 是否贴近期望矩阵
 - `deployment_state` 只看增量资金部署节奏是否贴近期望矩阵
@@ -86,7 +88,7 @@ python scripts/plot_beta_backtest_performance.py
 
 ### 1. 回撤预算已满足
 
-当前 main 的 staged deployment 与 Tier-0 / Risk / Deployment 三段式约束已经把全样本最大回撤控制在 `-27.9%`。
+当前 v8.2 的 staged deployment 与 Tier-0 / Risk / Deployment 三段式约束已经把全样本最大回撤控制在 `-27.9%`。
 这满足了 SDT 中 `TC-BT-003` 对 `MDD <= 30%` 的要求。
 
 ### 2. 左侧窗口被保留
@@ -94,10 +96,20 @@ python scripts/plot_beta_backtest_performance.py
 `RICH_TIGHTENING left-side windows = 647`，说明在宏观偏紧阶段，只要价格超跌足够深，部署速度仍可从默认 `DEPLOY_SLOW` 提升到 `DEPLOY_BASE` 或更高。
 这满足 `TC-BT-001 / AC-15`。
 
-### 3. 危机窗口被锁死
+### 3. 危机窗口只允许授权 override
 
-`CRISIS deployment breaches = 0`，说明在 Tier-0=`CRISIS` 时，系统没有出现任何 `DEPLOY_SLOW / BASE / RECOVER / FAST` 的违规部署状态。
-这满足 `TC-BT-002 / AC-13`。
+当前分层控制已拆成两条约束：
+
+- `Risk Controller` 继续把 stock beta 压到 `RISK_EXIT`，并维持 `target_exposure_ceiling = 0.5`
+- `Deployment Controller` 只在“血筹码”共振成立时，对增量现金开放一次授权的 `DEPLOY_FAST`
+
+本轮回测结果是：
+
+- `CRISIS blood-chip overrides = 1`
+- `CRISIS unauthorized breaches = 0`
+
+这说明系统没有放弃危机防守，只是在危机最深处为战术现金回补开了受控后门。
+这满足 v8.2 的 `TC-BT-002 / AC-13 / AC-14`。
 
 ### 4. 回测实现已与生产架构对齐
 
@@ -107,7 +119,7 @@ python scripts/plot_beta_backtest_performance.py
 ```text
 Tier-0 -> Risk Controller -> Candidate Registry -> Beta Recommendation
                     \
-                     -> Deployment Controller
+                     -> Deployment Controller (cash-only blood-chip override)
 ```
 
 ### 5. 图表已同步
@@ -138,9 +150,9 @@ Tier-0 -> Risk Controller -> Candidate Registry -> Beta Recommendation
 
 ## 结论
 
-当前 main 回测已通过：
+当前 v8.2 回测已通过：
 
 - spec compliance
 - architecture 对齐
-- AC-13 / AC-15 / AC-16 / AC-17 / AC-19 相关回测验证
+- AC-13 / AC-14 / AC-15 / AC-16 / AC-17 / AC-19 相关回测验证
 - 全样本 `MDD <= 30%`

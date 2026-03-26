@@ -50,3 +50,30 @@ def test_v8_backtest_preserves_left_side_window_but_locks_crisis():
     assert summary.turnover <= summary.raw_turnover
     assert set(crisis["risk_state"]) == {"RISK_EXIT"}
     assert set(crisis["selected_candidate_id"]) == {"exit-floor-001"}
+
+
+def test_v8_backtest_tracks_authorized_crisis_blood_chip_overrides_without_changing_beta_floor():
+    dates = pd.date_range("2024-01-02", periods=25, freq="B")
+    prices = pd.Series([100.0 - (i * 1.25) for i in range(25)], index=dates)
+    ohlcv = pd.DataFrame({"Close": prices}, index=dates)
+    macro = _canonical_macro_frame(dates, [320.0] * 20 + [680.0] * 5)
+    macro["credit_acceleration_pct_10d"] = [0.0] * 20 + [-1.0] * 5
+    macro["liquidity_roc_pct_4w"] = [0.0] * 20 + [1.0] * 5
+    seeder = HistoricalMacroSeeder(mock_df=macro)
+
+    summary = Backtester(initial_capital=10_000).simulate_portfolio(
+        ohlcv,
+        macro_seeder=seeder,
+        enable_dynamic_search=True,
+    )
+
+    crisis = summary.daily_timeseries[summary.daily_timeseries["tier0_regime"] == "CRISIS"]
+
+    assert not crisis.empty
+    assert "blood_chip_override_active" in summary.daily_timeseries.columns
+    assert "deployment_reason_rule" in summary.daily_timeseries.columns
+    assert (crisis["target_beta"] <= 0.51).all()
+    assert (crisis.loc[crisis["blood_chip_override_active"], "deployment_state"] == "DEPLOY_FAST").all()
+    assert (
+        crisis.loc[~crisis["blood_chip_override_active"], "deployment_state"] == "DEPLOY_PAUSE"
+    ).all()

@@ -26,6 +26,11 @@ _CLASS_B = frozenset({
     "tactical_stress_score",
     "capitulation_score",
     "persistence_score",
+    "price_vix_divergence",
+    "price_mfi_divergence",
+    "short_squeeze_potential",
+    "bond_vol_spike",
+    "near_volume_poc",
 })
 
 # Everything else: Class C — informational / research placeholder only

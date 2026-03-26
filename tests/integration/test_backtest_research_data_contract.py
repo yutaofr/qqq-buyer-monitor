@@ -137,6 +137,88 @@ def test_run_backtest_prints_macro_coverage_before_summary(monkeypatch, capsys):
     assert events == ["simulate", "signal-timeseries", "save-figure"]
 
 
+def test_run_backtest_reports_authorized_and_unauthorized_crisis_metrics(monkeypatch, capsys):
+    qqq = pd.DataFrame(
+        {
+            "Open": [100.0, 101.0],
+            "High": [101.0, 102.0],
+            "Low": [99.0, 100.0],
+            "Close": [100.5, 101.5],
+            "Volume": [1_000_000, 1_100_000],
+        },
+        index=pd.Index(["2024-01-02", "2024-01-03"], name="date"),
+    )
+    macro = _canonical_macro_frame()
+
+    def fake_exists(path):
+        return True
+
+    def fake_macro_exists(self):
+        return True
+
+    def fake_read_csv(path, *args, **kwargs):
+        if str(path) == "data/qqq_history_cache.csv":
+            return qqq.copy()
+        if str(path) == "data/macro_historical_dump.csv":
+            return macro.copy()
+        raise AssertionError(f"unexpected path: {path}")
+
+    def fake_simulate(self, *args, **kwargs):
+        daily_ts = pd.DataFrame(
+            {
+                "tier0_regime": ["CRISIS", "CRISIS", "NEUTRAL"],
+                "deployment_state": ["DEPLOY_FAST", "DEPLOY_PAUSE", "DEPLOY_BASE"],
+                "blood_chip_override_active": [True, False, False],
+                "nav": [10_000.0, 10_050.0, 10_100.0],
+                "close": [100.5, 101.0, 101.5],
+                "state": ["BASE_DCA", "BASE_DCA", "BASE_DCA"],
+            },
+            index=pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04"]),
+        )
+        return SimpleNamespace(
+            events=(),
+            tactical_mdd=-0.10,
+            baseline_mdd=-0.20,
+            signal_beta=0.50,
+            realized_beta=0.50,
+            turnover=1.0,
+            raw_turnover=1.5,
+            estimated_cost_drag=0.01,
+            nav_integrity=1.0,
+            interval_beta_audit=[],
+            mean_interval_beta_deviation=0.01,
+            forward_returns_by_horizon={5: 0.01, 20: 0.02, 60: 0.03},
+            max_adverse_excursion=-0.05,
+            average_cost_improvement_vs_baseline_dca=0.0,
+            daily_timeseries=daily_ts,
+        )
+
+    def fake_build_signal_timeseries(self, *args, **kwargs):
+        return pd.DataFrame(
+            {
+                "close": [100.5, 101.5],
+                "signal_target_beta": [0.5, 0.5],
+            },
+            index=pd.to_datetime(["2024-01-02", "2024-01-03"], utc=True),
+        )
+
+    def fake_save_beta_backtest_figure(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr("src.backtest.os.path.exists", fake_exists)
+    monkeypatch.setattr("src.backtest.Path.exists", fake_macro_exists)
+    monkeypatch.setattr("src.backtest.pd.read_csv", fake_read_csv)
+    monkeypatch.setattr("src.backtest.Backtester.simulate_portfolio", fake_simulate)
+    monkeypatch.setattr("src.backtest.Backtester.build_signal_timeseries", fake_build_signal_timeseries)
+    monkeypatch.setattr("src.backtest.save_beta_backtest_figure", fake_save_beta_backtest_figure)
+
+    run_backtest()
+
+    output = capsys.readouterr().out
+    assert "CRISIS blood-chip overrides: 1" in output
+    assert "CRISIS unauthorized breaches: 0" in output
+
+
 def test_run_signal_audits_returns_dual_alignment_summaries(tmp_path, capsys):
     dates = pd.date_range("2024-01-02", periods=9, freq="B")
     qqq = pd.DataFrame({"Close": [100.0, 89.0, 79.0, 75.0, 70.0, 68.0, 67.0, 66.0, 65.0]}, index=dates)

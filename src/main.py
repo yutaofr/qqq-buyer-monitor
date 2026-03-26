@@ -352,6 +352,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
         if not close_history.empty:
             five_day_return = float(close_history.pct_change(5).fillna(0.0).iloc[-1])
             twenty_day_return = float(close_history.pct_change(20).fillna(0.0).iloc[-1])
+    near_volume_poc = False
+    if tier2.poc is not None and market_data.price > 0:
+        near_volume_poc = abs(market_data.price - tier2.poc) / market_data.price <= 0.02
 
     try:
         # Build unified feature snapshot from collected data
@@ -375,6 +378,11 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 "twenty_day_return": twenty_day_return,
                 "persistence_score": tier1.persistence_score,
                 "sector_rotation": market_data.sector_rotation,
+                "price_vix_divergence": tier1.divergence_flags.get("price_vix", False),
+                "price_mfi_divergence": tier1.divergence_flags.get("price_mfi", False),
+                "short_squeeze_potential": tier1.divergence_flags.get("short_squeeze_potential", False),
+                "bond_vol_spike": tier1.divergence_flags.get("bond_vol_spike", False),
+                "near_volume_poc": near_volume_poc,
             },
             raw_quality=data_quality_meta,
         )
@@ -508,6 +516,11 @@ def run_pipeline(args: argparse.Namespace) -> None:
             result.deployment_action = {
                 "deploy_mode": v7_deploy.deployment_state.value.replace("DEPLOY_", ""),
                 "reason": v7_deploy.reasons[0]["rule"] if v7_deploy.reasons else "controller_decision",
+                "blood_chip_override_active": any(
+                    reason.get("rule") == "blood_chip_crisis_override"
+                    for reason in v7_deploy.reasons
+                ),
+                "path": v7_deploy.reasons[0].get("path") if v7_deploy.reasons else None,
             }
             result.logic_trace.append({
                 "v8_tier0_regime": tier0_regime,
