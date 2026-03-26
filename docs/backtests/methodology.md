@@ -1,8 +1,8 @@
 # Backtest Methodology
 
-This backtest evaluates QQQ as an allocation process, not as a labeling system.
-The goal is to measure whether the allocator improves long-term entry quality
-and drawdown behavior relative to simple alternatives.
+This methodology covers the incremental-cash deployment side of the system.
+The stock-of-assets beta surface is audited separately via the signal-alignment
+report and expectation matrix.
 
 ## What It Measures
 
@@ -40,3 +40,6 @@ It is designed to answer:
 - Does faster accumulation happen before the worst drawdown?
 - Does the allocator improve average entry cost versus DCA?
 - How much capital is deployed before the final low?
+
+For stock beta alignment, use `python scripts/run_signal_acceptance_report.py`
+and inspect `target_beta` against the expected beta matrix.

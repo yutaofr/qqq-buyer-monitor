@@ -9,7 +9,35 @@ docker compose run --rm backtest
 
 执行日期：`2026-03-26`
 
-## 核心指标
+## 双回测审计
+
+生产验收现在分成两条独立审计线，分别对应存量资产 beta 和增量资金部署节奏。
+
+执行命令：
+
+```bash
+python scripts/run_signal_acceptance_report.py
+```
+
+### 存量 beta 对齐
+
+| 指标 | 当前表现 | 状态 | 说明 |
+| :--- | :--- | :--- | :--- |
+| Target Beta MAE | `0.0559` | ✅ PASS | 日频期望矩阵对齐误差 |
+| Target Beta RMSE | `0.1688` | ✅ PASS | 日频期望矩阵均方误差 |
+| Within Tolerance | `88.97%` | ✅ PASS | 目标 beta 贴近率 |
+| Beta Floor | `0.5` | ✅ PASS | 底仓约束持续生效 |
+| Beta Cap | `1.2` | ✅ PASS | 上限约束持续生效 |
+
+### 增量部署对齐
+
+| 指标 | 当前表现 | 状态 | 说明 |
+| :--- | :--- | :--- | :--- |
+| Deployment Exact Match | `99.96%` | ✅ PASS | 期望状态完全匹配 |
+| Within One Step | `99.99%` | ✅ PASS | 邻近等级匹配率 |
+| CRISIS Deployment Breaches | `0` | ✅ PASS | 危机窗口未越级部署 |
+
+## 混合研究回测核心指标
 
 | 指标 | 当前表现 | 状态 | 说明 |
 | :--- | :--- | :--- | :--- |
@@ -24,6 +52,15 @@ docker compose run --rm backtest
 | CRISIS deployment breaches | `0` | ✅ PASS | 危机窗口没有高于 `DEPLOY_PAUSE` 的部署状态 |
 
 ## 结果解读
+
+### 0. 双回测已对齐
+
+当前 `main` 的验收口径已经分离为：
+
+- `target_beta` 只看存量资产 beta 是否贴近期望矩阵
+- `deployment_state` 只看增量资金部署节奏是否贴近期望矩阵
+
+这两条审计线共享同一套生产决策链，但不再混用一个 NAV 结果作为验收标准。
 
 ### 1. 回撤预算已满足
 
