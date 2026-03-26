@@ -503,6 +503,15 @@ def run_pipeline(args: argparse.Namespace) -> None:
             result.estimated_cost_drag = advisory_decision.estimated_cost_drag
             result.should_adjust = advisory_decision.should_adjust
             result.target_allocation = target_allocation_from_beta(advisory_decision.advised_target_beta)
+            primary_reason = v7_deploy.reasons[0] if v7_deploy.reasons else {}
+            blood_chip_reason = next(
+                (
+                    reason
+                    for reason in v7_deploy.reasons
+                    if reason.get("rule") == "blood_chip_crisis_override"
+                ),
+                primary_reason,
+            )
             result.rebalance_action = {
                 "should_adjust": advisory_decision.should_adjust,
                 "should_rebalance": advisory_decision.should_adjust,
@@ -515,12 +524,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
             }
             result.deployment_action = {
                 "deploy_mode": v7_deploy.deployment_state.value.replace("DEPLOY_", ""),
-                "reason": v7_deploy.reasons[0]["rule"] if v7_deploy.reasons else "controller_decision",
-                "blood_chip_override_active": any(
-                    reason.get("rule") == "blood_chip_crisis_override"
-                    for reason in v7_deploy.reasons
-                ),
-                "path": v7_deploy.reasons[0].get("path") if v7_deploy.reasons else None,
+                "reason": primary_reason.get("rule", "controller_decision"),
+                "blood_chip_override_active": blood_chip_reason.get("rule") == "blood_chip_crisis_override",
+                "path": blood_chip_reason.get("path"),
             }
             result.logic_trace.append({
                 "v8_tier0_regime": tier0_regime,
