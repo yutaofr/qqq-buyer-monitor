@@ -106,9 +106,20 @@ def _run_runtime_pipeline(
     result.registry_version = registry.registry_version
     result.tier0_regime = tier0_regime
     result.tier0_applied = risk.tier0_applied
+    primary_reason = deploy.reasons[0] if deploy.reasons else {}
+    blood_chip_reason = next(
+        (
+            reason
+            for reason in deploy.reasons
+            if reason.get("rule") == "blood_chip_crisis_override"
+        ),
+        primary_reason,
+    )
     result.deployment_action = {
         "deploy_mode": deploy.deployment_state.value.replace("DEPLOY_", ""),
-        "reason": deploy.reasons[0]["rule"] if deploy.reasons else "controller_decision",
+        "reason": primary_reason.get("rule", "controller_decision"),
+        "blood_chip_override_active": blood_chip_reason.get("rule") == "blood_chip_crisis_override",
+        "path": blood_chip_reason.get("path"),
     }
 
     if selected is not None:
@@ -247,6 +258,8 @@ def test_runtime_pipeline_crisis_blood_chip_override_keeps_beta_floor_but_deploy
     assert result.deployment_state.value == "DEPLOY_FAST"
     assert result.target_beta == pytest.approx(0.5)
     assert result.deployment_action["reason"] == "blood_chip_crisis_override"
+    assert result.deployment_action["blood_chip_override_active"] is True
+    assert result.deployment_action["path"] == "liquidity_reversal"
 
 
 def test_runtime_pipeline_exposes_raw_and_advised_beta_separately():
