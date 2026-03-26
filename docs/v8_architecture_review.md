@@ -1,7 +1,11 @@
 # v8.0 Architecture Review: SRD vs ADD Alignment Report
 
+> **Current main note:** the design baseline described here has now been merged, and the runtime includes the dual signal-audit workflow plus the refined deployment surface. Merge commit: `020da23`.
+>
+> **Archive note:** this review compares the original v8.0 SRD/ADD baseline. It is preserved as a design-history artifact and does not define the current runtime on its own.
+
 ## 1. Executive Summary
-经评审，**v8.0 ADD (实现方案) 与 SRD (需求文档) 高度对齐**。ADD 准确捕捉了 SRD 中确立的“系统身份转变（推荐引擎非管理引擎）”、“Tier-0 线性决策链”以及“存量/增量解耦”的核心原则。
+经评审，**v8.0 ADD (实现方案) 与 SRD (需求文档) 高度对齐**。该对齐结论在当前 main 上已经落地，并进一步扩展为双信号审计与更细化的 deployment 决策面。ADD 准确捕捉了 SRD 中确立的“系统身份转变（推荐引擎非管理引擎）”、“Tier-0 线性决策链”以及“存量/增量解耦”的核心原则。
 
 ## 2. 核心特性对齐检查
 
@@ -29,6 +33,7 @@
 1.  **输出段落演进**：初步设计文档 (`separation-design.md`) 曾建议“三段式输出”，SRD 最终定稿为“两段式（Risk+Beta / Deployment）”。ADD 遵循了 SRD 的最新定稿，这是合理的架构演进。
 2.  **测试驱动能力**：SDT (`v8.0_linear_pipeline_sdt.md`) 针对 ADD 的每个 Phase 都设计了严密的单元测试和集成测试，特别是对 `RICH_TIGHTENING` 场景下的“软约束默认上限 (TC-DC-003)”与“突破行为 (TC-DC-004)”进行了精确定义，确保了设计意图的可测试性。
 3.  **逻辑拦截点选择**：ADD 在 `Risk Controller` 内部最顶层进行 Tier-0 拦截，优于在外部注入，保障了“零偏见”的宏观压制。
-4.  **下一步执行风险**：ADD 的 Phase 1 (删除旧代码) 是破坏性的。建议在开始 Step 1 之前，确保全量测试脚本已同步更新至引用 `BetaRecommendation`，否则会导致系统无法编译。
+4.  **当前实现补充**：当前 main 已额外引入 `rolling_drawdown`、`five_day_return`、`twenty_day_return` 作为 deployment 软决策输入；这不改变 SRD 的系统边界，但提升了增量资金节奏的可审计性。
+5.  **下一步执行风险**：ADD 的 Phase 1 (删除旧代码) 是破坏性的。建议在开始 Step 1 之前，确保全量测试脚本已同步更新至引用 `BetaRecommendation`，否则会导致系统无法编译。
 
 **结论：ADD 设计严谨，完全满足 SRD 指标要求。建议直接推进至开发。**

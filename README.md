@@ -58,19 +58,23 @@ The output is recommendation-only:
 ## 📊 Research Backtest Snapshot
 The legacy `--mode portfolio` path is retained as a mixed research tool, not as the production acceptance gate.
 
-Latest real-history research run (`python -m src.backtest --mode portfolio`, canonical macro only):
-- **Tactical Max Drawdown:** `-28.0%`
-- **Baseline DCA Max Drawdown:** `-35.1%`
-- **MDD Improvement:** `7.1%` absolute improvement
-- **Realized Beta:** `0.17`
-- **Turnover Ratio:** `104.30`
-- **Left-side windows preserved:** `RICH_TIGHTENING left-side windows = 154`
-- **CRISIS deployment breaches:** `0`
+Latest verified real-history runs:
+- `python -m src.backtest --mode portfolio`
+  - Tactical Max Drawdown: `-28.2%`
+  - Baseline DCA Max Drawdown: `-35.1%`
+  - MDD Improvement: `6.9%` absolute improvement
+  - Realized Beta: `0.19`
+  - Turnover Ratio: `119.58`
+  - Left-side windows preserved: `RICH_TIGHTENING left-side windows = 647`
+  - CRISIS deployment breaches: `0`
+- `python scripts/run_signal_acceptance_report.py`
+  - Target beta alignment: `MAE=0.0559`, `RMSE=0.1688`, `within_tol=88.97%`
+  - Deployment alignment: `exact=99.96%`, `within_one_step=99.99%`
 
 Production acceptance should instead be based on the two signal-alignment audits below.
 
 ## 🧭 Certified Candidate Reference (v8.1)
-v8.0 no longer uses the old `AllocationState` operating matrix at runtime. It selects from the certified registry:
+v8.1 no longer uses the old `AllocationState` operating matrix at runtime. It selects from the certified registry:
 
 - `RISK_NEUTRAL`: `neutral-base-001` (`70/10/20`, beta `0.90`) or `neutral-low-drift` (`80/5/15`, beta `0.90`)
 - `RISK_REDUCED`: `reduced-tight-001` (`80/0/20`, beta `0.80`) or `reduced-base-001` (`50/0/50`, beta `0.50`)
@@ -86,7 +90,7 @@ v8.0 no longer uses the old `AllocationState` operating matrix at runtime. It se
 
 ## 🧭 Decision Architecture (Historical v6.4 Appendix)
 
-The current production architecture is the v8.0 linear pipeline documented above and in `docs/v8.0_linear_pipeline_*`.
+The current production architecture is the v8.1 linear pipeline documented above. The `docs/v8.0_linear_pipeline_*` files are archived baseline references for the v8.0/v8.1 redesign.
 The diagram below is retained only as legacy background for the pre-v8 multi-tier state-machine implementation.
 
 The system operates as a **Multi-Tiered Deterministic State Machine**, where high-order macroeconomic "Structural" states act as constraints on lower-order "Tactical" states, eventually resolving into an optimized asset allocation through a filtered search space.
@@ -268,9 +272,9 @@ The script:
 - can save the expectation matrix, joined daily alignment, and JSON summary for review
 
 ## 📜 Documentation
-- [SRD v8.0: Linear Pipeline](docs/v8.0_linear_pipeline_srd.md)
-- [ADD v8.0: Implementation Design](docs/v8.0_linear_pipeline_add.md)
-- [SDT v8.0: Test Design](docs/v8.0_linear_pipeline_sdt.md)
+- [SRD v8.0 baseline: Linear Pipeline](docs/v8.0_linear_pipeline_srd.md)
+- [ADD v8.0 baseline: Implementation Design](docs/v8.0_linear_pipeline_add.md)
+- [SDT v8.0 baseline: Test Design](docs/v8.0_linear_pipeline_sdt.md)
 - [Architecture Review: SRD vs ADD](docs/v8_architecture_review.md)
 - [Allocator-Style Backtest Report](docs/backtest_report.md)
 

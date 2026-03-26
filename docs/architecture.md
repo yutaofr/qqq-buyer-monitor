@@ -1,5 +1,7 @@
 # Architecture Design Document: QQQ Monitor (v6.4)
 
+> **Archive note:** this document preserves the v6.4 architecture review for historical reference. The current production runtime is the v8.1 linear pipeline documented in `README.md` and `docs/v8.0_linear_pipeline_*`.
+
 This document provides a technical deep-dive into the internal architecture, data contracts, and design patterns of the `qqq-monitor` system, specifically focusing on the v6.4 **Personal Allocation Search** engine and **Live Path Scoring**.
 
 ---
@@ -65,4 +67,4 @@ The system maintains a mean interval beta deviation of **0.0015**. This is achie
 The CLI output and JSON reports now include the `Search Rationale` (e.g., "Optimal candidate selected for BASE_DCA (Beta: 0.90)").
 
 ### 4.3 Recommended Operating Matrix
-For operational use, the repository now keeps a doc-level default matrix package in [docs/backtest_report.md](./backtest_report.md). It summarizes the recommended `QQQ:QLD:Cash` values for each `AllocationState` while still allowing the runtime selector to search within the SRD-allowed band.
+For historical reference, the repository keeps the v6.4 default matrix discussion in [docs/backtest_report.md](./backtest_report.md). Current runtime recommendations use the v8.1 beta/deployment split rather than the old `AllocationState` operating matrix.

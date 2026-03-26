@@ -1,5 +1,7 @@
 # Dual Signal Audit Refactor Implementation Plan
 
+> **Status:** Completed and merged to `main` in commit `020da23`.
+>
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Separate the system into two auditable decision surfaces, `target_beta` for stock-of-assets risk control and `deployment_state` for incremental cash timing, then evaluate each surface directly against an expected market-date matrix.
@@ -7,6 +9,16 @@
 **Architecture:** The runtime pipeline remains the source of truth for daily decisions. Backtesting is split into a pure signal-generation layer and two expectation-alignment audit layers. Legacy portfolio/NAV backtests remain available as research tools, but acceptance for the production decision system moves to signal alignment rather than mixed return comparisons. The runtime semantics also need to be internally consistent: the stock beta floor is always `0.5`, the cap is `1.2`, and `EUPHORIC` / tight-credit clean regimes must be able to surface `RISK_ON` recommendations.
 
 **Tech Stack:** Python 3.12, pandas, pytest, Ruff, canonical macro dataset loader, runtime candidate registry.
+
+## Post-merge Summary
+
+The implementation shipped with the following verified results on real-history data:
+
+- `target_beta` alignment: `MAE=0.0559`, `RMSE=0.1688`, `within_tol=88.97%`
+- `deployment_state` alignment: `exact=99.96%`, `within_one_step=99.99%`
+- `CRISIS` deployment breaches: `0`
+- `beta` envelope: `0.5 <= beta <= 1.2` held throughout acceptance
+- portfolio research path remained within budget: `Tactical MDD=-28.2%`
 
 ---
 
@@ -81,3 +93,9 @@
 1. Run focused integration/unit tests for new audits and legacy regressions.
 2. Verify README commands and data prerequisites match implementation.
 3. Commit only refactor-related files and create a GitHub PR with acceptance evidence.
+
+## Delivery Notes
+
+- PR `#11` was merged after the acceptance thresholds were met.
+- The deployment controller now uses `rolling_drawdown`, `five_day_return`, and `twenty_day_return` to align incremental cash timing with the research expectation surface.
+- The plan remains as an implementation record for auditability, not as an active task list.
