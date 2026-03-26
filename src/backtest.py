@@ -1048,8 +1048,8 @@ class Backtester:
         target_history: list[TargetAllocationState | None],
     ) -> float:
         """Independent replay for the v8 staged-deployment path."""
-        reserve_cash = 0.0
-        active_cash = float(self.initial_capital)
+        reserve_cash = float(self.initial_capital)
+        active_cash = 0.0
         units_qqq = 0.0
         units_qld = 0.0
 

@@ -70,7 +70,10 @@ def test_migration_from_v6_2():
     
     assert "target_allocation" in migrated
     assert migrated["target_allocation"]["target_beta"] == 0.9 # default
-    assert "interval_beta_audit" in migrated
+    # v8.1: Purged legacy portfolio fields
+    assert "current_portfolio" not in migrated
+    assert "interval_beta_audit" not in migrated
+    assert "effective_exposure" not in migrated
 
 
 def test_runtime_inputs_roundtrip(temp_db):

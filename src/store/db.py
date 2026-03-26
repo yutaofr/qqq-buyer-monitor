@@ -100,33 +100,17 @@ def save_signal(result: SignalResult, path: str = DEFAULT_DB_PATH) -> None:
 
 
 def _migrate_blob(blob: dict) -> dict:
-    """Lazy migration for historical JSON blobs to ensure v6.3/v7.0 compatibility."""
-    # Ensure current_portfolio exists
-    if "current_portfolio" not in blob:
-        old_p = blob.get("portfolio", {})
-        blob["current_portfolio"] = {
-            "current_cash_pct": old_p.get("current_cash_pct", 1.0),
-            "qqq_pct": 0.0,
-            "qld_pct": 0.0
-        }
-    
-    # Ensure target_allocation exists
+    """Lazy migration for historical JSON blobs to ensure v8.0+ compatibility."""
+    # Ensure target_allocation exists for legacy records
     if "target_allocation" not in blob:
         blob["target_allocation"] = {
             "target_cash_pct": blob.get("target_cash_pct", 0.1),
             "target_qqq_pct": 0.9,
             "target_qld_pct": 0.0,
-            "target_beta": 0.9
+            "target_beta": 0.9,
         }
     
-    if "effective_exposure" not in blob:
-        p = blob["current_portfolio"]
-        blob["effective_exposure"] = p["qqq_pct"] + 2.0 * p["qld_pct"]
-    
-    if "interval_beta_audit" not in blob:
-        blob["interval_beta_audit"] = []
-
-    # v7.0 field migration — null defaults for old records
+    # v8.0+ field migration — null defaults for old records
     blob.setdefault("risk_state", None)
     blob.setdefault("deployment_state", None)
     blob.setdefault("selected_candidate_id", None)
@@ -138,6 +122,11 @@ def _migrate_blob(blob: dict) -> dict:
     blob.setdefault("rebalance_action", {})
     blob.setdefault("deployment_action", {})
     blob.setdefault("candidate_selection_audit", [])
+    
+    # Remove purged legacy fields if present
+    blob.pop("current_portfolio", None)
+    blob.pop("effective_exposure", None)
+    blob.pop("interval_beta_audit", None)
         
     return blob
 
