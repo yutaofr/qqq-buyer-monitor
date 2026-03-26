@@ -101,16 +101,16 @@ The diagram below reflects the exhaustive v8.2 decision logic, including Tier-0 
 
 ```mermaid
 flowchart TD
-    subgraph Data_Layer [Input: Class A & B Features]
+    subgraph Data_Layer ["Input: Class A & B Features"]
         direction LR
-        Macro[Macro: CS, CA, LROC, FS, ERP, RY]
-        Tactical[Tactical: VIX, F&G, Breadth, DD, Returns]
-        Structure[Structure: Walls, Gamma, POC]
+        Macro["Macro: CS, CA, LROC, FS, ERP, RY"]
+        Tactical["Tactical: VIX, F&G, Breadth, DD, Returns"]
+        Structure["Structure: Walls, Gamma, POC"]
     end
 
     Data_Layer --> T0_Commander
 
-    subgraph T0_Commander [Tier-0: Structural Regime]
+    subgraph T0_Commander ["Tier-0: Structural Regime"]
         direction TB
         T0_Logic{"CS & ERP Ladder"}
         T0_Logic --> CRISIS["CRISIS (CS>=650 | ERP<1.0)"]
@@ -122,7 +122,7 @@ flowchart TD
 
     T0_Commander --> Risk_Controller
 
-    subgraph Risk_Controller [Risk Controller: Exposure Ceiling]
+    subgraph Risk_Controller ["Risk Controller: Exposure Ceiling"]
         direction TB
         Veto{Hard Veto?}
         Veto -- Missing CS/Data --> RISK_REDUCED
@@ -141,14 +141,14 @@ flowchart TD
     Risk_Controller --> Search_Engine
     T0_Commander --> Deployment_Controller
 
-    subgraph Search_Engine [Search: Candidate Registry]
+    subgraph Search_Engine ["Search: Candidate Registry"]
         Registry[(Certified Registry)]
         Registry --> Scoping{Scope by Risk State}
         Scoping --> Selection{Filtered Search}
         Selection -- Respect Ceiling/Budget --> Best_Candidate
     end
 
-    subgraph Deployment_Controller [Deployment: Incremental Pace]
+    subgraph Deployment_Controller ["Deployment: Incremental Pace"]
         direction TB
         D_Ceiling["Effective Ceiling: min(Risk, Tier0)"]
         
@@ -172,10 +172,10 @@ flowchart TD
     Deployment_Controller --> Recommendation
 
     subgraph Recommendation [Output: Recommendation Surface]
-        target_beta[Target Portfolio Beta]
-        advised_beta[Advised Beta w/ Friction]
-        deployment_multiplier[Deployment Pace Multiplier]
-        allocation[Recomm. QQQ/QLD/Cash %]
+        target_beta["Target Portfolio Beta"]
+        advised_beta["Advised Beta w/ Friction"]
+        deployment_multiplier["Deployment Pace Multiplier"]
+        allocation["Recomm. QQQ/QLD/Cash %"]
     end
 ```
 
