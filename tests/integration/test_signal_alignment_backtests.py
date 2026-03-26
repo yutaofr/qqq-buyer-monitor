@@ -38,6 +38,10 @@ def test_build_signal_timeseries_returns_pure_beta_and_deployment_signals():
 
     assert {
         "signal_target_beta",
+        "raw_target_beta",
+        "advised_target_beta",
+        "assumed_beta_before",
+        "assumed_beta_after",
         "expected_target_beta",
         "tier0_regime",
         "risk_state",
@@ -46,6 +50,10 @@ def test_build_signal_timeseries_returns_pure_beta_and_deployment_signals():
         "selected_candidate_id",
     } <= set(signals.columns)
     assert signals["signal_target_beta"].tolist() == pytest.approx([1.2, 1.2, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
+    assert signals["raw_target_beta"].tolist() == pytest.approx(signals["signal_target_beta"].tolist())
+    assert signals["advised_target_beta"].iloc[0] == pytest.approx(1.2)
+    assert signals["advised_target_beta"].iloc[2] > signals["signal_target_beta"].iloc[2]
+    assert signals["advised_target_beta"].iloc[-1] == pytest.approx(0.5)
     assert signals["deployment_state"].tolist() == [
         "DEPLOY_BASE",
         "DEPLOY_FAST",
@@ -70,6 +78,7 @@ def test_build_signal_timeseries_unlocks_risk_on_under_tight_spreads_without_erp
 
     assert set(signals["risk_state"]) == {"RISK_ON"}
     assert (signals["signal_target_beta"] >= 1.1).all()
+    assert (signals["advised_target_beta"] >= 1.1).all()
 
 
 def test_build_signal_timeseries_unlocks_euphoric_risk_on_when_erp_is_present():

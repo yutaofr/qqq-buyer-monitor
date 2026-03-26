@@ -29,7 +29,12 @@ from src.engine.allocation_search import (
 )
 from src.engine.candidate_registry import load_registry, select_runtime_candidates
 from src.engine.deployment_controller import decide_deployment_state
-from src.engine.execution_policy import build_beta_recommendation
+from src.engine.execution_policy import (
+    AdvisoryState,
+    build_advisory_rebalance_decision,
+    build_beta_recommendation,
+    target_allocation_from_beta,
+)
 from src.engine.feature_pipeline import build_feature_snapshot
 from src.engine.risk_controller import decide_risk_state
 from src.engine.runtime_selector import RuntimeSelection
@@ -176,6 +181,43 @@ def _build_active_portfolio(
         gross_exposure_pct=float(exposure),
         net_exposure_pct=float(exposure),
         leverage_ratio=float(exposure) if exposure > 1.0 else 1.0,
+    )
+
+
+def _advance_advisory_state(
+    advisory_state: AdvisoryState | None,
+    *,
+    raw_target_beta: float,
+) -> AdvisoryState:
+    """Advance advisory streak bookkeeping for sequential backtests."""
+    if advisory_state is None:
+        return AdvisoryState(
+            assumed_beta=float(raw_target_beta),
+            last_rebalance_date=None,
+            last_advised_beta=float(raw_target_beta),
+        )
+
+    gap = float(raw_target_beta) - float(advisory_state.assumed_beta)
+    if gap > 0:
+        return AdvisoryState(
+            assumed_beta=advisory_state.assumed_beta,
+            last_rebalance_date=advisory_state.last_rebalance_date,
+            last_advised_beta=advisory_state.last_advised_beta,
+            upshift_streak_days=advisory_state.upshift_streak_days + 1,
+            downshift_streak_days=0,
+        )
+    if gap < 0:
+        return AdvisoryState(
+            assumed_beta=advisory_state.assumed_beta,
+            last_rebalance_date=advisory_state.last_rebalance_date,
+            last_advised_beta=advisory_state.last_advised_beta,
+            upshift_streak_days=0,
+            downshift_streak_days=advisory_state.downshift_streak_days + 1,
+        )
+    return AdvisoryState(
+        assumed_beta=advisory_state.assumed_beta,
+        last_rebalance_date=advisory_state.last_rebalance_date,
+        last_advised_beta=advisory_state.last_advised_beta,
     )
 
 
@@ -345,6 +387,8 @@ class BacktestMethodologySummary:
     interval_beta_audit: list[dict[str, Any]] = field(default_factory=list)
     mean_interval_beta_deviation: float = 0.0
     turnover: float = 0.0
+    raw_turnover: float = 0.0
+    estimated_cost_drag: float = 0.0
     nav_integrity: float = 1.0
     # v6.2 Visualization Support
     daily_timeseries: Optional[pd.DataFrame] = None
@@ -454,6 +498,7 @@ class Backtester:
         registry = load_registry(registry_path)
         expected = _coerce_alignment_frame(expected_matrix, prices_qqq.index)
         previous_risk_state: RiskState | None = None
+        advisory_state: AdvisoryState | None = None
         rows: list[dict[str, Any]] = []
 
         for loc, dt in enumerate(prices_qqq.index):
@@ -564,7 +609,20 @@ class Backtester:
                 risk_decision=risk,
                 previous_risk_state=previous_risk_state,
             )
-            signal_target_beta = float(recommendation.target_beta)
+            raw_target_beta = float(recommendation.target_beta)
+            advisory_state = _advance_advisory_state(
+                advisory_state,
+                raw_target_beta=raw_target_beta,
+            )
+            advisory_decision = build_advisory_rebalance_decision(
+                raw_recommendation=recommendation,
+                advisory_state=advisory_state,
+                as_of_date=current_date,
+                emergency_override=tier0_regime == "CRISIS"
+                or (rolling_drawdown is not None and rolling_drawdown >= registry.drawdown_budget),
+            )
+            advisory_state = advisory_decision.next_state
+            signal_target_beta = raw_target_beta
 
             rows.append(
                 {
@@ -581,7 +639,14 @@ class Backtester:
                     "deployment_state": deploy.deployment_state.value,
                     "deployment_multiplier": float(deploy.dca_multiplier),
                     "selected_candidate_id": selected_candidate_id,
+                    "raw_target_beta": raw_target_beta,
                     "signal_target_beta": signal_target_beta,
+                    "advised_target_beta": advisory_decision.advised_target_beta,
+                    "assumed_beta_before": advisory_decision.assumed_beta_before,
+                    "assumed_beta_after": advisory_decision.assumed_beta_after,
+                    "friction_blockers": list(advisory_decision.friction_blockers),
+                    "estimated_turnover": advisory_decision.estimated_turnover,
+                    "estimated_cost_drag": advisory_decision.estimated_cost_drag,
                     "used_beta_floor_fallback": used_floor_fallback,
                 }
             )
@@ -1004,11 +1069,13 @@ class Backtester:
         total_tactical_units = 0.0
         deployed_before_low = 0.0
         total_volume_traded = 0.0
+        raw_total_volume_traded = 0.0
         peak_nav = float(self.initial_capital)
         five_day_returns = prices_qqq.pct_change(5).fillna(0.0)
         twenty_day_returns = prices_qqq.pct_change(20).fillna(0.0)
 
         previous_risk_state: RiskState | None = None
+        advisory_state: AdvisoryState | None = None
 
         for loc, dt in enumerate(prices_qqq.index):
             p_qqq = float(prices_qqq.iloc[loc])
@@ -1128,24 +1195,41 @@ class Backtester:
                 risk_decision=risk,
                 previous_risk_state=previous_risk_state,
             )
+            raw_target_beta = float(recommendation.target_beta)
+            advisory_state = _advance_advisory_state(
+                advisory_state,
+                raw_target_beta=raw_target_beta,
+            )
+            advisory_decision = build_advisory_rebalance_decision(
+                raw_recommendation=recommendation,
+                advisory_state=advisory_state,
+                as_of_date=current_date,
+                emergency_override=tier0_regime == "CRISIS"
+                or (rolling_drawdown is not None and rolling_drawdown >= registry.drawdown_budget),
+            )
+            advisory_state = advisory_decision.next_state
+            advised_target = target_allocation_from_beta(advisory_decision.advised_target_beta)
 
-            if active_nav_before_rebalance > 0 and recommendation.should_adjust:
+            if active_nav_before_rebalance > 0:
                 current_qqq_val = units_qqq * p_qqq
                 current_qld_val = units_qld * p_qld
-                target_qqq_val = active_nav_before_rebalance * recommendation.recommended_qqq_pct
-                target_qld_val = active_nav_before_rebalance * recommendation.recommended_qld_pct
+                raw_target_qqq_val = active_nav_before_rebalance * recommendation.recommended_qqq_pct
+                raw_target_qld_val = active_nav_before_rebalance * recommendation.recommended_qld_pct
+                raw_total_volume_traded += abs(raw_target_qqq_val - current_qqq_val)
+                raw_total_volume_traded += abs(raw_target_qld_val - current_qld_val)
+
+            if active_nav_before_rebalance > 0 and advisory_decision.should_adjust:
+                current_qqq_val = units_qqq * p_qqq
+                current_qld_val = units_qld * p_qld
+                target_qqq_val = active_nav_before_rebalance * advised_target.target_qqq_pct
+                target_qld_val = active_nav_before_rebalance * advised_target.target_qld_pct
                 total_volume_traded += abs(target_qqq_val - current_qqq_val)
                 total_volume_traded += abs(target_qld_val - current_qld_val)
 
-                active_cash = active_nav_before_rebalance * recommendation.recommended_cash_pct
+                active_cash = active_nav_before_rebalance * advised_target.target_cash_pct
                 units_qqq = target_qqq_val / p_qqq if p_qqq > 0 else 0.0
                 units_qld = target_qld_val / p_qld if p_qld > 0 else 0.0
-                executed_target = TargetAllocationState(
-                    target_cash_pct=recommendation.recommended_cash_pct,
-                    target_qqq_pct=recommendation.recommended_qqq_pct,
-                    target_qld_pct=recommendation.recommended_qld_pct,
-                    target_beta=recommendation.target_beta,
-                )
+                executed_target = advised_target
             elif active_nav_before_rebalance > 0:
                 executed_target = TargetAllocationState(
                     target_cash_pct=active_cash / active_nav_before_rebalance,
@@ -1184,6 +1268,13 @@ class Backtester:
                     "tier0_regime": tier0_regime,
                     "selected_candidate_id": selected_candidate_id,
                     "used_beta_floor_fallback": used_floor_fallback,
+                    "raw_target_beta": raw_target_beta,
+                    "advised_target_beta": advisory_decision.advised_target_beta,
+                    "assumed_beta_before": advisory_decision.assumed_beta_before,
+                    "assumed_beta_after": advisory_decision.assumed_beta_after,
+                    "friction_blockers": list(advisory_decision.friction_blockers),
+                    "estimated_turnover": advisory_decision.estimated_turnover,
+                    "estimated_cost_drag": advisory_decision.estimated_cost_drag,
                     "target_beta": target_beta_total,
                     "deployment_cash": transfer_cash,
                     "rolling_drawdown": rolling_drawdown,
@@ -1260,6 +1351,13 @@ class Backtester:
         mean_deviation = np.mean([x["deviation"] for x in interval_beta_audit]) if interval_beta_audit else 0.0
         avg_nav = np.mean(daily_nav) if daily_nav else 1.0
         turnover = total_volume_traded / avg_nav if avg_nav > 0 else 0.0
+        raw_turnover = raw_total_volume_traded / avg_nav if avg_nav > 0 else 0.0
+        estimated_cost_drag = turnover * 0.015
+        signal_beta = 0.50
+        if "advised_target_beta" in daily_ts.columns:
+            valid_signal_beta = daily_ts["advised_target_beta"].dropna()
+            if not valid_signal_beta.empty:
+                signal_beta = float(valid_signal_beta.mean())
 
         independent_nav = self._replay_and_verify_nav_v8(
             prices_qqq=prices_qqq,
@@ -1296,9 +1394,12 @@ class Backtester:
             tactical_mdd=tactical_mdd,
             baseline_mdd=baseline_mdd,
             realized_beta=realized_beta,
+            signal_beta=signal_beta,
             interval_beta_audit=interval_beta_audit,
             mean_interval_beta_deviation=float(mean_deviation),
             turnover=float(turnover),
+            raw_turnover=float(raw_turnover),
+            estimated_cost_drag=float(estimated_cost_drag),
             nav_integrity=float(nav_integrity_val),
             daily_timeseries=daily_ts,
         )
@@ -1802,7 +1903,11 @@ def run_backtest(
     print(f"MDD Improvement (vs Fully Invested): {_format_pct(mdd_improve)}")
     print(f"Signal Target Beta (Active): {summary.signal_beta:.2f}")
     print(f"Realized Beta (Portfolio w/ DCA Cash): {summary.realized_beta:.2f}")
-    print(f"Turnover Ratio: {summary.turnover:.2f}")
+    print(f"Turnover Ratio (Advised): {summary.turnover:.2f}")
+    raw_turnover = float(getattr(summary, "raw_turnover", summary.turnover))
+    estimated_cost_drag = float(getattr(summary, "estimated_cost_drag", 0.0))
+    print(f"Turnover Ratio (Raw Daily Align): {raw_turnover:.2f}")
+    print(f"Estimated Friction Drag: {estimated_cost_drag:.4f}")
     print(f"NAV Integrity (AC-3): {summary.nav_integrity:.6f}")
 
     daily_ts = getattr(summary, "daily_timeseries", None)

@@ -19,6 +19,20 @@ def _beta_column(frame: pd.DataFrame) -> str:
     raise ValueError("daily_timeseries must contain target_beta or signal_target_beta")
 
 
+def _raw_beta_series(frame: pd.DataFrame) -> pd.Series:
+    if "raw_target_beta" in frame.columns:
+        return frame["raw_target_beta"].astype(float)
+    beta_col = _beta_column(frame)
+    return frame[beta_col].astype(float)
+
+
+def _advised_beta_series(frame: pd.DataFrame) -> pd.Series:
+    if "advised_target_beta" in frame.columns:
+        return frame["advised_target_beta"].astype(float)
+    beta_col = _beta_column(frame)
+    return frame[beta_col].astype(float)
+
+
 def _coerce_frame(daily_ts: pd.DataFrame) -> pd.DataFrame:
     if daily_ts.empty:
         raise ValueError("daily_timeseries is empty")
@@ -41,12 +55,14 @@ def build_beta_backtest_figure(daily_ts: pd.DataFrame, summary: Any | None = Non
     import matplotlib.pyplot as plt
 
     frame = _coerce_frame(daily_ts)
-    beta_col = _beta_column(frame)
-    beta_series = frame[beta_col]
-    change_mask = beta_series.ne(beta_series.shift(1))
+    raw_beta = _raw_beta_series(frame)
+    advised_beta = _advised_beta_series(frame)
+    beta_series = advised_beta
+    change_mask = advised_beta.ne(advised_beta.shift(1))
     beta_plot_mask = change_mask.copy()
     beta_plot_mask.iloc[-1] = True
-    beta_plot_frame = frame.loc[beta_plot_mask, [beta_col]]
+    raw_plot_frame = raw_beta.loc[beta_plot_mask]
+    advised_plot_frame = advised_beta.loc[beta_plot_mask]
 
     fig, (ax_price, ax_beta) = plt.subplots(
         2,
@@ -72,17 +88,27 @@ def build_beta_backtest_figure(daily_ts: pd.DataFrame, summary: Any | None = Non
         linewidth=2.2,
     )
     ax_beta.step(
-        beta_plot_frame.index,
-        beta_plot_frame[beta_col],
-        label="Target Beta",
+        raw_plot_frame.index,
+        raw_plot_frame,
+        label="Raw Target Beta",
+        color="#8f99ab",
+        linewidth=1.4,
+        where="post",
+        alpha=0.9,
+        linestyle="--",
+    )
+    ax_beta.step(
+        advised_plot_frame.index,
+        advised_plot_frame,
+        label="Advised Target Beta" if "advised_target_beta" in frame.columns else "Target Beta",
         color="#f28c28",
         linewidth=1.8,
         where="post",
         alpha=0.9,
     )
     ax_beta.scatter(
-        beta_plot_frame.index,
-        beta_plot_frame[beta_col],
+        advised_plot_frame.index,
+        advised_plot_frame,
         label="Beta Change Point",
         color="#c96a09",
         s=20,
@@ -100,7 +126,7 @@ def build_beta_backtest_figure(daily_ts: pd.DataFrame, summary: Any | None = Non
     ax_beta.yaxis.set_major_locator(mtick.MultipleLocator(0.1))
     ax_beta.legend(loc="upper left", frameon=False, fontsize=10, ncols=2)
 
-    average_signal_beta = float(frame[beta_col].dropna().mean()) if frame[beta_col].notna().any() else 0.0
+    average_signal_beta = float(advised_beta.dropna().mean()) if advised_beta.notna().any() else 0.0
     title = "v8.1 QQQ Stock-Beta Recommendation vs QQQ Price"
     if summary is not None and hasattr(summary, "signal_beta"):
         average_signal_beta = float(summary.signal_beta)

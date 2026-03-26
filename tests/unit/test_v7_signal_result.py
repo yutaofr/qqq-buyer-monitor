@@ -65,7 +65,13 @@ def test_signal_result_v7_fields_default_to_none():
     assert result.candidate_selection_audit == []
     assert result.tier0_regime is None
     assert result.tier0_applied is False
+    assert result.raw_target_beta is None
     assert result.target_beta is None
+    assert result.assumed_beta_before is None
+    assert result.assumed_beta_after is None
+    assert result.friction_blockers == []
+    assert result.estimated_turnover is None
+    assert result.estimated_cost_drag is None
     assert result.should_adjust is None
 
 
@@ -107,10 +113,22 @@ def test_signal_result_supports_v8_linear_pipeline_fields():
         explanation="",
         tier0_regime="RICH_TIGHTENING",
         tier0_applied=True,
+        raw_target_beta=0.50,
         target_beta=0.30,
+        assumed_beta_before=0.50,
+        assumed_beta_after=0.30,
+        friction_blockers=["max_beta_step"],
+        estimated_turnover=0.20,
+        estimated_cost_drag=0.003,
         should_adjust=True,
     )
     assert result.tier0_regime == "RICH_TIGHTENING"
     assert result.tier0_applied is True
+    assert result.raw_target_beta == 0.50
     assert result.target_beta == 0.30
+    assert result.assumed_beta_before == 0.50
+    assert result.assumed_beta_after == 0.30
+    assert result.friction_blockers == ["max_beta_step"]
+    assert result.estimated_turnover == 0.20
+    assert result.estimated_cost_drag == 0.003
     assert result.should_adjust is True

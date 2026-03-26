@@ -1,8 +1,6 @@
 """CLI output formatting for QQQ monitor."""
 from __future__ import annotations
 
-from typing import Any
-
 from src.models import AllocationState, Signal, SignalResult
 
 # ANSI color codes
@@ -79,6 +77,7 @@ def build_v8_explanation(result: SignalResult) -> str:
     deploy = result.deployment_state.value if result.deployment_state else "n/a"
     candidate = result.selected_candidate_id or "n/a"
     registry = result.registry_version or "n/a"
+    raw_target_beta = result.raw_target_beta if result.raw_target_beta is not None else result.target_beta
     target_beta = result.target_beta if result.target_beta is not None else result.target_allocation.target_beta
     should_adjust = result.should_adjust if result.should_adjust is not None else False
     adjust_reason = result.rebalance_action.get("reason", "n/a")
@@ -90,6 +89,7 @@ def build_v8_explanation(result: SignalResult) -> str:
         f"风险={risk}",
         f"候选={candidate}",
         f"registry={registry}",
+        f"raw_beta={raw_target_beta:.2f}x" if raw_target_beta is not None else "raw_beta=n/a",
         f"target_beta={target_beta:.2f}x",
         f"adjust={should_adjust}",
         f"reason={adjust_reason}",
@@ -113,6 +113,7 @@ def _print_v7_sections(result: SignalResult, c) -> None:
     deploy = result.deployment_state.value if result.deployment_state else "n/a"
     candidate = result.selected_candidate_id or "n/a"
     registry = result.registry_version or "n/a"
+    raw_target_beta = result.raw_target_beta if result.raw_target_beta is not None else result.target_beta
     target_beta = result.target_beta if result.target_beta is not None else result.target_allocation.target_beta
     should_adjust = result.should_adjust
     if should_adjust is None:
@@ -128,6 +129,7 @@ def _print_v7_sections(result: SignalResult, c) -> None:
     )
     print(
         "  推荐:    "
+        f"raw_beta={raw_target_beta:.2f}x | "
         f"target_beta={target_beta:.2f}x | adjust={should_adjust} | reason={adjust_reason}"
     )
     t = result.target_allocation
@@ -188,7 +190,7 @@ def print_signal(
     search_node = next((n for n in result.logic_trace if n.get("step") == "search"), None)
     if search_node:
         print(f"Search:    {search_node['decision']} ({search_node['reason']})")
-    
+
     # Details summary
     if not v8_runtime:
         print(f"Details:   单日加仓: {result.daily_tranche_pct:.0%}, 滚动上限: {result.max_total_add_pct:.1f}x, 置信度: {result.confidence}")

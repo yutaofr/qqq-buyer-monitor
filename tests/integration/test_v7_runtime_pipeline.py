@@ -3,10 +3,17 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
+
 from src.engine.allocation_search import select_candidate_with_floor_fallback_v8
 from src.engine.candidate_registry import load_registry, select_runtime_candidates
 from src.engine.deployment_controller import decide_deployment_state
-from src.engine.execution_policy import build_beta_recommendation
+from src.engine.execution_policy import (
+    build_advisory_rebalance_decision,
+    build_advisory_state_from_history,
+    build_beta_recommendation,
+    target_allocation_from_beta,
+)
 from src.engine.feature_pipeline import build_feature_snapshot
 from src.engine.risk_controller import decide_risk_state
 from src.engine.runtime_selector import RuntimeSelection
@@ -15,7 +22,6 @@ from src.models import (
     Signal,
     SignalDetail,
     SignalResult,
-    TargetAllocationState,
     Tier1Result,
     Tier2Result,
 )
@@ -52,6 +58,7 @@ def _base_result() -> SignalResult:
 def _run_runtime_pipeline(
     values: dict,
     *,
+    history: list[dict] | None = None,
     available_new_cash: float = 1000.0,
     forward_pe: float = 25.0,
     real_yield: float = 2.0,
@@ -105,16 +112,31 @@ def _run_runtime_pipeline(
             selection=RuntimeSelection(selected, (), 0.0),
             risk_decision=risk,
         )
-        result.selected_candidate_id = selected.candidate_id
-        result.target_beta = recommendation.target_beta
-        result.should_adjust = recommendation.should_adjust
-        result.target_allocation = TargetAllocationState(
-            target_cash_pct=recommendation.recommended_cash_pct,
-            target_qqq_pct=recommendation.recommended_qqq_pct,
-            target_qld_pct=recommendation.recommended_qld_pct,
-            target_beta=recommendation.target_beta,
+        advisory_state = build_advisory_state_from_history(
+            history=history or [],
+            current_raw_target_beta=recommendation.target_beta,
+            fallback_beta=recommendation.target_beta,
         )
-        result.rebalance_action = {"should_adjust": recommendation.should_adjust}
+        advisory_decision = build_advisory_rebalance_decision(
+            raw_recommendation=recommendation,
+            advisory_state=advisory_state,
+            as_of_date=result.date,
+            emergency_override=tier0_regime == "CRISIS",
+        )
+        result.selected_candidate_id = selected.candidate_id
+        result.raw_target_beta = recommendation.target_beta
+        result.target_beta = advisory_decision.advised_target_beta
+        result.assumed_beta_before = advisory_decision.assumed_beta_before
+        result.assumed_beta_after = advisory_decision.assumed_beta_after
+        result.friction_blockers = list(advisory_decision.friction_blockers)
+        result.estimated_turnover = advisory_decision.estimated_turnover
+        result.estimated_cost_drag = advisory_decision.estimated_cost_drag
+        result.should_adjust = advisory_decision.should_adjust
+        result.target_allocation = target_allocation_from_beta(advisory_decision.advised_target_beta)
+        result.rebalance_action = {
+            "should_adjust": advisory_decision.should_adjust,
+            "reason": advisory_decision.adjustment_reason,
+        }
         if used_floor_fallback:
             result.logic_trace.append({"rule": "global_beta_floor_fallback", "candidate_id": selected.candidate_id})
     else:
@@ -164,6 +186,7 @@ def test_runtime_pipeline_rich_tightening_selects_beta_capped_candidate():
     assert result.risk_state == RiskState.RISK_REDUCED
     assert result.selected_candidate_id == "reduced-base-001"
     assert result.target_beta == 0.50
+    assert result.raw_target_beta == 0.50
 
 
 def test_runtime_pipeline_triple_stress_exits():
@@ -200,3 +223,30 @@ def test_runtime_pipeline_exit_state_keeps_beta_floor_candidate():
     assert result.risk_state == RiskState.RISK_EXIT
     assert result.selected_candidate_id == "exit-floor-001"
     assert result.target_beta == 0.50
+
+
+def test_runtime_pipeline_exposes_raw_and_advised_beta_separately():
+    result = _run_runtime_pipeline(
+        {
+            "credit_spread": 250.0,
+            "credit_acceleration": 2.0,
+            "liquidity_roc": 1.0,
+            "funding_stress": False,
+        },
+        history=[
+            {
+                "date": "2026-03-20",
+                "raw_target_beta": 0.80,
+                "target_beta": 0.80,
+                "assumed_beta_after": 0.80,
+                "should_adjust": True,
+                "rebalance_action": {"should_adjust": True, "reason": "advisory_upshift"},
+            }
+        ],
+        forward_pe=20.0,
+        real_yield=1.0,
+    )
+    assert result.raw_target_beta == pytest.approx(0.9)
+    assert result.target_beta == pytest.approx(0.8)
+    assert result.should_adjust is False
+    assert "upshift_confirmation" in result.friction_blockers or "min_hold_days" in result.friction_blockers

@@ -1,12 +1,20 @@
-import pytest
-from src.output.cli import print_signal
-from src.output.report import to_json
-from src.models import (
-    SignalResult, Signal, Tier1Result, Tier2Result, AllocationState, TargetAllocationState, SignalDetail
-)
 from datetime import date
+
+import pytest
+
+from src.models import (
+    Signal,
+    SignalDetail,
+    SignalResult,
+    TargetAllocationState,
+    Tier1Result,
+    Tier2Result,
+)
 from src.models.deployment import DeploymentState
 from src.models.risk import RiskState
+from src.output.cli import print_signal
+from src.output.report import to_json
+
 
 @pytest.fixture
 def mock_result():
@@ -19,7 +27,7 @@ def mock_result():
         breadth=SignalDetail("br", 0, 0, (0,0), False, False),
     )
     t2 = Tier2Result(0, None, None, None, False, False, False, True, "yf", 0, 0)
-    
+
     return SignalResult(
         date=date(2026, 3, 23),
         price=400.0,
@@ -36,11 +44,11 @@ def test_cli_output_contains_v8_target_allocation(mock_result, capsys):
     """CLI should print Ideal target allocation."""
     mock_result.should_adjust = True
     mock_result.rebalance_action = {"should_rebalance": True, "reason": "drift"}
-    
+
     print_signal(mock_result, use_color=False)
     captured = capsys.readouterr()
     assert "Action: DR" not in captured.out
-    assert "Ideal:" not in captured.out 
+    assert "Ideal:" not in captured.out
     # V8 prints target beta inside the main body now.
 
 def test_report_json_contains_v8_strategic_fields(mock_result):
@@ -55,12 +63,15 @@ def test_cli_output_reflects_v7_runtime_when_available(mock_result, capsys):
     mock_result.deployment_state = DeploymentState.DEPLOY_BASE
     mock_result.selected_candidate_id = "neutral-base-001"
     mock_result.registry_version = "2026-03-25-v8.1-r1"
+    mock_result.raw_target_beta = 1.10
     mock_result.target_beta = 1.00
+    mock_result.assumed_beta_before = 0.90
+    mock_result.assumed_beta_after = 1.00
     mock_result.should_adjust = True
     mock_result.explanation = "旧版：允许小幅加仓。单日加仓: 50%。目标 Beta: 0.60。"
     mock_result.rebalance_action = {
         "should_adjust": True,
-        "reason": "risk_state_changed",
+        "reason": "advisory_upshift",
     }
     mock_result.deployment_action = {
         "deploy_mode": "FAST",
@@ -73,6 +84,7 @@ def test_cli_output_reflects_v7_runtime_when_available(mock_result, capsys):
     assert "风险评估与目标 Beta" in captured.out
     assert "增量入场节奏推荐" in captured.out
     assert "Tier-0=NEUTRAL" in captured.out
+    assert "raw_beta=1.10x" in captured.out
     assert "target_beta=1.00x" in captured.out
     assert "mode=FAST" in captured.out
     assert "Action:" not in captured.out

@@ -36,7 +36,9 @@ def _daily_timeseries(use_signal_beta: bool = False) -> pd.DataFrame:
     if use_signal_beta:
         data["signal_target_beta"] = [1.2, 1.2, 0.8, 0.5, 0.5, 0.5]
     else:
-        data["target_beta"] = [1.2, 1.2, 0.8, 0.5, 0.5, 0.5]
+        data["raw_target_beta"] = [1.2, 1.2, 0.8, 0.5, 0.5, 0.5]
+        data["advised_target_beta"] = [1.2, 1.2, 1.0, 0.8, 0.5, 0.5]
+        data["target_beta"] = [1.2, 1.2, 1.0, 0.8, 0.5, 0.5]
     return pd.DataFrame(data, index=dates)
 
 
@@ -53,7 +55,8 @@ def test_build_beta_backtest_figure_uses_target_beta_and_close():
         assert top_price_axis.get_ylabel() == "QQQ Price ($)"
         assert top_beta_axis.get_ylabel() == "Target Beta"
         assert any(line.get_label() == "QQQ Close" for line in top_price_axis.lines)
-        assert any(line.get_label() == "Target Beta" for line in top_beta_axis.lines)
+        assert any(line.get_label() == "Raw Target Beta" for line in top_beta_axis.lines)
+        assert any(line.get_label() == "Advised Target Beta" for line in top_beta_axis.lines)
         assert any(collection.get_label() == "Beta Change Point" for collection in top_beta_axis.collections)
         assert "Average Signal Beta: 0.78" in top_price_axis.get_title()
     finally:

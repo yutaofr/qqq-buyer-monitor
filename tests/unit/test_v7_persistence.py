@@ -41,7 +41,13 @@ def _v7_result() -> SignalResult:
         registry_version="2026-03-24-v7.0-r1",
         tier0_regime="NEUTRAL",
         tier0_applied=False,
+        raw_target_beta=1.00,
         target_beta=0.90,
+        assumed_beta_before=0.80,
+        assumed_beta_after=0.90,
+        friction_blockers=["upshift_confirmation"],
+        estimated_turnover=0.10,
+        estimated_cost_drag=0.0015,
         should_adjust=False,
         rebalance_action={"should_adjust": False, "reason": "within_band:gap=0.000"},
         deployment_action={"deploy_mode": "BASE", "reason": "default_base"},
@@ -89,7 +95,13 @@ def test_save_and_reload_v8_linear_pipeline_fields(tmp_path):
     rec = history[0]
     assert rec["tier0_regime"] == "NEUTRAL"
     assert rec["tier0_applied"] is False
+    assert rec["raw_target_beta"] == 1.0
     assert rec["target_beta"] == 0.9
+    assert rec["assumed_beta_before"] == 0.8
+    assert rec["assumed_beta_after"] == 0.9
+    assert rec["friction_blockers"] == ["upshift_confirmation"]
+    assert rec["estimated_turnover"] == 0.1
+    assert rec["estimated_cost_drag"] == 0.0015
     assert rec["should_adjust"] is False
 
 
@@ -121,7 +133,13 @@ def test_legacy_result_has_null_v7_fields(tmp_path):
     assert rec["deployment_state"] is None
     assert rec["tier0_regime"] is None
     assert rec["tier0_applied"] is False
+    assert rec["raw_target_beta"] is None
     assert rec["target_beta"] is None
+    assert rec["assumed_beta_before"] is None
+    assert rec["assumed_beta_after"] is None
+    assert rec["friction_blockers"] == []
+    assert rec["estimated_turnover"] is None
+    assert rec["estimated_cost_drag"] is None
     assert rec["should_adjust"] is None
     assert rec["rebalance_action"] == {}
     assert rec["candidate_selection_audit"] == []
