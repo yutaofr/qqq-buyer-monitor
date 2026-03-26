@@ -966,7 +966,7 @@ class Backtester:
         macro_seeder: Optional[HistoricalMacroSeeder],
         registry_path: str,
     ) -> BacktestMethodologySummary:
-        """v8.0 linear pipeline backtest: Tier-0 -> Risk -> Search -> Beta + Deployment."""
+        """v8.1 linear pipeline backtest: Tier-0 -> Risk -> Search -> Beta + Deployment."""
         prices_qqq = ohlcv["Close"].dropna().astype(float)
         if prices_qqq.empty:
             raise ValueError("Empty price data")
@@ -1792,7 +1792,7 @@ def run_backtest(
     finally:
         tier0_logger.setLevel(previous_tier0_level)
 
-    print("\n--- v8.0 Linear Pipeline Backtest Summary ---")
+    print("\n--- v8.1 Linear Pipeline Backtest Summary ---")
     print(f"Weekly add events: {len(summary.events)}")
     print(f"Tactical Max Drawdown: {_format_pct(summary.tactical_mdd)}")
     print(f"Baseline DCA Max Drawdown: {_format_pct(summary.baseline_mdd)}")

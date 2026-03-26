@@ -54,7 +54,7 @@ def test_cli_output_reflects_v7_runtime_when_available(mock_result, capsys):
     mock_result.risk_state = RiskState.RISK_NEUTRAL
     mock_result.deployment_state = DeploymentState.DEPLOY_BASE
     mock_result.selected_candidate_id = "neutral-base-001"
-    mock_result.registry_version = "2026-03-25-v8.0-r1"
+    mock_result.registry_version = "2026-03-25-v8.1-r1"
     mock_result.target_beta = 1.00
     mock_result.should_adjust = True
     mock_result.explanation = "旧版：允许小幅加仓。单日加仓: 50%。目标 Beta: 0.60。"
@@ -69,7 +69,7 @@ def test_cli_output_reflects_v7_runtime_when_available(mock_result, capsys):
 
     print_signal(mock_result, use_color=False)
     captured = capsys.readouterr()
-    assert "QQQ BUY-SIGNAL MONITOR (v8.0)" in captured.out
+    assert "QQQ BUY-SIGNAL MONITOR (v8.1)" in captured.out
     assert "风险评估与目标 Beta" in captured.out
     assert "增量入场节奏推荐" in captured.out
     assert "Tier-0=NEUTRAL" in captured.out

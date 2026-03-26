@@ -117,7 +117,7 @@ def test_run_backtest_prints_macro_coverage_before_summary(monkeypatch, capsys):
     run_backtest()
 
     output = capsys.readouterr().out
-    assert output.index("--- Canonical Macro Coverage ---") < output.index("--- v8.0 Linear Pipeline Backtest Summary")
+    assert output.index("--- Canonical Macro Coverage ---") < output.index("--- v8.1 Linear Pipeline Backtest Summary")
     assert events == ["simulate"]
 
 
