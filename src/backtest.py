@@ -113,6 +113,12 @@ def _coerce_optional_float(value: object, default: float | None = None) -> float
     return float(value)
 
 
+def _coerce_optional_bool(value: object) -> bool:
+    if value is None or pd.isna(value):
+        return False
+    return bool(value)
+
+
 def _coerce_optional_str(value: object) -> str | None:
     if value is None or pd.isna(value):
         return None
@@ -581,11 +587,17 @@ class Backtester:
                     "five_day_return": five_day_return,
                     "twenty_day_return": twenty_day_return,
                     "persistence_score": 0,
-                    "price_vix_divergence": bool(row.get("price_vix_divergence", False)),
-                    "price_mfi_divergence": bool(row.get("price_mfi_divergence", False)),
-                    "short_squeeze_potential": bool(row.get("short_squeeze_potential", False)),
-                    "bond_vol_spike": bool(row.get("bond_vol_spike", False)),
-                    "near_volume_poc": bool(row.get("near_volume_poc", False)),
+                    "price_vix_divergence": _coerce_optional_bool(
+                        row.get("price_vix_divergence", False)
+                    ),
+                    "price_mfi_divergence": _coerce_optional_bool(
+                        row.get("price_mfi_divergence", False)
+                    ),
+                    "short_squeeze_potential": _coerce_optional_bool(
+                        row.get("short_squeeze_potential", False)
+                    ),
+                    "bond_vol_spike": _coerce_optional_bool(row.get("bond_vol_spike", False)),
+                    "near_volume_poc": _coerce_optional_bool(row.get("near_volume_poc", False)),
                 },
                 raw_quality={},
             )

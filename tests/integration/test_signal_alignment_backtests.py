@@ -88,6 +88,35 @@ def test_build_signal_timeseries_marks_authorized_crisis_blood_chip_override():
     assert final_row["deployment_reason_rule"] == "blood_chip_crisis_override"
 
 
+def test_build_signal_timeseries_does_not_promote_nan_soft_signals_to_override():
+    dates = pd.date_range("2024-01-02", periods=25, freq="B")
+    prices = pd.Series([100.0 - (i * 2.0) for i in range(25)], index=dates)
+    ohlcv = pd.DataFrame({"Close": prices}, index=dates)
+    macro = _canonical_macro_frame(dates, [320.0] * 20 + [680.0] * 5)
+    seeder = HistoricalMacroSeeder(mock_df=macro)
+    expectations = pd.DataFrame(
+        {
+            "price_vix_divergence": [float("nan")] * len(dates),
+            "short_squeeze_potential": [float("nan")] * len(dates),
+            "bond_vol_spike": [float("nan")] * len(dates),
+            "price_mfi_divergence": [float("nan")] * len(dates),
+            "near_volume_poc": [float("nan")] * len(dates),
+        },
+        index=dates,
+    )
+
+    signals = Backtester().build_signal_timeseries(
+        ohlcv,
+        macro_seeder=seeder,
+        expected_matrix=expectations,
+    )
+
+    final_row = signals.iloc[-1]
+    assert final_row["risk_state"] == "RISK_EXIT"
+    assert final_row["deployment_state"] == "DEPLOY_PAUSE"
+    assert bool(final_row["blood_chip_override_active"]) is False
+
+
 def test_build_signal_timeseries_unlocks_risk_on_under_tight_spreads_without_erp():
     dates = pd.date_range("2024-01-02", periods=3, freq="B")
     prices = pd.Series([100.0, 101.0, 102.0], index=dates)
