@@ -103,11 +103,17 @@ def main(argv: list[str] | None = None) -> int:
         "deployment_rank_abs_error",
         "deployment_within_one_step",
         "used_beta_floor_fallback",
+        "blood_chip_override_active",
+        "deployment_reason_rule",
     ):
         if column in deployment_summary.daily_timeseries.columns:
             daily[column] = deployment_summary.daily_timeseries[column]
 
     used_floor_fallback = daily.get("used_beta_floor_fallback", pd.Series(False, index=daily.index)).fillna(False)
+    blood_chip_override_flags = daily.get(
+        "blood_chip_override_active",
+        pd.Series(False, index=daily.index),
+    ).fillna(False).astype(bool)
     summary = {
         "acceptance": {
             "beta_mae": float(beta_summary.mean_absolute_error),
@@ -119,6 +125,20 @@ def main(argv: list[str] | None = None) -> int:
             "beta_floor_respected": bool((daily["signal_target_beta"] >= 0.5 - 1e-9).all()),
             "beta_cap_respected": bool((daily["signal_target_beta"] <= 1.2 + 1e-9).all()),
             "used_beta_floor_fallback_days": int(used_floor_fallback.sum()),
+            "crisis_blood_chip_overrides": int(
+                (
+                    (daily["tier0_regime"] == "CRISIS")
+                    & blood_chip_override_flags
+                    & (daily["deployment_state"] != "DEPLOY_PAUSE")
+                ).sum()
+            ),
+            "crisis_unauthorized_breaches": int(
+                (
+                    (daily["tier0_regime"] == "CRISIS")
+                    & ~blood_chip_override_flags
+                    & (daily["deployment_state"] != "DEPLOY_PAUSE")
+                ).sum()
+            ),
         },
         "coverage": {
             "rows": coverage["rows"],
@@ -158,6 +178,11 @@ def main(argv: list[str] | None = None) -> int:
         f"floor_respected={summary['acceptance']['beta_floor_respected']}, "
         f"cap_respected={summary['acceptance']['beta_cap_respected']}, "
         f"floor_fallback_days={summary['acceptance']['used_beta_floor_fallback_days']}"
+    )
+    print(
+        "CRISIS audit: "
+        f"blood_chip_overrides={summary['acceptance']['crisis_blood_chip_overrides']}, "
+        f"unauthorized_breaches={summary['acceptance']['crisis_unauthorized_breaches']}"
     )
     for name, window_summary in summary["windows"].items():
         print(

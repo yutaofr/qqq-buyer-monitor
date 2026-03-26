@@ -106,6 +106,10 @@ def _run_runtime_pipeline(
     result.registry_version = registry.registry_version
     result.tier0_regime = tier0_regime
     result.tier0_applied = risk.tier0_applied
+    result.deployment_action = {
+        "deploy_mode": deploy.deployment_state.value.replace("DEPLOY_", ""),
+        "reason": deploy.reasons[0]["rule"] if deploy.reasons else "controller_decision",
+    }
 
     if selected is not None:
         recommendation = build_beta_recommendation(
@@ -223,6 +227,26 @@ def test_runtime_pipeline_exit_state_keeps_beta_floor_candidate():
     assert result.risk_state == RiskState.RISK_EXIT
     assert result.selected_candidate_id == "exit-floor-001"
     assert result.target_beta == 0.50
+
+
+def test_runtime_pipeline_crisis_blood_chip_override_keeps_beta_floor_but_deploys_fast():
+    result = _run_runtime_pipeline(
+        {
+            "credit_spread": 680.0,
+            "credit_acceleration": -1.0,
+            "liquidity_roc": 1.0,
+            "funding_stress": False,
+            "capitulation_score": 20,
+            "rolling_drawdown": 0.18,
+            "five_day_return": -0.03,
+            "twenty_day_return": -0.10,
+        }
+    )
+    assert result.risk_state == RiskState.RISK_EXIT
+    assert result.selected_candidate_id == "exit-floor-001"
+    assert result.deployment_state.value == "DEPLOY_FAST"
+    assert result.target_beta == pytest.approx(0.5)
+    assert result.deployment_action["reason"] == "blood_chip_crisis_override"
 
 
 def test_runtime_pipeline_exposes_raw_and_advised_beta_separately():

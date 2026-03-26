@@ -3,7 +3,6 @@ from datetime import date
 
 from src.engine.feature_pipeline import build_feature_snapshot
 
-
 # ── Task 3 ────────────────────────────────────────────────────────────────────
 
 def test_feature_pipeline_marks_class_a_data():
@@ -25,6 +24,25 @@ def test_feature_pipeline_marks_class_b_data():
     )
     assert snapshot.classes["fear_greed"] == "B"
     assert snapshot.quality["fear_greed"]["decision_critical"] is False
+
+
+def test_feature_pipeline_marks_blood_chip_soft_features_as_class_b():
+    snapshot = build_feature_snapshot(
+        market_date=date(2026, 3, 24),
+        raw_values={
+            "price_vix_divergence": True,
+            "price_mfi_divergence": True,
+            "short_squeeze_potential": True,
+            "bond_vol_spike": True,
+            "near_volume_poc": True,
+        },
+        raw_quality={},
+    )
+    assert snapshot.classes["price_vix_divergence"] == "B"
+    assert snapshot.classes["price_mfi_divergence"] == "B"
+    assert snapshot.classes["short_squeeze_potential"] == "B"
+    assert snapshot.classes["bond_vol_spike"] == "B"
+    assert snapshot.classes["near_volume_poc"] == "B"
 
 
 def test_feature_pipeline_marks_missing_as_class_c():
