@@ -1,6 +1,7 @@
 """v8.0 Deployment Controller — decides deployment budget pace."""
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from src.engine.feature_pipeline import FeatureSnapshot
@@ -75,6 +76,21 @@ _DEPLOY_RANK = {
 }
 
 
+def _coerce_optional_bool(value: object) -> bool:
+    """Treat missing / NaN soft signals as False instead of truthy."""
+    if value is None:
+        return False
+    try:
+        if math.isnan(value):
+            return False
+    except (TypeError, ValueError):
+        pass
+    try:
+        return bool(value)
+    except TypeError:
+        return False
+
+
 def _cap_to_ceiling(
     proposed: DeploymentState,
     ceiling: DeploymentState,
@@ -140,11 +156,11 @@ def _detect_blood_chip_crisis_override(
     liquidity_roc = float(v.get("liquidity_roc", 0.0) or 0.0)
     twenty_day_return = v.get("twenty_day_return")
     capitulation_score = int(v.get("capitulation_score", 0) or 0)
-    price_vix_divergence = bool(v.get("price_vix_divergence") or False)
-    short_squeeze_potential = bool(v.get("short_squeeze_potential") or False)
-    bond_vol_spike = bool(v.get("bond_vol_spike") or False)
-    price_mfi_divergence = bool(v.get("price_mfi_divergence") or False)
-    near_volume_poc = bool(v.get("near_volume_poc") or False)
+    price_vix_divergence = _coerce_optional_bool(v.get("price_vix_divergence"))
+    short_squeeze_potential = _coerce_optional_bool(v.get("short_squeeze_potential"))
+    bond_vol_spike = _coerce_optional_bool(v.get("bond_vol_spike"))
+    price_mfi_divergence = _coerce_optional_bool(v.get("price_mfi_divergence"))
+    near_volume_poc = _coerce_optional_bool(v.get("near_volume_poc"))
 
     if (
         liquidity_roc > _BLOOD_CHIP_LIQUIDITY_ROC_THRESHOLD

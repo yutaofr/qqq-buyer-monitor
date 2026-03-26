@@ -1,6 +1,7 @@
 """TDD: v8 deployment controller — tier-0 soft ceiling and idle semantics."""
 from __future__ import annotations
 
+import math
 from datetime import date
 
 import pytest
@@ -217,6 +218,32 @@ def test_crisis_override_is_blocked_when_tactical_stress_says_pause():
     assert decision.deployment_state == DeploymentState.DEPLOY_PAUSE
     assert decision.pause_new_cash is True
     assert any(reason["rule"] == "tactical_stress_pause" for reason in decision.reasons)
+
+
+def test_crisis_override_ignores_nan_soft_signals():
+    snap = _snap(
+        {
+            "credit_spread": 680.0,
+            "capitulation_score": 35,
+            "tactical_stress_score": 10,
+            "rolling_drawdown": 0.22,
+            "five_day_return": -0.04,
+            "twenty_day_return": -0.11,
+            "price_vix_divergence": math.nan,
+            "short_squeeze_potential": math.nan,
+            "bond_vol_spike": math.nan,
+            "price_mfi_divergence": math.nan,
+            "near_volume_poc": math.nan,
+        }
+    )
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_EXIT, 0.50, 0.50),
+        tier0_regime="CRISIS",
+        available_new_cash=1000.0,
+    )
+    assert decision.deployment_state == DeploymentState.DEPLOY_PAUSE
+    assert all(reason["rule"] != "blood_chip_crisis_override" for reason in decision.reasons)
 
 
 def test_neutral_keeps_fast_path_available():
