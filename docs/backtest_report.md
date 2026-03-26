@@ -74,6 +74,7 @@ python scripts/plot_beta_backtest_performance.py
 | RICH_TIGHTENING left-side windows | `647` | ✅ PASS | 证明软约束没有锁死左侧入场 |
 | CRISIS blood-chip overrides | `1` | ✅ PASS | 危机窗口出现 1 次授权的现金回补 override |
 | CRISIS unauthorized breaches | `0` | ✅ PASS | 危机窗口没有未授权高于 `DEPLOY_PAUSE` 的部署状态 |
+| CRISIS override paths | `liquidity_reversal=1` | ✅ PASS | 本轮授权 override 全部来自流动性反转路径 |
 
 ## 结果解读
 
@@ -107,6 +108,7 @@ python scripts/plot_beta_backtest_performance.py
 
 - `CRISIS blood-chip overrides = 1`
 - `CRISIS unauthorized breaches = 0`
+- `CRISIS override paths = liquidity_reversal=1`
 
 这说明系统没有放弃危机防守，只是在危机最深处为战术现金回补开了受控后门。
 这满足 v8.2 的 `TC-BT-002 / AC-13 / AC-14`。
