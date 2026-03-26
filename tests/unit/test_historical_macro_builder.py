@@ -1,11 +1,16 @@
+from types import SimpleNamespace
+
 import pandas as pd
 import pytest
 
+from scripts import generate_historical_macro
 from src.collector import macro, macro_v3
 from src.collector.historical_macro_seeder import HistoricalMacroSeeder
-from src.research.data_contracts import REQUIRED_HISTORICAL_MACRO_COLUMNS, validate_historical_macro_frame
 from src.research import historical_macro_builder as builder
-from scripts import generate_historical_macro
+from src.research.data_contracts import (
+    REQUIRED_HISTORICAL_MACRO_COLUMNS,
+    validate_historical_macro_frame,
+)
 
 
 def _primary_series_frame(series_id: str, values: list[float], dates: pd.DatetimeIndex) -> pd.DataFrame:
@@ -101,6 +106,49 @@ def test_fetch_historical_fred_series_does_not_use_proxy_fallbacks(monkeypatch):
     assert frame is not None
     assert frame.iloc[0]["BAMLH0A0HYM2"] == 3.75
     assert frame.iloc[0]["observation_date"] == pd.Timestamp("2024-01-03")
+
+
+def test_fetch_fred_csv_limits_historical_window(monkeypatch):
+    requested_urls: list[str] = []
+
+    class _Response:
+        text = "observation_date,DFII10\n2024-01-03,1.40\n"
+
+        def raise_for_status(self):
+            return None
+
+    def fake_get(url: str, timeout: int = 15, headers: dict | None = None):
+        requested_urls.append(url)
+        return _Response()
+
+    monkeypatch.setattr(macro.requests, "get", fake_get)
+
+    frame = macro.fetch_fred_csv("DFII10", timeout=3, retries=0)
+
+    assert frame is not None
+    assert requested_urls
+    assert "cosd=1990-01-01" in requested_urls[0]
+
+
+def test_fetch_fred_csv_falls_back_to_curl_after_requests_timeout(monkeypatch):
+    class _Completed:
+        stdout = "observation_date,DFII10\n2024-01-03,1.40\n"
+
+    def fake_get(url: str, timeout: int = 15, headers: dict | None = None):
+        raise macro.requests.Timeout("timed out")
+
+    def fake_run(cmd: list[str], capture_output: bool, text: bool, check: bool, timeout: int):
+        assert cmd[0] == "curl"
+        return _Completed()
+
+    monkeypatch.setattr(macro.requests, "get", fake_get)
+    monkeypatch.setattr(macro, "subprocess", SimpleNamespace(run=fake_run), raising=False)
+    monkeypatch.setattr(macro.time, "sleep", lambda *_args, **_kwargs: None)
+
+    frame = macro.fetch_fred_csv("DFII10", timeout=3, retries=0)
+
+    assert frame is not None
+    assert frame.iloc[0]["DFII10"] == 1.4
 
 
 def test_fetch_research_historical_primary_series_returns_all_required_frames(monkeypatch):
@@ -257,6 +305,40 @@ def test_build_historical_macro_dataset_raises_on_missing_core_series(monkeypatc
 
     with pytest.raises(ValueError, match="NFCI"):
         builder.build_historical_macro_dataset()
+
+
+def test_build_historical_macro_dataset_collapses_weekend_observations_to_unique_effective_dates(monkeypatch):
+    daily_dates = pd.DatetimeIndex(
+        [
+            "2024-05-30",
+            "2024-05-31",
+            "2024-06-02",
+            "2024-06-03",
+            "2024-06-04",
+        ]
+    )
+    weekly_dates = pd.date_range("2024-05-29", periods=2, freq="W-WED")
+    bundle = {
+        "BAMLH0A0HYM2": _primary_series_frame("BAMLH0A0HYM2", [3.0, 3.1, 3.2, 3.3, 3.4], daily_dates),
+        "DFII10": _primary_series_frame("DFII10", [1.8, 1.7, 1.6, 1.5, 1.4], daily_dates),
+        "WALCL": _primary_series_frame("WALCL", [8000000.0, 8001000.0], weekly_dates),
+        "WDTGAL": _primary_series_frame("WDTGAL", [500000.0, 500500.0], weekly_dates),
+        "RRPONTSYD": _primary_series_frame("RRPONTSYD", [1000.0, 1001.0], weekly_dates),
+        "NFCI": _primary_series_frame("NFCI", [-0.2, -0.1, -0.1, 0.0, 0.1], daily_dates),
+    }
+    monkeypatch.setattr(
+        macro_v3,
+        "fetch_research_historical_primary_series",
+        lambda: bundle,
+    )
+
+    df = builder.build_historical_macro_dataset()
+
+    effective_dates = pd.to_datetime(df["effective_date"])
+    assert effective_dates.is_unique
+
+    monday_row = df.loc[effective_dates == pd.Timestamp("2024-06-03")].iloc[0]
+    assert pd.Timestamp(monday_row["observation_date"]) == pd.Timestamp("2024-06-02")
 
 
 def test_historical_macro_seeder_uses_effective_date_visibility():

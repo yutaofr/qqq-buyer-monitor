@@ -31,7 +31,7 @@ def test_build_signal_timeseries_returns_pure_beta_and_deployment_signals():
     dates = pd.date_range("2024-01-02", periods=9, freq="B")
     prices = pd.Series([100.0, 89.0, 79.0, 75.0, 70.0, 68.0, 67.0, 66.0, 65.0], index=dates)
     ohlcv = pd.DataFrame({"Close": prices}, index=dates)
-    macro = _canonical_macro_frame(dates, [220.0, 220.0, 220.0, 320.0, 320.0, 520.0, 520.0, 520.0, 520.0])
+    macro = _canonical_macro_frame(dates, [260.0, 260.0, 260.0, 320.0, 320.0, 680.0, 680.0, 680.0, 680.0])
     seeder = HistoricalMacroSeeder(mock_df=macro)
 
     signals = Backtester().build_signal_timeseries(ohlcv, macro_seeder=seeder)
@@ -45,18 +45,31 @@ def test_build_signal_timeseries_returns_pure_beta_and_deployment_signals():
         "deployment_multiplier",
         "selected_candidate_id",
     } <= set(signals.columns)
-    assert signals["signal_target_beta"].tolist() == pytest.approx([1.0, 1.0, 1.0, 0.5, 0.5, 0.0, 0.0, 0.0, 0.0])
+    assert signals["signal_target_beta"].tolist() == pytest.approx([1.2, 1.2, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
     assert signals["deployment_state"].tolist() == [
         "DEPLOY_BASE",
         "DEPLOY_FAST",
-        "DEPLOY_FAST",
-        "DEPLOY_BASE",
-        "DEPLOY_BASE",
+        "DEPLOY_SLOW",
+        "DEPLOY_PAUSE",
+        "DEPLOY_PAUSE",
         "DEPLOY_PAUSE",
         "DEPLOY_PAUSE",
         "DEPLOY_PAUSE",
         "DEPLOY_PAUSE",
     ]
+
+
+def test_build_signal_timeseries_unlocks_risk_on_under_tight_spreads_without_erp():
+    dates = pd.date_range("2024-01-02", periods=3, freq="B")
+    prices = pd.Series([100.0, 101.0, 102.0], index=dates)
+    ohlcv = pd.DataFrame({"Close": prices}, index=dates)
+    macro = _canonical_macro_frame(dates, [220.0, 220.0, 220.0])
+    seeder = HistoricalMacroSeeder(mock_df=macro)
+
+    signals = Backtester().build_signal_timeseries(ohlcv, macro_seeder=seeder)
+
+    assert set(signals["risk_state"]) == {"RISK_ON"}
+    assert (signals["signal_target_beta"] >= 1.1).all()
 
 
 def test_build_signal_timeseries_unlocks_euphoric_risk_on_when_erp_is_present():
@@ -84,14 +97,27 @@ def test_build_signal_timeseries_unlocks_euphoric_risk_on_when_erp_is_present():
     assert (signals["signal_target_beta"] > 1.0).all()
 
 
+def test_build_signal_timeseries_uses_market_drawdown_when_state_drawdown_is_absent():
+    dates = pd.date_range("2024-01-02", periods=6, freq="B")
+    prices = pd.Series([100.0, 96.0, 90.0, 84.0, 78.0, 74.0], index=dates)
+    ohlcv = pd.DataFrame({"Close": prices}, index=dates)
+    macro = _canonical_macro_frame(dates, [320.0] * len(dates))
+    seeder = HistoricalMacroSeeder(mock_df=macro)
+
+    signals = Backtester().build_signal_timeseries(ohlcv, macro_seeder=seeder)
+
+    assert signals["signal_target_beta"].iloc[-1] == pytest.approx(0.5)
+    assert signals["risk_state"].iloc[-1] in {"RISK_EXIT", "RISK_DEFENSE", "RISK_REDUCED"}
+
+
 def test_target_beta_alignment_backtest_scores_against_expected_series():
     dates = pd.date_range("2024-01-02", periods=9, freq="B")
     prices = pd.Series([100.0, 89.0, 79.0, 75.0, 70.0, 68.0, 67.0, 66.0, 65.0], index=dates)
     ohlcv = pd.DataFrame({"Close": prices}, index=dates)
-    macro = _canonical_macro_frame(dates, [220.0, 220.0, 220.0, 320.0, 320.0, 520.0, 520.0, 520.0, 520.0])
+    macro = _canonical_macro_frame(dates, [260.0, 260.0, 260.0, 320.0, 320.0, 680.0, 680.0, 680.0, 680.0])
     seeder = HistoricalMacroSeeder(mock_df=macro)
     expected = pd.DataFrame(
-        {"expected_target_beta": [1.0, 1.0, 1.0, 0.5, 0.5, 0.0, 0.0, 0.0, 0.0]},
+        {"expected_target_beta": [1.2, 1.2, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]},
         index=dates,
     )
 
@@ -112,16 +138,16 @@ def test_deployment_alignment_backtest_scores_against_expected_series():
     dates = pd.date_range("2024-01-02", periods=9, freq="B")
     prices = pd.Series([100.0, 89.0, 79.0, 75.0, 70.0, 68.0, 67.0, 66.0, 65.0], index=dates)
     ohlcv = pd.DataFrame({"Close": prices}, index=dates)
-    macro = _canonical_macro_frame(dates, [220.0, 220.0, 220.0, 320.0, 320.0, 520.0, 520.0, 520.0, 520.0])
+    macro = _canonical_macro_frame(dates, [260.0, 260.0, 260.0, 320.0, 320.0, 680.0, 680.0, 680.0, 680.0])
     seeder = HistoricalMacroSeeder(mock_df=macro)
     expected = pd.DataFrame(
         {
             "expected_deployment_state": [
                 "DEPLOY_BASE",
                 "DEPLOY_FAST",
-                "DEPLOY_FAST",
-                "DEPLOY_BASE",
-                "DEPLOY_BASE",
+                "DEPLOY_SLOW",
+                "DEPLOY_PAUSE",
+                "DEPLOY_PAUSE",
                 "DEPLOY_PAUSE",
                 "DEPLOY_PAUSE",
                 "DEPLOY_PAUSE",

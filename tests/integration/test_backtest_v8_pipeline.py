@@ -30,7 +30,7 @@ def test_v8_backtest_preserves_left_side_window_but_locks_crisis():
     dates = pd.date_range("2024-01-02", periods=12, freq="B")
     prices = pd.Series([100.0, 97.0, 93.0, 88.0, 84.0, 82.0, 81.0, 79.0, 78.0, 77.0, 76.0, 75.0], index=dates)
     ohlcv = pd.DataFrame({"Close": prices}, index=dates)
-    macro = _canonical_macro_frame(dates, [320.0] * 6 + [520.0] * 6)
+    macro = _canonical_macro_frame(dates, [470.0] * 6 + [680.0] * 6)
     seeder = HistoricalMacroSeeder(mock_df=macro)
 
     summary = Backtester(initial_capital=10_000).simulate_portfolio(
@@ -45,6 +45,6 @@ def test_v8_backtest_preserves_left_side_window_but_locks_crisis():
     assert not rich.empty
     assert not crisis.empty
     assert (rich["target_beta"] <= 0.81).all()
-    assert (crisis["target_beta"] <= 0.01).all()
+    assert (crisis["target_beta"] <= 0.51).all()
     assert set(crisis["risk_state"]) == {"RISK_EXIT"}
-    assert set(crisis["selected_candidate_id"]) == {"exit-cash-001"}
+    assert set(crisis["selected_candidate_id"]) == {"exit-floor-001"}

@@ -125,6 +125,13 @@ def validate_historical_macro_frame(df: pd.DataFrame) -> None:
     observation_date = _parse_datetime_column(df, "observation_date")
     effective_date = _parse_datetime_column(df, "effective_date")
 
+    duplicate_effective_dates = df.index[effective_date.duplicated()].tolist()
+    if duplicate_effective_dates:
+        raise ValueError(
+            "Duplicate effective_date values in historical macro dataset: "
+            f"rows {duplicate_effective_dates}"
+        )
+
     invalid_order = effective_date < observation_date
     if invalid_order.any():
         bad_rows = df.index[invalid_order].tolist()
@@ -149,10 +156,10 @@ def validate_signal_expectation_frame(df: pd.DataFrame) -> None:
     if "expected_target_beta" in frame.columns:
         _validate_numeric_column(frame, "expected_target_beta")
         beta = pd.to_numeric(frame["expected_target_beta"], errors="coerce")
-        invalid = beta.notna() & ((beta < 0.0) | (beta > 2.0))
+        invalid = beta.notna() & ((beta < 0.5) | (beta > 1.2))
         if invalid.any():
             bad_rows = frame.index[invalid].tolist()
-            raise ValueError(f"expected_target_beta must be between 0.0 and 2.0: rows {bad_rows}")
+            raise ValueError(f"expected_target_beta must be between 0.5 and 1.2: rows {bad_rows}")
 
     for column in SIGNAL_EXPECTATION_OPTIONAL_NUMERIC_COLUMNS:
         if column in frame.columns:

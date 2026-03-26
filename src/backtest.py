@@ -22,7 +22,11 @@ import yfinance as yf
 
 from src.models import AllocationState, CurrentPortfolioState, Tier1Result, Tier2Result, TargetAllocationState
 from src.engine.aggregator import aggregate, get_target_allocation
-from src.engine.allocation_search import find_best_allocation_v8, generate_candidates, find_best_allocation
+from src.engine.allocation_search import (
+    find_best_allocation,
+    generate_candidates,
+    select_candidate_with_floor_fallback_v8,
+)
 from src.engine.candidate_registry import load_registry, select_runtime_candidates
 from src.engine.deployment_controller import decide_deployment_state
 from src.engine.execution_policy import build_beta_recommendation
@@ -185,6 +189,16 @@ def _derive_capitulation_score(drawdown: float) -> int:
     if drawdown <= -0.05:
         return 20
     return 0
+
+
+def _rolling_market_drawdown(prices: pd.Series, loc: int, *, window: int = 252) -> float:
+    """Return drawdown versus the trailing-window high, expressed as a negative number."""
+    start = max(0, loc - window + 1)
+    trailing_peak = float(prices.iloc[start : loc + 1].max())
+    current = float(prices.iloc[loc])
+    if trailing_peak <= 0:
+        return 0.0
+    return current / trailing_peak - 1.0
 
 
 def _derive_tactical_stress_score(prices: pd.Series, loc: int) -> int:
@@ -455,7 +469,7 @@ class Backtester:
             if macro_seeder:
                 macro_features.update(macro_seeder.get_features_for_date(current_date))
 
-            price_drawdown = float(prices_qqq.iloc[loc] / prices_qqq.iloc[: loc + 1].max() - 1.0)
+            price_drawdown = _rolling_market_drawdown(prices_qqq, loc)
             capitulation_score = int(
                 _coerce_optional_float(row.get("capitulation_score"), _derive_capitulation_score(price_drawdown))
                 or 0
@@ -464,12 +478,16 @@ class Backtester:
                 _coerce_optional_float(row.get("tactical_stress_score"), _derive_tactical_stress_score(prices_qqq, loc))
                 or 0
             )
-            rolling_drawdown = _coerce_optional_float(row.get("rolling_drawdown"))
+            inferred_market_drawdown = max(0.0, -price_drawdown)
+            rolling_drawdown = _coerce_optional_float(
+                row.get("rolling_drawdown"),
+                inferred_market_drawdown,
+            )
             available_new_cash = _coerce_optional_float(
                 row.get("available_new_cash"),
                 BASE_WEEKLY_DCA_UNITS * p_qqq,
             ) or 0.0
-            erp = _coerce_optional_float(row.get("erp"))
+            erp = _coerce_optional_float(row.get("erp"), macro_features.get("erp"))
 
             snapshot = build_feature_snapshot(
                 market_date=current_date,
@@ -508,27 +526,31 @@ class Backtester:
             )
 
             candidates = select_runtime_candidates(registry, risk.risk_state)
-            selected_candidate = find_best_allocation_v8(
+            selected_candidate, used_floor_fallback = select_candidate_with_floor_fallback_v8(
+                scoped_candidates=candidates,
+                registry_candidates=list(registry.candidates),
                 max_beta_ceiling=risk.target_exposure_ceiling,
                 max_drawdown_budget=registry.drawdown_budget,
-                candidates=candidates,
             )
 
-            selected_candidate_id: str | None = None
-            signal_target_beta = 0.0
-            if selected_candidate is not None:
-                selected_candidate_id = selected_candidate.candidate_id
-                selection = RuntimeSelection(
-                    selected_candidate=selected_candidate,
-                    rejected_candidates=(),
-                    selection_score=0.0,
+            if selected_candidate is None:
+                raise ValueError(
+                    "No compliant runtime candidate found and no global 0.5 beta floor candidate is available. "
+                    "Check candidate_registry_v7.json."
                 )
-                recommendation = build_beta_recommendation(
-                    selection=selection,
-                    risk_decision=risk,
-                    previous_risk_state=previous_risk_state,
-                )
-                signal_target_beta = float(recommendation.target_beta)
+
+            selected_candidate_id = selected_candidate.candidate_id
+            selection = RuntimeSelection(
+                selected_candidate=selected_candidate,
+                rejected_candidates=(),
+                selection_score=0.0,
+            )
+            recommendation = build_beta_recommendation(
+                selection=selection,
+                risk_decision=risk,
+                previous_risk_state=previous_risk_state,
+            )
+            signal_target_beta = float(recommendation.target_beta)
 
             rows.append(
                 {
@@ -544,6 +566,7 @@ class Backtester:
                     "deployment_multiplier": float(deploy.dca_multiplier),
                     "selected_candidate_id": selected_candidate_id,
                     "signal_target_beta": signal_target_beta,
+                    "used_beta_floor_fallback": used_floor_fallback,
                 }
             )
             previous_risk_state = risk.risk_state
@@ -976,7 +999,7 @@ class Backtester:
 
             total_nav_before = reserve_cash + active_cash + (units_qqq * p_qqq) + (units_qld * p_qld)
             peak_nav = max(peak_nav, total_nav_before)
-            rolling_drawdown = max(0.0, 1.0 - (total_nav_before / peak_nav)) if peak_nav > 0 else 0.0
+            nav_drawdown = max(0.0, 1.0 - (total_nav_before / peak_nav)) if peak_nav > 0 else 0.0
 
             macro_features = {
                 "credit_spread": None,
@@ -989,7 +1012,9 @@ class Backtester:
             if macro_seeder:
                 macro_features.update(macro_seeder.get_features_for_date(current_date))
 
-            price_drawdown = float(prices_qqq.iloc[loc] / prices_qqq.iloc[: loc + 1].max() - 1.0)
+            price_drawdown = _rolling_market_drawdown(prices_qqq, loc)
+            market_drawdown = max(0.0, -price_drawdown)
+            rolling_drawdown = max(nav_drawdown, market_drawdown)
             capitulation_score = _derive_capitulation_score(price_drawdown)
             tactical_stress_score = _derive_tactical_stress_score(prices_qqq, loc)
 
@@ -1014,7 +1039,7 @@ class Backtester:
             )
             tier0_regime = assess_structural_regime(
                 credit_spread=macro_features.get("credit_spread"),
-                erp=None,
+                erp=macro_features.get("erp"),
             )
 
             risk = decide_risk_state(
@@ -1052,66 +1077,59 @@ class Backtester:
                 baseline_cost_num += baseline_budget
 
             candidates = select_runtime_candidates(registry, risk.risk_state)
-            selected_candidate = find_best_allocation_v8(
+            selected_candidate, used_floor_fallback = select_candidate_with_floor_fallback_v8(
+                scoped_candidates=candidates,
+                registry_candidates=list(registry.candidates),
                 max_beta_ceiling=risk.target_exposure_ceiling,
                 max_drawdown_budget=registry.drawdown_budget,
-                candidates=candidates,
             )
 
             active_nav_before_rebalance = active_cash + (units_qqq * p_qqq) + (units_qld * p_qld)
             executed_target: TargetAllocationState | None = None
             selected_candidate_id: str | None = None
 
-            if selected_candidate is not None:
-                selected_candidate_id = selected_candidate.candidate_id
-                selection = RuntimeSelection(
-                    selected_candidate=selected_candidate,
-                    rejected_candidates=(),
-                    selection_score=0.0,
-                )
-                recommendation = build_beta_recommendation(
-                    selection=selection,
-                    risk_decision=risk,
-                    previous_risk_state=previous_risk_state,
+            if selected_candidate is None:
+                raise ValueError(
+                    "No compliant runtime candidate found and no global 0.5 beta floor candidate is available. "
+                    "Check candidate_registry_v7.json."
                 )
 
-                if active_nav_before_rebalance > 0 and recommendation.should_adjust:
-                    current_qqq_val = units_qqq * p_qqq
-                    current_qld_val = units_qld * p_qld
-                    target_qqq_val = active_nav_before_rebalance * recommendation.recommended_qqq_pct
-                    target_qld_val = active_nav_before_rebalance * recommendation.recommended_qld_pct
-                    total_volume_traded += abs(target_qqq_val - current_qqq_val)
-                    total_volume_traded += abs(target_qld_val - current_qld_val)
+            selected_candidate_id = selected_candidate.candidate_id
+            selection = RuntimeSelection(
+                selected_candidate=selected_candidate,
+                rejected_candidates=(),
+                selection_score=0.0,
+            )
+            recommendation = build_beta_recommendation(
+                selection=selection,
+                risk_decision=risk,
+                previous_risk_state=previous_risk_state,
+            )
 
-                    active_cash = active_nav_before_rebalance * recommendation.recommended_cash_pct
-                    units_qqq = target_qqq_val / p_qqq if p_qqq > 0 else 0.0
-                    units_qld = target_qld_val / p_qld if p_qld > 0 else 0.0
-                    executed_target = TargetAllocationState(
-                        target_cash_pct=recommendation.recommended_cash_pct,
-                        target_qqq_pct=recommendation.recommended_qqq_pct,
-                        target_qld_pct=recommendation.recommended_qld_pct,
-                        target_beta=recommendation.target_beta,
-                    )
-                elif active_nav_before_rebalance > 0:
-                    executed_target = TargetAllocationState(
-                        target_cash_pct=active_cash / active_nav_before_rebalance,
-                        target_qqq_pct=(units_qqq * p_qqq) / active_nav_before_rebalance,
-                        target_qld_pct=(units_qld * p_qld) / active_nav_before_rebalance,
-                        target_beta=(units_qqq * p_qqq + 2.0 * units_qld * p_qld) / active_nav_before_rebalance,
-                    )
-            else:
-                if active_nav_before_rebalance > 0:
-                    total_volume_traded += abs(units_qqq * p_qqq)
-                    total_volume_traded += abs(units_qld * p_qld)
-                    active_cash = active_nav_before_rebalance
-                    units_qqq = 0.0
-                    units_qld = 0.0
-                    executed_target = TargetAllocationState(
-                        target_cash_pct=1.0,
-                        target_qqq_pct=0.0,
-                        target_qld_pct=0.0,
-                        target_beta=0.0,
-                    )
+            if active_nav_before_rebalance > 0 and recommendation.should_adjust:
+                current_qqq_val = units_qqq * p_qqq
+                current_qld_val = units_qld * p_qld
+                target_qqq_val = active_nav_before_rebalance * recommendation.recommended_qqq_pct
+                target_qld_val = active_nav_before_rebalance * recommendation.recommended_qld_pct
+                total_volume_traded += abs(target_qqq_val - current_qqq_val)
+                total_volume_traded += abs(target_qld_val - current_qld_val)
+
+                active_cash = active_nav_before_rebalance * recommendation.recommended_cash_pct
+                units_qqq = target_qqq_val / p_qqq if p_qqq > 0 else 0.0
+                units_qld = target_qld_val / p_qld if p_qld > 0 else 0.0
+                executed_target = TargetAllocationState(
+                    target_cash_pct=recommendation.recommended_cash_pct,
+                    target_qqq_pct=recommendation.recommended_qqq_pct,
+                    target_qld_pct=recommendation.recommended_qld_pct,
+                    target_beta=recommendation.target_beta,
+                )
+            elif active_nav_before_rebalance > 0:
+                executed_target = TargetAllocationState(
+                    target_cash_pct=active_cash / active_nav_before_rebalance,
+                    target_qqq_pct=(units_qqq * p_qqq) / active_nav_before_rebalance,
+                    target_qld_pct=(units_qld * p_qld) / active_nav_before_rebalance,
+                    target_beta=(units_qqq * p_qqq + 2.0 * units_qld * p_qld) / active_nav_before_rebalance,
+                )
 
             target_history.append(executed_target)
             transfer_history.append(transfer_cash)
@@ -1141,6 +1159,7 @@ class Backtester:
                     "deployment_state": deploy.deployment_state.value,
                     "tier0_regime": tier0_regime,
                     "selected_candidate_id": selected_candidate_id,
+                    "used_beta_floor_fallback": used_floor_fallback,
                     "target_beta": target_beta_total,
                     "deployment_cash": transfer_cash,
                 }
@@ -1721,9 +1740,17 @@ def run_backtest(
     cache_path: str = "data/qqq_history_cache.csv",
     macro_path: str = "data/macro_historical_dump.csv",
     registry_path: str = "data/candidate_registry_v7.json",
+    allow_synthetic_macro: bool = False,
 ) -> None:
     qqq = _load_price_history(cache_path)
     macro_df = _load_research_macro_dataset(macro_path)
+    if _macro_dataset_is_synthetic(macro_df) and not allow_synthetic_macro:
+        raise ValueError(
+            "Portfolio backtests require a non-synthetic macro dataset. "
+            "Current build_version/source tags indicate a dev fixture. "
+            "Rebuild `data/macro_historical_dump.csv` from canonical research data "
+            "or pass `allow_synthetic_macro=True` for smoke tests only."
+        )
     seeder = HistoricalMacroSeeder(mock_df=macro_df)
     tester = Backtester()
 
@@ -1822,6 +1849,7 @@ def main(argv: list[str] | None = None) -> int:
             cache_path=args.cache_path,
             macro_path=args.macro_path,
             registry_path=args.registry_path,
+            allow_synthetic_macro=args.allow_synthetic_macro,
         )
         return 0
 

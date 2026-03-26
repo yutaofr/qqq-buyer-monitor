@@ -37,7 +37,7 @@ def expectation_frame() -> pd.DataFrame:
     return pd.DataFrame(
         {
             "date": ["2024-01-02", "2024-01-03", "2024-01-04"],
-            "expected_target_beta": [1.0, 0.5, 0.0],
+            "expected_target_beta": [1.0, 0.5, 0.5],
             "expected_deployment_state": ["DEPLOY_FAST", "DEPLOY_BASE", "DEPLOY_PAUSE"],
             "rolling_drawdown": [0.05, 0.15, 0.32],
             "available_new_cash": [1000.0, 1000.0, 1000.0],
@@ -84,6 +84,13 @@ def test_validate_historical_macro_frame_rejects_bad_effective_date_order(canoni
         validate_historical_macro_frame(bad)
 
 
+def test_validate_historical_macro_frame_rejects_duplicate_effective_dates(canonical_frame):
+    bad = canonical_frame.copy()
+    bad.loc[2, "effective_date"] = "2024-01-03"
+    with pytest.raises(ValueError, match="Duplicate effective_date"):
+        validate_historical_macro_frame(bad)
+
+
 def test_validate_historical_macro_frame_rejects_invalid_funding_flag(canonical_frame):
     bad = canonical_frame.copy()
     bad.loc[2, "funding_stress_flag"] = "yes"
@@ -115,6 +122,13 @@ def test_validate_signal_expectation_frame_rejects_unknown_deployment_state(expe
     bad = expectation_frame.copy()
     bad.loc[1, "expected_deployment_state"] = "DEPLOY_YOLO"
     with pytest.raises(ValueError, match="Unknown deployment state"):
+        validate_signal_expectation_frame(bad)
+
+
+def test_validate_signal_expectation_frame_rejects_beta_outside_runtime_band(expectation_frame):
+    bad = expectation_frame.copy()
+    bad.loc[2, "expected_target_beta"] = 0.3
+    with pytest.raises(ValueError, match="between 0.5 and 1.2"):
         validate_signal_expectation_frame(bad)
 
 

@@ -4,7 +4,7 @@
 
 **Goal:** Separate the system into two auditable decision surfaces, `target_beta` for stock-of-assets risk control and `deployment_state` for incremental cash timing, then evaluate each surface directly against an expected market-date matrix.
 
-**Architecture:** The runtime pipeline remains the source of truth for daily decisions. Backtesting is split into a pure signal-generation layer and two expectation-alignment audit layers. Legacy portfolio/NAV backtests remain available as research tools, but acceptance for the production decision system moves to signal alignment rather than mixed return comparisons. The runtime semantics also need to be internally consistent: `RISK_EXIT` must allow true `0 beta` cash fallback and `EUPHORIC` must be able to surface `RISK_ON` / `>1.0 beta` recommendations.
+**Architecture:** The runtime pipeline remains the source of truth for daily decisions. Backtesting is split into a pure signal-generation layer and two expectation-alignment audit layers. Legacy portfolio/NAV backtests remain available as research tools, but acceptance for the production decision system moves to signal alignment rather than mixed return comparisons. The runtime semantics also need to be internally consistent: the stock beta floor is always `0.5`, the cap is `1.2`, and `EUPHORIC` / tight-credit clean regimes must be able to surface `RISK_ON` recommendations.
 
 **Tech Stack:** Python 3.12, pandas, pytest, Ruff, canonical macro dataset loader, runtime candidate registry.
 
@@ -55,9 +55,9 @@
 - Test: `tests/integration/test_signal_alignment_backtests.py`
 
 **Steps:**
-1. Make `CRISIS` and hard drawdown breaches map to a real `0.0` exposure ceiling.
+1. Make `CRISIS` and hard drawdown breaches map to `RISK_EXIT` while preserving a `0.5` stock beta floor.
 2. Make `EUPHORIC` clean regimes surface `RISK_ON` instead of collapsing into `RISK_NEUTRAL`.
-3. Ensure runtime candidate search can legally choose `0.0 beta` candidates.
+3. Ensure runtime candidate search can always recover a compliant `0.5 beta` floor candidate instead of emitting `0.0 beta`.
 
 ### Task 4: Preserve legacy research backtests
 

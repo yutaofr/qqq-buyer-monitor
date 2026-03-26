@@ -10,19 +10,19 @@ def test_structural_regime_euphoric():
 
 
 def test_structural_regime_rich_tightening():
-    assert assess_structural_regime(credit_spread=320.0, erp=1.5) == "RICH_TIGHTENING"
+    assert assess_structural_regime(credit_spread=470.0, erp=3.0) == "RICH_TIGHTENING"
 
 
 def test_structural_regime_neutral():
-    assert assess_structural_regime(credit_spread=260.0, erp=3.2) == "NEUTRAL"
+    assert assess_structural_regime(credit_spread=320.0, erp=3.2) == "NEUTRAL"
 
 
 def test_structural_regime_transition_stress():
-    assert assess_structural_regime(credit_spread=420.0, erp=3.5) == "TRANSITION_STRESS"
+    assert assess_structural_regime(credit_spread=580.0, erp=3.5) == "TRANSITION_STRESS"
 
 
 def test_structural_regime_crisis():
-    assert assess_structural_regime(credit_spread=560.0, erp=5.0) == "CRISIS"
+    assert assess_structural_regime(credit_spread=680.0, erp=5.0) == "CRISIS"
 
 
 def test_macro_veto_maps_only_to_crisis():
