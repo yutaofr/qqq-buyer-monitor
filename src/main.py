@@ -308,7 +308,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
     # ── v7.0 Dual-Controller Pipeline ─────────────────────────────────────────
     import os
 
-    from src.engine.allocation_search import find_best_allocation_v8
+    from src.engine.allocation_search import select_candidate_with_floor_fallback_v8
     from src.engine.candidate_registry import load_registry, select_runtime_candidates
     from src.engine.deployment_controller import decide_deployment_state
     from src.engine.execution_policy import build_beta_recommendation
@@ -341,6 +341,14 @@ def run_pipeline(args: argparse.Namespace) -> None:
     except (TypeError, ValueError):
         available_new_cash = 0.0
 
+    five_day_return = 0.0
+    twenty_day_return = 0.0
+    if market_data.ohlcv_history is not None and "Close" in market_data.ohlcv_history:
+        close_history = market_data.ohlcv_history["Close"].dropna().astype(float)
+        if not close_history.empty:
+            five_day_return = float(close_history.pct_change(5).fillna(0.0).iloc[-1])
+            twenty_day_return = float(close_history.pct_change(20).fillna(0.0).iloc[-1])
+
     try:
         # Build unified feature snapshot from collected data
         v7_snapshot = build_feature_snapshot(
@@ -358,6 +366,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 "fear_greed": market_data.fear_greed,
                 "tactical_stress_score": tier1.stress_score,
                 "capitulation_score": tier1.capitulation_score,
+                "rolling_drawdown": rolling_drawdown,
+                "five_day_return": five_day_return,
+                "twenty_day_return": twenty_day_return,
                 "persistence_score": tier1.persistence_score,
                 "sector_rotation": market_data.sector_rotation,
             },
@@ -408,10 +419,11 @@ def run_pipeline(args: argparse.Namespace) -> None:
         result.tier0_regime = tier0_regime
         result.tier0_applied = v7_risk.tier0_applied
 
-        selected_candidate = find_best_allocation_v8(
+        selected_candidate, used_floor_fallback = select_candidate_with_floor_fallback_v8(
+            scoped_candidates=candidates,
+            registry_candidates=list(registry.candidates),
             max_beta_ceiling=v7_risk.target_exposure_ceiling,
             max_drawdown_budget=registry.drawdown_budget,
-            candidates=candidates,
         )
 
         audit: list[dict] = []
@@ -435,6 +447,14 @@ def run_pipeline(args: argparse.Namespace) -> None:
                     "candidate_id": candidate.candidate_id,
                     "reason": "lower_rank",
                 })
+
+        if used_floor_fallback and selected_candidate is not None:
+            audit.append({
+                "candidate_id": selected_candidate.candidate_id,
+                "reason": "global_beta_floor_fallback",
+                "beta_floor": 0.50,
+                "risk_state": v7_risk.risk_state.value,
+            })
 
         if selected_candidate is not None:
             selection = RuntimeSelection(
@@ -481,28 +501,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 beta_rec.should_adjust,
             )
         else:
-            result.selected_candidate_id = None
-            result.target_beta = 0.0
-            result.should_adjust = False
-            result.target_allocation = TargetAllocationState(
-                target_cash_pct=1.0,
-                target_qqq_pct=0.0,
-                target_qld_pct=0.0,
-                target_beta=0.0,
-            )
-            result.rebalance_action = {"should_adjust": False, "reason": "no_compliant_candidates"}
-            result.deployment_action = {
-                "deploy_mode": v7_deploy.deployment_state.value.replace("DEPLOY_", ""),
-                "reason": "no_compliant_candidates",
-            }
-            result.logic_trace.append({
-                "rule": "no_compliant_candidates",
-                "risk_state": v7_risk.risk_state.value,
-                "target_beta": 0.0,
-            })
-            logger.warning(
-                "v8.0: no compliant candidates after beta-ceiling filter for risk_state=%s",
-                v7_risk.risk_state.value,
+            raise ValueError(
+                "No compliant runtime candidate found and no global 0.5 beta floor candidate is available. "
+                "Check candidate_registry_v7.json."
             )
 
         result.candidate_selection_audit = audit

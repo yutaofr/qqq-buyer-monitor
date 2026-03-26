@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from src.engine.allocation_search import find_best_allocation_v8
+from src.engine.allocation_search import select_candidate_with_floor_fallback_v8
 from src.engine.candidate_registry import load_registry, select_runtime_candidates
 from src.engine.deployment_controller import decide_deployment_state
 from src.engine.execution_policy import build_beta_recommendation
@@ -87,10 +87,11 @@ def _run_runtime_pipeline(
 
     registry = load_registry(FIXTURE_REGISTRY)
     candidates = select_runtime_candidates(registry, risk.risk_state)
-    selected = find_best_allocation_v8(
+    selected, used_floor_fallback = select_candidate_with_floor_fallback_v8(
+        scoped_candidates=candidates,
+        registry_candidates=list(registry.candidates),
         max_beta_ceiling=risk.target_exposure_ceiling,
         max_drawdown_budget=registry.drawdown_budget,
-        candidates=candidates,
     )
 
     result.risk_state = risk.risk_state
@@ -114,6 +115,8 @@ def _run_runtime_pipeline(
             target_beta=recommendation.target_beta,
         )
         result.rebalance_action = {"should_adjust": recommendation.should_adjust}
+        if used_floor_fallback:
+            result.logic_trace.append({"rule": "global_beta_floor_fallback", "candidate_id": selected.candidate_id})
     else:
         result.logic_trace.append({"rule": "no_compliant_candidates"})
 
@@ -152,7 +155,7 @@ def test_runtime_pipeline_clean_macro_selects_neutral_candidate():
 
 def test_runtime_pipeline_rich_tightening_selects_beta_capped_candidate():
     result = _run_runtime_pipeline({
-        "credit_spread": 320.0,
+        "credit_spread": 470.0,
         "credit_acceleration": 0.0,
         "liquidity_roc": 1.0,
         "funding_stress": False,
@@ -168,7 +171,7 @@ def test_runtime_pipeline_triple_stress_exits():
         "credit_acceleration": 20.0,
         "liquidity_roc": -5.0,
         "funding_stress": True,
-        "credit_spread": 520.0,
+        "credit_spread": 680.0,
     })
     assert result.risk_state == RiskState.RISK_EXIT
 
@@ -185,14 +188,15 @@ def test_runtime_pipeline_degrades_explicitly_when_registry_missing():
         load_registry("/tmp/nonexistent_registry_for_integration_test.json")
 
 
-def test_runtime_pipeline_no_compliant_candidates_records_trace():
+def test_runtime_pipeline_exit_state_keeps_beta_floor_candidate():
     result = _run_runtime_pipeline(
         {
-            "credit_spread": 520.0,
+            "credit_spread": 680.0,
             "credit_acceleration": 20.0,
             "liquidity_roc": -5.0,
             "funding_stress": True,
         }
     )
-    assert any("no_compliant_candidates" in str(item) for item in result.logic_trace)
-    assert result.selected_candidate_id is None
+    assert result.risk_state == RiskState.RISK_EXIT
+    assert result.selected_candidate_id == "exit-floor-001"
+    assert result.target_beta == 0.50

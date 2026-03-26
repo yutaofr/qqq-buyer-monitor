@@ -1,26 +1,31 @@
 """v7.0 Risk Controller — decides risk state from Class A macro features."""
 from __future__ import annotations
 
-from src.engine.feature_pipeline import _CLASS_A, FeatureSnapshot
-from src.models import CurrentPortfolioState
+from src.engine.feature_pipeline import FeatureSnapshot
 from src.models.risk import RiskDecision, RiskState
 
-
 # Risk threshold constants (Class A hard rules)
-_CREDIT_SPREAD_WARN = 400.0          # bps – elevated but not critical
-_CREDIT_SPREAD_DANGER = 500.0        # bps – danger zone
-_CREDIT_ACCEL_THRESHOLD = 15.0       # bps/week acceleration
-_LIQUIDITY_ROC_THRESHOLD = -2.0      # % weekly change (negative = contraction)
+_MISSING_GUARD_FEATURES = (
+    "credit_spread",
+    "credit_acceleration",
+    "liquidity_roc",
+    "funding_stress",
+)
+_CREDIT_SPREAD_WARN = 500.0          # bps – elevated but still recoverable
+_CREDIT_SPREAD_DANGER = 650.0        # bps – true danger zone
+_CREDIT_ACCEL_THRESHOLD = 15.0       # % over 10d acceleration window
+_LIQUIDITY_ROC_THRESHOLD = -5.0      # % 4w change (negative = contraction)
+_RISK_ON_CREDIT_SPREAD_THRESHOLD = 450.0
 _DRAWDOWN_WARN = 0.20
 _DRAWDOWN_DEFENSE = 0.25
 _DRAWDOWN_EXIT = 0.30
 
 
 def _count_missing_class_a(snapshot: FeatureSnapshot) -> int:
-    """Count how many Class A features are None / unusable / absent."""
+    """Count how many hard-decision inputs are None / unusable / absent."""
     return sum(
-        1 for name in _CLASS_A
-        if name not in snapshot.values 
+        1 for name in _MISSING_GUARD_FEATURES
+        if name not in snapshot.values
         or snapshot.values[name] is None
         or not snapshot.quality.get(name, {}).get("usable", True)
     )
@@ -71,14 +76,22 @@ def decide_risk_state(
         reasons.append({"rule": "tier0_transition_stress", "tier0_regime": tier0_regime})
         return RiskDecision(
             risk_state=RiskState.RISK_DEFENSE,
-            target_exposure_ceiling=0.80,
-            target_cash_floor=0.20,
+            target_exposure_ceiling=0.70,
+            target_cash_floor=0.30,
             reasons=tuple(reasons),
             tier0_applied=True,
         )
 
     # ── 1. Missing Class A guard (SRD §8.2) ─────────────────────────────────
     n_missing = _count_missing_class_a(snapshot)
+    if snapshot.values.get("credit_spread") is None:
+        reasons.append({"rule": "class_a_missing", "missing_count": n_missing, "missing_core": "credit_spread"})
+        return RiskDecision(
+            risk_state=RiskState.RISK_REDUCED,
+            target_exposure_ceiling=0.80,
+            target_cash_floor=0.20,
+            reasons=tuple(reasons),
+        )
     if n_missing >= 2:
         reasons.append({"rule": "class_a_missing", "missing_count": n_missing})
         return RiskDecision(
@@ -100,6 +113,20 @@ def decide_risk_state(
             )
         if rolling_drawdown >= _DRAWDOWN_DEFENSE:
             reasons.append({"rule": "drawdown_defense_band", "drawdown": rolling_drawdown})
+            return RiskDecision(
+                risk_state=RiskState.RISK_DEFENSE,
+                target_exposure_ceiling=0.70,
+                target_cash_floor=0.30,
+                reasons=tuple(reasons),
+            )
+        if rolling_drawdown >= _DRAWDOWN_WARN:
+            reasons.append({"rule": "drawdown_warn_band", "drawdown": rolling_drawdown})
+            return RiskDecision(
+                risk_state=RiskState.RISK_REDUCED,
+                target_exposure_ceiling=0.80,
+                target_cash_floor=0.20,
+                reasons=tuple(reasons),
+            )
 
     # ── Extract Class A signals ──────────────────────────────────────────────
     credit_spread = v.get("credit_spread")
@@ -126,8 +153,9 @@ def decide_risk_state(
         )
 
     # ── 4. Dual stress → RISK_DEFENSE ────────────────────────────────────────
-    stress_count = sum([accel_danger, liq_danger, stress_flag, credit_danger])
-    if stress_count >= 2:
+    stress_count = sum([accel_danger, liq_danger, credit_danger])
+    stress_overlay = stress_flag and (credit_warn or accel_danger or liq_danger)
+    if stress_count >= 2 or stress_overlay:
         reasons.append({"rule": "dual_stress", "stress_count": stress_count})
         return RiskDecision(
             risk_state=RiskState.RISK_DEFENSE,
@@ -148,13 +176,26 @@ def decide_risk_state(
 
     # ── 6. Clean environment ──────────────────────────────────────────────────
     reasons.append({"rule": "clean_macro"})
-    
-    # In v8.1, NEUTRAL allows up to 1.0. EUPHORIC would allow up to 1.2
-    ceiling = 1.2 if tier0_regime == "EUPHORIC" else 1.0
+
+    tight_credit_bull = (
+        tier0_regime == "NEUTRAL"
+        and credit_spread is not None
+        and credit_spread < _RISK_ON_CREDIT_SPREAD_THRESHOLD
+        and (credit_accel is None or credit_accel <= 0.0)
+        and (liq_roc is None or liq_roc >= _LIQUIDITY_ROC_THRESHOLD)
+        and not stress_flag
+        and (rolling_drawdown is None or rolling_drawdown < _DRAWDOWN_WARN)
+    )
+    risk_state = (
+        RiskState.RISK_ON
+        if tier0_regime == "EUPHORIC" or tight_credit_bull
+        else RiskState.RISK_NEUTRAL
+    )
+    ceiling = 1.2 if risk_state == RiskState.RISK_ON else 1.0
     cash_floor = max(0.0, 1.0 - ceiling)
 
     return RiskDecision(
-        risk_state=RiskState.RISK_NEUTRAL,
+        risk_state=risk_state,
         target_exposure_ceiling=ceiling,
         target_cash_floor=cash_floor,
         reasons=tuple(reasons),

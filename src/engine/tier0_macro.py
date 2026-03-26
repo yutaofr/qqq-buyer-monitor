@@ -1,20 +1,22 @@
 import logging
-from enum import Enum
+from enum import StrEnum
 
 logger = logging.getLogger(__name__)
 
-# If credit spread (bps) is above this threshold, trigger macroeconomic meltdown veto
-CREDIT_SPREAD_CRISIS_THRESHOLD = 500.0
-CREDIT_SPREAD_TRANSITION_STRESS_THRESHOLD = 400.0
-CREDIT_SPREAD_TRANSITION_STRESS_CROSSOVER = 350.0
-CREDIT_SPREAD_RICH_TIGHTENING_THRESHOLD = 300.0
+# If credit spread (bps) is above this threshold, trigger macroeconomic meltdown veto.
+# Calibrated on real-history forward return / drawdown buckets:
+# 400-500bps is often still constructive, while 600+ is where tail risk clusters.
+CREDIT_SPREAD_CRISIS_THRESHOLD = 650.0
+CREDIT_SPREAD_TRANSITION_STRESS_THRESHOLD = 550.0
+CREDIT_SPREAD_TRANSITION_STRESS_CROSSOVER = 500.0
+CREDIT_SPREAD_RICH_TIGHTENING_THRESHOLD = 450.0
 EUPHORIC_CREDIT_SPREAD_THRESHOLD = 250.0
 CRISIS_ERP_THRESHOLD = 1.0
 RICH_TIGHTENING_ERP_THRESHOLD = 2.5
 EUPHORIC_ERP_THRESHOLD = 5.0
 
 
-class StructuralRegime(str, Enum):
+class StructuralRegime(StrEnum):
     EUPHORIC = "EUPHORIC"
     RICH_TIGHTENING = "RICH_TIGHTENING"
     NEUTRAL = "NEUTRAL"
@@ -22,7 +24,7 @@ class StructuralRegime(str, Enum):
     CRISIS = "CRISIS"
 
 
-class ErpRegime(str, Enum):
+class ErpRegime(StrEnum):
     NORMAL = "Normal"
     DEFENSE = "Defense"
     AGGRESSIVE = "Aggressive"

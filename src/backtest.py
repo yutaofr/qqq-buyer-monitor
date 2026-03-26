@@ -7,21 +7,26 @@ v6.4 Personal Allocation Upgrade: Candidate scoring and turnover tracking.
 """
 from __future__ import annotations
 
-import os
-import logging
-from pathlib import Path
-import numpy as np
+import argparse
 import concurrent.futures
+import logging
+import os
+from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional, Dict, List, Any
 
+import numpy as np
 import pandas as pd
 import yfinance as yf
 
 from src.models import AllocationState, CurrentPortfolioState, Tier1Result, Tier2Result, TargetAllocationState
 from src.engine.aggregator import aggregate, get_target_allocation
-from src.engine.allocation_search import find_best_allocation_v8, generate_candidates, find_best_allocation
+from src.engine.allocation_search import (
+    find_best_allocation,
+    generate_candidates,
+    select_candidate_with_floor_fallback_v8,
+)
 from src.engine.candidate_registry import load_registry, select_runtime_candidates
 from src.engine.deployment_controller import decide_deployment_state
 from src.engine.execution_policy import build_beta_recommendation
@@ -31,10 +36,75 @@ from src.engine.runtime_selector import RuntimeSelection
 from src.engine.tier0_macro import assess_structural_regime
 from src.collector.historical_macro_seeder import HistoricalMacroSeeder
 from src.models.risk import RiskState
-from src.research.data_contracts import summarize_historical_macro_coverage, validate_historical_macro_frame
+from src.models.deployment import DeploymentState
+from src.research.data_contracts import (
+    summarize_historical_macro_coverage,
+    summarize_signal_expectation_coverage,
+    validate_historical_macro_frame,
+    validate_signal_expectation_frame,
+)
 
 logger = logging.getLogger(__name__)
 _PARALLEL_FALLBACK_WARNED = False
+_EXPECTED_TARGET_BETA_COLUMN = "expected_target_beta"
+_EXPECTED_DEPLOYMENT_COLUMN = "expected_deployment_state"
+_DEPLOYMENT_STATE_RANK = {
+    DeploymentState.DEPLOY_FAST.value: 4,
+    DeploymentState.DEPLOY_RECOVER.value: 3,
+    DeploymentState.DEPLOY_BASE.value: 2,
+    DeploymentState.DEPLOY_SLOW.value: 1,
+    DeploymentState.DEPLOY_PAUSE.value: 0,
+}
+
+
+def _coerce_alignment_frame(
+    expected_matrix: pd.DataFrame | pd.Series | None,
+    target_index: pd.Index,
+    *,
+    default_column: str | None = None,
+) -> pd.DataFrame:
+    """Normalize expectation inputs onto the market-date index."""
+    if expected_matrix is None:
+        return pd.DataFrame(index=target_index)
+
+    if isinstance(expected_matrix, pd.Series):
+        if default_column is None:
+            raise ValueError("default_column is required when expected_matrix is a Series")
+        frame = expected_matrix.to_frame(name=default_column)
+    else:
+        frame = expected_matrix.copy()
+
+    if "date" in frame.columns:
+        frame = frame.set_index("date")
+
+    frame.index = pd.to_datetime(frame.index, errors="coerce")
+    frame = frame.loc[~frame.index.isna()].copy()
+
+    target_tz = getattr(target_index, "tz", None)
+    if isinstance(frame.index, pd.DatetimeIndex):
+        if target_tz is None:
+            if frame.index.tz is not None:
+                frame.index = frame.index.tz_convert(None)
+        else:
+            if frame.index.tz is None:
+                frame.index = frame.index.tz_localize(target_tz)
+            else:
+                frame.index = frame.index.tz_convert(target_tz)
+
+    frame = frame[~frame.index.duplicated(keep="last")]
+    return frame.reindex(target_index)
+
+
+def _coerce_optional_float(value: object, default: float | None = None) -> float | None:
+    if value is None or pd.isna(value):
+        return default
+    return float(value)
+
+
+def _coerce_optional_str(value: object) -> str | None:
+    if value is None or pd.isna(value):
+        return None
+    return str(value)
 
 
 def _safe_beta(
@@ -119,6 +189,16 @@ def _derive_capitulation_score(drawdown: float) -> int:
     if drawdown <= -0.05:
         return 20
     return 0
+
+
+def _rolling_market_drawdown(prices: pd.Series, loc: int, *, window: int = 252) -> float:
+    """Return drawdown versus the trailing-window high, expressed as a negative number."""
+    start = max(0, loc - window + 1)
+    trailing_peak = float(prices.iloc[start : loc + 1].max())
+    current = float(prices.iloc[loc])
+    if trailing_peak <= 0:
+        return 0.0
+    return current / trailing_peak - 1.0
 
 
 def _derive_tactical_stress_score(prices: pd.Series, loc: int) -> int:
@@ -274,6 +354,28 @@ class BacktestMethodologySummary:
         """Legacy support for feature policy audit."""
         return {f: "excluded" for f in self.excluded_features}
 
+
+@dataclass(frozen=True)
+class TargetBetaAlignmentSummary:
+    """Alignment metrics for target-beta decision backtests."""
+
+    compared_points: int
+    mean_absolute_error: float
+    rmse: float
+    within_tolerance_ratio: float
+    daily_timeseries: pd.DataFrame
+
+
+@dataclass(frozen=True)
+class DeploymentAlignmentSummary:
+    """Alignment metrics for incremental deployment decision backtests."""
+
+    compared_points: int
+    exact_match_ratio: float
+    mean_rank_abs_error: float
+    within_one_step_ratio: float
+    daily_timeseries: pd.DataFrame
+
 def simulate_leveraged_price(prices: pd.Series, leverage: float = 2.0) -> pd.Series:
     """
     Simulates a leveraged ETF price series based on underlying daily returns.
@@ -326,6 +428,240 @@ class Backtester:
                 "units": event.units
             })
         return results
+
+    def build_signal_timeseries(
+        self,
+        ohlcv: pd.DataFrame,
+        *,
+        macro_seeder: Optional[HistoricalMacroSeeder] = None,
+        registry_path: str = "data/candidate_registry_v7.json",
+        expected_matrix: pd.DataFrame | pd.Series | None = None,
+    ) -> pd.DataFrame:
+        """
+        Build the pure daily decision surface for v8 runtime logic.
+
+        This path does not simulate cash transfers or portfolio NAV. It emits the
+        target-beta signal and incremental deployment pace directly so they can be
+        compared against an expected market-date time series.
+        """
+        prices_qqq = ohlcv["Close"].dropna().astype(float)
+        if prices_qqq.empty:
+            raise ValueError("Empty price data")
+
+        five_day_returns = prices_qqq.pct_change(5).fillna(0.0)
+        twenty_day_returns = prices_qqq.pct_change(20).fillna(0.0)
+        registry = load_registry(registry_path)
+        expected = _coerce_alignment_frame(expected_matrix, prices_qqq.index)
+        previous_risk_state: RiskState | None = None
+        rows: list[dict[str, Any]] = []
+
+        for loc, dt in enumerate(prices_qqq.index):
+            p_qqq = float(prices_qqq.iloc[loc])
+            current_date = pd.Timestamp(dt).date()
+            row = expected.loc[dt] if not expected.empty else pd.Series(dtype=object)
+
+            macro_features = {
+                "credit_spread": None,
+                "credit_accel": 0.0,
+                "real_yield": None,
+                "net_liquidity": None,
+                "liquidity_roc": 0.0,
+                "is_funding_stressed": False,
+            }
+            if macro_seeder:
+                macro_features.update(macro_seeder.get_features_for_date(current_date))
+
+            price_drawdown = _rolling_market_drawdown(prices_qqq, loc)
+            capitulation_score = int(
+                _coerce_optional_float(row.get("capitulation_score"), _derive_capitulation_score(price_drawdown))
+                or 0
+            )
+            tactical_stress_score = int(
+                _coerce_optional_float(row.get("tactical_stress_score"), _derive_tactical_stress_score(prices_qqq, loc))
+                or 0
+            )
+            inferred_market_drawdown = max(0.0, -price_drawdown)
+            rolling_drawdown = _coerce_optional_float(
+                row.get("rolling_drawdown"),
+                inferred_market_drawdown,
+            )
+            five_day_return = _coerce_optional_float(
+                row.get("five_day_return"),
+                float(five_day_returns.iloc[loc]),
+            ) or 0.0
+            twenty_day_return = _coerce_optional_float(
+                row.get("twenty_day_return"),
+                float(twenty_day_returns.iloc[loc]),
+            ) or 0.0
+            available_new_cash = _coerce_optional_float(
+                row.get("available_new_cash"),
+                BASE_WEEKLY_DCA_UNITS * p_qqq,
+            ) or 0.0
+            erp = _coerce_optional_float(row.get("erp"), macro_features.get("erp"))
+
+            snapshot = build_feature_snapshot(
+                market_date=current_date,
+                raw_values={
+                    "credit_spread": macro_features.get("credit_spread"),
+                    "credit_acceleration": macro_features.get("credit_accel", 0.0),
+                    "net_liquidity": macro_features.get("net_liquidity"),
+                    "liquidity_roc": macro_features.get("liquidity_roc", 0.0),
+                    "real_yield": macro_features.get("real_yield"),
+                    "funding_stress": macro_features.get("is_funding_stressed", False),
+                    "close": p_qqq,
+                    "vix": None,
+                    "breadth": None,
+                    "fear_greed": None,
+                    "tactical_stress_score": tactical_stress_score,
+                    "capitulation_score": capitulation_score,
+                    "rolling_drawdown": rolling_drawdown,
+                    "five_day_return": five_day_return,
+                    "twenty_day_return": twenty_day_return,
+                    "persistence_score": 0,
+                },
+                raw_quality={},
+            )
+            tier0_regime = assess_structural_regime(
+                credit_spread=macro_features.get("credit_spread"),
+                erp=erp,
+            )
+            risk = decide_risk_state(
+                snapshot,
+                rolling_drawdown=rolling_drawdown,
+                tier0_regime=tier0_regime,
+                drawdown_budget=registry.drawdown_budget,
+            )
+            deploy = decide_deployment_state(
+                snapshot,
+                risk,
+                tier0_regime=tier0_regime,
+                available_new_cash=available_new_cash,
+            )
+
+            candidates = select_runtime_candidates(registry, risk.risk_state)
+            selected_candidate, used_floor_fallback = select_candidate_with_floor_fallback_v8(
+                scoped_candidates=candidates,
+                registry_candidates=list(registry.candidates),
+                max_beta_ceiling=risk.target_exposure_ceiling,
+                max_drawdown_budget=registry.drawdown_budget,
+            )
+
+            if selected_candidate is None:
+                raise ValueError(
+                    "No compliant runtime candidate found and no global 0.5 beta floor candidate is available. "
+                    "Check candidate_registry_v7.json."
+                )
+
+            selected_candidate_id = selected_candidate.candidate_id
+            selection = RuntimeSelection(
+                selected_candidate=selected_candidate,
+                rejected_candidates=(),
+                selection_score=0.0,
+            )
+            recommendation = build_beta_recommendation(
+                selection=selection,
+                risk_decision=risk,
+                previous_risk_state=previous_risk_state,
+            )
+            signal_target_beta = float(recommendation.target_beta)
+
+            rows.append(
+                {
+                    "date": dt,
+                    "close": p_qqq,
+                    _EXPECTED_TARGET_BETA_COLUMN: _coerce_optional_float(row.get(_EXPECTED_TARGET_BETA_COLUMN)),
+                    _EXPECTED_DEPLOYMENT_COLUMN: _coerce_optional_str(row.get(_EXPECTED_DEPLOYMENT_COLUMN)),
+                    "rolling_drawdown": rolling_drawdown,
+                    "five_day_return": five_day_return,
+                    "twenty_day_return": twenty_day_return,
+                    "available_new_cash": available_new_cash,
+                    "tier0_regime": tier0_regime,
+                    "risk_state": risk.risk_state.value,
+                    "deployment_state": deploy.deployment_state.value,
+                    "deployment_multiplier": float(deploy.dca_multiplier),
+                    "selected_candidate_id": selected_candidate_id,
+                    "signal_target_beta": signal_target_beta,
+                    "used_beta_floor_fallback": used_floor_fallback,
+                }
+            )
+            previous_risk_state = risk.risk_state
+
+        return pd.DataFrame(rows).set_index("date")
+
+    def backtest_target_beta_alignment(
+        self,
+        ohlcv: pd.DataFrame,
+        *,
+        expected_matrix: pd.DataFrame | pd.Series,
+        macro_seeder: Optional[HistoricalMacroSeeder] = None,
+        registry_path: str = "data/candidate_registry_v7.json",
+        tolerance: float = 0.10,
+    ) -> TargetBetaAlignmentSummary:
+        """Score the target-beta decision path against an expected beta time series."""
+        signals = self.build_signal_timeseries(
+            ohlcv,
+            macro_seeder=macro_seeder,
+            registry_path=registry_path,
+            expected_matrix=expected_matrix,
+        ).copy()
+        compared = signals[signals[_EXPECTED_TARGET_BETA_COLUMN].notna()].copy()
+        if compared.empty:
+            raise ValueError("expected_matrix must contain at least one expected_target_beta value")
+
+        compared["beta_error"] = compared["signal_target_beta"] - compared[_EXPECTED_TARGET_BETA_COLUMN]
+        compared["beta_abs_error"] = compared["beta_error"].abs()
+        compared["beta_sq_error"] = compared["beta_error"] ** 2
+        compared["beta_within_tolerance"] = compared["beta_abs_error"] <= tolerance
+        signals.loc[compared.index, compared.columns] = compared
+
+        mae = float(compared["beta_abs_error"].mean())
+        rmse = float(np.sqrt(compared["beta_sq_error"].mean()))
+        within_ratio = float(compared["beta_within_tolerance"].mean())
+        return TargetBetaAlignmentSummary(
+            compared_points=len(compared),
+            mean_absolute_error=mae,
+            rmse=rmse,
+            within_tolerance_ratio=within_ratio,
+            daily_timeseries=signals,
+        )
+
+    def backtest_deployment_alignment(
+        self,
+        ohlcv: pd.DataFrame,
+        *,
+        expected_matrix: pd.DataFrame | pd.Series,
+        macro_seeder: Optional[HistoricalMacroSeeder] = None,
+        registry_path: str = "data/candidate_registry_v7.json",
+    ) -> DeploymentAlignmentSummary:
+        """Score the incremental deployment decision path against an expected signal time series."""
+        signals = self.build_signal_timeseries(
+            ohlcv,
+            macro_seeder=macro_seeder,
+            registry_path=registry_path,
+            expected_matrix=expected_matrix,
+        ).copy()
+        compared = signals[signals[_EXPECTED_DEPLOYMENT_COLUMN].notna()].copy()
+        if compared.empty:
+            raise ValueError("expected_matrix must contain at least one expected_deployment_state value")
+
+        expected_rank = compared[_EXPECTED_DEPLOYMENT_COLUMN].map(_DEPLOYMENT_STATE_RANK)
+        actual_rank = compared["deployment_state"].map(_DEPLOYMENT_STATE_RANK)
+        if expected_rank.isna().any():
+            bad = compared.loc[expected_rank.isna(), _EXPECTED_DEPLOYMENT_COLUMN].unique().tolist()
+            raise ValueError(f"Unknown expected deployment state(s): {bad}")
+
+        compared["deployment_exact_match"] = compared["deployment_state"] == compared[_EXPECTED_DEPLOYMENT_COLUMN]
+        compared["deployment_rank_abs_error"] = (actual_rank - expected_rank).abs()
+        compared["deployment_within_one_step"] = compared["deployment_rank_abs_error"] <= 1.0
+        signals.loc[compared.index, compared.columns] = compared
+
+        return DeploymentAlignmentSummary(
+            compared_points=len(compared),
+            exact_match_ratio=float(compared["deployment_exact_match"].mean()),
+            mean_rank_abs_error=float(compared["deployment_rank_abs_error"].mean()),
+            within_one_step_ratio=float(compared["deployment_within_one_step"].mean()),
+            daily_timeseries=signals,
+        )
 
     def simulate_portfolio(
         self, 
@@ -668,6 +1004,8 @@ class Backtester:
         deployed_before_low = 0.0
         total_volume_traded = 0.0
         peak_nav = float(self.initial_capital)
+        five_day_returns = prices_qqq.pct_change(5).fillna(0.0)
+        twenty_day_returns = prices_qqq.pct_change(20).fillna(0.0)
 
         previous_risk_state: RiskState | None = None
 
@@ -678,7 +1016,7 @@ class Backtester:
 
             total_nav_before = reserve_cash + active_cash + (units_qqq * p_qqq) + (units_qld * p_qld)
             peak_nav = max(peak_nav, total_nav_before)
-            rolling_drawdown = max(0.0, 1.0 - (total_nav_before / peak_nav)) if peak_nav > 0 else 0.0
+            nav_drawdown = max(0.0, 1.0 - (total_nav_before / peak_nav)) if peak_nav > 0 else 0.0
 
             macro_features = {
                 "credit_spread": None,
@@ -691,9 +1029,13 @@ class Backtester:
             if macro_seeder:
                 macro_features.update(macro_seeder.get_features_for_date(current_date))
 
-            price_drawdown = float(prices_qqq.iloc[loc] / prices_qqq.iloc[: loc + 1].max() - 1.0)
+            price_drawdown = _rolling_market_drawdown(prices_qqq, loc)
+            market_drawdown = max(0.0, -price_drawdown)
+            rolling_drawdown = max(nav_drawdown, market_drawdown)
             capitulation_score = _derive_capitulation_score(price_drawdown)
             tactical_stress_score = _derive_tactical_stress_score(prices_qqq, loc)
+            five_day_return = float(five_day_returns.iloc[loc])
+            twenty_day_return = float(twenty_day_returns.iloc[loc])
 
             snapshot = build_feature_snapshot(
                 market_date=current_date,
@@ -710,13 +1052,16 @@ class Backtester:
                     "fear_greed": None,
                     "tactical_stress_score": tactical_stress_score,
                     "capitulation_score": capitulation_score,
+                    "rolling_drawdown": rolling_drawdown,
+                    "five_day_return": five_day_return,
+                    "twenty_day_return": twenty_day_return,
                     "persistence_score": 0,
                 },
                 raw_quality={},
             )
             tier0_regime = assess_structural_regime(
                 credit_spread=macro_features.get("credit_spread"),
-                erp=None,
+                erp=macro_features.get("erp"),
             )
 
             risk = decide_risk_state(
@@ -754,66 +1099,59 @@ class Backtester:
                 baseline_cost_num += baseline_budget
 
             candidates = select_runtime_candidates(registry, risk.risk_state)
-            selected_candidate = find_best_allocation_v8(
+            selected_candidate, used_floor_fallback = select_candidate_with_floor_fallback_v8(
+                scoped_candidates=candidates,
+                registry_candidates=list(registry.candidates),
                 max_beta_ceiling=risk.target_exposure_ceiling,
                 max_drawdown_budget=registry.drawdown_budget,
-                candidates=candidates,
             )
 
             active_nav_before_rebalance = active_cash + (units_qqq * p_qqq) + (units_qld * p_qld)
             executed_target: TargetAllocationState | None = None
             selected_candidate_id: str | None = None
 
-            if selected_candidate is not None:
-                selected_candidate_id = selected_candidate.candidate_id
-                selection = RuntimeSelection(
-                    selected_candidate=selected_candidate,
-                    rejected_candidates=(),
-                    selection_score=0.0,
-                )
-                recommendation = build_beta_recommendation(
-                    selection=selection,
-                    risk_decision=risk,
-                    previous_risk_state=previous_risk_state,
+            if selected_candidate is None:
+                raise ValueError(
+                    "No compliant runtime candidate found and no global 0.5 beta floor candidate is available. "
+                    "Check candidate_registry_v7.json."
                 )
 
-                if active_nav_before_rebalance > 0 and recommendation.should_adjust:
-                    current_qqq_val = units_qqq * p_qqq
-                    current_qld_val = units_qld * p_qld
-                    target_qqq_val = active_nav_before_rebalance * recommendation.recommended_qqq_pct
-                    target_qld_val = active_nav_before_rebalance * recommendation.recommended_qld_pct
-                    total_volume_traded += abs(target_qqq_val - current_qqq_val)
-                    total_volume_traded += abs(target_qld_val - current_qld_val)
+            selected_candidate_id = selected_candidate.candidate_id
+            selection = RuntimeSelection(
+                selected_candidate=selected_candidate,
+                rejected_candidates=(),
+                selection_score=0.0,
+            )
+            recommendation = build_beta_recommendation(
+                selection=selection,
+                risk_decision=risk,
+                previous_risk_state=previous_risk_state,
+            )
 
-                    active_cash = active_nav_before_rebalance * recommendation.recommended_cash_pct
-                    units_qqq = target_qqq_val / p_qqq if p_qqq > 0 else 0.0
-                    units_qld = target_qld_val / p_qld if p_qld > 0 else 0.0
-                    executed_target = TargetAllocationState(
-                        target_cash_pct=recommendation.recommended_cash_pct,
-                        target_qqq_pct=recommendation.recommended_qqq_pct,
-                        target_qld_pct=recommendation.recommended_qld_pct,
-                        target_beta=recommendation.target_beta,
-                    )
-                elif active_nav_before_rebalance > 0:
-                    executed_target = TargetAllocationState(
-                        target_cash_pct=active_cash / active_nav_before_rebalance,
-                        target_qqq_pct=(units_qqq * p_qqq) / active_nav_before_rebalance,
-                        target_qld_pct=(units_qld * p_qld) / active_nav_before_rebalance,
-                        target_beta=(units_qqq * p_qqq + 2.0 * units_qld * p_qld) / active_nav_before_rebalance,
-                    )
-            else:
-                if active_nav_before_rebalance > 0:
-                    total_volume_traded += abs(units_qqq * p_qqq)
-                    total_volume_traded += abs(units_qld * p_qld)
-                    active_cash = active_nav_before_rebalance
-                    units_qqq = 0.0
-                    units_qld = 0.0
-                    executed_target = TargetAllocationState(
-                        target_cash_pct=1.0,
-                        target_qqq_pct=0.0,
-                        target_qld_pct=0.0,
-                        target_beta=0.0,
-                    )
+            if active_nav_before_rebalance > 0 and recommendation.should_adjust:
+                current_qqq_val = units_qqq * p_qqq
+                current_qld_val = units_qld * p_qld
+                target_qqq_val = active_nav_before_rebalance * recommendation.recommended_qqq_pct
+                target_qld_val = active_nav_before_rebalance * recommendation.recommended_qld_pct
+                total_volume_traded += abs(target_qqq_val - current_qqq_val)
+                total_volume_traded += abs(target_qld_val - current_qld_val)
+
+                active_cash = active_nav_before_rebalance * recommendation.recommended_cash_pct
+                units_qqq = target_qqq_val / p_qqq if p_qqq > 0 else 0.0
+                units_qld = target_qld_val / p_qld if p_qld > 0 else 0.0
+                executed_target = TargetAllocationState(
+                    target_cash_pct=recommendation.recommended_cash_pct,
+                    target_qqq_pct=recommendation.recommended_qqq_pct,
+                    target_qld_pct=recommendation.recommended_qld_pct,
+                    target_beta=recommendation.target_beta,
+                )
+            elif active_nav_before_rebalance > 0:
+                executed_target = TargetAllocationState(
+                    target_cash_pct=active_cash / active_nav_before_rebalance,
+                    target_qqq_pct=(units_qqq * p_qqq) / active_nav_before_rebalance,
+                    target_qld_pct=(units_qld * p_qld) / active_nav_before_rebalance,
+                    target_beta=(units_qqq * p_qqq + 2.0 * units_qld * p_qld) / active_nav_before_rebalance,
+                )
 
             target_history.append(executed_target)
             transfer_history.append(transfer_cash)
@@ -843,8 +1181,12 @@ class Backtester:
                     "deployment_state": deploy.deployment_state.value,
                     "tier0_regime": tier0_regime,
                     "selected_candidate_id": selected_candidate_id,
+                    "used_beta_floor_fallback": used_floor_fallback,
                     "target_beta": target_beta_total,
                     "deployment_cash": transfer_cash,
+                    "rolling_drawdown": rolling_drawdown,
+                    "five_day_return": five_day_return,
+                    "twenty_day_return": twenty_day_return,
                 }
             )
 
@@ -1268,11 +1610,11 @@ def _load_research_macro_dataset(macro_path: str) -> pd.DataFrame:
 
     return macro_df
 
-def run_backtest() -> None:
-    cache_path = "data/qqq_history_cache.csv"
-    macro_path = "data/macro_historical_dump.csv"
+
+def _load_price_history(cache_path: str) -> pd.DataFrame:
+    """Load cached QQQ history, downloading only when the cache is unavailable."""
     print(f"Loading QQQ history from {cache_path}...")
-    
+
     qqq = pd.DataFrame()
     if os.path.exists(cache_path):
         try:
@@ -1281,8 +1623,8 @@ def run_backtest() -> None:
                 qqq.index = pd.to_datetime(qqq.index, utc=True)
                 last_cached = qqq.index[-1].date().isoformat()
                 print(f"Successfully loaded {len(qqq)} rows (Last date: {last_cached})")
-        except Exception as e:
-            print(f"Cache read failed: {e}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"Cache read failed: {exc}")
 
     if qqq.empty:
         print(f"Downloading fresh data from yfinance since {cache_path} was missing or empty...")
@@ -1293,10 +1635,98 @@ def run_backtest() -> None:
             print(f"Cache updated: {cache_path}")
 
     if qqq.empty:
-        print("Error: No price data available.")
-        return
+        raise ValueError("No price data available.")
 
+    return qqq
+
+
+def _load_expectation_matrix(expectation_path: str) -> pd.DataFrame:
+    """Load an expectation matrix for signal-alignment audits."""
+    path = Path(expectation_path)
+    if not path.exists():
+        raise FileNotFoundError(
+            "Missing expectation matrix: "
+            f"{expectation_path}. "
+            "Provide a CSV with `date` plus `expected_target_beta` and/or "
+            "`expected_deployment_state`."
+        )
+
+    frame = pd.read_csv(path)
+    validate_signal_expectation_frame(frame)
+    summary = summarize_signal_expectation_coverage(frame)
+
+    print("\n--- Signal Expectation Coverage ---")
+    print(f"Rows: {summary['rows']}")
+    print(f"First date: {summary['first_date']}")
+    print(f"Last date: {summary['last_date']}")
+    print("Coverage:")
+    for key, value in summary["coverage"].items():
+        print(f"  {key}: {value:.3f}")
+
+    frame["date"] = pd.to_datetime(frame["date"], errors="coerce", utc=True)
+    return frame.set_index("date").sort_index()
+
+
+def _macro_dataset_is_synthetic(macro_df: pd.DataFrame) -> bool:
+    """Detect smoke-test macro fixtures that must not be used for acceptance audits."""
+    build_versions = {str(v) for v in macro_df.get("build_version", pd.Series(dtype=object)).dropna().unique()}
+    if any(version.startswith("dev-fixture") for version in build_versions):
+        return True
+
+    source_columns = (
+        "source_credit_spread",
+        "source_real_yield",
+        "source_net_liquidity",
+        "source_funding_stress",
+    )
+    for column in source_columns:
+        values = {str(v) for v in macro_df.get(column, pd.Series(dtype=object)).dropna().unique()}
+        if "synthetic_fixture" in values:
+            return True
+    return False
+
+
+def _print_target_beta_alignment_summary(summary: TargetBetaAlignmentSummary) -> None:
+    print("\n--- Target Beta Alignment Audit ---")
+    print(f"Compared points: {summary.compared_points}")
+    print(f"Mean Absolute Error: {summary.mean_absolute_error:.4f}")
+    print(f"RMSE: {summary.rmse:.4f}")
+    print(f"Within Tolerance Ratio: {summary.within_tolerance_ratio:.2%}")
+
+
+def _print_deployment_alignment_summary(summary: DeploymentAlignmentSummary) -> None:
+    print("\n--- Deployment Alignment Audit ---")
+    print(f"Compared points: {summary.compared_points}")
+    print(f"Exact Match Ratio: {summary.exact_match_ratio:.2%}")
+    print(f"Mean Rank Abs Error: {summary.mean_rank_abs_error:.4f}")
+    print(f"Within One Step Ratio: {summary.within_one_step_ratio:.2%}")
+
+
+def run_signal_audits(
+    expectation_path: str,
+    *,
+    mode: str = "both",
+    cache_path: str = "data/qqq_history_cache.csv",
+    macro_path: str = "data/macro_historical_dump.csv",
+    registry_path: str = "data/candidate_registry_v7.json",
+    beta_tolerance: float = 0.10,
+    allow_synthetic_macro: bool = False,
+) -> dict[str, object]:
+    """Run expectation-driven signal audits for target beta and/or deployment pace."""
+    if mode not in {"both", "beta", "deployment"}:
+        raise ValueError(f"Unsupported audit mode: {mode}")
+
+    qqq = _load_price_history(cache_path)
+    expectations = _load_expectation_matrix(expectation_path)
     macro_df = _load_research_macro_dataset(macro_path)
+    if _macro_dataset_is_synthetic(macro_df) and not allow_synthetic_macro:
+        raise ValueError(
+            "Signal audits require a non-synthetic macro dataset. "
+            "Current build_version/source tags indicate a dev fixture. "
+            "Rebuild `data/macro_historical_dump.csv` from canonical research data "
+            "or pass `allow_synthetic_macro=True` for smoke tests only."
+        )
+
     seeder = HistoricalMacroSeeder(mock_df=macro_df)
     tester = Backtester()
 
@@ -1304,7 +1734,61 @@ def run_backtest() -> None:
     previous_tier0_level = tier0_logger.level
     tier0_logger.setLevel(logging.ERROR)
     try:
-        summary = tester.simulate_portfolio(qqq, seeder, enable_dynamic_search=True, registry_path="data/candidate_registry_v7.json")
+        results: dict[str, object] = {}
+        if mode in {"both", "beta"}:
+            beta_summary = tester.backtest_target_beta_alignment(
+                qqq,
+                expected_matrix=expectations,
+                macro_seeder=seeder,
+                registry_path=registry_path,
+                tolerance=beta_tolerance,
+            )
+            _print_target_beta_alignment_summary(beta_summary)
+            results["beta"] = beta_summary
+
+        if mode in {"both", "deployment"}:
+            deployment_summary = tester.backtest_deployment_alignment(
+                qqq,
+                expected_matrix=expectations,
+                macro_seeder=seeder,
+                registry_path=registry_path,
+            )
+            _print_deployment_alignment_summary(deployment_summary)
+            results["deployment"] = deployment_summary
+    finally:
+        tier0_logger.setLevel(previous_tier0_level)
+
+    return results
+
+def run_backtest(
+    *,
+    cache_path: str = "data/qqq_history_cache.csv",
+    macro_path: str = "data/macro_historical_dump.csv",
+    registry_path: str = "data/candidate_registry_v7.json",
+    allow_synthetic_macro: bool = False,
+) -> None:
+    qqq = _load_price_history(cache_path)
+    macro_df = _load_research_macro_dataset(macro_path)
+    if _macro_dataset_is_synthetic(macro_df) and not allow_synthetic_macro:
+        raise ValueError(
+            "Portfolio backtests require a non-synthetic macro dataset. "
+            "Current build_version/source tags indicate a dev fixture. "
+            "Rebuild `data/macro_historical_dump.csv` from canonical research data "
+            "or pass `allow_synthetic_macro=True` for smoke tests only."
+        )
+    seeder = HistoricalMacroSeeder(mock_df=macro_df)
+    tester = Backtester()
+
+    tier0_logger = logging.getLogger("src.engine.tier0_macro")
+    previous_tier0_level = tier0_logger.level
+    tier0_logger.setLevel(logging.ERROR)
+    try:
+        summary = tester.simulate_portfolio(
+            qqq,
+            seeder,
+            enable_dynamic_search=True,
+            registry_path=registry_path,
+        )
     finally:
         tier0_logger.setLevel(previous_tier0_level)
 
@@ -1343,5 +1827,71 @@ def run_backtest() -> None:
     print(f"Average cost vs baseline DCA: {_format_pct(summary.average_cost_improvement_vs_baseline_dca)} improvement")
     print("-" * 40)
 
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="QQQ signal backtests and expectation-driven audits")
+    parser.add_argument(
+        "--mode",
+        choices=["portfolio", "beta", "deployment", "both"],
+        default="portfolio",
+        help="`portfolio` runs the legacy mixed performance backtest. "
+        "`beta`, `deployment`, or `both` run expectation-driven signal audits.",
+    )
+    parser.add_argument(
+        "--expectations",
+        help="Path to the expectation matrix CSV used by signal audits",
+    )
+    parser.add_argument(
+        "--cache-path",
+        default="data/qqq_history_cache.csv",
+        help="Price cache path (default: data/qqq_history_cache.csv)",
+    )
+    parser.add_argument(
+        "--macro-path",
+        default="data/macro_historical_dump.csv",
+        help="Macro dataset path (default: data/macro_historical_dump.csv)",
+    )
+    parser.add_argument(
+        "--registry-path",
+        default="data/candidate_registry_v7.json",
+        help="Candidate registry path (default: data/candidate_registry_v7.json)",
+    )
+    parser.add_argument(
+        "--beta-tolerance",
+        type=float,
+        default=0.10,
+        help="Absolute beta error tolerance for target-beta audits (default: 0.10)",
+    )
+    parser.add_argument(
+        "--allow-synthetic-macro",
+        action="store_true",
+        help="Allow dev-fixture macro datasets for smoke tests. Do not use for acceptance.",
+    )
+    args = parser.parse_args(argv)
+
+    if args.mode == "portfolio":
+        run_backtest(
+            cache_path=args.cache_path,
+            macro_path=args.macro_path,
+            registry_path=args.registry_path,
+            allow_synthetic_macro=args.allow_synthetic_macro,
+        )
+        return 0
+
+    if not args.expectations:
+        parser.error("--expectations is required when --mode is beta, deployment, or both")
+
+    run_signal_audits(
+        args.expectations,
+        mode=args.mode,
+        cache_path=args.cache_path,
+        macro_path=args.macro_path,
+        registry_path=args.registry_path,
+        beta_tolerance=args.beta_tolerance,
+        allow_synthetic_macro=args.allow_synthetic_macro,
+    )
+    return 0
+
+
 if __name__ == "__main__":
-    run_backtest()
+    raise SystemExit(main())

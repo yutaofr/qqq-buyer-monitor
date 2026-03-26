@@ -1,7 +1,7 @@
-import pandas as pd
 import logging
 from datetime import date
-from typing import Optional, Dict, Any
+
+import pandas as pd
 
 from src.research.data_contracts import validate_historical_macro_frame
 
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class HistoricalMacroSeeder:
     """Loads and provides historical macro indicators for backtesting."""
 
-    def __init__(self, csv_path: Optional[str] = None, mock_df: Optional[pd.DataFrame] = None):
+    def __init__(self, csv_path: str | None = None, mock_df: pd.DataFrame | None = None):
         self._canonical_mode = False
         if mock_df is not None:
             self.df = mock_df.copy()
@@ -55,26 +55,28 @@ class HistoricalMacroSeeder:
         return frame.resample("D").ffill() if not frame.empty and isinstance(frame.index, pd.DatetimeIndex) else frame
 
     @staticmethod
-    def _float_or_default(value: Any, default: float | None = None) -> float | None:
+    def _float_or_default(value: object, default: float | None = None) -> float | None:
         if pd.isna(value):
             return default
         return float(value)
 
-    def get_features_for_date(self, target_date: date) -> Dict[str, Any]:
+    def get_features_for_date(self, target_date: date) -> dict[str, object]:
         """Retrieve macro features for a specific date, including acceleration."""
         features = {
             "credit_spread": None,
             "credit_accel": 0.0,
+            "erp": None,
+            "forward_pe": None,
             "net_liquidity": None,
             "liquidity_roc": 0.0,
-            "is_funding_stressed": False
+            "is_funding_stressed": False,
         }
-        
+
         if self.df.empty:
             return features
-            
+
         target_ts = pd.Timestamp(target_date)
-        
+
         if target_ts < self.df.index.min():
             return features
 
@@ -87,6 +89,8 @@ class HistoricalMacroSeeder:
         if self._canonical_mode:
             features["credit_spread"] = self._float_or_default(row.get("credit_spread_bps"))
             features["credit_accel"] = self._float_or_default(row.get("credit_acceleration_pct_10d"), 0.0) or 0.0
+            features["erp"] = self._float_or_default(row.get("erp_pct", row.get("erp")))
+            features["forward_pe"] = self._float_or_default(row.get("forward_pe"))
             features["real_yield"] = self._float_or_default(row.get("real_yield_10y_pct"))
             features["net_liquidity"] = self._float_or_default(row.get("net_liquidity_usd_bn"))
             features["liquidity_roc"] = self._float_or_default(row.get("liquidity_roc_pct_4w"), 0.0) or 0.0
@@ -94,6 +98,8 @@ class HistoricalMacroSeeder:
         else:
             features["credit_spread"] = self._float_or_default(row.get("BAMLH0A0HYM2"))
             features["credit_accel"] = self._float_or_default(row.get("credit_acceleration"), 0.0) or 0.0
+            features["erp"] = self._float_or_default(row.get("erp"))
+            features["forward_pe"] = self._float_or_default(row.get("forward_pe"))
             features["real_yield"] = self._float_or_default(row.get("real_yield"), None)
             features["net_liquidity"] = self._float_or_default(row.get("net_liquidity"), None)
             features["liquidity_roc"] = self._float_or_default(row.get("liquidity_roc"), 0.0) or 0.0

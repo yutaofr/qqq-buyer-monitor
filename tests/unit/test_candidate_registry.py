@@ -1,5 +1,4 @@
 """TDD: Candidate Registry — load, filter, and edge cases."""
-from pathlib import Path
 
 import pytest
 
@@ -14,7 +13,7 @@ FIXTURE = "tests/fixtures/candidate_registry_v7.json"
 def test_load_registry_reads_certified_candidates():
     registry = load_registry(FIXTURE)
     assert registry.registry_version == "test-v7-r1"
-    assert len(registry.candidates) == 6
+    assert len(registry.candidates) == 7
 
 
 def test_load_registry_version_and_budget():
@@ -70,7 +69,7 @@ def test_select_runtime_candidates_allows_conditional_when_flag_set():
 
 def test_select_runtime_candidates_returns_empty_for_wrong_state():
     registry = load_registry(FIXTURE)
-    candidates = select_runtime_candidates(registry, RiskState.RISK_EXIT)
+    candidates = select_runtime_candidates(registry, RiskState.RISK_ON)
     assert candidates == []
 
 
@@ -79,3 +78,10 @@ def test_select_runtime_candidates_defense_state():
     candidates = select_runtime_candidates(registry, RiskState.RISK_DEFENSE)
     assert len(candidates) == 1
     assert candidates[0].candidate_id == "defense-001"
+
+
+def test_select_runtime_candidates_exit_state():
+    registry = load_registry(FIXTURE)
+    candidates = select_runtime_candidates(registry, RiskState.RISK_EXIT)
+    assert len(candidates) == 1
+    assert candidates[0].candidate_id == "exit-floor-001"

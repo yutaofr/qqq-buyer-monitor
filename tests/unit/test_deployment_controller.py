@@ -25,19 +25,17 @@ def _risk(state: RiskState, ceiling: float = 0.90, cash: float = 0.10) -> RiskDe
 
 
 
-def test_rich_tightening_defaults_to_slow_without_high_quality_capitulation():
-    snap = _snap({"capitulation_score": 20, "tactical_stress_score": 10})
-    decision = decide_deployment_state(
-        snap,
-        _risk(RiskState.RISK_REDUCED, 0.30, 0.70),
-        tier0_regime="RICH_TIGHTENING",
-        available_new_cash=1000.0,
+def test_rich_tightening_defaults_to_base_without_left_tail_confirmation():
+    snap = _snap(
+        {
+            "credit_spread": 470.0,
+            "capitulation_score": 20,
+            "tactical_stress_score": 10,
+            "rolling_drawdown": 0.05,
+            "five_day_return": 0.01,
+            "twenty_day_return": -0.02,
+        }
     )
-    assert decision.deployment_state == DeploymentState.DEPLOY_SLOW
-
-
-def test_rich_tightening_allows_base_when_capitulation_breaks_soft_ceiling():
-    snap = _snap({"capitulation_score": 70, "tactical_stress_score": 10})
     decision = decide_deployment_state(
         snap,
         _risk(RiskState.RISK_REDUCED, 0.30, 0.70),
@@ -47,30 +45,77 @@ def test_rich_tightening_allows_base_when_capitulation_breaks_soft_ceiling():
     assert decision.deployment_state == DeploymentState.DEPLOY_BASE
 
 
-def test_transition_stress_defaults_to_slow_without_override():
-    snap = _snap({"capitulation_score": 10, "tactical_stress_score": 10})
+def test_rich_tightening_allows_fast_when_left_tail_momentum_confirms():
+    snap = _snap(
+        {
+            "credit_spread": 470.0,
+            "capitulation_score": 70,
+            "tactical_stress_score": 10,
+            "rolling_drawdown": 0.18,
+            "five_day_return": -0.03,
+            "twenty_day_return": -0.10,
+        }
+    )
     decision = decide_deployment_state(
         snap,
-        _risk(RiskState.RISK_REDUCED, 0.50, 0.50),
+        _risk(RiskState.RISK_REDUCED, 0.30, 0.70),
+        tier0_regime="RICH_TIGHTENING",
+        available_new_cash=1000.0,
+    )
+    assert decision.deployment_state == DeploymentState.DEPLOY_FAST
+
+
+def test_transition_stress_defaults_to_slow_without_left_tail_confirmation():
+    snap = _snap(
+        {
+            "credit_spread": 560.0,
+            "capitulation_score": 70,
+            "tactical_stress_score": 10,
+            "rolling_drawdown": 0.18,
+            "five_day_return": -0.01,
+            "twenty_day_return": -0.04,
+        }
+    )
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_DEFENSE, 0.50, 0.50),
         tier0_regime="TRANSITION_STRESS",
         available_new_cash=1000.0,
     )
     assert decision.deployment_state == DeploymentState.DEPLOY_SLOW
 
 
-def test_transition_stress_allows_base_when_capitulation_breaks_soft_ceiling():
-    snap = _snap({"capitulation_score": 70, "tactical_stress_score": 10})
+def test_transition_stress_allows_fast_when_left_tail_momentum_confirms():
+    snap = _snap(
+        {
+            "credit_spread": 560.0,
+            "capitulation_score": 70,
+            "tactical_stress_score": 10,
+            "rolling_drawdown": 0.20,
+            "five_day_return": -0.04,
+            "twenty_day_return": -0.10,
+        }
+    )
     decision = decide_deployment_state(
         snap,
-        _risk(RiskState.RISK_REDUCED, 0.50, 0.50),
+        _risk(RiskState.RISK_DEFENSE, 0.50, 0.50),
         tier0_regime="TRANSITION_STRESS",
         available_new_cash=1000.0,
     )
-    assert decision.deployment_state == DeploymentState.DEPLOY_BASE
+    assert decision.deployment_state == DeploymentState.DEPLOY_FAST
 
 
 def test_crisis_cannot_break_pause_even_with_extreme_capitulation():
-    snap = _snap({"capitulation_score": 90, "tactical_stress_score": 10})
+    snap = _snap(
+        {
+            "credit_spread": 680.0,
+            "capitulation_score": 90,
+            "tactical_stress_score": 10,
+            "rolling_drawdown": 0.30,
+            "five_day_return": -0.04,
+            "twenty_day_return": -0.12,
+        }
+    )
     decision = decide_deployment_state(
         snap,
         _risk(RiskState.RISK_EXIT, 0.0, 1.0),
@@ -82,7 +127,16 @@ def test_crisis_cannot_break_pause_even_with_extreme_capitulation():
 
 
 def test_neutral_keeps_fast_path_available():
-    snap = _snap({"capitulation_score": 40, "tactical_stress_score": 10})
+    snap = _snap(
+        {
+            "credit_spread": 320.0,
+            "capitulation_score": 40,
+            "tactical_stress_score": 10,
+            "rolling_drawdown": 0.12,
+            "five_day_return": -0.02,
+            "twenty_day_return": -0.09,
+        }
+    )
     decision = decide_deployment_state(
         snap,
         _risk(RiskState.RISK_NEUTRAL),
@@ -93,7 +147,16 @@ def test_neutral_keeps_fast_path_available():
 
 
 def test_euphoric_keeps_fast_path_available():
-    snap = _snap({"capitulation_score": 40, "tactical_stress_score": 10})
+    snap = _snap(
+        {
+            "credit_spread": 220.0,
+            "capitulation_score": 40,
+            "tactical_stress_score": 10,
+            "rolling_drawdown": 0.12,
+            "five_day_return": -0.02,
+            "twenty_day_return": -0.09,
+        }
+    )
     decision = decide_deployment_state(
         snap,
         _risk(RiskState.RISK_ON),
@@ -106,6 +169,68 @@ def test_euphoric_keeps_fast_path_available():
 def test_tier0_override_threshold_is_independent_from_fast_threshold():
     module = __import__("src.engine.deployment_controller", fromlist=["_CAPITULATION_FAST_THRESHOLD"])
     assert module._TIER0_CAPITULATION_OVERRIDE_THRESHOLD != module._CAPITULATION_FAST_THRESHOLD
+
+
+def test_reduced_state_pauses_on_deep_drawdown_even_without_crisis_spreads():
+    snap = _snap(
+        {
+            "credit_spread": 470.0,
+            "capitulation_score": 80,
+            "tactical_stress_score": 10,
+            "rolling_drawdown": 0.30,
+            "five_day_return": -0.04,
+            "twenty_day_return": -0.12,
+        }
+    )
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_REDUCED, 0.50, 0.50),
+        tier0_regime="RICH_TIGHTENING",
+        available_new_cash=1000.0,
+    )
+    assert decision.deployment_state == DeploymentState.DEPLOY_PAUSE
+    assert decision.pause_new_cash is True
+
+
+def test_defense_state_pauses_on_deep_drawdown_even_when_left_tail_is_extreme():
+    snap = _snap(
+        {
+            "credit_spread": 560.0,
+            "capitulation_score": 80,
+            "tactical_stress_score": 10,
+            "rolling_drawdown": 0.28,
+            "five_day_return": -0.05,
+            "twenty_day_return": -0.14,
+        }
+    )
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_DEFENSE, 0.50, 0.50),
+        tier0_regime="TRANSITION_STRESS",
+        available_new_cash=1000.0,
+    )
+    assert decision.deployment_state == DeploymentState.DEPLOY_PAUSE
+    assert decision.pause_new_cash is True
+
+
+def test_shallow_pullback_uses_five_day_weakness_to_unlock_fast():
+    snap = _snap(
+        {
+            "credit_spread": 320.0,
+            "capitulation_score": 20,
+            "tactical_stress_score": 10,
+            "rolling_drawdown": 0.09,
+            "five_day_return": -0.02,
+            "twenty_day_return": -0.04,
+        }
+    )
+    decision = decide_deployment_state(
+        snap,
+        _risk(RiskState.RISK_NEUTRAL),
+        tier0_regime="NEUTRAL",
+        available_new_cash=1000.0,
+    )
+    assert decision.deployment_state == DeploymentState.DEPLOY_FAST
 
 
 

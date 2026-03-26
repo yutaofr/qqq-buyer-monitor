@@ -2,7 +2,7 @@
 from datetime import date
 
 from src.engine.feature_pipeline import build_feature_snapshot
-from src.engine.risk_controller import decide_risk_state, RiskDecision
+from src.engine.risk_controller import decide_risk_state
 from src.models.risk import RiskState
 
 
@@ -34,12 +34,12 @@ def test_risk_controller_triple_stress_exits():
     """credit_accel > 15, liq_roc < -2, funding_stress=True → RISK_EXIT."""
     snap = _snap({
         "credit_acceleration": 18.0,
-        "liquidity_roc": -3.0,
+        "liquidity_roc": -6.0,
         "funding_stress": True,
     })
     decision = decide_risk_state(snap, drawdown_budget=0.30)
     assert decision.risk_state == RiskState.RISK_EXIT
-    assert decision.target_cash_floor >= 0.50
+    assert decision.target_cash_floor == 0.50
     assert decision.target_exposure_ceiling == 0.50
     assert any("triple_stress" in str(r) for r in decision.reasons)
 
@@ -55,7 +55,7 @@ def test_risk_controller_dual_stress_defense():
 
 def test_risk_controller_single_stress_reduced():
     snap = _snap({
-        "credit_spread": 420.0,   # warn zone
+        "credit_spread": 520.0,   # warn zone
         "liquidity_roc": 0.5,     # fine
         "funding_stress": False,
     })
@@ -73,6 +73,54 @@ def test_risk_controller_clean_macro_neutral():
     decision = decide_risk_state(snap, drawdown_budget=0.30)
     assert decision.risk_state == RiskState.RISK_NEUTRAL
     assert decision.target_exposure_ceiling == 1.00
+
+
+def test_risk_controller_clean_euphoric_unlocks_risk_on():
+    snap = _snap({
+        "credit_spread": 220.0,
+        "credit_acceleration": 2.0,
+        "liquidity_roc": 1.0,
+        "funding_stress": False,
+    })
+    decision = decide_risk_state(
+        snap,
+        tier0_regime="EUPHORIC",
+        drawdown_budget=0.30,
+    )
+    assert decision.risk_state == RiskState.RISK_ON
+    assert decision.target_exposure_ceiling == 1.20
+    assert decision.target_cash_floor == 0.00
+
+
+def test_risk_controller_tight_spread_clean_macro_unlocks_risk_on_without_erp():
+    snap = _snap({
+        "credit_spread": 320.0,
+        "credit_acceleration": 0.0,
+        "liquidity_roc": 0.5,
+        "funding_stress": False,
+    })
+    decision = decide_risk_state(
+        snap,
+        tier0_regime="NEUTRAL",
+        drawdown_budget=0.30,
+    )
+    assert decision.risk_state == RiskState.RISK_ON
+    assert decision.target_exposure_ceiling == 1.20
+
+
+def test_risk_controller_funding_stress_alone_does_not_force_reduction():
+    snap = _snap({
+        "credit_spread": 320.0,
+        "credit_acceleration": 0.0,
+        "liquidity_roc": 0.5,
+        "funding_stress": True,
+    })
+    decision = decide_risk_state(
+        snap,
+        tier0_regime="NEUTRAL",
+        drawdown_budget=0.30,
+    )
+    assert decision.risk_state == RiskState.RISK_NEUTRAL
 
 
 def test_risk_decision_is_immutable():
@@ -129,6 +177,19 @@ def test_risk_controller_missing_data_capped_at_risk_reduced():
     assert decision.risk_state != RiskState.RISK_ON
 
 
+def test_risk_controller_missing_unused_fields_does_not_degrade_clean_macro():
+    snap = _snap({
+        "net_liquidity": None,
+        "real_yield": None,
+        "credit_spread": 320.0,
+        "credit_acceleration": 0.0,
+        "liquidity_roc": 0.5,
+        "funding_stress": False,
+    })
+    decision = decide_risk_state(snap, drawdown_budget=0.30)
+    assert decision.risk_state in {RiskState.RISK_NEUTRAL, RiskState.RISK_ON}
+
+
 def test_risk_controller_missing_data_reason_recorded():
     snap = _snap({
         "credit_spread": None,
@@ -148,7 +209,7 @@ def test_risk_controller_single_missing_class_a_still_evaluates():
     })
     decision = decide_risk_state(snap)
     # Should still evaluate normally (clean → RISK_NEUTRAL)
-    assert decision.risk_state in {RiskState.RISK_NEUTRAL, RiskState.RISK_REDUCED}
+    assert decision.risk_state in {RiskState.RISK_NEUTRAL, RiskState.RISK_REDUCED, RiskState.RISK_ON}
 
 
 def test_risk_controller_only_consumes_class_a_data():
@@ -174,7 +235,7 @@ def test_risk_controller_only_consumes_class_a_data():
 def test_risk_controller_absent_class_a_features_degrade():
     """Absent Class A features (missing from snap) must be counted as missing."""
     # Entirely empty raw_values should result in all Class A being missing
-    snap = _snap({}, full=False) 
+    snap = _snap({}, full=False)
     decision = decide_risk_state(snap, drawdown_budget=0.30)
     assert decision.risk_state in {RiskState.RISK_REDUCED, RiskState.RISK_DEFENSE, RiskState.RISK_EXIT}
     assert any("class_a_missing" in str(r) for r in decision.reasons)
@@ -220,7 +281,7 @@ def test_risk_controller_transition_stress_forces_defense():
         drawdown_budget=0.30,
     )
     assert decision.risk_state == RiskState.RISK_DEFENSE
-    assert decision.target_exposure_ceiling == 0.80
+    assert decision.target_exposure_ceiling == 0.70
     assert decision.tier0_applied is True
 
 

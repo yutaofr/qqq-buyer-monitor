@@ -3,8 +3,8 @@ v6.4 Personal Allocation Search: Generates SRD-approved QQQ:QLD:Cash candidates.
 """
 from __future__ import annotations
 
-from src.models.candidate import CertifiedCandidate
 from src.models import AllocationState, TargetAllocationState
+from src.models.candidate import CertifiedCandidate
 
 # SRD-defined Candidate Matrix (QQQ, QLD, Cash)
 # Each entry is (QQQ%, QLD%, Cash%)
@@ -43,7 +43,7 @@ def find_best_allocation(state: AllocationState, scores: list[dict] = None) -> T
     3. If CAGR tied (within 0.1%), lower MDD.
     4. If MDD tied, lower Beta Deviation.
     5. If still tied, lower Turnover.
-    
+
     AC-5 Hard Gate: If no candidate meets the 30% MDD budget, it MUST return
     a safe fallback (100% Cash).
     """
@@ -122,3 +122,72 @@ def find_best_allocation_v8(
         )
 
     return sorted(valid, key=sort_key)[0]
+
+
+def find_beta_floor_candidate_v8(
+    candidates: list[CertifiedCandidate] | None,
+    *,
+    beta_floor: float = 0.50,
+    max_drawdown_budget: float = 0.30,
+) -> CertifiedCandidate | None:
+    """
+    Return the safest certified candidate that preserves the required beta floor.
+
+    This is a runtime safety rail for registry/config drift. If the scoped
+    candidates for a risk state do not yield a compliant recommendation, the
+    system must not silently collapse to 0.0 beta.
+    """
+    if not candidates:
+        return None
+
+    valid = [
+        candidate for candidate in candidates
+        if candidate.target_effective_exposure >= beta_floor
+        and candidate.research_metrics.get("max_drawdown", 1.0) <= max_drawdown_budget
+    ]
+    if not valid:
+        return None
+
+    def sort_key(candidate: CertifiedCandidate) -> tuple[float, float, float, float]:
+        metrics = candidate.research_metrics
+        return (
+            abs(float(candidate.target_effective_exposure) - beta_floor),
+            float(candidate.target_effective_exposure),
+            float(metrics.get("max_drawdown", 1.0)),
+            float(metrics.get("mean_interval_beta_deviation", 1.0)),
+        )
+
+    return sorted(valid, key=sort_key)[0]
+
+
+def select_candidate_with_floor_fallback_v8(
+    *,
+    scoped_candidates: list[CertifiedCandidate] | None,
+    registry_candidates: list[CertifiedCandidate] | None,
+    max_beta_ceiling: float,
+    max_drawdown_budget: float = 0.30,
+    beta_floor: float = 0.50,
+) -> tuple[CertifiedCandidate | None, bool]:
+    """
+    Select the best scoped candidate, or fall back to the global beta floor.
+
+    Returns `(candidate, used_floor_fallback)`.
+    """
+    selected = find_best_allocation_v8(
+        max_beta_ceiling=max_beta_ceiling,
+        max_drawdown_budget=max_drawdown_budget,
+        candidates=scoped_candidates,
+    )
+    if selected is not None:
+        return selected, False
+
+    fallback = find_beta_floor_candidate_v8(
+        registry_candidates,
+        beta_floor=beta_floor,
+        max_drawdown_budget=max_drawdown_budget,
+    )
+    if fallback is None:
+        return None, False
+    if fallback.target_effective_exposure > max(max_beta_ceiling, beta_floor) + 1e-9:
+        return None, False
+    return fallback, True

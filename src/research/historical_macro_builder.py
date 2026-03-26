@@ -68,6 +68,16 @@ def _build_weekly_liquidity_series(
     return weekly
 
 
+def _collapse_to_unique_effective_dates(frame: pd.DataFrame) -> pd.DataFrame:
+    collapsed = frame.sort_values(["effective_date", "observation_date"]).drop_duplicates(
+        subset=["effective_date"],
+        keep="last",
+    )
+    collapsed = collapsed.reset_index(drop=True)
+    collapsed["credit_acceleration_pct_10d"] = _pct_change(collapsed["credit_spread_bps"], 10)
+    return collapsed
+
+
 def build_historical_macro_dataset(output_path: str | Path | None = None) -> pd.DataFrame:
     """
     Build the canonical historical macro dataset used by v7.0 research.
@@ -94,10 +104,8 @@ def build_historical_macro_dataset(output_path: str | Path | None = None) -> pd.
     cpff_frame = frames.get("CPFF")
     if cpff_frame is not None and not cpff_frame.empty:
         daily["CPFF"] = _asof_align(cpff_frame, "CPFF", calendar)
-        funding_source = "fred:NFCI+fred:CPFF"
     else:
         daily["CPFF"] = np.nan
-        funding_source = "fred:NFCI"
 
     weekly_liquidity = _build_weekly_liquidity_series(
         frames["WALCL"],
@@ -117,15 +125,14 @@ def build_historical_macro_dataset(output_path: str | Path | None = None) -> pd.
         "liquidity_roc_pct_4w",
         calendar,
     )
-    daily["funding_stress_flag"] = (
-        (daily["NFCI"] > 0)
-        | (daily["CPFF"].fillna(0) > 0)
-    ).astype(int)
+    # CPFF is a rate series and `> 0` is not a stress signal. Keep the runtime
+    # and research paths consistent by deriving the boolean flag from NFCI only.
+    daily["funding_stress_flag"] = (daily["NFCI"] > 0).astype(int)
 
     daily["source_credit_spread"] = "fred:BAMLH0A0HYM2"
     daily["source_real_yield"] = "fred:DFII10"
     daily["source_net_liquidity"] = "derived:WALCL-WDTGAL-RRPONTSYD"
-    daily["source_funding_stress"] = funding_source
+    daily["source_funding_stress"] = "fred:NFCI"
     daily["build_version"] = BUILD_VERSION
 
     canonical = daily.loc[:, [
@@ -143,6 +150,7 @@ def build_historical_macro_dataset(output_path: str | Path | None = None) -> pd.
         "source_funding_stress",
         "build_version",
     ]].copy()
+    canonical = _collapse_to_unique_effective_dates(canonical)
 
     validate_historical_macro_frame(canonical)
 

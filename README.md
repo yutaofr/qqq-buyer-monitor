@@ -26,6 +26,11 @@ Outputs `RiskDecision` with:
 - `target_cash_floor`
 - `tier0_applied`
 
+Key semantics:
+- `EUPHORIC` unlocks `RISK_ON` and allows `>1.0` target beta when the registry has compliant candidates.
+- `CRISIS` and hard drawdown breaches map to `RISK_EXIT`, but the stock beta floor remains `0.5`.
+- If a scoped risk-state registry slice is misconfigured, runtime falls back to the global `0.5 beta` floor candidate instead of silently collapsing to `0.0`.
+
 ### Deployment Controller
 Determines how to deploy **new incoming cash** under Tier-0 soft ceilings.
 Outputs one of:
@@ -50,24 +55,28 @@ The output is recommendation-only:
 - **Tier-0 hard/soft constraints:** structural regime now directly shapes both stock beta and cash deployment pace
 - **Pure math candidate search:** v8 selection respects `max_beta_ceiling` and drawdown budget before recommendation
 
-## 📊 Performance & Resilience (v8.1 Backtest)
-Latest full-sample backtest (`docker compose run --rm backtest`, 1999-2026):
-- **Tactical Max Drawdown:** `-6.6%`
+## 📊 Research Backtest Snapshot
+The legacy `--mode portfolio` path is retained as a mixed research tool, not as the production acceptance gate.
+
+Latest real-history research run (`python -m src.backtest --mode portfolio`, canonical macro only):
+- **Tactical Max Drawdown:** `-28.0%`
 - **Baseline DCA Max Drawdown:** `-35.1%`
-- **MDD Improvement:** `28.6%` absolute improvement
-- **Realized Beta:** `0.04`
-- **Turnover Ratio:** `2.13`
-- **NAV Integrity:** `1.000000`
-- **Left-side windows preserved:** `RICH_TIGHTENING left-side windows = 513`
+- **MDD Improvement:** `7.1%` absolute improvement
+- **Realized Beta:** `0.17`
+- **Turnover Ratio:** `104.30`
+- **Left-side windows preserved:** `RICH_TIGHTENING left-side windows = 154`
 - **CRISIS deployment breaches:** `0`
 
-## 🧭 Certified Candidate Reference (v8.0)
+Production acceptance should instead be based on the two signal-alignment audits below.
+
+## 🧭 Certified Candidate Reference (v8.1)
 v8.0 no longer uses the old `AllocationState` operating matrix at runtime. It selects from the certified registry:
 
 - `RISK_NEUTRAL`: `neutral-base-001` (`70/10/20`, beta `0.90`) or `neutral-low-drift` (`80/5/15`, beta `0.90`)
-- `RISK_REDUCED`: `reduced-tight-001` (`30/0/70`, beta `0.30`) or `reduced-base-001` (`50/0/50`, beta `0.50`)
-- `RISK_DEFENSE`: `defense-001` (`30/0/70`, beta `0.30`)
-- `RISK_EXIT`: explicit `100% Cash` fallback when no compliant candidate survives the beta ceiling
+- `RISK_REDUCED`: `reduced-tight-001` (`80/0/20`, beta `0.80`) or `reduced-base-001` (`50/0/50`, beta `0.50`)
+- `RISK_DEFENSE`: `defense-001` (`50/0/50`, beta `0.50`) or `defense-002` (`50/15/35`, beta `0.80`)
+- `RISK_EXIT`: `exit-floor-001` (`50/0/50`, beta `0.50`)
+- `RISK_ON`: `euphoric-base-001` (`60/25/15`, beta `1.10`) or `euphoric-max-001` (`80/20/0`, beta `1.20`)
 
 ## 🛠 Core Tiers
 1.  **Tier 0 (Macro Commander):** Monitors Credit Acceleration, Net Liquidity, and Funding Stress. Defines the **Structural Regime**.
@@ -183,7 +192,7 @@ flowchart TD
 
 ### Key Architectural Transitions
 1.  **Defensive Bypass (The Kill Switch):** Before any logical processing, the system checks for **Credit Acceleration** (HY OAS velocity), **Liquidity Drains** (Fed Assets - TGA - RRP), and **Funding Stress**. If high-velocity stress is detected, it enters `CASH_FLIGHT` or `DELEVERAGE` immediately.
-2.  **Structural Regime (The Macro Commander):** Credit Spreads and **Equity Risk Premium (ERP)** define the structural regime. A `CRISIS` state (Spread > 500bps or ERP < 1.0%) forces risk containment regardless of tactical indicators.
+2.  **Structural Regime (The Macro Commander):** Credit Spreads and **Equity Risk Premium (ERP)** define the structural regime. In the current research build, historical Tier-0 is primarily driven by canonical credit-spread history, with ERP used when available. A `CRISIS` state (Spread > 650bps or ERP < 1.0%) forces risk containment regardless of tactical indicators.
 3.  **Tactical State (The Sentiment Filter):** Combines standard metrics with **Divergence (RSI/MFI/ERB)** and **Valuation (PE/FCF)** sub-engines to distinguish between a "Grind Down" and a "Panic."
 4.  **v6.4 Selection Engine (The Personal Layer):** Performs a real-time **Candidate Scoring** mechanism using mini-backtests. Any allocation that has historically exceeded a **30% Drawdown (AC-5)** is discarded. Among survivors, it selects for the highest **CAGR** while ensuring **Beta Fidelity (AC-4)**.
 
@@ -206,6 +215,57 @@ docker-compose run --rm app
 # Run multi-scenario stress tests with AC-4 Beta Fidelity reports
 docker-compose run --rm backtest python scripts/stress_test_runner.py
 ```
+
+## Signal Audit Workflow
+
+The production system has two independent decision surfaces and they should be audited separately:
+
+1. `target_beta`: stock of assets risk-budget recommendation
+2. `deployment_state`: incremental cash entry timing and pace
+
+Use an expectation matrix CSV with a `date` column plus one or both of:
+- `expected_target_beta`
+- `expected_deployment_state`
+
+Optional runtime-state inputs may also be supplied in the same file. This allows state-conditioned expectation surfaces instead of naive date-only labels:
+- `rolling_drawdown`
+- `available_new_cash`
+- `erp`
+- `capitulation_score`
+- `tactical_stress_score`
+
+Run the audits:
+
+```bash
+# Audit both decision surfaces against an expected signal matrix
+python -m src.backtest --mode both --expectations data/expected_signals.csv
+
+# Audit only target-beta alignment
+python -m src.backtest --mode beta --expectations data/expected_beta.csv
+
+# Audit only deployment alignment
+python -m src.backtest --mode deployment --expectations data/expected_deployment.csv
+```
+
+The workflow prints canonical macro coverage and expectation-matrix coverage before the audit summaries.
+
+Acceptance audits should use the canonical research macro dataset. Synthetic `dev-fixture` macro data is blocked by default and only allowed with `--allow-synthetic-macro` for smoke tests. The legacy `--mode portfolio` path remains available for research, but production acceptance should be based on the two signal-alignment audits above.
+
+For a fully reproducible real-history acceptance run, build the expectation matrix from raw market conditions and score both decision surfaces in one step:
+
+```bash
+python scripts/run_signal_acceptance_report.py \
+  --cache-path data/qqq_history_cache.csv \
+  --macro-path data/macro_historical_dump.csv \
+  --registry-path data/candidate_registry_v7.json \
+  --save-dir /tmp/qqq-monitor-acceptance
+```
+
+The script:
+- builds a realistic expectation matrix from actual market drawdown, credit spread, credit acceleration, liquidity, and funding stress
+- audits `target_beta` and `deployment_state` against that matrix
+- asserts the production envelope stays within `0.5 <= beta <= 1.2`
+- can save the expectation matrix, joined daily alignment, and JSON summary for review
 
 ## 📜 Documentation
 - [SRD v8.0: Linear Pipeline](docs/v8.0_linear_pipeline_srd.md)
