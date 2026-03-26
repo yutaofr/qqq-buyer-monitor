@@ -35,6 +35,12 @@ Tier-0 是顶层约束：
 用于决定新增资金的部署节奏：
 `DEPLOY_SLOW | DEPLOY_BASE | DEPLOY_FAST | DEPLOY_PAUSE`
 
+各状态含义：
+- `DEPLOY_SLOW`：谨慎分批入场，保留现金余地，等待更强确认。
+- `DEPLOY_BASE`：正常部署节奏；在环境可接受且信号成立时使用。
+- `DEPLOY_FAST`：加速部署；通常用于明显错杀或左侧机会较清晰的场景。
+- `DEPLOY_PAUSE`：暂停新增部署；新增资金先留在现金端。
+
 关键语义：
 - `RICH_TIGHTENING` 会默认降速，但强超跌时仍可进入 `DEPLOY_BASE`
 - `CRISIS` 会完全暂停增量部署

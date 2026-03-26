@@ -36,6 +36,12 @@ Determines how to deploy **new incoming cash** under Tier-0 soft ceilings.
 Outputs one of:
 `DEPLOY_SLOW | DEPLOY_BASE | DEPLOY_FAST | DEPLOY_PAUSE`.
 
+Deployment meanings:
+- `DEPLOY_SLOW`: cautious drip deployment; preserve dry powder and wait for better confirmation.
+- `DEPLOY_BASE`: normal deployment pace; use when the regime is acceptable and the signal is constructive.
+- `DEPLOY_FAST`: aggressive deployment pace; use after a strong dislocation or clear left-side opportunity.
+- `DEPLOY_PAUSE`: no new deployment; keep incremental cash on hold.
+
 Key v8.1 semantics:
 - `RICH_TIGHTENING` slows default deployment but still allows left-side entry when capitulation is strong.
 - `CRISIS` fully pauses incremental deployment.
