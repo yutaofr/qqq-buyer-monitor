@@ -42,63 +42,72 @@ def build_beta_backtest_figure(daily_ts: pd.DataFrame, summary: Any | None = Non
 
     frame = _coerce_frame(daily_ts)
     beta_col = _beta_column(frame)
+    beta_series = frame[beta_col]
+    change_mask = beta_series.ne(beta_series.shift(1))
+    beta_plot_mask = change_mask.copy()
+    beta_plot_mask.iloc[-1] = True
+    beta_plot_frame = frame.loc[beta_plot_mask, [beta_col]]
 
-    fig, ax_price = plt.subplots(1, 1, figsize=(14, 8))
-    fig.patch.set_facecolor("#000000")
-    ax_price.set_facecolor("#000000")
-    ax_price.grid(True, alpha=0.2, linestyle="--")
-    ax_price.tick_params(colors="#d8d8d8")
-    for spine in ax_price.spines.values():
-        spine.set_color("#d8d8d8")
+    fig, (ax_price, ax_beta) = plt.subplots(
+        2,
+        1,
+        figsize=(14, 8),
+        sharex=True,
+        constrained_layout=True,
+        gridspec_kw={"height_ratios": [3, 1], "hspace": 0.08},
+    )
+    fig.patch.set_facecolor("#ffffff")
+    for axis in (ax_price, ax_beta):
+        axis.set_facecolor("#ffffff")
+        axis.grid(True, axis="y", color="#d9dee7", linewidth=0.8, alpha=0.85)
+        axis.tick_params(colors="#2b3440")
+        for spine in axis.spines.values():
+            spine.set_color("#c5ccd6")
 
-    ax_beta = ax_price.twinx()
     ax_price.plot(
         frame.index,
         frame["close"],
         label="QQQ Close",
-        color="#00ff9d",
-        linewidth=1.8,
+        color="#0b5fff",
+        linewidth=2.2,
     )
-    ax_beta.plot(
-        frame.index,
-        frame[beta_col],
+    ax_beta.step(
+        beta_plot_frame.index,
+        beta_plot_frame[beta_col],
         label="Target Beta",
-        color="#ff9900",
-        linewidth=2.0,
+        color="#f28c28",
+        linewidth=1.8,
+        where="post",
         alpha=0.9,
-        drawstyle="steps-post",
-        zorder=4,
     )
-    ax_price.set_ylabel("QQQ Price ($)", fontsize=12)
-    ax_price.yaxis.set_major_formatter(mtick.StrMethodFormatter("${x:,.0f}"))
-    ax_beta.set_ylabel("Target Beta (x)", fontsize=12)
-    ax_beta.set_ylim(0.45, 1.25)
-    ax_beta.tick_params(colors="#d8d8d8")
-    for spine in ax_beta.spines.values():
-        spine.set_color("#d8d8d8")
+    ax_beta.scatter(
+        beta_plot_frame.index,
+        beta_plot_frame[beta_col],
+        label="Beta Change Point",
+        color="#c96a09",
+        s=20,
+        zorder=3,
+    )
 
-    price_handles, price_labels = ax_price.get_legend_handles_labels()
-    beta_handles, beta_labels = ax_beta.get_legend_handles_labels()
-    ax_price.legend(
-        price_handles + beta_handles,
-        price_labels + beta_labels,
-        loc="upper left",
-        framealpha=0.9,
-        facecolor="#111111",
-        edgecolor="#d8d8d8",
-        fontsize=9,
-    )
+    ax_price.set_ylabel("QQQ Price ($)", fontsize=12, color="#2b3440")
+    ax_price.yaxis.set_major_formatter(mtick.StrMethodFormatter("${x:,.0f}"))
+    ax_price.legend(loc="upper left", frameon=False, fontsize=10)
+
+    beta_min = float(beta_series.min())
+    beta_max = float(beta_series.max())
+    ax_beta.set_ylabel("Target Beta", fontsize=12, color="#2b3440")
+    ax_beta.set_ylim(beta_min - 0.08, beta_max + 0.08)
+    ax_beta.yaxis.set_major_locator(mtick.MultipleLocator(0.1))
+    ax_beta.legend(loc="upper left", frameon=False, fontsize=10, ncols=2)
 
     average_signal_beta = float(frame[beta_col].dropna().mean()) if frame[beta_col].notna().any() else 0.0
     title = "v8.1 QQQ Stock-Beta Recommendation vs QQQ Price"
     if summary is not None and hasattr(summary, "signal_beta"):
         average_signal_beta = float(summary.signal_beta)
     title = f"{title}\nAverage Signal Beta: {average_signal_beta:.2f}"
-    ax_price.set_title(title, fontsize=14, pad=15)
-    ax_price.set_xlabel("Date", fontsize=12)
-    ax_beta.yaxis.set_major_locator(mtick.MultipleLocator(0.1))
+    ax_price.set_title(title, fontsize=14, pad=12, color="#18212b")
+    ax_beta.set_xlabel("Date", fontsize=12, color="#2b3440")
     ax_price.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
-    fig.tight_layout()
     return fig
 
 
