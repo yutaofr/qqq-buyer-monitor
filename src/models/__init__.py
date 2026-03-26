@@ -4,21 +4,21 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from datetime import date
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 import numpy as np
 import pandas as pd
 
-from src.models.audit import DecisionAudit
-from src.models.candidate import CandidateRegistry, CertifiedCandidate
+from src.models.audit import DecisionAudit as DecisionAudit
+from src.models.candidate import CandidateRegistry as CandidateRegistry
+from src.models.candidate import CertifiedCandidate as CertifiedCandidate
 from src.models.deployment import DeploymentState
 
 # v7.0 state models (imported here for re-export convenience)
 from src.models.risk import RiskState
 
 
-class Signal(str, Enum):
+class Signal(StrEnum):
     STRONG_BUY = "STRONG_BUY"
     TRIGGERED = "TRIGGERED"
     WATCH = "WATCH"
@@ -26,7 +26,7 @@ class Signal(str, Enum):
     NO_SIGNAL = "NO_SIGNAL"
 
 
-class AllocationState(str, Enum):
+class AllocationState(StrEnum):
     PAUSE_CHASING = "PAUSE_CHASING"
     BASE_DCA = "BASE_DCA"
     SLOW_ACCUMULATE = "SLOW_ACCUMULATE"
@@ -56,7 +56,7 @@ class CurrentPortfolioState:
     @staticmethod
     def from_env() -> CurrentPortfolioState:
         """
-        v6.3.8 Defensive Input Protocol: 
+        v6.3.8 Defensive Input Protocol:
         Parses CASH_LEVEL, QQQ_LEVEL, QLD_LEVEL from env with normalization.
         """
         def _env_float(name: str, default: float | None = None) -> float | None:
@@ -311,7 +311,13 @@ class SignalResult:
     registry_version: str | None = None
     tier0_regime: str | None = None
     tier0_applied: bool = False
+    raw_target_beta: float | None = None
     target_beta: float | None = None
+    assumed_beta_before: float | None = None
+    assumed_beta_after: float | None = None
+    friction_blockers: list[str] = field(default_factory=list)
+    estimated_turnover: float | None = None
+    estimated_cost_drag: float | None = None
     should_adjust: bool | None = None
     rebalance_action: dict = field(default_factory=dict)
     deployment_action: dict = field(default_factory=dict)

@@ -311,12 +311,16 @@ def run_pipeline(args: argparse.Namespace) -> None:
     from src.engine.allocation_search import select_candidate_with_floor_fallback_v8
     from src.engine.candidate_registry import load_registry, select_runtime_candidates
     from src.engine.deployment_controller import decide_deployment_state
-    from src.engine.execution_policy import build_beta_recommendation
+    from src.engine.execution_policy import (
+        build_advisory_rebalance_decision,
+        build_advisory_state_from_history,
+        build_beta_recommendation,
+        target_allocation_from_beta,
+    )
     from src.engine.feature_pipeline import build_feature_snapshot
     from src.engine.risk_controller import decide_risk_state
     from src.engine.runtime_selector import RuntimeSelection
     from src.engine.tier0_macro import assess_structural_regime
-    from src.models import TargetAllocationState
     from src.store.db import load_runtime_inputs, save_runtime_inputs
 
     v7_registry_path = os.environ.get("V7_REGISTRY_PATH", "data/candidate_registry_v7.json")
@@ -467,19 +471,39 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 risk_decision=v7_risk,
                 previous_risk_state=prev_risk,
             )
-            result.selected_candidate_id = selected_candidate.candidate_id
-            result.target_beta = beta_rec.target_beta
-            result.should_adjust = beta_rec.should_adjust
-            result.target_allocation = TargetAllocationState(
-                target_cash_pct=beta_rec.recommended_cash_pct,
-                target_qqq_pct=beta_rec.recommended_qqq_pct,
-                target_qld_pct=beta_rec.recommended_qld_pct,
-                target_beta=beta_rec.target_beta,
+            advisory_state = build_advisory_state_from_history(
+                history=history,
+                current_raw_target_beta=beta_rec.target_beta,
+                fallback_beta=beta_rec.target_beta,
             )
+            emergency_override = tier0_regime == "CRISIS" or (
+                rolling_drawdown is not None and rolling_drawdown >= 0.30
+            )
+            advisory_decision = build_advisory_rebalance_decision(
+                raw_recommendation=beta_rec,
+                advisory_state=advisory_state,
+                as_of_date=market_data.date,
+                emergency_override=emergency_override,
+            )
+            result.selected_candidate_id = selected_candidate.candidate_id
+            result.raw_target_beta = beta_rec.target_beta
+            result.target_beta = advisory_decision.advised_target_beta
+            result.assumed_beta_before = advisory_decision.assumed_beta_before
+            result.assumed_beta_after = advisory_decision.assumed_beta_after
+            result.friction_blockers = list(advisory_decision.friction_blockers)
+            result.estimated_turnover = advisory_decision.estimated_turnover
+            result.estimated_cost_drag = advisory_decision.estimated_cost_drag
+            result.should_adjust = advisory_decision.should_adjust
+            result.target_allocation = target_allocation_from_beta(advisory_decision.advised_target_beta)
             result.rebalance_action = {
-                "should_adjust": beta_rec.should_adjust,
-                "should_rebalance": beta_rec.should_adjust,
-                "reason": beta_rec.adjustment_reason,
+                "should_adjust": advisory_decision.should_adjust,
+                "should_rebalance": advisory_decision.should_adjust,
+                "reason": advisory_decision.adjustment_reason,
+                "raw_target_beta": advisory_decision.raw_target_beta,
+                "advised_target_beta": advisory_decision.advised_target_beta,
+                "assumed_beta_before": advisory_decision.assumed_beta_before,
+                "assumed_beta_after": advisory_decision.assumed_beta_after,
+                "friction_blockers": list(advisory_decision.friction_blockers),
             }
             result.deployment_action = {
                 "deploy_mode": v7_deploy.deployment_state.value.replace("DEPLOY_", ""),
@@ -490,15 +514,19 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 "v8_risk_state": v7_risk.risk_state.value,
                 "v8_deployment_state": v7_deploy.deployment_state.value,
                 "v8_selected_candidate": selected_candidate.candidate_id,
-                "v8_should_adjust": beta_rec.should_adjust,
+                "v8_raw_target_beta": beta_rec.target_beta,
+                "v8_advised_target_beta": advisory_decision.advised_target_beta,
+                "v8_should_adjust": advisory_decision.should_adjust,
             })
             logger.info(
-                "v8.1 ▶ tier0=%s risk=%s deploy=%s candidate=%s adjust=%s",
+                "v8.1 ▶ tier0=%s risk=%s deploy=%s candidate=%s raw_beta=%.2f advised_beta=%.2f adjust=%s",
                 tier0_regime,
                 v7_risk.risk_state.value,
                 v7_deploy.deployment_state.value,
                 selected_candidate.candidate_id,
-                beta_rec.should_adjust,
+                beta_rec.target_beta,
+                advisory_decision.advised_target_beta,
+                advisory_decision.should_adjust,
             )
         else:
             raise ValueError(

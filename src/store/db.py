@@ -5,16 +5,14 @@ import json
 import logging
 import os
 import sqlite3
-import pandas as pd
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import pandas as pd
+
 from src.models import (
-    Signal,
     SignalDetail,
     SignalResult,
-    Tier1Result,
-    Tier2Result,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,14 +57,14 @@ def init_db(path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn.execute(CREATE_TABLE_SQL)
     conn.execute(CREATE_MACRO_TABLE_SQL)
     conn.execute(CREATE_RUNTIME_INPUTS_SQL)
-    
+
     # v3.0 migrations for existing DB
     for col in ["forward_pe", "real_yield", "fcf_yield", "earnings_revisions_breadth"]:
         try:
             conn.execute(f"ALTER TABLE macro_states ADD COLUMN {col} REAL")
         except sqlite3.OperationalError:
             pass
-            
+
     conn.commit()
     logger.debug("DB initialised at %s", db_path)
     return conn
@@ -109,7 +107,7 @@ def _migrate_blob(blob: dict) -> dict:
             "target_qld_pct": 0.0,
             "target_beta": 0.9,
         }
-    
+
     # v8.0+ field migration — null defaults for old records
     blob.setdefault("risk_state", None)
     blob.setdefault("deployment_state", None)
@@ -117,17 +115,23 @@ def _migrate_blob(blob: dict) -> dict:
     blob.setdefault("registry_version", None)
     blob.setdefault("tier0_regime", None)
     blob.setdefault("tier0_applied", False)
+    blob.setdefault("raw_target_beta", None)
     blob.setdefault("target_beta", None)
+    blob.setdefault("assumed_beta_before", None)
+    blob.setdefault("assumed_beta_after", None)
+    blob.setdefault("friction_blockers", [])
+    blob.setdefault("estimated_turnover", None)
+    blob.setdefault("estimated_cost_drag", None)
     blob.setdefault("should_adjust", None)
     blob.setdefault("rebalance_action", {})
     blob.setdefault("deployment_action", {})
     blob.setdefault("candidate_selection_audit", [])
-    
+
     # Remove purged legacy fields if present
     blob.pop("current_portfolio", None)
     blob.pop("effective_exposure", None)
     blob.pop("interval_beta_audit", None)
-        
+
     return blob
 
 
@@ -150,27 +154,27 @@ def get_historical_series(days: int = 60, path: str = DEFAULT_DB_PATH) -> pd.Dat
     """
     if not Path(path).exists():
         return None
-        
+
     cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-    
+
     conn = init_db(path)
     rows = conn.execute(
         "SELECT json_blob FROM signals WHERE date >= ? ORDER BY date ASC", (cutoff_date,)
     ).fetchall()
     conn.close()
-    
+
     if not rows:
         return None
-        
+
     data = []
     for row in rows:
         d = json.loads(row[0])
         tier1 = d.get("tier1", {}).get("details", {})
-        
+
         # Extract scalar values safely
         vix_val = tier1.get("vix", {}).get("value")
         breadth_val = tier1.get("breadth", {}).get("value")
-        
+
         data.append({
             "date": pd.to_datetime(d["date"]),
             "price": d["price"],
@@ -178,7 +182,7 @@ def get_historical_series(days: int = 60, path: str = DEFAULT_DB_PATH) -> pd.Dat
             "breadth": breadth_val,
             "signal": d.get("signal")
         })
-        
+
     df = pd.DataFrame(data)
     if not df.empty:
         df.set_index("date", inplace=True)
@@ -201,7 +205,7 @@ def save_macro_state(
     conn.execute(
         """
         INSERT INTO macro_states (
-            date, credit_spread, trailing_pe, forward_pe, 
+            date, credit_spread, trailing_pe, forward_pe,
             real_yield, fcf_yield, earnings_revisions_breadth
         )
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -214,7 +218,7 @@ def save_macro_state(
             earnings_revisions_breadth = COALESCE(excluded.earnings_revisions_breadth, macro_states.earnings_revisions_breadth)
         """,
         (
-            record_date.isoformat(), 
+            record_date.isoformat(),
             credit_spread, trailing_pe, forward_pe,
             real_yield, fcf_yield, earnings_revisions_breadth
         )
@@ -391,7 +395,13 @@ def _to_json_dict(result: SignalResult) -> dict:
         "registry_version": result.registry_version,
         "tier0_regime": result.tier0_regime,
         "tier0_applied": result.tier0_applied,
+        "raw_target_beta": _float(result.raw_target_beta),
         "target_beta": _float(result.target_beta),
+        "assumed_beta_before": _float(result.assumed_beta_before),
+        "assumed_beta_after": _float(result.assumed_beta_after),
+        "friction_blockers": list(result.friction_blockers),
+        "estimated_turnover": _float(result.estimated_turnover),
+        "estimated_cost_drag": _float(result.estimated_cost_drag),
         "should_adjust": result.should_adjust,
         "rebalance_action": result.rebalance_action,
         "deployment_action": result.deployment_action,

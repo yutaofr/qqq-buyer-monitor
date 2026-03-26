@@ -46,5 +46,7 @@ def test_v8_backtest_preserves_left_side_window_but_locks_crisis():
     assert not crisis.empty
     assert (rich["target_beta"] <= 0.81).all()
     assert (crisis["target_beta"] <= 0.51).all()
+    assert {"raw_target_beta", "advised_target_beta"} <= set(summary.daily_timeseries.columns)
+    assert summary.turnover <= summary.raw_turnover
     assert set(crisis["risk_state"]) == {"RISK_EXIT"}
     assert set(crisis["selected_candidate_id"]) == {"exit-floor-001"}

@@ -1,10 +1,17 @@
 """Unit tests for the allocation policy and signal compatibility layer."""
 from __future__ import annotations
 
-import pytest
 from datetime import date
-from src.engine.aggregator import aggregate, TRIGGERED_THRESHOLD, WATCH_THRESHOLD
-from src.models import AllocationState, OptionsOverlay, Signal, SignalDetail, Tier1Result, Tier2Result
+
+from src.engine.aggregator import TRIGGERED_THRESHOLD, WATCH_THRESHOLD, aggregate
+from src.models import (
+    AllocationState,
+    OptionsOverlay,
+    Signal,
+    SignalDetail,
+    Tier1Result,
+    Tier2Result,
+)
 
 
 def _tier1(score: int) -> Tier1Result:
@@ -243,11 +250,11 @@ class TestMacroAndERPRegimes:
     def test_macro_veto_prevents_triggered(self):
         t1 = _tier1(100)
         t2 = _tier2()
-        # Even with max score, macro veto overrides (threshold is 500 bps)
-        result = aggregate(date(2026, 3, 8), 410.0, t1, t2, credit_spread=600.0)
+        # Current structural crisis threshold is 650 bps.
+        result = aggregate(date(2026, 3, 8), 410.0, t1, t2, credit_spread=650.0)
         assert result.allocation_state == AllocationState.RISK_CONTAINMENT
         assert result.signal == Signal.NO_SIGNAL
-        assert "流动性危机" in result.explanation
+        assert "RISK_CONTAINMENT" in result.explanation
 
     def test_low_erp_slows_allocation(self):
         t1 = _tier1(75)
