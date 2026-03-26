@@ -46,16 +46,14 @@ def test_build_beta_backtest_figure_uses_target_beta_and_close():
 
     fig = build_beta_backtest_figure(daily_ts, summary=summary)
     try:
-        assert len(fig.axes) == 3
+        assert len(fig.axes) == 2
         top_price_axis = next(ax for ax in fig.axes if ax.get_ylabel() == "QQQ Price ($)")
         top_beta_axis = next(ax for ax in fig.axes if ax.get_ylabel() == "Target Beta (x)")
-        bottom_axis = next(ax for ax in fig.axes if ax.get_ylabel() == "Beta (x)")
 
         assert top_price_axis.get_ylabel() == "QQQ Price ($)"
         assert top_beta_axis.get_ylabel() == "Target Beta (x)"
-        assert bottom_axis.get_ylabel() == "Beta (x)"
         assert any(line.get_label() == "QQQ Close" for line in top_price_axis.lines)
-        assert any(line.get_label() == "Recommended Beta" for line in bottom_axis.lines)
+        assert any(line.get_label() == "Target Beta" for line in top_beta_axis.lines)
         assert "Signal Beta: 0.78" in top_price_axis.get_title()
     finally:
         plt.close(fig)
@@ -67,9 +65,9 @@ def test_build_beta_backtest_figure_supports_signal_beta_fallback():
     fig = build_beta_backtest_figure(daily_ts)
     try:
         top_price_axis = next(ax for ax in fig.axes if ax.get_ylabel() == "QQQ Price ($)")
-        bottom_axis = next(ax for ax in fig.axes if ax.get_ylabel() == "Beta (x)")
+        top_beta_axis = next(ax for ax in fig.axes if ax.get_ylabel() == "Target Beta (x)")
         assert any(line.get_label() == "QQQ Close" for line in top_price_axis.lines)
-        assert any(line.get_label() == "Recommended Beta" for line in bottom_axis.lines)
+        assert any(line.get_label() == "Target Beta" for line in top_beta_axis.lines)
     finally:
         plt.close(fig)
 
