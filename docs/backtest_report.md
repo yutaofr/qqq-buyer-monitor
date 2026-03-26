@@ -37,6 +37,23 @@ python scripts/run_signal_acceptance_report.py
 | Within One Step | `99.99%` | ✅ PASS | 邻近等级匹配率 |
 | CRISIS Deployment Breaches | `0` | ✅ PASS | 危机窗口未越级部署 |
 
+## 存量 Beta 回测图
+
+为了把存量资产 beta 回测也做成和增量部署回测一样的审计视图，当前报告增加了一张专门的 beta 对比图。
+
+- 上图对比 QQQ 收盘价与系统给出的 beta 建议路径。
+- 下图展示 beta 建议带、beta floor / cap，以及宏观 regime 的关键标记。
+
+生成命令：
+
+```bash
+python scripts/plot_beta_backtest_performance.py
+```
+
+图表：
+
+- [docs/images/v8.1_beta_recommendation_performance.png](images/v8.1_beta_recommendation_performance.png)
+
 ## 混合研究回测核心指标
 
 | 指标 | 当前表现 | 状态 | 说明 |
@@ -94,6 +111,11 @@ Tier-0 -> Risk Controller -> Candidate Registry -> Beta Recommendation
 
 - [docs/images/v8.1_dca_performance.png](images/v8.1_dca_performance.png)
 - [artifacts/dca_timing_performance.png](../artifacts/dca_timing_performance.png)
+
+当前存量 beta 回测图已刷新到：
+
+- [docs/images/v8.1_beta_recommendation_performance.png](images/v8.1_beta_recommendation_performance.png)
+- [artifacts/v8.1_beta_recommendation_performance.png](../artifacts/v8.1_beta_recommendation_performance.png)
 
 ## 结论
 
