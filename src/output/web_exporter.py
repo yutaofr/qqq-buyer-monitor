@@ -158,7 +158,9 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 # MANDATORY: Prevent Vercel from appending random hashes to keep the URL stable
                 "x-add-random-suffix": "false",
                 # PROPRIETARY CACHE: Vercel REST API specific header for edge TTL
-                "x-cache-control-max-age": "3600"
+                "x-cache-control-max-age": "3600",
+                # VISIBILITY: Explicitly declare the object as publicly accessible
+                "x-access": "public"
             }
             
             import time
