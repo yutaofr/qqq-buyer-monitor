@@ -138,14 +138,16 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         with open(local_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
             
-        # 2. Production Upload Gating
+        # 2. Production Upload Gating (ADD v3.0 Hardened)
         blob_token = os.environ.get("VERCEL_BLOB_READ_WRITE_TOKEN")
         is_ci = os.environ.get("GITHUB_ACTIONS") == "true"
         
-        if is_ci and blob_token:
-            logger.info("CI detected, attempting production upload to Vercel Blob...")
-            # Vercel Blob REST API (Edge Distribution)
-            # Reference: https://vercel.com/docs/storage/vercel-blob/rest-api
+        if is_ci:
+            if not blob_token:
+                # FAIL FAST: In CI, missing credentials is a fatal error that must trigger OOB alerts.
+                raise ValueError("CRITICAL FAILURE: VERCEL_BLOB_READ_WRITE_TOKEN is missing in CI environment. Pipeline halted to prevent stale state.")
+            
+            logger.info("CI Environment detected. Initiating production upload to Vercel Edge...")
             blob_url = "https://blob.vercel-storage.com/status.json"
             headers = {
                 "Authorization": f"Bearer {blob_token}",
@@ -154,16 +156,23 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "x-cache-control": "public, s-maxage=3600, max-age=0, must-revalidate"
             }
             
-            resp = requests.put(blob_url, data=json.dumps(payload), headers=headers, timeout=10)
+            import time
+            start_io = time.time()
+            resp = requests.put(blob_url, data=json.dumps(payload), headers=headers, timeout=15)
             resp.raise_for_status()
-            logger.info("Production snapshot successfully pushed to Vercel Edge.")
+            duration = time.time() - start_io
+            logger.info("Production snapshot successfully pushed to Vercel Edge (IO: %.2fs).", duration)
         else:
-            logger.info("Skipping cloud upload (Local mode or missing token).")
+            # Local mode: Graceful skip according to ADD v3.0 Staging Gates policy.
+            logger.info("Local mode detected: Skipping cloud upload to protect production integrity.")
 
         return True
 
     except Exception as exc:
         logger.error("Web export failed: %s", exc)
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            # In CI, propagate the error so the workflow fails and notifies the developer.
+            raise
         return False
 
 import os
