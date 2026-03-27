@@ -2,9 +2,9 @@ name: Deploy Web Dashboard Snapshot
 
 on:
   schedule:
-    # Every hour on the hour, Monday to Friday (UTC)
-    - cron: '0 * * * 1-5'
-  workflow_dispatch: # Allow manual trigger
+    # AVOID TOP-OF-THE-HOUR CONGESTION: Trigger at 13th minute, Monday to Friday
+    - cron: '13 * * * 1-5'
+  workflow_dispatch:
 
 # CONCURRENCY MUFFLING: Prevent dirty writes by canceling previous runs
 concurrency:
@@ -27,24 +27,22 @@ jobs:
       - name: Install Dependencies
         run: |
           pip install .
-          # Ensure calendar library is installed (explicitly for safety)
           pip install pandas_market_calendars pytz requests
 
       - name: Run Engine & Export Snapshot
         env:
           VERCEL_BLOB_READ_WRITE_TOKEN: ${{ secrets.VERCEL_BLOB_READ_WRITE_TOKEN }}
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
-          # Force export mode
           EXPORT_WEB: "1"
           GITHUB_ACTIONS: "true"
         run: |
-          # Run the main pipeline with web export enabled
+          # Atomic execution with zero local state dependency
           python -m src.main --export-web --no-save
 
       - name: Notify on Failure
         if: failure()
         run: |
-          # Send OOB Alert to Telegram/Discord via Webhook
+          # INDUSTRIAL WEBHOOK: Correct payload for Discord/Slack compatibility
           curl -X POST -H "Content-Type: application/json" \
-               -d "{\"text\": \"🚨 QQQ-Monitor Pipeline FAILED. Run ID: ${{ github.run_id }}. Check logs immediately.\"}" \
+               -d "{\"content\": \"🚨 **QQQ-Monitor Critical Failure** \n**Run ID:** ${{ github.run_id }} \n**Branch:** ${{ github.ref_name }} \n**Status:** Pipeline Halted. Check Vercel Blob integrity immediately.\"}" \
                ${{ secrets.ALERT_WEBHOOK_URL }}

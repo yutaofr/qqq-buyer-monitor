@@ -114,6 +114,9 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         market_state = cursor.get_market_state(now_utc)
         expires_at_utc = cursor.get_expires_at_utc(now_utc, jitter_hours=4)
         
+        from src.output.report import summarize_data_quality
+        fidelity_summary = summarize_data_quality(result.data_quality)
+        
         payload = {
             "meta": {
                 "version": "v8.2",
@@ -125,7 +128,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "regime": str(result.tier0_regime),
                 "exposure_band": _discretize_allocation(result.target_beta),
                 "action_directive": "HOLD/REBALANCE" if result.should_adjust else "STAY_COURSE",
-                "fidelity": "HIGH" if result.data_quality_summary.startswith("可用") else "DEGRADED"
+                "fidelity": "HIGH" if fidelity_summary.startswith("可用") or "6/6" in fidelity_summary else "DEGRADED"
             }
         }
 
