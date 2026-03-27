@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QQQ-Monitor v8.2 Decision Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .state-active { background-color: #065f46; color: #ecfdf5; } /* Emerald 900 */
+        .state-frozen { background-color: #1e3a8a; color: #eff6ff; } /* Blue 900 */
+        .state-stale { background-color: #7f1d1d; color: #fef2f2; filter: grayscale(1); pointer-events: none; } /* Red 900 */
+        .pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+    </style>
+</head>
+<body id="body" class="state-stale min-h-screen flex items-center justify-center p-4 font-sans transition-colors duration-500">
+    <div class="max-w-md w-full bg-white/10 backdrop-blur-md rounded-3xl p-8 shadow-2xl border border-white/20">
+        <!-- Header -->
+        <div class="flex justify-between items-start mb-8">
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight">QQQ MONITOR</h1>
+                <p id="version" class="text-xs opacity-60">v8.2 INDUSTRIAL</p>
+            </div>
+            <div id="indicator" class="w-4 h-4 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]"></div>
+        </div>
+
+        <!-- Main Logic -->
+        <div id="content" class="space-y-6">
+            <div class="space-y-1">
+                <p class="text-sm uppercase tracking-wider opacity-60">Regime Status</p>
+                <p id="regime" class="text-4xl font-black uppercase tracking-tighter">WAITING...</p>
+            </div>
+
+            <div class="space-y-1">
+                <p class="text-sm uppercase tracking-wider opacity-60">Exposure Band</p>
+                <p id="exposure" class="text-2xl font-bold">Initializing System</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 pt-4 border-t border-white/10">
+                <div>
+                    <p class="text-[10px] uppercase opacity-40">Fidelity</p>
+                    <p id="fidelity" class="text-sm font-semibold">UNKNOWN</p>
+                </div>
+                <div>
+                    <p class="text-[10px] uppercase opacity-40">Directive</p>
+                    <p id="action" class="text-sm font-semibold">PENDING</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Meta / Footer -->
+        <div class="mt-12 pt-6 border-t border-white/10 space-y-2">
+            <div class="flex justify-between text-[10px] uppercase opacity-40">
+                <span>Calculated At</span>
+                <span id="calc-at">--:--</span>
+            </div>
+            <div class="flex justify-between text-[10px] uppercase opacity-40 font-bold">
+                <span>Next Expected Check</span>
+                <span id="expires-at">--:--</span>
+            </div>
+        </div>
+
+        <!-- Stale Overlay -->
+        <div id="stale-msg" class="hidden mt-4 p-3 bg-red-600/20 border border-red-500/50 rounded-xl text-center">
+            <p class="text-xs font-bold text-red-200">PIPELINE DISRUPTED - SIGNALS STALE</p>
+        </div>
+    </div>
+
+    <script>
+        const BLOB_URL = 'https://blob.vercel-storage.com/status.json'; // Production URL
+        const DEV_JSON = './status.json'; // Local fallback
+        
+        async function updateDashboard() {
+            const body = document.getElementById('body');
+            const indicator = document.getElementById('indicator');
+            const staleMsg = document.getElementById('stale-msg');
+
+            try {
+                // Fetch with cache-busting on the browser side
+                const res = await fetch(DEV_JSON + '?t=' + Date.now());
+                if (!res.ok) throw new Error("Fetch failed");
+                const data = await res.json();
+                
+                const now = new Date();
+                const expiresAt = new Date(data.meta.expires_at_utc);
+                
+                // 1. Physical Stale Check
+                if (now > expiresAt) throw new Error("Signal Expired");
+
+                // 2. Clear Stale State
+                body.classList.remove('state-stale');
+                staleMsg.classList.add('hidden');
+
+                // 3. Render State Machine
+                const state = data.meta.market_state;
+                if (state === 'ACTIVE') {
+                    body.classList.add('state-active');
+                    body.classList.remove('state-frozen');
+                    indicator.className = 'w-4 h-4 rounded-full bg-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.8)] pulse';
+                } else {
+                    body.classList.add('state-frozen');
+                    body.classList.remove('state-active');
+                    indicator.className = 'w-4 h-4 rounded-full bg-blue-400 shadow-[0_0_15px_rgba(96,165,250,0.8)]';
+                }
+
+                // 4. Update Content
+                document.getElementById('regime').textContent = data.signal.regime;
+                document.getElementById('exposure').textContent = data.signal.exposure_band;
+                document.getElementById('fidelity').textContent = data.signal.fidelity;
+                document.getElementById('action').textContent = data.signal.action_directive;
+                document.getElementById('calc-at').textContent = new Date(data.meta.calculated_at_utc).toLocaleString();
+                document.getElementById('expires-at').textContent = expiresAt.toLocaleString();
+
+            } catch (e) {
+                console.error("Dashboard Error:", e);
+                body.className = 'state-stale min-h-screen flex items-center justify-center p-4 font-sans';
+                indicator.className = 'w-4 h-4 rounded-full bg-red-600';
+                staleMsg.classList.remove('hidden');
+                document.getElementById('regime').textContent = "STALE";
+                document.getElementById('exposure').textContent = "SIGNALS EXPIRED";
+            }
+        }
+
+        // Auto-refresh every 5 minutes to catch CDN revalidation
+        updateDashboard();
+        setInterval(updateDashboard, 300000);
+    </script>
+</body>
+</html>

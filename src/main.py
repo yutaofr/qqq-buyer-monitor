@@ -611,6 +611,12 @@ def run_pipeline(args: argparse.Namespace) -> None:
             except Exception as exc:
                 logger.warning("Narrative interpreter failed: %s", exc)
 
+    # ── Web Export Logic ──────────────────────────────────────────────────────
+    if args.export_web or os.environ.get("EXPORT_WEB") == "1":
+        from src.output.web_exporter import export_web_snapshot
+        logger.info("Exporting web snapshot...")
+        export_web_snapshot(result)
+
     # Persist
     if not args.no_save:
         save_signal(result)
@@ -635,6 +641,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="QQQ Buy-Signal Monitor (v8.2 Dual-Controller)")
     parser.add_argument("--json", action="store_true", help="Output JSON report")
+    parser.add_argument("--export-web", action="store_true", help="Export discretized snapshot for Web dashboard")
     parser.add_argument("--no-save", action="store_true", help="Skip saving to DB")
     parser.add_argument("--no-color", action="store_true", help="Disable ANSI color output")
     parser.add_argument("--history", type=int, metavar="N", help="Print last N signal records and exit")
