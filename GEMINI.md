@@ -9,6 +9,10 @@
 - **Deployment Controller:** 资金部署引擎。基于 Class B 战术数据，在满足风险约束的前提下，优化新增资金的入场节奏 (`FAST | BASE | SLOW | PAUSE`)。
 - **Search & Recommendation:** 搜索与推荐引擎。在认证候选库中检索符合 Beta 上限的最优配置，输出不含金额的纯净建议。
 
+### 4. Web 分发系统 (Public Distribution)
+- **Endpoint**: Vercel Blob 基于边缘存储的静态快照。
+- **Governance**: 离散化映射保护 Alpha，3-State 机自愈感知流水线故障。
+
 ### 核心数据口径 (SSoT)
 - **Net Liquidity:** WALCL - WDTGAL - RRPONTSYD (以 10 亿美元为单位)。
 - **Credit Spread:** ICE BofA US High Yield Index OAS (BAMLH0A0HYM2)。
