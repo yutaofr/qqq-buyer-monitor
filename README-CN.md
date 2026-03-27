@@ -206,7 +206,7 @@ python scripts/plot_dca_performance.py
 ```
 
 ## 相关文档
-- [用户手册 v8.2]（https://github.com/yutaofr/qqq-buyer-monitor/wiki/User-Manual-(v8.2)）
+-  [用户手册 v8.2](https://github.com/yutaofr/qqq-buyer-monitor/wiki/User-Manual-(v8.2))
 - [SRD v8.0 基线：线性流水线](docs/v8.0_linear_pipeline_srd.md)
 - [ADD v8.0 基线：实现方案](docs/v8.0_linear_pipeline_add.md)
 - [SDT v8.0 基线：测试设计](docs/v8.0_linear_pipeline_sdt.md)
