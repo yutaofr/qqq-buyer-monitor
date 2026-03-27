@@ -150,19 +150,28 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
             logger.info("CI Environment detected. Initiating production upload to Vercel Edge...")
             blob_url = "https://blob.vercel-storage.com/status.json"
             
-            # PROTOCOL ALIGNMENT: Precise headers required by Vercel Blob REST API v7
+            # VERCEL PROPRIETARY PROTOCOL (Final Surgical Alignment)
             headers = {
                 "authorization": f"Bearer {blob_token}",
                 "x-api-version": "7",
-                "content-type": "application/json",
-                "x-content-type-options": "nosniff",
-                "cache-control": "public, s-maxage=3600, max-age=0, must-revalidate"
+                "content-type": "application/json; charset=utf-8",
+                # MANDATORY: Prevent Vercel from appending random hashes to keep the URL stable
+                "x-add-random-suffix": "false",
+                # PROPRIETARY CACHE: Vercel REST API specific header for edge TTL
+                "x-cache-control-max-age": "3600"
             }
             
             import time
             start_io = time.time()
-            # Send raw JSON string with precise headers
-            resp = requests.put(blob_url, data=json.dumps(payload), headers=headers, timeout=15)
+            
+            # PHYSICAL ENCODING: Force UTF-8 bytes to prevent payload length/encoding mismatches
+            payload_bytes = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+            
+            resp = requests.put(blob_url, data=payload_bytes, headers=headers, timeout=15)
+            
+            if resp.status_code != 200:
+                logger.error("Vercel Blob Rejection (%d): %s", resp.status_code, resp.text)
+                
             resp.raise_for_status()
             duration = time.time() - start_io
             logger.info("Production snapshot successfully pushed to Vercel Edge (IO: %.2fs).", duration)
