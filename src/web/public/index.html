@@ -77,7 +77,9 @@
     </div>
 
     <script>
-        const DEV_JSON = './status.json';
+        // ⚠️ 请在此处填入你在 Vercel 控制台获取到的 status.json 公开访问地址
+        const PROD_BLOB_URL = 'https://rtmr1b9ayzxiugfu.public.blob.vercel-storage.com/status.json'; 
+        const LOCAL_JSON = './status.json';
         
         function getProgressWidth(band) {
             const match = band.match(/(\d+)-(\d+)%/);
@@ -90,15 +92,29 @@
             const staleMsg = document.getElementById('stale-msg');
 
             try {
-                const res = await fetch(DEV_JSON + '?t=' + Date.now());
-                if (!res.ok) throw new Error("Fetch failed");
+                // 优先尝试从云端 Blob 读取，失败则回退到本地静态文件
+                let res;
+                try {
+                    res = await fetch(PROD_BLOB_URL + '?t=' + Date.now(), { cache: 'no-store' });
+                    if (!res.ok) throw new Error("Cloud fetch failed");
+                } catch (e) {
+                    console.warn("Falling back to local status.json");
+                    res = await fetch(LOCAL_JSON + '?t=' + Date.now());
+                }
+
+                if (!res.ok) throw new Error("No data source available");
                 const data = await res.json();
                 
                 const now = new Date();
                 const expiresAt = new Date(data.meta.expires_at_utc);
                 
-                if (now > expiresAt) throw new Error("Signal Expired");
+                // 1. 物理过期校验
+                if (now > expiresAt) {
+                    console.error("Signal expired physically");
+                    throw new Error("Signal Expired");
+                }
 
+                // 2. 状态切换
                 body.classList.remove('state-stale');
                 staleMsg.classList.add('hidden');
 
@@ -111,7 +127,7 @@
                     indicator.className = 'w-3 h-3 rounded-full bg-blue-400 shadow-[0_0_15px_rgba(96,165,250,0.8)]';
                 }
 
-                // Render Content
+                // 3. 渲染数据
                 document.getElementById('regime').textContent = data.signal.regime;
                 document.getElementById('regime-desc').textContent = data.signal.regime_desc;
                 document.getElementById('exposure').textContent = data.signal.exposure_band;
@@ -129,8 +145,8 @@
                 body.className = 'state-stale min-h-screen flex items-center justify-center p-4 font-sans';
                 indicator.className = 'w-3 h-3 rounded-full bg-red-600';
                 staleMsg.classList.remove('hidden');
-                document.getElementById('regime').textContent = "系统停摆";
-                document.getElementById('regime-desc').textContent = "无法获取实时信号，请检查网络或联系管理员。";
+                document.getElementById('regime').textContent = "数据获取失败";
+                document.getElementById('regime-desc').textContent = "请检查 Vercel Blob URL 是否正确配置，或市场数据源是否中断。";
             }
         }
 

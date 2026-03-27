@@ -612,7 +612,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 logger.warning("Narrative interpreter failed: %s", exc)
 
     # ── Web Export Logic ──────────────────────────────────────────────────────
-    if args.export_web or os.environ.get("EXPORT_WEB") == "1":
+    if getattr(args, "export_web", False) or os.environ.get("EXPORT_WEB") == "1":
         from src.output.web_exporter import export_web_snapshot
         logger.info("Exporting web snapshot...")
         export_web_snapshot(result)
