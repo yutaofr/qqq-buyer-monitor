@@ -149,15 +149,19 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
             
             logger.info("CI Environment detected. Initiating production upload to Vercel Edge...")
             blob_url = "https://blob.vercel-storage.com/status.json"
+            
+            # PROTOCOL ALIGNMENT: Precise headers required by Vercel Blob REST API v7
             headers = {
-                "Authorization": f"Bearer {blob_token}",
+                "authorization": f"Bearer {blob_token}",
                 "x-api-version": "7",
                 "content-type": "application/json",
-                "x-cache-control": "public, s-maxage=3600, max-age=0, must-revalidate"
+                "x-content-type-options": "nosniff",
+                "cache-control": "public, s-maxage=3600, max-age=0, must-revalidate"
             }
             
             import time
             start_io = time.time()
+            # Send raw JSON string with precise headers
             resp = requests.put(blob_url, data=json.dumps(payload), headers=headers, timeout=15)
             resp.raise_for_status()
             duration = time.time() - start_io
