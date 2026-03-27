@@ -93,19 +93,34 @@ class MarketCursor:
 
 def _discretize_allocation(beta: float) -> str:
     """Maps precise beta/allocation to 10% bands to protect internal logic."""
-    if beta <= 0.05: return "0-5% (Minimal/Cash)"
-    if beta <= 0.25: return "10-20% (Defensive)"
-    if beta <= 0.45: return "30-40% (Conservative)"
-    if beta <= 0.65: return "50-60% (Moderate)"
-    if beta <= 0.85: return "70-80% (Aggressive)"
-    return "90-100% (Full Exposure)"
+    if beta <= 0.05: return "0-5% (极轻仓/现金)"
+    if beta <= 0.25: return "10-20% (防御性)"
+    if beta <= 0.45: return "30-40% (保守)"
+    if beta <= 0.65: return "50-60% (稳健)"
+    if beta <= 0.85: return "70-80% (积极)"
+    return "90-100% (满仓/进攻)"
+
+REGIME_MAP = {
+    "CRISIS": {"label": "危机", "desc": "流动性枯竭，系统性风险爆发，首要任务是生存。"},
+    "TRANSITION_STRESS": {"label": "压力过渡", "desc": "市场波动加剧，不确定性上升，建议缩减敞口。"},
+    "RICH_TIGHTENING": {"label": "紧缩/高估", "desc": "估值性价比降低，政策环境收紧，审慎防御。"},
+    "NEUTRAL": {"label": "中性", "desc": "估值与流动性处于平衡点，趋势不明，维持基准。"},
+    "EUPHORIC": {"label": "狂热", "desc": "市场处于泡沫阶段，贪婪情绪过载，准备撤退。"}
+}
+
+DEPLOY_MAP = {
+    "FAST": {"label": "快速入场", "desc": "机会窗口开启，增量资金应积极部署。"},
+    "BASE": {"label": "常规入场", "desc": "遵循定投节奏，维持基准部署速率。"},
+    "SLOW": {"label": "减速入场", "desc": "防御姿态，降低入场频率以规避波动。"},
+    "PAUSE": {"label": "停止入场", "desc": "风险过载，增量资金持币观望，不接飞刀。"}
+}
 
 import requests
 
 def export_web_snapshot(result: SignalResult, output_path: str | Path | None = None) -> bool:
     """
     Exports a discretized snapshot and uploads to Vercel Blob if in CI.
-    Implements environment gating to prevent local tests from polluting production.
+    Includes Chinese explanations for Regime and Deployment states.
     """
     try:
         now_utc = datetime.now(timezone.utc)
@@ -117,6 +132,13 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         from src.output.report import summarize_data_quality
         fidelity_summary = summarize_data_quality(result.data_quality)
         
+        # Resolve mappings with fallbacks
+        regime_key = str(result.tier0_regime)
+        deploy_key = result.deployment_action.get("deploy_mode", "BASE")
+        
+        regime_info = REGIME_MAP.get(regime_key, {"label": regime_key, "desc": "未知宏观制度"})
+        deploy_info = DEPLOY_MAP.get(deploy_key, {"label": deploy_key, "desc": "维持基准节奏"})
+
         payload = {
             "meta": {
                 "version": "v8.2",
@@ -125,10 +147,13 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "market_state": market_state
             },
             "signal": {
-                "regime": str(result.tier0_regime),
+                "regime": regime_info["label"],
+                "regime_desc": regime_info["desc"],
                 "exposure_band": _discretize_allocation(result.target_beta),
-                "action_directive": "HOLD/REBALANCE" if result.should_adjust else "STAY_COURSE",
-                "fidelity": "HIGH" if fidelity_summary.startswith("可用") or "6/6" in fidelity_summary else "DEGRADED"
+                "exposure_desc": "存量资金目前的理想风险敞口上限。",
+                "deploy_rhythm": deploy_info["label"],
+                "deploy_desc": deploy_info["desc"],
+                "fidelity": "高 (可靠)" if fidelity_summary.startswith("可用") or "6/6" in fidelity_summary else "降级 (参考)"
             }
         }
 
