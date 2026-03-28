@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "version": "v8.2",
+    "calculated_at_utc": "2026-03-28T15:43:12Z",
+    "expires_at_utc": "2026-03-30T17:30:00Z",
+    "market_state": "FROZEN"
+  },
+  "signal": {
+    "regime": "狂热",
+    "regime_desc": "市场处于泡沫阶段，贪婪情绪过载，准备撤退。",
+    "exposure_band": "110-120% (进攻/杠杆)",
+    "exposure_desc": "存量资金目前的理想风险敞口上限。",
+    "deploy_rhythm": "快速入场",
+    "deploy_desc": "机会窗口开启，增量资金应积极部署。",
+    "fidelity": "高 (可靠)"
+  },
+  "evidence": {
+    "risk_state": "RiskState.RISK_ON",
+    "risk_reasons": [
+      {
+        "rule": "tier0_euphoric",
+        "tier0_regime": "EUPHORIC"
+      }
+    ],
+    "deploy_reasons": [
+      {
+        "rule": "default_base"
+      }
+    ],
+    "factors": {
+      "macro": {
+        "credit_spread": 350,
+        "erp": 3.0,
+        "net_liquidity": 6000,
+        "liquidity_roc": 1.0
+      },
+      "tactical": {
+        "vix": 15,
+        "fear_greed": 50,
+        "rolling_drawdown": 0.05,
+        "tactical_stress": 20
+      }
+    },
+    "node_traces": [
+      {
+        "node": "Tier-0 宏观指挥官",
+        "type": "MACRO",
+        "rule": "tier0_euphoric",
+        "formula": "Spread < 350 && ERP > 4.5%",
+        "explanation": "宏观环境处于极度贪婪后期，估值修复完毕，需预防均值回归。",
+        "result": "EUPHORIC"
+      },
+      {
+        "node": "Risk 风险控制器",
+        "type": "VETO",
+        "rule": "tier0_euphoric",
+        "formula": "[VETO] Inherit Tier-0 (EUPHORIC)",
+        "explanation": "受顶层宏观制度 (EUPHORIC) 强约束，Risk 节点强制进入防御模式。",
+        "result": "RISK_ON"
+      },
+      {
+        "node": "Deploy 部署引擎",
+        "type": "TACTICAL",
+        "rule": "default_base",
+        "formula": "Standard Path",
+        "explanation": "无特殊偏差信号，按基准配置计划稳步推进。",
+        "result": "快速入场"
+      }
+    ]
+  }
+}

@@ -17,6 +17,61 @@ import pytz
 
 from src.models import SignalResult
 
+# v8.2 Decision Logic Reference (Formula + Explanation)
+_LOGIC_CATALOG = {
+    # Tier-0 Macro
+    "tier0_crisis": {
+        "formula": "Spread >= 650 || ERP < 1.0%",
+        "explanation": "系统性信用枯竭或风险溢价极度缺失，进入熔断模式。"
+    },
+    "tier0_rich_tightening": {
+        "formula": "Spread >= 450 || ERP < 2.5%",
+        "explanation": "估值性价比降低或融资极度收紧，审慎减少敞口。"
+    },
+    "tier0_transition_stress": {
+        "formula": "Credit Stress (Transition)",
+        "explanation": "处于信用扩张与收缩的转换期，波动率中枢抬升，需动态防御。"
+    },
+    "tier0_euphoric": {
+        "formula": "Spread < 350 && ERP > 4.5%",
+        "explanation": "宏观环境处于极度贪婪后期，估值修复完毕，需预防均值回归。"
+    },
+    # Risk Controller (Class A stress hierarchy)
+    "triple_stress": {
+        "formula": "Accel && !Liq && Stress",
+        "explanation": "【三重压力并发】信用加速 + 流动性枯竭 + 融资压力同时亮红灯。-> 强制避险 (上限 0.5x)"
+    },
+    "dual_stress": {
+        "formula": "Stress Count >= 2 || Spread >= 600",
+        "explanation": "【双重压力并发】触发两项信号或利差触及 600bps 警戒线。-> 强化防御 (上限 0.7x)"
+    },
+    "single_stress": {
+        "formula": "Stress Count == 1 || Spread > 500",
+        "explanation": "【单边恶化】满足一项信号或利差 > 500bps。-> 适度减仓 (上限 0.8x)"
+    },
+    "clean_macro": {
+        "formula": "No Stress Signals",
+        "explanation": "环境清洁。依据 Tier-0 或信用趋势决定基准 (1.0x) 或 进攻 (1.2x) 状态。"
+    },
+    "drawdown_budget_breached": {
+        "formula": "Drawdown >= 30%",
+        "explanation": "触及组合最大回撤预算硬约束。-> 强制避险 (上限 0.5x)"
+    },
+    # Deployment Controller (DCA Rhythm)
+    "blood_chip_crisis_override": {
+        "formula": "Crisis && Panic && Value",
+        "explanation": "【血筹特例】虽然处于危机制度，但战术指标触发极端超卖，开启左侧入场。"
+    },
+    "risk_ceiling": {
+        "formula": "Proposed > Ceiling",
+        "explanation": "入场节奏受限于更高的风控等级或宏观顶层约束。"
+    },
+    "default_base": {
+        "formula": "Standard Path",
+        "explanation": "无特殊偏差信号，按基准配置计划稳步推进。"
+    }
+}
+
 logger = logging.getLogger("qqq_monitor.web_exporter")
 
 EASTERN = pytz.timezone("US/Eastern")
@@ -98,7 +153,8 @@ def _discretize_allocation(beta: float) -> str:
     if beta <= 0.45: return "30-40% (保守)"
     if beta <= 0.65: return "50-60% (稳健)"
     if beta <= 0.85: return "70-80% (积极)"
-    return "90-100% (满仓/进攻)"
+    if beta <= 1.05: return "90-100% (满仓)"
+    return "110-120% (进攻/杠杆)"
 
 REGIME_MAP = {
     "CRISIS": {"label": "危机", "desc": "流动性枯竭，系统性风险爆发，首要任务是生存。"},
@@ -132,12 +188,17 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         from src.output.report import summarize_data_quality
         fidelity_summary = summarize_data_quality(result.data_quality)
         
-        # Resolve mappings with fallbacks
+        # Resolve mappings with MUST-HAVE integrity (Fail-Closed)
         regime_key = str(result.tier0_regime)
-        deploy_key = result.deployment_action.get("deploy_mode", "BASE")
+        deploy_key = result.deployment_action["deploy_mode"]
         
-        regime_info = REGIME_MAP.get(regime_key, {"label": regime_key, "desc": "未知宏观制度"})
-        deploy_info = DEPLOY_MAP.get(deploy_key, {"label": deploy_key, "desc": "维持基准节奏"})
+        # Accessing with [] to raise KeyError if missing - system should failure rather than mask
+        regime_info = REGIME_MAP[regime_key]
+        deploy_info = DEPLOY_MAP[deploy_key]
+
+        # Final Validation of core target beta (AC-3 Data Truthfulness)
+        if result.target_beta is None:
+            raise ValueError(f"CRITICAL DATA GAP: result.target_beta is None at {now_utc}")
 
         payload = {
             "meta": {
@@ -153,9 +214,99 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "exposure_desc": "存量资金目前的理想风险敞口上限。",
                 "deploy_rhythm": deploy_info["label"],
                 "deploy_desc": deploy_info["desc"],
-                "fidelity": "高 (可靠)" if fidelity_summary.startswith("可用") or "6/6" in fidelity_summary else "降级 (参考)"
+                "fidelity": "高 (可靠)"
+            },
+            "evidence": {
+                "risk_state": str(result.risk_state),
+                "risk_reasons": result.risk_reasons,
+                "deploy_reasons": result.deployment_reasons,
+                "factors": {
+                    "macro": {
+                        "credit_spread": result.feature_values.get("credit_spread"),
+                        "erp": result.feature_values.get("erp"),
+                        "net_liquidity": result.feature_values.get("net_liquidity"),
+                        "liquidity_roc": result.feature_values.get("liquidity_roc"),
+                    },
+                    "tactical": {
+                        "vix": result.feature_values.get("vix"),
+                        "fear_greed": result.feature_values.get("fear_greed"),
+                        "rolling_drawdown": result.feature_values.get("rolling_drawdown"),
+                        "tactical_stress": result.feature_values.get("tactical_stress_score"),
+                    }
+                },
+                "node_traces": []
             }
         }
+
+        # Populate node traces for the Evidence Facts Table
+        traces = []
+        
+        # 1. Tier-0 Node Trace
+        t0_reason = next((r for r in result.risk_reasons if "tier0" in r.get("rule", "")), None)
+        if t0_reason:
+            rule_id = t0_reason["rule"]
+            # FAIL FAST: use [] to raise KeyError if rule_id is missing from catalog
+            info = _LOGIC_CATALOG[rule_id]
+            traces.append({
+                "node": "Tier-0 宏观指挥官",
+                "type": "MACRO",
+                "rule": rule_id,
+                "formula": info["formula"],
+                "explanation": info["explanation"],
+                "result": t0_reason["tier0_regime"]
+            })
+
+        # 2. Risk Node Trace
+        # Detect if Risk was Vetoed by Tier-0
+        is_risk_veto = any("tier0_" in r.get("rule", "") for r in result.risk_reasons)
+        risk_reason = next((r for r in result.risk_reasons if ("tier0_" not in r.get("rule", "") or not is_risk_veto)), None)
+        if not risk_reason and result.risk_reasons:
+            risk_reason = result.risk_reasons[0]
+        
+        if risk_reason:
+            rule_id = risk_reason["rule"]
+            # FAIL FAST
+            info = _LOGIC_CATALOG[rule_id]
+            formula = info["formula"]
+            explanation = info["explanation"]
+            
+            if is_risk_veto:
+                formula = f"[VETO] Inherit Tier-0 ({result.tier0_regime})"
+                explanation = f"受顶层宏观制度 ({result.tier0_regime}) 强约束，Risk 节点强制进入防御模式。"
+
+            traces.append({
+                "node": "Risk 风险控制器",
+                "type": "VETO" if is_risk_veto else "SIGNAL",
+                "rule": rule_id,
+                "formula": formula,
+                "explanation": explanation,
+                "result": str(result.risk_state).split(".")[-1]
+            })
+
+        # 3. Deployment Node Trace
+        deploy_reason = result.deployment_reasons[0] if result.deployment_reasons else None
+        if deploy_reason:
+            rule_id = deploy_reason["rule"]
+            is_deploy_veto = ("ceiling" in rule_id)
+            # FAIL FAST
+            info = _LOGIC_CATALOG[rule_id]
+            formula = info["formula"]
+            explanation = info["explanation"]
+            
+            if is_deploy_veto:
+                formula = "[VETO] Risk/Macro Ceiling"
+                explanation = "入场节奏受限于更高的风控等级或宏观顶层约束，进入保值模式。"
+
+            traces.append({
+                "node": "Deploy 部署引擎",
+                "type": "VETO" if is_deploy_veto else "TACTICAL",
+                "rule": rule_id,
+                "formula": formula,
+                "explanation": explanation,
+                "result": deploy_info["label"]
+            })
+        
+        payload["evidence"]["node_traces"] = traces
 
         # 1. Local Write (Always for debugging/local history)
         local_path = Path(output_path) if output_path else Path("src/web/public/status.json")

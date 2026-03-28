@@ -1,0 +1,62 @@
+{
+  "meta": {
+    "version": "v8.2",
+    "calculated_at_utc": "2026-03-28T15:43:12Z",
+    "expires_at_utc": "2026-03-30T17:30:00Z",
+    "market_state": "FROZEN"
+  },
+  "signal": {
+    "regime": "中性",
+    "regime_desc": "估值与流动性处于平衡点，趋势不明，维持基准。",
+    "exposure_band": "90-100% (满仓)",
+    "exposure_desc": "存量资金目前的理想风险敞口上限。",
+    "deploy_rhythm": "常规入场",
+    "deploy_desc": "遵循定投节奏，维持基准部署速率。",
+    "fidelity": "高 (可靠)"
+  },
+  "evidence": {
+    "risk_state": "RiskState.RISK_ON",
+    "risk_reasons": [
+      {
+        "rule": "clean_macro"
+      }
+    ],
+    "deploy_reasons": [
+      {
+        "rule": "default_base"
+      }
+    ],
+    "factors": {
+      "macro": {
+        "credit_spread": null,
+        "erp": 3.0,
+        "net_liquidity": 6000,
+        "liquidity_roc": 1.0
+      },
+      "tactical": {
+        "vix": 15,
+        "fear_greed": 50,
+        "rolling_drawdown": 0.05,
+        "tactical_stress": 20
+      }
+    },
+    "node_traces": [
+      {
+        "node": "Risk 风险控制器",
+        "type": "SIGNAL",
+        "rule": "clean_macro",
+        "formula": "No Stress Signals",
+        "explanation": "环境清洁。依据 Tier-0 或信用趋势决定基准 (1.0x) 或 进攻 (1.2x) 状态。",
+        "result": "RISK_ON"
+      },
+      {
+        "node": "Deploy 部署引擎",
+        "type": "TACTICAL",
+        "rule": "default_base",
+        "formula": "Standard Path",
+        "explanation": "无特殊偏差信号，按基准配置计划稳步推进。",
+        "result": "常规入场"
+      }
+    ]
+  }
+}

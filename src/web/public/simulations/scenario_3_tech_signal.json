@@ -1,0 +1,63 @@
+{
+  "meta": {
+    "version": "v8.2",
+    "calculated_at_utc": "2026-03-28T15:43:12Z",
+    "expires_at_utc": "2026-03-30T17:30:00Z",
+    "market_state": "FROZEN"
+  },
+  "signal": {
+    "regime": "中性",
+    "regime_desc": "估值与流动性处于平衡点，趋势不明，维持基准。",
+    "exposure_band": "70-80% (积极)",
+    "exposure_desc": "存量资金目前的理想风险敞口上限。",
+    "deploy_rhythm": "减速入场",
+    "deploy_desc": "防御姿态，降低入场频率以规避波动。",
+    "fidelity": "高 (可靠)"
+  },
+  "evidence": {
+    "risk_state": "RiskState.RISK_DEFENSE",
+    "risk_reasons": [
+      {
+        "rule": "dual_stress",
+        "stress_count": 2
+      }
+    ],
+    "deploy_reasons": [
+      {
+        "rule": "risk_ceiling"
+      }
+    ],
+    "factors": {
+      "macro": {
+        "credit_spread": 350,
+        "erp": 3.0,
+        "net_liquidity": 6000,
+        "liquidity_roc": 1.0
+      },
+      "tactical": {
+        "vix": 15,
+        "fear_greed": 50,
+        "rolling_drawdown": 0.05,
+        "tactical_stress": 20
+      }
+    },
+    "node_traces": [
+      {
+        "node": "Risk 风险控制器",
+        "type": "SIGNAL",
+        "rule": "dual_stress",
+        "formula": "Stress Count >= 2 || Spread >= 600",
+        "explanation": "【双重压力并发】触发两项信号或利差触及 600bps 警戒线。-> 强化防御 (上限 0.7x)",
+        "result": "RISK_DEFENSE"
+      },
+      {
+        "node": "Deploy 部署引擎",
+        "type": "VETO",
+        "rule": "risk_ceiling",
+        "formula": "[VETO] Risk/Macro Ceiling",
+        "explanation": "入场节奏受限于更高的风控等级或宏观顶层约束，进入保值模式。",
+        "result": "减速入场"
+      }
+    ]
+  }
+}

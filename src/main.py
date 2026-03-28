@@ -430,6 +430,13 @@ def run_pipeline(args: argparse.Namespace) -> None:
         result.registry_version = registry.registry_version
         result.tier0_regime = tier0_regime
         result.tier0_applied = v7_risk.tier0_applied
+        
+        # v8.2 Evidence Tracing (New)
+        result.risk_reasons = list(v7_risk.reasons)
+        result.deployment_reasons = list(v7_deploy.reasons)
+        result.feature_values = {**v7_snapshot.values}
+        if erp_value is not None:
+            result.feature_values["erp"] = float(erp_value)
 
         selected_candidate, used_floor_fallback = select_candidate_with_floor_fallback_v8(
             scoped_candidates=candidates,

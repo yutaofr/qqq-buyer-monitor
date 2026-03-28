@@ -11,12 +11,22 @@
     <script defer src="/_vercel/insights/script.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .state-active { background-color: #064e3b; color: #ecfdf5; } /* Emerald 950 */
-        .state-frozen { background-color: #1e3a8a; color: #eff6ff; } /* Blue 900 */
-        .state-stale { background-color: #450a0a; color: #fef2f2; filter: grayscale(1); pointer-events: none; } /* Red 950 */
+        .state-active { background-color: #0d1117; color: #ecfdf5; }
+        .state-frozen { background-color: #0d1117; color: #eff6ff; }
+        .state-active .glass { background: rgba(5, 46, 22, 0.4); } 
+        .state-frozen .glass { background: rgba(30, 58, 138, 0.2); }
+        .state-stale { background-color: #0d1117; color: #fef2f2; filter: grayscale(1); pointer-events: none; }
         .pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
-        .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .glass { backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8); }
+        .factor-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); }
+        .tree-line { width: 1px; background: rgba(255,255,255,0.1); }
+        .node-lit { background: #34d399; box-shadow: 0 0 15px rgba(52, 211, 153, 0.6); }
+        .node-ghost { background: rgba(255,255,255,0.05); }
+        .branch-line { border-left: 1px solid rgba(255,255,255,0.1); border-top: 1px solid rgba(255,255,255,0.1); }
+        .text-ghost { opacity: 0.15; filter: blur(0.5px); }
+        #insights-panel { max-height: 0; overflow: hidden; transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
+        #insights-panel.open { max-height: 1200px; margin-top: 2rem; }
     </style>
 </head>
 <body id="body" class="state-stale min-h-screen flex items-center justify-center p-4 font-sans transition-colors duration-700">
@@ -45,8 +55,9 @@
                     <p class="text-[11px] font-bold uppercase tracking-[0.15em] opacity-50">风险敞口 (存量)</p>
                     <p id="exposure" class="text-xl font-bold tracking-tight">--</p>
                 </div>
-                <div class="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-                    <div id="exposure-bar" class="h-full bg-current opacity-40 transition-all duration-1000" style="width: 0%"></div>
+                <div class="w-full h-1.5 bg-white/10 rounded-full overflow-hidden relative">
+                    <div id="exposure-bar" class="h-full bg-emerald-400 opacity-40 transition-all duration-1000" style="width: 0%"></div>
+                    <div id="leverage-bar" class="absolute top-0 h-full bg-gradient-to-r from-emerald-400 to-orange-400 shadow-[0_0_10px_rgba(251,146,60,0.8)] opacity-0 transition-all duration-1000" style="width: 0%; left: 100%"></div>
                 </div>
                 <p id="exposure-desc" class="text-[10px] opacity-50"></p>
             </div>
@@ -56,6 +67,139 @@
                 <p class="text-[11px] font-bold uppercase tracking-[0.15em] opacity-50">入场节奏 (增量)</p>
                 <p id="deploy" class="text-2xl font-black tracking-tight">--</p>
                 <p id="deploy-desc" class="text-[10px] leading-relaxed opacity-50"></p>
+            </div>
+        </div>
+
+        <!-- Curiosity Toggle -->
+        <button onclick="toggleInsights()" class="mt-8 w-full flex items-center justify-center space-x-2 py-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 transition-all group">
+            <span class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40 group-hover:opacity-100 transition-opacity">查看决策链路・好奇心模式</span>
+            <svg id="chevron" class="w-3 h-3 opacity-30 group-hover:opacity-100 transition-all transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M19 9l-7 7-7-7"></path>
+            </svg>
+        </button>
+
+        <!-- Insights Panel -->
+        <div id="insights-panel" class="space-y-12">
+            <!-- Dual Pipeline Visualizer -->
+            <div class="relative space-y-6">
+                <!-- Tier 0: Unified Macro Center -->
+                <div class="flex flex-col items-center mb-8">
+                    <div id="node-t0" class="w-4 h-4 rounded-full node-lit mb-2"></div>
+                    <p class="text-[9px] font-bold opacity-30 uppercase tracking-[0.2em]">Tier-0 Macro Regime</p>
+                    <p id="tree-t0" class="text-xl font-black tracking-tight">--</p>
+                    <div class="flex flex-wrap justify-center gap-2 mt-2 max-w-[240px]">
+                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">CRISIS</span>
+                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">TRANSITION_STRESS</span>
+                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">RICH_TIGHTENING</span>
+                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">NEUTRAL</span>
+                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">EUPHORIC</span>
+                    </div>
+                </div>
+
+                <!-- Connectors -->
+                <div class="flex justify-center -mt-6 h-8">
+                    <div class="w-1/2 border-l border-t border-white/10 rounded-tl-2xl"></div>
+                    <div class="w-1/2 border-r border-t border-white/10 rounded-tr-2xl"></div>
+                </div>
+
+                <!-- Trees: Left (Beta) & Right (DCA) -->
+                <div class="flex gap-4">
+                    <!-- Left Tree: Stock Beta -->
+                    <div class="w-1/2 space-y-8 border-r border-white/5 pr-2">
+                        <div class="relative pl-4 border-l border-white/10">
+                            <div class="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-white/20"></div>
+                            <p class="text-[9px] font-bold opacity-30 uppercase tracking-widest mb-1">Stock Beta</p>
+                            <p id="tree-risk" class="text-xs font-black tracking-tight">--</p>
+                            <div class="flex flex-wrap gap-1 mt-2">
+                                <span class="text-[8px] px-1 py-0.5 text-ghost">EXIT (0.5x)</span>
+                                <span class="text-[8px] px-1 py-0.5 text-ghost">DEFENSE (0.7x)</span>
+                                <span class="text-[8px] px-1 py-0.5 text-ghost">REDUCED (0.8x)</span>
+                                <span class="text-[8px] px-1 py-0.5 text-ghost">NEUTRAL (1.0x)</span>
+                                <span class="text-[8px] px-1 py-0.5 text-ghost">ON (1.2x)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Tree: Incremental DCA -->
+                    <div class="w-1/2 space-y-8 pl-2">
+                        <div class="relative pl-4 border-l border-white/10">
+                            <div class="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-white/20"></div>
+                            <p class="text-[9px] font-bold opacity-30 uppercase tracking-widest mb-1">Incremental DCA</p>
+                            <p id="tree-deploy" class="text-xs font-black tracking-tight">--</p>
+                            <div class="flex flex-wrap gap-1 mt-2">
+                                <span class="text-[8px] px-1 py-0.5 text-ghost">FAST</span>
+                                <span class="text-[8px] px-1 py-0.5 text-ghost">BASE</span>
+                                <span class="text-[8px] px-1 py-0.5 text-ghost">SLOW</span>
+                                <span class="text-[8px] px-1 py-0.5 text-ghost">PAUSE</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Decision Facts Table -->
+            <div class="space-y-4">
+                <div class="flex items-center space-x-2 opacity-40">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+                    </svg>
+                    <p class="text-[10px] font-bold uppercase tracking-[0.2em]">决策依据明细表</p>
+                </div>
+                
+                <div class="factor-card overflow-hidden rounded-2xl border border-white/10">
+                    <table class="w-full text-left text-[11px] border-collapse">
+                        <thead>
+                            <tr class="bg-white/5 border-b border-white/5">
+                                <th class="px-4 py-3 font-bold opacity-50 w-24">环节</th>
+                                <th class="px-4 py-3 font-bold opacity-50">逻辑公式 / 市场解读</th>
+                                <th class="px-4 py-3 font-bold opacity-50 text-right w-24">环节结论</th>
+                            </tr>
+                        </thead>
+                        <tbody id="evidence-table-body">
+                            <!-- Rows injected by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Factor Grid -->
+            <div class="grid grid-cols-2 gap-3">
+                <!-- Class A -->
+                <div class="factor-card p-4 rounded-2xl space-y-3">
+                    <p class="text-[9px] font-bold opacity-30 uppercase tracking-tighter">Class A 宏观因子</p>
+                    <div class="space-y-2">
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="opacity-50">信用利差</span>
+                            <span id="val-spread" class="font-bold tracking-tighter">--</span>
+                        </div>
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="opacity-50">ERP</span>
+                            <span id="val-erp" class="font-bold tracking-tighter">--</span>
+                        </div>
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="opacity-50">流动性 ROC</span>
+                            <span id="val-liq" class="font-bold tracking-tighter">--</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Class B -->
+                <div class="factor-card p-4 rounded-2xl space-y-3">
+                    <p class="text-[9px] font-bold opacity-30 uppercase tracking-tighter">Class B 战术因子</p>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="opacity-50">VIX</span>
+                            <span id="val-vix" class="font-bold tracking-tighter">--</span>
+                        </div>
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="opacity-50">恐惧贪婪</span>
+                            <span id="val-fg" class="font-bold tracking-tighter">--</span>
+                        </div>
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="opacity-50">战术压力</span>
+                            <span id="val-stress" class="font-bold tracking-tighter">--</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -110,37 +254,64 @@
             return match ? match[2] + '%' : '0%';
         }
 
+        function toggleInsights() {
+            const panel = document.getElementById('insights-panel');
+            const chevron = document.getElementById('chevron');
+            panel.classList.toggle('open');
+            chevron.style.transform = panel.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0deg)';
+        }
+
+        function validateData(data) {
+            // Strict AC-3 Data Integrity Check
+            const required = [
+                data?.meta?.calculated_at_utc,
+                data?.meta?.expires_at_utc,
+                data?.signal?.regime,
+                data?.signal?.exposure_band,
+                data?.signal?.deploy_rhythm,
+                data?.evidence?.node_traces,
+                data?.evidence?.factors?.macro?.credit_spread,
+                data?.evidence?.factors?.macro?.erp
+            ];
+            if (required.some(v => v === undefined || v === null)) {
+                throw new Error("INTEGRITY_CHECK_FAILED: Missing critical decision field");
+            }
+        }
+
         async function updateDashboard() {
             const body = document.getElementById('body');
             const indicator = document.getElementById('indicator');
             const staleMsg = document.getElementById('stale-msg');
 
             try {
-                // 优先尝试从云端 Blob 读取，失败则回退到本地静态文件
                 let res;
+                const urlParams = new URLSearchParams(window.location.search);
+                const simName = urlParams.get('sim');
+                const fetchUrl = simName ? `simulations/${simName}.json` : LOCAL_JSON;
+
+                // v8.2 Fix: Prioritize local data for sub-second synchronization and dev verification
                 try {
-                    res = await fetch(PROD_BLOB_URL + '?t=' + Date.now(), { cache: 'no-store' });
-                    if (!res.ok) throw new Error("Cloud fetch failed");
+                    res = await fetch(fetchUrl + '?t=' + Date.now());
+                    if (!res.ok) throw new Error("Local fetch failed");
                 } catch (e) {
-                    console.warn("Falling back to local status.json");
-                    res = await fetch(LOCAL_JSON + '?t=' + Date.now());
+                    console.warn("Local status.json unavailable, attempting cloud fetch...");
+                    res = await fetch(PROD_BLOB_URL + '?t=' + Date.now(), { cache: 'no-store' });
                 }
 
                 if (!res.ok) throw new Error("No data source available");
                 const data = await res.json();
                 
+                // FAIL FAST
+                validateData(data);
+
                 const now = new Date();
                 const expiresAt = new Date(data.meta.expires_at_utc);
                 
-                // 1. 物理过期校验
-                if (now > expiresAt) {
-                    console.error("Signal expired physically");
-                    throw new Error("Signal Expired");
-                }
+                if (now > expiresAt) throw new Error("Signal Expired");
 
-                // 2. 状态切换
                 body.classList.remove('state-stale');
                 staleMsg.classList.add('hidden');
+                staleMsg.querySelector('p').textContent = "物理链路中断 - 信号失效"; // Reset text
 
                 const state = data.meta.market_state;
                 if (state === 'ACTIVE') {
@@ -151,11 +322,30 @@
                     indicator.className = 'w-3 h-3 rounded-full bg-blue-400 shadow-[0_0_15px_rgba(96,165,250,0.8)]';
                 }
 
-                // 3. 渲染数据
+                // Main Signal - No fallbacks allowed
                 document.getElementById('regime').textContent = data.signal.regime;
                 document.getElementById('regime-desc').textContent = data.signal.regime_desc;
                 document.getElementById('exposure').textContent = data.signal.exposure_band;
-                document.getElementById('exposure-bar').style.width = getProgressWidth(data.signal.exposure_band);
+                
+                // Leverage-Aware Progress Bar
+                const match = data.signal.exposure_band.match(/(\d+)-(\d+)%/);
+                const maxVal = match ? parseInt(match[2]) : 0;
+                const baseBar = document.getElementById('exposure-bar');
+                const levBar = document.getElementById('leverage-bar');
+                
+                if (maxVal > 100) {
+                    baseBar.style.width = '100%';
+                    levBar.style.width = (maxVal - 100) + '%';
+                    levBar.style.left = '80%'; // Rescale slightly to avoid container overflow, or keep at 100% if container allows
+                    levBar.classList.add('opacity-100');
+                    levBar.classList.add('pulse');
+                } else {
+                    baseBar.style.width = maxVal + '%';
+                    levBar.style.width = '0%';
+                    levBar.classList.remove('opacity-100');
+                    levBar.classList.remove('pulse');
+                }
+
                 document.getElementById('exposure-desc').textContent = data.signal.exposure_desc;
                 document.getElementById('deploy').textContent = data.signal.deploy_rhythm;
                 document.getElementById('deploy-desc').textContent = data.signal.deploy_desc;
@@ -164,13 +354,103 @@
                 document.getElementById('calc-at').textContent = data.meta.calculated_at_utc.replace('T', ' ').replace('Z', '');
                 document.getElementById('expires-at').textContent = expiresAt.toLocaleString('zh-CN', { hour12: false });
 
+                // Evidence Rendering
+                if (data.evidence) {
+                    const ev = data.evidence;
+                    const regime = data.signal.regime;
+                    const risk_key = ev.risk_state.split('.').pop();
+                    const deploy_key = data.evidence.deploy_reasons[0]?.rule?.includes('fast') ? 'FAST' : 
+                                     data.evidence.deploy_reasons[0]?.rule?.includes('slow') ? 'SLOW' :
+                                     data.evidence.deploy_reasons[0]?.rule?.includes('pause') ? 'PAUSE' : 'BASE';
+                    
+                    document.getElementById('tree-t0').textContent = regime;
+                    document.getElementById('tree-risk').textContent = risk_key;
+                    document.getElementById('tree-deploy').textContent = data.signal.deploy_rhythm;
+
+                    // Highlight mapping
+                    const updateGhostTags = (id, activeKey, activeLabel = "") => {
+                        const container = document.getElementById(id).parentElement;
+                        const tags = container.querySelectorAll('span');
+                        const key = (activeKey || "").toUpperCase();
+                        const label = (activeLabel || "").toUpperCase();
+                        
+                        tags.forEach(t => {
+                            const tagText = t.textContent.toUpperCase();
+                            const isMatch = (key.includes(tagText) || tagText.includes(key)) || 
+                                           (label && (label.includes(tagText) || tagText.includes(label)));
+                            
+                            if (isMatch) {
+                                t.className = 'text-[8px] font-bold text-emerald-400 opacity-100 px-1.5 py-0.5 rounded bg-emerald-400/10 border border-emerald-400/20 transition-all';
+                                t.style.filter = 'none';
+                            } else {
+                                t.className = 'text-[8px] font-medium text-ghost px-1.5 py-0.5';
+                                t.style.filter = 'blur(0.5px)';
+                            }
+                        });
+                    };
+
+                    updateGhostTags('tree-t0', ev.risk_reasons[0]?.tier0_regime || "", regime);
+                    updateGhostTags('tree-risk', risk_key);
+                    updateGhostTags('tree-deploy', deploy_key);
+
+                    // Decision Table Rendering
+                    const tableBody = document.getElementById('evidence-table-body');
+                    tableBody.innerHTML = '';
+                    
+                    const TYPE_COLORS = {
+                        'MACRO': 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
+                        'VETO': 'text-purple-400 bg-purple-400/10 border-purple-400/20',
+                        'SIGNAL': 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20',
+                        'TACTICAL': 'text-blue-400 bg-blue-400/10 border-blue-400/20'
+                    };
+
+                    (ev.node_traces || []).forEach(trace => {
+                        const row = document.createElement('tr');
+                        const typeClass = TYPE_COLORS[trace.type] || 'text-white/40 bg-white/5 border-white/10';
+                        const isVeto = trace.type === 'VETO';
+                        
+                        row.className = `border-b border-white/5 hover:bg-white/[0.02] transition-colors ${isVeto ? 'bg-purple-900/5' : ''}`;
+                        row.innerHTML = `
+                            <td class="px-4 py-4 align-top">
+                                <div class="font-bold text-white/70 mb-1">${trace.node}</div>
+                                <span class="text-[8px] px-1.5 py-0.5 rounded-full border ${typeClass} font-black uppercase tracking-tighter">
+                                    ${trace.type}
+                                </span>
+                            </td>
+                            <td class="px-4 py-4 space-y-2">
+                                <div class="font-mono text-[9px] ${isVeto ? 'text-purple-400 bg-purple-400/5 border-purple-400/10' : 'text-emerald-400 bg-emerald-400/5 border-emerald-400/10'} px-2 py-1 rounded inline-block border">
+                                    ${trace.formula}
+                                </div>
+                                <div class="text-[10px] leading-relaxed opacity-60 italic">
+                                    ${trace.explanation}
+                                </div>
+                            </td>
+                            <td class="px-4 py-4 align-top text-right">
+                                <span class="text-[10px] font-black tracking-tight text-white px-2 py-1 rounded bg-white/5 border border-white/10 ${isVeto ? 'border-purple-500/30 text-purple-200' : ''}">
+                                    ${trace.result}
+                                </span>
+                            </td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+
+                    const f = ev.factors;
+                    document.getElementById('val-spread').textContent = f.macro.credit_spread ? f.macro.credit_spread.toFixed(0) + ' bps' : '--';
+                    document.getElementById('val-erp').textContent = f.macro.erp ? f.macro.erp.toFixed(2) + '%' : '--';
+                    document.getElementById('val-liq').textContent = f.macro.liquidity_roc ? (f.macro.liquidity_roc > 0 ? '+' : '') + f.macro.liquidity_roc.toFixed(2) + '%' : '--';
+                    
+                    document.getElementById('val-vix').textContent = f.tactical.vix ? f.tactical.vix.toFixed(1) : '--';
+                    document.getElementById('val-fg').textContent = f.tactical.fear_greed || '--';
+                    document.getElementById('val-stress').textContent = (f.tactical.tactical_stress || 0) + ' pts';
+                }
+
             } catch (e) {
                 console.error("Dashboard Error:", e);
                 body.className = 'state-stale min-h-screen flex items-center justify-center p-4 font-sans';
                 indicator.className = 'w-3 h-3 rounded-full bg-red-600';
                 staleMsg.classList.remove('hidden');
+                staleMsg.querySelector('p').textContent = e.message.includes('INTEGRITY') ? "数据损坏 - 拒绝显示报告" : "物理链路中断 - 信号失效";
                 document.getElementById('regime').textContent = "数据获取失败";
-                document.getElementById('regime-desc').textContent = "请检查 Vercel Blob URL 是否正确配置，或市场数据源是否中断。";
             }
         }
 

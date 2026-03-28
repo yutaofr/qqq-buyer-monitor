@@ -1,14 +1,14 @@
 {
   "meta": {
     "version": "v8.2",
-    "calculated_at_utc": "2026-03-28T15:20:59Z",
+    "calculated_at_utc": "2026-03-28T15:43:12Z",
     "expires_at_utc": "2026-03-30T17:30:00Z",
     "market_state": "FROZEN"
   },
   "signal": {
     "regime": "紧缩/高估",
     "regime_desc": "估值性价比降低，政策环境收紧，审慎防御。",
-    "exposure_band": "50-60% (稳健)",
+    "exposure_band": "70-80% (积极)",
     "exposure_desc": "存量资金目前的理想风险敞口上限。",
     "deploy_rhythm": "常规入场",
     "deploy_desc": "遵循定投节奏，维持基准部署速率。",
@@ -24,43 +24,46 @@
     ],
     "deploy_reasons": [
       {
-        "rule": "rich_tightening_base"
+        "rule": "default_base"
       }
     ],
     "factors": {
       "macro": {
-        "credit_spread": 321.0,
-        "erp": 2.0217227235438884,
-        "net_liquidity": 5818.972,
-        "liquidity_roc": 0.7847531108067666
+        "credit_spread": 350,
+        "erp": 3.0,
+        "net_liquidity": 6000,
+        "liquidity_roc": 1.0
       },
       "tactical": {
-        "vix": 31.049999237060547,
-        "fear_greed": 10,
-        "rolling_drawdown": null,
-        "tactical_stress": 40
+        "vix": 15,
+        "fear_greed": 50,
+        "rolling_drawdown": 0.05,
+        "tactical_stress": 20
       }
     },
     "node_traces": [
       {
         "node": "Tier-0 宏观指挥官",
+        "type": "MACRO",
         "rule": "tier0_rich_tightening",
         "formula": "Spread >= 450 || ERP < 2.5%",
-        "explanation": "估值溢价不足以覆盖日益收紧的融资压力，采取保守防御。",
+        "explanation": "估值性价比降低或融资极度收紧，审慎减少敞口。",
         "result": "RICH_TIGHTENING"
       },
       {
         "node": "Risk 风险控制器",
+        "type": "VETO",
         "rule": "tier0_rich_tightening",
-        "formula": "Spread >= 450 || ERP < 2.5%",
-        "explanation": "估值溢价不足以覆盖日益收紧的融资压力，采取保守防御。",
+        "formula": "[VETO] Inherit Tier-0 (RICH_TIGHTENING)",
+        "explanation": "受顶层宏观制度 (RICH_TIGHTENING) 强约束，Risk 节点强制进入防御模式。",
         "result": "RISK_REDUCED"
       },
       {
         "node": "Deploy 部署引擎",
-        "rule": "rich_tightening_base",
-        "formula": "T0=RICH && DD < 15%",
-        "explanation": "宏观收紧但暂无实质回撤，维持 1.0x 基准入场节奏。",
+        "type": "TACTICAL",
+        "rule": "default_base",
+        "formula": "Standard Path",
+        "explanation": "无特殊偏差信号，按基准配置计划稳步推进。",
         "result": "常规入场"
       }
     ]

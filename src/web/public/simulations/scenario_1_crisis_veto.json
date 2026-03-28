@@ -1,0 +1,72 @@
+{
+  "meta": {
+    "version": "v8.2",
+    "calculated_at_utc": "2026-03-28T15:43:12Z",
+    "expires_at_utc": "2026-03-30T17:30:00Z",
+    "market_state": "FROZEN"
+  },
+  "signal": {
+    "regime": "危机",
+    "regime_desc": "流动性枯竭，系统性风险爆发，首要任务是生存。",
+    "exposure_band": "50-60% (稳健)",
+    "exposure_desc": "存量资金目前的理想风险敞口上限。",
+    "deploy_rhythm": "停止入场",
+    "deploy_desc": "风险过载，增量资金持币观望，不接飞刀。",
+    "fidelity": "高 (可靠)"
+  },
+  "evidence": {
+    "risk_state": "RiskState.RISK_EXIT",
+    "risk_reasons": [
+      {
+        "rule": "tier0_crisis",
+        "tier0_regime": "CRISIS"
+      }
+    ],
+    "deploy_reasons": [
+      {
+        "rule": "risk_ceiling",
+        "risk_state": "RISK_EXIT"
+      }
+    ],
+    "factors": {
+      "macro": {
+        "credit_spread": 350,
+        "erp": 3.0,
+        "net_liquidity": 6000,
+        "liquidity_roc": 1.0
+      },
+      "tactical": {
+        "vix": 15,
+        "fear_greed": 50,
+        "rolling_drawdown": 0.05,
+        "tactical_stress": 20
+      }
+    },
+    "node_traces": [
+      {
+        "node": "Tier-0 宏观指挥官",
+        "type": "MACRO",
+        "rule": "tier0_crisis",
+        "formula": "Spread >= 650 || ERP < 1.0%",
+        "explanation": "系统性信用枯竭或风险溢价极度缺失，进入熔断模式。",
+        "result": "CRISIS"
+      },
+      {
+        "node": "Risk 风险控制器",
+        "type": "VETO",
+        "rule": "tier0_crisis",
+        "formula": "[VETO] Inherit Tier-0 (CRISIS)",
+        "explanation": "受顶层宏观制度 (CRISIS) 强约束，Risk 节点强制进入防御模式。",
+        "result": "RISK_EXIT"
+      },
+      {
+        "node": "Deploy 部署引擎",
+        "type": "VETO",
+        "rule": "risk_ceiling",
+        "formula": "[VETO] Risk/Macro Ceiling",
+        "explanation": "入场节奏受限于更高的风控等级或宏观顶层约束，进入保值模式。",
+        "result": "停止入场"
+      }
+    ]
+  }
+}
