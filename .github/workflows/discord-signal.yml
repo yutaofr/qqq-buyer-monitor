@@ -1,0 +1,77 @@
+name: Discord Daily Signal (17:17 Paris)
+
+on:
+  schedule:
+    # Paris 17:17 is:
+    # - 15:17 UTC during Summer (CEST, UTC+2)
+    # - 16:17 UTC during Winter (CET, UTC+1)
+    - cron: '17 15,16 * * 1-5'
+  workflow_dispatch:
+
+# CONCURRENCY CONTROL: Prevent overlapping notifications
+concurrency:
+  group: discord-signal
+  cancel-in-progress: true
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          pip install .
+          pip install pytz requests
+
+      - name: Check Target Time Window
+        id: check
+        shell: python
+        run: |
+          import os
+          import pytz
+          from datetime import datetime
+
+          paris_tz = pytz.timezone('Europe/Paris')
+          now_paris = datetime.now(paris_tz)
+          is_dispatch = os.environ.get('EVENT_NAME') == 'workflow_dispatch'
+          
+          # Target 17:17. We allow 17:10 to 17:30 to account for GHA scheduling variance.
+          is_target_time = (now_paris.hour == 17 and 10 <= now_paris.minute <= 35)
+          
+          should_run = "true" if (is_target_time or is_dispatch) else "false"
+          
+          print(f"Current Paris Time: {now_paris.strftime('%H:%M:%S')}")
+          print(f"Event Name: {os.environ.get('EVENT_NAME')}")
+          print(f"Should Run: {should_run}")
+          
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"should_run={should_run}\n")
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+
+      - name: Execute Signal & Notify Discord
+        if: steps.check.outputs.should_run == 'true'
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          GITHUB_ACTIONS: "true"
+        run: |
+          # Run the engine with the notify-discord flag. 
+          # --no-save is critical to avoid polluting historical data with 17:17 snapshots 
+          # if the hourly cron also captures a valid EOD/Intraday state.
+          python -m src.main --notify-discord --no-save
+
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          curl -X POST -H "Content-Type: application/json" \
+               -d "{\"content\": \"🚨 **Discord Signal Push Failed** \n**Run ID:** ${{ github.run_id }} \nCheck logs for v8.2 pipeline errors.\"}" \
+               ${{ secrets.ALERT_WEBHOOK_URL }}

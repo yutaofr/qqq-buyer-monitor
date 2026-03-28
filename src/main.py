@@ -617,6 +617,16 @@ def run_pipeline(args: argparse.Namespace) -> None:
         logger.info("Exporting web snapshot...")
         export_web_snapshot(result)
 
+    # ── Discord Notification Logic ────────────────────────────────────────────
+    if getattr(args, "notify_discord", False):
+        from src.output.discord_notifier import send_discord_signal
+        webhook_url = getattr(args, "discord_webhook", None) or os.environ.get("ALERT_WEBHOOK_URL")
+        if webhook_url:
+            logger.info("Sending Discord notification...")
+            send_discord_signal(result, webhook_url)
+        else:
+            logger.warning("Discord notification requested but ALERT_WEBHOOK_URL is missing.")
+
     # Persist
     if not args.no_save:
         save_signal(result)
@@ -642,6 +652,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="QQQ Buy-Signal Monitor (v8.2 Dual-Controller)")
     parser.add_argument("--json", action="store_true", help="Output JSON report")
     parser.add_argument("--export-web", action="store_true", help="Export discretized snapshot for Web dashboard")
+    parser.add_argument("--notify-discord", action="store_true", help="Send signal to Discord")
+    parser.add_argument("--discord-webhook", type=str, help="Override Discord webhook URL")
     parser.add_argument("--no-save", action="store_true", help="Skip saving to DB")
     parser.add_argument("--no-color", action="store_true", help="Disable ANSI color output")
     parser.add_argument("--history", type=int, metavar="N", help="Print last N signal records and exit")
