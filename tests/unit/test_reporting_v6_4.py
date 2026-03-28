@@ -65,6 +65,9 @@ def test_cli_output_reflects_v7_runtime_when_available(mock_result, capsys):
     mock_result.registry_version = "2026-03-25-v8.1-r1"
     mock_result.raw_target_beta = 1.10
     mock_result.target_beta = 1.00
+    mock_result.target_exposure_ceiling = 1.20
+    mock_result.target_cash_floor = 0.00
+    mock_result.qld_share_ceiling = 0.20
     mock_result.assumed_beta_before = 0.90
     mock_result.assumed_beta_after = 1.00
     mock_result.should_adjust = True
@@ -80,13 +83,16 @@ def test_cli_output_reflects_v7_runtime_when_available(mock_result, capsys):
 
     print_signal(mock_result, use_color=False)
     captured = capsys.readouterr()
-    assert "QQQ BUY-SIGNAL MONITOR (v8.2)" in captured.out
+    assert "QQQ BUY-SIGNAL MONITOR (v9.0)" in captured.out
     assert "风险评估与目标 Beta" in captured.out
     assert "增量入场节奏推荐" in captured.out
     assert "Tier-0=NEUTRAL" in captured.out
+    assert "beta_ceiling=1.20x" in captured.out
+    assert "qld_ceiling=20.0%" in captured.out
     assert "raw_beta=1.10x" in captured.out
     assert "target_beta=1.00x" in captured.out
     assert "mode=FAST" in captured.out
+    assert "Decision:" in captured.out
     assert "Action:" not in captured.out
     assert "Policy:" not in captured.out
     assert "单日加仓" not in captured.out

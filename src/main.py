@@ -1,5 +1,5 @@
 """
-QQQ Monitor — main entry point (v8.2 Dual-Controller).
+QQQ Monitor — main entry point (v9.0 target-beta-first).
 
 Usage:
     python -m src.main                  # run full pipeline
@@ -77,7 +77,12 @@ def run_pipeline(args: argparse.Namespace) -> None:
     from src.engine.tier1 import calculate_tier1
     from src.engine.tier2 import calculate_tier2
     from src.models import MarketData, Signal
-    from src.output.cli import build_v8_explanation, is_v8_runtime_result, print_signal
+    from src.output.cli import (
+        build_runtime_logic_trace,
+        build_v8_explanation,
+        is_v8_runtime_result,
+        print_signal,
+    )
     from src.output.interpreter import NarrativeEngine
     from src.output.report import to_json
     from src.store.db import (
@@ -305,7 +310,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
     )
     result.data_quality = build_data_quality(market_data, feature_meta=data_quality_meta)
 
-    # ── v8.2 Dual-Controller Pipeline ─────────────────────────────────────────
+    # ── v9.0 target-beta-first pipeline ───────────────────────────────────────
     import os
 
     from src.engine.allocation_search import select_candidate_with_floor_fallback_v8
@@ -431,8 +436,11 @@ def run_pipeline(args: argparse.Namespace) -> None:
         result.registry_version = registry.registry_version
         result.tier0_regime = tier0_regime
         result.tier0_applied = v7_risk.tier0_applied
+        result.target_exposure_ceiling = v7_risk.target_exposure_ceiling
+        result.target_cash_floor = v7_risk.target_cash_floor
+        result.qld_share_ceiling = v7_risk.qld_share_ceiling
 
-        # v8.2 Evidence Tracing (New)
+        # Runtime evidence tracing for the v9.0 surface
         result.risk_reasons = list(v7_risk.reasons)
         result.deployment_reasons = list(v7_deploy.reasons)
         result.feature_values = {**v7_snapshot.values}
@@ -554,17 +562,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 "blood_chip_override_active": blood_chip_reason.get("rule") == "blood_chip_crisis_override",
                 "path": blood_chip_reason.get("path"),
             }
-            result.logic_trace.append({
-                "v8_tier0_regime": tier0_regime,
-                "v8_risk_state": v7_risk.risk_state.value,
-                "v8_deployment_state": v7_deploy.deployment_state.value,
-                "v8_selected_candidate": selected_candidate.candidate_id,
-                "v8_raw_target_beta": beta_rec.target_beta,
-                "v8_advised_target_beta": advisory_decision.advised_target_beta,
-                "v8_should_adjust": advisory_decision.should_adjust,
-            })
+            result.logic_trace = build_runtime_logic_trace(result)
             logger.info(
-                "v8.2 ▶ tier0=%s risk=%s deploy=%s candidate=%s raw_beta=%.2f advised_beta=%.2f adjust=%s",
+                "v9.0 ▶ tier0=%s risk=%s deploy=%s candidate=%s raw_beta=%.2f advised_beta=%.2f adjust=%s",
                 tier0_regime,
                 v7_risk.risk_state.value,
                 v7_deploy.deployment_state.value,
@@ -584,11 +584,11 @@ def run_pipeline(args: argparse.Namespace) -> None:
     except FileNotFoundError:
         # Registry missing → explicit degraded mode, no silent fallback (SRD §5.3)
         result.logic_trace.append({"rule": "registry_missing", "v7_registry_path": v7_registry_path})
-        logger.warning("v8.2 registry not found at '%s' — running in degraded mode (v6 allocation only)", v7_registry_path)
+        logger.warning("v9.0 registry not found at '%s' — running in degraded mode (legacy allocation only)", v7_registry_path)
     except (ValueError, KeyError) as exc:
         result.logic_trace.append({"rule": "v7_pipeline_error", "error": str(exc)})
         logger.warning("v8.2 pipeline error (non-fatal, v6 allocation still valid): %s", exc)
-    # ── end v8.2 ──────────────────────────────────────────────────────────────
+    # ── end v9.0 ──────────────────────────────────────────────────────────────
 
     # v6.2 Narrative Guardrail for legacy output; v8 uses a dedicated recommendation-only summary.
     interpreter = NarrativeEngine()
@@ -675,7 +675,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="QQQ Buy-Signal Monitor (v8.2 Dual-Controller)")
+    parser = argparse.ArgumentParser(description="QQQ Buy-Signal Monitor (v9.0 target-beta-first)")
     parser.add_argument("--json", action="store_true", help="Output JSON report")
     parser.add_argument("--export-web", action="store_true", help="Export discretized snapshot for Web dashboard")
     parser.add_argument("--notify-discord", action="store_true", help="Send signal to Discord")
