@@ -246,5 +246,4 @@ def test_web_index_narrative_uses_v9_target_beta_contract():
     assert "v9.0" in html
     assert "v8.2" not in html
     assert "目标 Beta (系统 contract)" in html
-    assert "参考路径（非 contract）" in html
     assert "Tier-0 -> Risk -> Candidate -> Advisory -> Deployment" in html

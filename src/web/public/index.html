@@ -49,39 +49,29 @@
                 <p id="regime-desc" class="text-xs leading-relaxed opacity-70 italic font-medium"></p>
             </div>
 
-            <!-- Existing Position (Exposure) -->
-            <div class="space-y-2">
-                <div class="flex justify-between items-end">
-                    <p class="text-[11px] font-bold uppercase tracking-[0.15em] opacity-50">目标 Beta (系统 contract)</p>
-                    <p id="exposure" class="text-xl font-bold tracking-tight">--</p>
+            <!-- Core Signals Container -->
+            <div class="space-y-4">
+                <!-- Target Beta Card -->
+                <div class="factor-card p-6 rounded-3xl border-emerald-500/10 space-y-3">
+                    <div class="flex justify-between items-end">
+                        <p class="text-[11px] font-bold uppercase tracking-[0.15em] opacity-40 text-emerald-400">目标 Beta (系统 contract)</p>
+                        <p id="exposure" class="text-3xl font-black tracking-tighter">--</p>
+                    </div>
+                    <div class="w-full h-1.5 bg-white/5 rounded-full overflow-hidden relative">
+                        <div id="exposure-bar" class="h-full bg-emerald-400 opacity-40 transition-all duration-1000" style="width: 0%"></div>
+                        <div id="leverage-bar" class="absolute top-0 h-full bg-gradient-to-r from-emerald-400 to-orange-400 shadow-[0_0_10px_rgba(251,146,60,0.8)] opacity-0 transition-all duration-1000" style="width: 0%; left: 100%"></div>
+                    </div>
+                    <p id="exposure-desc" class="text-[10px] opacity-40"></p>
                 </div>
-                <div class="w-full h-1.5 bg-white/10 rounded-full overflow-hidden relative">
-                    <div id="exposure-bar" class="h-full bg-emerald-400 opacity-40 transition-all duration-1000" style="width: 0%"></div>
-                    <div id="leverage-bar" class="absolute top-0 h-full bg-gradient-to-r from-emerald-400 to-orange-400 shadow-[0_0_10px_rgba(251,146,60,0.8)] opacity-0 transition-all duration-1000" style="width: 0%; left: 100%"></div>
+
+                <!-- Deployment Rhythm Card -->
+                <div class="factor-card p-6 rounded-3xl border-blue-500/10 space-y-2">
+                    <p class="text-[11px] font-bold uppercase tracking-[0.15em] opacity-40 text-blue-400">入场节奏 (Incremental Cash)</p>
+                    <p id="deploy" class="text-3xl font-black tracking-tighter">--</p>
+                    <p id="deploy-desc" class="text-[10px] leading-relaxed opacity-40"></p>
                 </div>
-                <p id="exposure-desc" class="text-[10px] opacity-50"></p>
             </div>
 
-            <!-- Candidate & Decision Path -->
-            <div class="space-y-2">
-                <p class="text-[11px] font-bold uppercase tracking-[0.15em] opacity-50">认证候选 / 决策路径</p>
-                <p id="candidate" class="text-base font-black tracking-tight">--</p>
-                <p id="decision-path" class="text-[10px] leading-relaxed opacity-60">--</p>
-            </div>
-
-            <!-- Incremental Cash (Deployment) -->
-            <div class="space-y-2">
-                <p class="text-[11px] font-bold uppercase tracking-[0.15em] opacity-50">入场节奏 (增量)</p>
-                <p id="deploy" class="text-2xl font-black tracking-tight">--</p>
-                <p id="deploy-desc" class="text-[10px] leading-relaxed opacity-50"></p>
-            </div>
-
-            <!-- Reference Path -->
-            <div class="space-y-2">
-                <p class="text-[11px] font-bold uppercase tracking-[0.15em] opacity-50">参考路径（非 contract）</p>
-                <p id="reference-path" class="text-sm font-bold tracking-tight">--</p>
-                <p id="reference-desc" class="text-[10px] leading-relaxed opacity-50"></p>
-            </div>
         </div>
 
         <!-- Curiosity Toggle -->
@@ -93,7 +83,16 @@
         </button>
 
         <!-- Insights Panel -->
-        <div id="insights-panel" class="space-y-12">
+        <div id="insights-panel" class="p-6 space-y-12">
+            <!-- Candidate & Decision Path (Moved to Insights) -->
+            <div class="space-y-4 factor-card p-6 rounded-3xl border-emerald-500/10">
+                <p class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40">认证候选 (Candidate) / 决策路径</p>
+                <div class="space-y-1">
+                    <p id="candidate" class="text-xl font-black tracking-tight text-emerald-400">--</p>
+                    <p id="decision-path" class="text-[11px] leading-relaxed opacity-70">--</p>
+                </div>
+            </div>
+
             <div class="space-y-2">
                 <p class="text-[9px] font-bold uppercase tracking-[0.2em] opacity-30">Tier-0 -> Risk -> Candidate -> Advisory -> Deployment</p>
                 <p class="text-[10px] leading-relaxed opacity-50">系统 contract 是目标 Beta；Deployment 只作用于新增现金，且唯一买入标的是 QQQ。</p>
@@ -123,11 +122,11 @@
                 <!-- Trees: Left (Beta) & Right (DCA) -->
                 <div class="flex gap-4">
                     <!-- Left Tree: Stock Beta -->
-                    <div class="w-1/2 space-y-8 border-r border-white/5 pr-2">
+                    <div class="w-1/2 min-w-0 space-y-8 border-r border-white/5 pr-2">
                         <div class="relative pl-4 border-l border-white/10">
                             <div class="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-white/20"></div>
                             <p class="text-[9px] font-bold opacity-30 uppercase tracking-widest mb-1">Risk -> Candidate -> Advisory</p>
-                            <p id="tree-risk" class="text-xs font-black tracking-tight">--</p>
+                            <p id="tree-risk" class="text-xs font-black tracking-tight truncate">--</p>
                             <div class="flex flex-wrap gap-1 mt-2">
                                 <span class="text-[8px] px-1 py-0.5 text-ghost">EXIT (0.5x)</span>
                                 <span class="text-[8px] px-1 py-0.5 text-ghost">DEFENSE (0.7x)</span>
@@ -139,11 +138,11 @@
                     </div>
 
                     <!-- Right Tree: Incremental DCA -->
-                    <div class="w-1/2 space-y-8 pl-2">
+                    <div class="w-1/2 min-w-0 space-y-8 pl-2">
                         <div class="relative pl-4 border-l border-white/10">
                             <div class="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-white/20"></div>
                             <p class="text-[9px] font-bold opacity-30 uppercase tracking-widest mb-1">Deployment (QQQ New Cash)</p>
-                            <p id="tree-deploy" class="text-xs font-black tracking-tight">--</p>
+                            <p id="tree-deploy" class="text-xs font-black tracking-tight truncate">--</p>
                             <div class="flex flex-wrap gap-1 mt-2">
                                 <span class="text-[8px] px-1 py-0.5 text-ghost">FAST</span>
                                 <span class="text-[8px] px-1 py-0.5 text-ghost">BASE</span>
@@ -164,8 +163,8 @@
                     <p class="text-[10px] font-bold uppercase tracking-[0.2em]">决策依据明细表</p>
                 </div>
                 
-                <div class="factor-card overflow-hidden rounded-2xl border border-white/10">
-                    <table class="w-full text-left text-[11px] border-collapse">
+                <div class="factor-card overflow-x-auto rounded-2xl border border-white/10">
+                    <table class="w-full min-w-[500px] text-left text-[11px] border-collapse table-auto">
                         <thead>
                             <tr class="bg-white/5 border-b border-white/5">
                                 <th class="px-4 py-3 font-bold opacity-50 w-24">环节</th>
@@ -375,11 +374,6 @@
                 document.getElementById('decision-path').textContent = data.signal.decision_path;
                 document.getElementById('deploy').textContent = data.signal.deploy_rhythm;
                 document.getElementById('deploy-desc').textContent = data.signal.deploy_desc;
-                document.getElementById('reference-path').textContent =
-                    `QQQ ${(data.signal.reference_path.qqq_pct * 100).toFixed(1)}% | ` +
-                    `QLD ${(data.signal.reference_path.qld_pct * 100).toFixed(1)}% | ` +
-                    `Cash ${(data.signal.reference_path.cash_pct * 100).toFixed(1)}%`;
-                document.getElementById('reference-desc').textContent = data.signal.reference_desc;
                 document.getElementById('fidelity').textContent = data.signal.fidelity;
                 
                 document.getElementById('calc-at').textContent = data.meta.calculated_at_utc.replace('T', ' ').replace('Z', '');
