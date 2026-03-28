@@ -58,6 +58,42 @@ _LOGIC_CATALOG = {
         "explanation": "触及组合最大回撤预算硬约束。-> 强制避险 (上限 0.5x)"
     },
     # Deployment Controller (DCA Rhythm)
+    "tactical_stress_pause": {
+        "formula": "Tactical Stress >= 70",
+        "explanation": "短线交易情绪过热或结构性失衡，暂停增量入场。"
+    },
+    "missing_credit_spread_pause": {
+        "formula": "Credit Spread Is None",
+        "explanation": "底层信用数据缺失，基于审慎原则停止所有交易指令。"
+    },
+    "deep_drawdown_pause": {
+        "formula": "Drawdown >= 25% || Spread >= 650",
+        "explanation": "净值深幅回撤或利差进入危机区，停止增量入场以保留余粮。"
+    },
+    "left_tail_fast": {
+        "formula": "Drawdown >= 12% & 20D Return <= -8%",
+        "explanation": "【左侧确认】满足大级别回撤补偿逻辑，启动 2.0x 加速抄底。"
+    },
+    "pullback_fast": {
+        "formula": "Drawdown >= 8% & 5D Return <= 0.0%",
+        "explanation": "【浅调加速】满足短期回撤补偿条件，利用波动率提升入场节奏。"
+    },
+    "stress_slow": {
+        "formula": "Macro Stress || DD >= 15%",
+        "explanation": "受外部环境压力或净值回撤影响，将入场节奏降至 0.5x 以平滑风险。"
+    },
+    "risk_defense_slow": {
+        "formula": "Risk State = DEFENSE",
+        "explanation": "跟随风控模块进入防御姿态，自动将增量节奏下调至 0.5x。"
+    },
+    "risk_reduced_slow": {
+        "formula": "Risk State = REDUCED",
+        "explanation": "跟随风控模块进入减仓姿态，增量入场同步放缓至 0.5x。"
+    },
+    "rich_tightening_base": {
+        "formula": "T0=RICH && DD < 15%",
+        "explanation": "【估值收紧】宏观虽然收紧但暂无实质回撤，维持 1.0x 基准节奏观察。"
+    },
     "blood_chip_crisis_override": {
         "formula": "Crisis && Panic && Value",
         "explanation": "【血筹特例】虽然处于危机制度，但战术指标触发极端超卖，开启左侧入场。"
@@ -68,7 +104,7 @@ _LOGIC_CATALOG = {
     },
     "default_base": {
         "formula": "Standard Path",
-        "explanation": "无特殊偏差信号，按基准配置计划稳步推进。"
+        "explanation": "无特殊偏差信号，按基准配置计划 1.0x 稳步推进。"
     }
 }
 
