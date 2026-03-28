@@ -406,15 +406,19 @@
 
                     (ev.node_traces || []).forEach(trace => {
                         const row = document.createElement('tr');
-                        const typeClass = TYPE_COLORS[trace.type] || 'text-white/40 bg-white/5 border-white/10';
-                        const isVeto = trace.type === 'VETO';
+                        
+                        // Robust type check to prevent UNDEFINED badges (AC-3 Data Integrity)
+                        const rawType = trace.trace_type || trace.type || 'SIGNAL';
+                        const typeKey = rawType.toUpperCase();
+                        const typeClass = TYPE_COLORS[typeKey] || 'text-white/40 bg-white/5 border-white/10';
+                        const isVeto = typeKey === 'VETO';
                         
                         row.className = `border-b border-white/5 hover:bg-white/[0.02] transition-colors ${isVeto ? 'bg-purple-900/5' : ''}`;
                         row.innerHTML = `
                             <td class="px-4 py-4 align-top">
                                 <div class="font-bold text-white/70 mb-1">${trace.node}</div>
                                 <span class="text-[8px] px-1.5 py-0.5 rounded-full border ${typeClass} font-black uppercase tracking-tighter">
-                                    ${trace.type}
+                                    ${rawType}
                                 </span>
                             </td>
                             <td class="px-4 py-4 space-y-2">

@@ -285,7 +285,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
             info = _LOGIC_CATALOG[rule_id]
             traces.append({
                 "node": "Tier-0 宏观指挥官",
-                "type": "MACRO",
+                "trace_type": "MACRO",
                 "rule": rule_id,
                 "formula": info["formula"],
                 "explanation": info["explanation"],
@@ -312,7 +312,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
 
             traces.append({
                 "node": "Risk 风险控制器",
-                "type": "VETO" if is_risk_veto else "SIGNAL",
+                "trace_type": "VETO" if is_risk_veto else "SIGNAL",
                 "rule": rule_id,
                 "formula": formula,
                 "explanation": explanation,
@@ -335,7 +335,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
 
             traces.append({
                 "node": "Deploy 部署引擎",
-                "type": "VETO" if is_deploy_veto else "TACTICAL",
+                "trace_type": "VETO" if is_deploy_veto else "TACTICAL",
                 "rule": rule_id,
                 "formula": formula,
                 "explanation": explanation,
