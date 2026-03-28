@@ -9,6 +9,8 @@ from src.models.deployment import DeploymentState
 from src.research.data_contracts import validate_signal_expectation_frame
 
 _BETA_FLOOR = 0.50
+_BETA_DEFENSE = 0.70
+_BETA_REDUCED = 0.80
 _BETA_NEUTRAL = 1.00
 _BETA_MAX = 1.20
 _DRAWDOWN_WINDOW = 252
@@ -72,22 +74,33 @@ def _expected_target_beta(
     Independent target-beta expectation surface.
 
     The surface intentionally stays coarse:
-    - `0.5` when risk containment should dominate
+    - `0.5` when exit / floor containment should dominate
+    - `0.7` when defense should dominate
+    - `0.8` when reduced-risk but still investable
     - `1.0` in normal conditions
     - `1.2` only when credit is tight and the market is not under stress
     """
     if credit_spread is None:
         return _BETA_FLOOR
-    if credit_spread >= _CREDIT_SPREAD_CRISIS or rolling_drawdown >= 0.25:
+    if credit_spread >= _CREDIT_SPREAD_CRISIS or rolling_drawdown >= 0.30:
         return _BETA_FLOOR
+    if (
+        credit_spread >= 550.0
+        or rolling_drawdown >= 0.25
+        or (
+            credit_accel > _CREDIT_ACCEL_STRESS
+            and liquidity_roc <= _LIQUIDITY_STRESS
+        )
+    ):
+        return _BETA_DEFENSE
     if (
         credit_spread >= _CREDIT_SPREAD_STRESS
         or credit_accel > _CREDIT_ACCEL_STRESS
         or liquidity_roc <= _LIQUIDITY_STRESS
-        or rolling_drawdown >= 0.15
+        or rolling_drawdown >= 0.20
         or (funding_stress and rolling_drawdown >= 0.10)
     ):
-        return _BETA_FLOOR
+        return _BETA_REDUCED
     if (
         credit_spread < _CREDIT_SPREAD_RISK_ON
         and credit_accel <= 0.0

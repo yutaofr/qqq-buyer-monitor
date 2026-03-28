@@ -298,12 +298,22 @@ def test_advisory_state_can_be_restored_from_history():
 def test_target_allocation_from_beta_builds_continuous_advisory_mix():
     module = importlib.import_module("src.engine.execution_policy")
 
-    reduced = module.target_allocation_from_beta(0.80)
-    assert reduced.target_qqq_pct == pytest.approx(0.80)
-    assert reduced.target_qld_pct == pytest.approx(0.00)
-    assert reduced.target_cash_pct == pytest.approx(0.20)
+    reduced = module.target_allocation_from_beta(0.80, qld_share_ceiling=0.10)
+    assert reduced.target_qqq_pct == pytest.approx(0.60)
+    assert reduced.target_qld_pct == pytest.approx(0.10)
+    assert reduced.target_cash_pct == pytest.approx(0.30)
 
-    levered = module.target_allocation_from_beta(1.10)
-    assert levered.target_qqq_pct == pytest.approx(0.90)
-    assert levered.target_qld_pct == pytest.approx(0.10)
-    assert levered.target_cash_pct == pytest.approx(0.00)
+    neutral = module.target_allocation_from_beta(0.90, qld_share_ceiling=0.20)
+    assert neutral.target_qqq_pct == pytest.approx(0.50)
+    assert neutral.target_qld_pct == pytest.approx(0.20)
+    assert neutral.target_cash_pct == pytest.approx(0.30)
+
+    fully_neutral = module.target_allocation_from_beta(1.00, qld_share_ceiling=0.20)
+    assert fully_neutral.target_qqq_pct == pytest.approx(0.60)
+    assert fully_neutral.target_qld_pct == pytest.approx(0.20)
+    assert fully_neutral.target_cash_pct == pytest.approx(0.20)
+
+    qqq_only = module.target_allocation_from_beta(0.80, qld_share_ceiling=0.0)
+    assert qqq_only.target_qqq_pct == pytest.approx(0.80)
+    assert qqq_only.target_qld_pct == pytest.approx(0.00)
+    assert qqq_only.target_cash_pct == pytest.approx(0.20)

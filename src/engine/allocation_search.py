@@ -98,6 +98,7 @@ def find_best_allocation(state: AllocationState, scores: list[dict] = None) -> T
 
 def find_best_allocation_v8(
     max_beta_ceiling: float,
+    qld_share_ceiling: float = 1.0,
     max_drawdown_budget: float = 0.30,
     candidates: list[CertifiedCandidate] | None = None,
 ) -> CertifiedCandidate | None:
@@ -108,6 +109,7 @@ def find_best_allocation_v8(
     valid = [
         candidate for candidate in candidates
         if 0.50 <= candidate.target_effective_exposure <= max_beta_ceiling
+        and candidate.qld_pct <= qld_share_ceiling + 1e-9
         and candidate.research_metrics.get("max_drawdown", 1.0) <= max_drawdown_budget
     ]
     if not valid:
@@ -128,6 +130,7 @@ def find_beta_floor_candidate_v8(
     candidates: list[CertifiedCandidate] | None,
     *,
     beta_floor: float = 0.50,
+    qld_share_ceiling: float = 1.0,
     max_drawdown_budget: float = 0.30,
 ) -> CertifiedCandidate | None:
     """
@@ -143,6 +146,7 @@ def find_beta_floor_candidate_v8(
     valid = [
         candidate for candidate in candidates
         if candidate.target_effective_exposure >= beta_floor
+        and candidate.qld_pct <= qld_share_ceiling + 1e-9
         and candidate.research_metrics.get("max_drawdown", 1.0) <= max_drawdown_budget
     ]
     if not valid:
@@ -165,6 +169,7 @@ def select_candidate_with_floor_fallback_v8(
     scoped_candidates: list[CertifiedCandidate] | None,
     registry_candidates: list[CertifiedCandidate] | None,
     max_beta_ceiling: float,
+    qld_share_ceiling: float = 1.0,
     max_drawdown_budget: float = 0.30,
     beta_floor: float = 0.50,
 ) -> tuple[CertifiedCandidate | None, bool]:
@@ -175,6 +180,7 @@ def select_candidate_with_floor_fallback_v8(
     """
     selected = find_best_allocation_v8(
         max_beta_ceiling=max_beta_ceiling,
+        qld_share_ceiling=qld_share_ceiling,
         max_drawdown_budget=max_drawdown_budget,
         candidates=scoped_candidates,
     )
@@ -184,6 +190,7 @@ def select_candidate_with_floor_fallback_v8(
     fallback = find_beta_floor_candidate_v8(
         registry_candidates,
         beta_floor=beta_floor,
+        qld_share_ceiling=qld_share_ceiling,
         max_drawdown_budget=max_drawdown_budget,
     )
     if fallback is None:

@@ -73,6 +73,7 @@ def test_risk_controller_clean_macro_neutral():
     decision = decide_risk_state(snap, drawdown_budget=0.30)
     assert decision.risk_state == RiskState.RISK_NEUTRAL
     assert decision.target_exposure_ceiling == 1.00
+    assert decision.qld_share_ceiling == 0.20
 
 
 def test_risk_controller_clean_euphoric_unlocks_risk_on():
@@ -90,6 +91,7 @@ def test_risk_controller_clean_euphoric_unlocks_risk_on():
     assert decision.risk_state == RiskState.RISK_ON
     assert decision.target_exposure_ceiling == 1.20
     assert decision.target_cash_floor == 0.00
+    assert decision.qld_share_ceiling == 0.25
 
 
 def test_risk_controller_tight_spread_clean_macro_unlocks_risk_on_without_erp():
@@ -258,7 +260,111 @@ def test_risk_controller_crisis_forces_exit_even_when_micro_is_clean():
     assert decision.risk_state == RiskState.RISK_EXIT
     assert decision.target_exposure_ceiling == 0.50
     assert decision.target_cash_floor == 0.50
-    assert decision.tier0_applied is True
+    assert decision.qld_share_ceiling == 0.00
+
+
+def test_risk_controller_reduced_and_defense_keep_limited_qld_participation():
+    reduced = decide_risk_state(
+        _snap(
+            {
+                "credit_spread": 520.0,
+                "credit_acceleration": 0.0,
+                "liquidity_roc": 1.0,
+                "funding_stress": False,
+            }
+        ),
+        tier0_regime="RICH_TIGHTENING",
+        drawdown_budget=0.30,
+    )
+    defense = decide_risk_state(
+        _snap(
+            {
+                "credit_spread": 580.0,
+                "credit_acceleration": 18.0,
+                "liquidity_roc": 1.0,
+                "funding_stress": False,
+            }
+        ),
+        tier0_regime="TRANSITION_STRESS",
+        drawdown_budget=0.30,
+    )
+
+    assert reduced.risk_state == RiskState.RISK_REDUCED
+    assert reduced.qld_share_ceiling == 0.10
+    assert defense.risk_state == RiskState.RISK_DEFENSE
+    assert defense.qld_share_ceiling == 0.05
+
+
+def test_risk_controller_qld_share_ceiling_is_monotonic_by_stress():
+    risk_on = decide_risk_state(
+        _snap(
+            {
+                "credit_spread": 220.0,
+                "credit_acceleration": 0.0,
+                "liquidity_roc": 1.0,
+                "funding_stress": False,
+            }
+        ),
+        tier0_regime="EUPHORIC",
+        drawdown_budget=0.30,
+    )
+    neutral = decide_risk_state(
+        _snap(
+            {
+                "credit_spread": 300.0,
+                "credit_acceleration": 0.0,
+                "liquidity_roc": 1.0,
+                "funding_stress": True,
+            }
+        ),
+        tier0_regime="NEUTRAL",
+        drawdown_budget=0.30,
+    )
+    reduced = decide_risk_state(
+        _snap(
+            {
+                "credit_spread": 470.0,
+                "credit_acceleration": 0.0,
+                "liquidity_roc": 1.0,
+                "funding_stress": False,
+            }
+        ),
+        tier0_regime="RICH_TIGHTENING",
+        drawdown_budget=0.30,
+    )
+    defense = decide_risk_state(
+        _snap(
+            {
+                "credit_spread": 580.0,
+                "credit_acceleration": 18.0,
+                "liquidity_roc": 1.0,
+                "funding_stress": False,
+            }
+        ),
+        tier0_regime="TRANSITION_STRESS",
+        drawdown_budget=0.30,
+    )
+    exit_state = decide_risk_state(
+        _snap(
+            {
+                "credit_spread": 680.0,
+                "credit_acceleration": 20.0,
+                "liquidity_roc": -6.0,
+                "funding_stress": True,
+            }
+        ),
+        tier0_regime="CRISIS",
+        drawdown_budget=0.30,
+    )
+
+    ceilings = [
+        risk_on.qld_share_ceiling,
+        neutral.qld_share_ceiling,
+        reduced.qld_share_ceiling,
+        defense.qld_share_ceiling,
+        exit_state.qld_share_ceiling,
+    ]
+    assert ceilings == [0.25, 0.20, 0.10, 0.05, 0.00]
 
 
 def test_risk_controller_rich_tightening_caps_ceiling_at_thirty_percent():

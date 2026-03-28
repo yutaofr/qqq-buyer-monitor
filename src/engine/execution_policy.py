@@ -71,17 +71,35 @@ def _coerce_date(value: date | str | None) -> date | None:
     return date.fromisoformat(value)
 
 
-def target_allocation_from_beta(target_beta: float) -> TargetAllocationState:
+def beta_requires_qld_above_ceiling(
+    target_beta: float,
+    *,
+    qld_share_ceiling: float,
+) -> bool:
+    """Return True when the requested beta cannot be built within the QLD ceiling."""
+    beta = min(max(float(target_beta), 0.0), 1.2)
+    qld_ceiling = min(max(float(qld_share_ceiling), 0.0), 1.0)
+    return max(0.0, beta - 1.0) > qld_ceiling + 1e-9
+
+
+def target_allocation_from_beta(
+    target_beta: float,
+    *,
+    qld_share_ceiling: float = 0.0,
+) -> TargetAllocationState:
     """Map a continuous advisory beta to a valid QQQ/QLD/Cash allocation."""
     beta = min(max(float(target_beta), 0.0), 1.2)
-    if beta <= 1.0:
-        qqq = beta
-        qld = 0.0
-        cash = 1.0 - qqq
-    else:
-        qld = beta - 1.0
-        qqq = 1.0 - qld
-        cash = 0.0
+    qld_ceiling = min(max(float(qld_share_ceiling), 0.0), 1.0)
+    qld_floor = max(0.0, beta - 1.0)
+    qld_cap = min(beta / 2.0, qld_ceiling)
+    if qld_cap + 1e-9 < qld_floor:
+        raise ValueError(
+            "target_beta and qld_share_ceiling do not admit a legal QQQ/QLD/Cash allocation"
+        )
+
+    qld = qld_cap
+    qqq = beta - 2.0 * qld
+    cash = 1.0 - qqq - qld
     return TargetAllocationState(
         target_cash_pct=float(cash),
         target_qqq_pct=float(qqq),

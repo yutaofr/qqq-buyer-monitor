@@ -1,13 +1,13 @@
-# Linear Pipeline Backtest Report (v8.2 crisis blood-chip override)
+# Linear Pipeline Backtest Report (v9.0 target-beta-first)
 
-本报告记录当前 v8.2 分支上线性决策流水线在 1999-2026 全样本上的最新回测结果。
+本报告记录当前 v9.0 分支在线性决策流水线上的最新双审计结果，以及 1999-2026 全样本组合回测结果。
 执行命令：
 
 ```bash
-docker compose run --rm backtest
+python -m src.backtest --mode portfolio
 ```
 
-执行日期：`2026-03-26`
+执行日期：`2026-03-28`
 
 ## 双回测审计
 
@@ -16,16 +16,16 @@ docker compose run --rm backtest
 执行命令：
 
 ```bash
-python scripts/run_signal_acceptance_report.py
+python scripts/run_signal_acceptance_report.py --save-dir artifacts/v9_review
 ```
 
 ### 存量 beta 对齐
 
 | 指标 | 当前表现 | 状态 | 说明 |
 | :--- | :--- | :--- | :--- |
-| Target Beta MAE | `0.0559` | ✅ PASS | 日频期望矩阵对齐误差 |
-| Target Beta RMSE | `0.1688` | ✅ PASS | 日频期望矩阵均方误差 |
-| Within Tolerance | `88.97%` | ✅ PASS | 目标 beta 贴近率 |
+| Target Beta MAE | `0.0269` | ✅ PASS | 日频期望矩阵对齐误差 |
+| Target Beta RMSE | `0.0763` | ✅ PASS | 日频期望矩阵均方误差 |
+| Within Tolerance | `87.00%` | ✅ PASS | 目标 beta 贴近率 |
 | Beta Floor | `0.5` | ✅ PASS | 底仓约束持续生效 |
 | Beta Cap | `1.2` | ✅ PASS | 上限约束持续生效 |
 
@@ -62,16 +62,17 @@ python scripts/plot_beta_backtest_performance.py
 
 | 指标 | 当前表现 | 状态 | 说明 |
 | :--- | :--- | :--- | :--- |
-| Tactical Max Drawdown | `-27.9%` | ✅ PASS | 低于 `30%` 风险预算 |
+| Tactical Max Drawdown | `-28.5%` | ✅ PASS | 低于 `30%` 风险预算 |
 | Baseline DCA Max Drawdown | `-35.1%` | — | 对照组 |
-| MDD Improvement | `7.2%` | ✅ PASS | 相对 Baseline DCA 的绝对改善 |
-| Realized Beta | `0.18` | ✅ PASS | staged deployment + risk ceiling 后的全样本实现 beta |
-| Mean Interval Beta Deviation | `0.0032` | ✅ PASS | AC-4 保真度通过 |
+| MDD Improvement (vs Fully Invested) | `6.6%` | ✅ PASS | 相对 Fully Invested 的绝对改善 |
+| Realized Beta | `0.19` | ✅ PASS | staged deployment + risk ceiling 后的全样本实现 beta |
+| Mean Interval Beta Deviation | `0.0047` | ✅ PASS | AC-4 保真度通过 |
 | NAV Integrity | `1.000000` | ✅ PASS | 独立重放一致 |
-| Turnover Ratio (Advised) | `13.40` | ✅ PASS | friction 后实际建议换手 |
-| Turnover Ratio (Raw Daily Align) | `826.47` | ✅ PASS | 未加 friction 的原始对照换手 |
-| Estimated Friction Drag | `0.2010` | ✅ PASS | advisory 换手对应的非税摩擦近似拖累 |
-| RICH_TIGHTENING left-side windows | `647` | ✅ PASS | 证明软约束没有锁死左侧入场 |
+| Signal Target Beta (Active) | `0.77` | ✅ PASS | 有效信号窗口下的平均目标 beta |
+| Turnover Ratio (Advised) | `34.64` | ✅ PASS | friction 后实际建议换手 |
+| Turnover Ratio (Raw Daily Align) | `614.91` | ✅ PASS | 未加 friction 的原始对照换手 |
+| Estimated Friction Drag | `0.5197` | ✅ PASS | advisory 换手对应的非税摩擦近似拖累 |
+| RICH_TIGHTENING left-side windows | `664` | ✅ PASS | 证明软约束没有锁死左侧入场 |
 | CRISIS blood-chip overrides | `1` | ✅ PASS | 危机窗口出现 1 次授权的现金回补 override |
 | CRISIS unauthorized breaches | `0` | ✅ PASS | 危机窗口没有未授权高于 `DEPLOY_PAUSE` 的部署状态 |
 | CRISIS override paths | `liquidity_reversal=1` | ✅ PASS | 本轮授权 override 全部来自流动性反转路径 |
@@ -80,7 +81,7 @@ python scripts/plot_beta_backtest_performance.py
 
 ### 0. 双回测已对齐
 
-当前 v8.2 的验收口径已经分离为：
+当前 v9.0 的验收口径已经分离为：
 
 - `target_beta` 只看存量资产 beta 是否贴近期望矩阵
 - `deployment_state` 只看增量资金部署节奏是否贴近期望矩阵
@@ -89,12 +90,12 @@ python scripts/plot_beta_backtest_performance.py
 
 ### 1. 回撤预算已满足
 
-当前 v8.2 的 staged deployment 与 Tier-0 / Risk / Deployment 三段式约束已经把全样本最大回撤控制在 `-27.9%`。
+当前 v9.0 的 staged deployment 与 Tier-0 / Risk / Deployment 三段式约束已经把全样本最大回撤控制在 `-28.5%`。
 这满足了 SDT 中 `TC-BT-003` 对 `MDD <= 30%` 的要求。
 
 ### 2. 左侧窗口被保留
 
-`RICH_TIGHTENING left-side windows = 647`，说明在宏观偏紧阶段，只要价格超跌足够深，部署速度仍可从默认 `DEPLOY_SLOW` 提升到 `DEPLOY_BASE` 或更高。
+`RICH_TIGHTENING left-side windows = 664`，说明在宏观偏紧阶段，只要价格超跌足够深，部署速度仍可从默认 `DEPLOY_SLOW` 提升到 `DEPLOY_BASE` 或更高。
 这满足 `TC-BT-001 / AC-15`。
 
 ### 3. 危机窗口只允许授权 override
@@ -111,7 +112,7 @@ python scripts/plot_beta_backtest_performance.py
 - `CRISIS override paths = liquidity_reversal=1`
 
 这说明系统没有放弃危机防守，只是在危机最深处为战术现金回补开了受控后门。
-这满足 v8.2 的 `TC-BT-002 / AC-13 / AC-14`。
+这满足 v9.0 对危机期 “不抬高存量 beta、只允许新增现金 override” 的约束。
 
 ### 4. 回测实现已与生产架构对齐
 
@@ -145,14 +146,14 @@ Tier-0 -> Risk Controller -> Candidate Registry -> Beta Recommendation
 
 本轮回归里：
 
-- `Turnover Ratio (Advised) = 13.40`
-- `Turnover Ratio (Raw Daily Align) = 826.47`
+- `Turnover Ratio (Advised) = 34.64`
+- `Turnover Ratio (Raw Daily Align) = 614.91`
 
 这说明 advisory friction 没有改变 `raw_target_beta` 的审计语义，但大幅压低了如果“每天强制对齐原始 beta”会产生的高频换手。
 
 ## 结论
 
-当前 v8.2 回测已通过：
+当前 v9.0 回测已通过：
 
 - spec compliance
 - architecture 对齐

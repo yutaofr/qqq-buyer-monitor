@@ -134,7 +134,7 @@ def test_run_backtest_prints_macro_coverage_before_summary(monkeypatch, capsys):
 
     output = capsys.readouterr().out
     assert output.index("--- Canonical Macro Coverage ---") < output.index(
-        "--- v8.2 Linear Pipeline Backtest Summary"
+        "--- v9.0 Linear Pipeline Backtest Summary"
     )
     assert events == ["simulate", "signal-timeseries", "save-figure"]
 
@@ -252,7 +252,7 @@ def test_run_signal_audits_returns_dual_alignment_summaries(tmp_path, capsys):
     expectations = pd.DataFrame(
         {
             "date": dates,
-            "expected_target_beta": [1.2, 1.2, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+            "expected_target_beta": [1.2, 1.2, 0.8, 0.7, 0.5, 0.5, 0.5, 0.5, 0.5],
             "expected_deployment_state": [
                 "DEPLOY_BASE",
                 "DEPLOY_FAST",

@@ -19,6 +19,17 @@ _RISK_ON_CREDIT_SPREAD_THRESHOLD = 450.0
 _DRAWDOWN_WARN = 0.20
 _DRAWDOWN_DEFENSE = 0.25
 _DRAWDOWN_EXIT = 0.30
+_QDL_SHARE_CEILING = {
+    RiskState.RISK_ON: 0.25,
+    RiskState.RISK_NEUTRAL: 0.20,
+    RiskState.RISK_REDUCED: 0.10,
+    RiskState.RISK_DEFENSE: 0.05,
+    RiskState.RISK_EXIT: 0.00,
+}
+
+
+def _qld_share_ceiling_for_state(risk_state: RiskState) -> float:
+    return _QDL_SHARE_CEILING[risk_state]
 
 
 def _count_missing_class_a(snapshot: FeatureSnapshot) -> int:
@@ -60,6 +71,7 @@ def decide_risk_state(
             target_cash_floor=0.50,
             reasons=tuple(reasons),
             tier0_applied=True,
+            qld_share_ceiling=_qld_share_ceiling_for_state(RiskState.RISK_EXIT),
         )
 
     if tier0_regime == "RICH_TIGHTENING":
@@ -70,6 +82,7 @@ def decide_risk_state(
             target_cash_floor=0.20,
             reasons=tuple(reasons),
             tier0_applied=True,
+            qld_share_ceiling=_qld_share_ceiling_for_state(RiskState.RISK_REDUCED),
         )
 
     if tier0_regime == "TRANSITION_STRESS":
@@ -80,6 +93,7 @@ def decide_risk_state(
             target_cash_floor=0.30,
             reasons=tuple(reasons),
             tier0_applied=True,
+            qld_share_ceiling=_qld_share_ceiling_for_state(RiskState.RISK_DEFENSE),
         )
 
     # ── 1. Missing Class A guard (SRD §8.2) ─────────────────────────────────
@@ -91,6 +105,7 @@ def decide_risk_state(
             target_exposure_ceiling=0.80,
             target_cash_floor=0.20,
             reasons=tuple(reasons),
+            qld_share_ceiling=_qld_share_ceiling_for_state(RiskState.RISK_REDUCED),
         )
     if n_missing >= 2:
         reasons.append({"rule": "class_a_missing", "missing_count": n_missing})
@@ -99,6 +114,7 @@ def decide_risk_state(
             target_exposure_ceiling=0.80,
             target_cash_floor=0.20,
             reasons=tuple(reasons),
+            qld_share_ceiling=_qld_share_ceiling_for_state(RiskState.RISK_REDUCED),
         )
 
     # ── 2. Drawdown budget hard constraint ───────────────────────────────────
@@ -110,6 +126,7 @@ def decide_risk_state(
                 target_exposure_ceiling=0.50,
                 target_cash_floor=0.50,
                 reasons=tuple(reasons),
+                qld_share_ceiling=_qld_share_ceiling_for_state(RiskState.RISK_EXIT),
             )
         if rolling_drawdown >= _DRAWDOWN_DEFENSE:
             reasons.append({"rule": "drawdown_defense_band", "drawdown": rolling_drawdown})
@@ -118,6 +135,7 @@ def decide_risk_state(
                 target_exposure_ceiling=0.70,
                 target_cash_floor=0.30,
                 reasons=tuple(reasons),
+                qld_share_ceiling=_qld_share_ceiling_for_state(RiskState.RISK_DEFENSE),
             )
         if rolling_drawdown >= _DRAWDOWN_WARN:
             reasons.append({"rule": "drawdown_warn_band", "drawdown": rolling_drawdown})
@@ -126,6 +144,7 @@ def decide_risk_state(
                 target_exposure_ceiling=0.80,
                 target_cash_floor=0.20,
                 reasons=tuple(reasons),
+                qld_share_ceiling=_qld_share_ceiling_for_state(RiskState.RISK_REDUCED),
             )
 
     # ── Extract Class A signals ──────────────────────────────────────────────
@@ -150,6 +169,7 @@ def decide_risk_state(
             target_exposure_ceiling=0.50,
             target_cash_floor=0.50,
             reasons=tuple(reasons),
+            qld_share_ceiling=_qld_share_ceiling_for_state(RiskState.RISK_EXIT),
         )
 
     # ── 4. Dual stress → RISK_DEFENSE ────────────────────────────────────────
@@ -162,6 +182,7 @@ def decide_risk_state(
             target_exposure_ceiling=0.70,
             target_cash_floor=0.30,
             reasons=tuple(reasons),
+            qld_share_ceiling=_qld_share_ceiling_for_state(RiskState.RISK_DEFENSE),
         )
 
     # ── 5. Single-side deterioration → RISK_REDUCED ──────────────────────────
@@ -172,6 +193,7 @@ def decide_risk_state(
             target_exposure_ceiling=0.85,
             target_cash_floor=0.15,
             reasons=tuple(reasons),
+            qld_share_ceiling=_qld_share_ceiling_for_state(RiskState.RISK_REDUCED),
         )
 
     # ── 6. Clean environment ──────────────────────────────────────────────────
@@ -199,4 +221,5 @@ def decide_risk_state(
         target_exposure_ceiling=ceiling,
         target_cash_floor=cash_floor,
         reasons=tuple(reasons),
+        qld_share_ceiling=_qld_share_ceiling_for_state(risk_state),
     )

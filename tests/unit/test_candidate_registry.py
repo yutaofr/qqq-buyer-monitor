@@ -13,7 +13,7 @@ FIXTURE = "tests/fixtures/candidate_registry_v7.json"
 def test_load_registry_reads_certified_candidates():
     registry = load_registry(FIXTURE)
     assert registry.registry_version == "test-v7-r1"
-    assert len(registry.candidates) == 7
+    assert len(registry.candidates) == 9
 
 
 def test_load_registry_version_and_budget():
@@ -76,8 +76,24 @@ def test_select_runtime_candidates_returns_empty_for_wrong_state():
 def test_select_runtime_candidates_defense_state():
     registry = load_registry(FIXTURE)
     candidates = select_runtime_candidates(registry, RiskState.RISK_DEFENSE)
+    assert {c.candidate_id for c in candidates} == {"defense-001", "defense-limited-001"}
+
+
+def test_select_runtime_candidates_reduced_state_includes_limited_qld_candidate():
+    registry = load_registry(FIXTURE)
+    candidates = select_runtime_candidates(registry, RiskState.RISK_REDUCED)
+    assert {c.candidate_id for c in candidates} == {
+        "reduced-base-001",
+        "reduced-tight-001",
+        "reduced-limited-001",
+    }
+
+
+def test_select_runtime_candidates_exit_state_has_no_qld():
+    registry = load_registry(FIXTURE)
+    candidates = select_runtime_candidates(registry, RiskState.RISK_EXIT)
     assert len(candidates) == 1
-    assert candidates[0].candidate_id == "defense-001"
+    assert candidates[0].qld_pct == 0.0
 
 
 def test_select_runtime_candidates_exit_state():
