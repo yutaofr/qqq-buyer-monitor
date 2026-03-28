@@ -13,18 +13,25 @@ def _canonical_macro_frame(
     erps: list[float] | None = None,
 ) -> pd.DataFrame:
     erp_values = erps if erps is not None else [3.5] * len(dates)
+    forward_pe = [
+        None if erp is None else 100.0 / (float(erp) + 1.25)
+        for erp in erp_values
+    ]
     return pd.DataFrame(
         {
             "observation_date": [d.strftime("%Y-%m-%d") for d in dates],
             "effective_date": [d.strftime("%Y-%m-%d") for d in dates],
             "credit_spread_bps": spreads,
             "credit_acceleration_pct_10d": [0.0] * len(dates),
+            "forward_pe": forward_pe,
             "erp_pct": erp_values,
             "real_yield_10y_pct": [1.25] * len(dates),
             "net_liquidity_usd_bn": [250.0] * len(dates),
             "liquidity_roc_pct_4w": [0.0] * len(dates),
             "funding_stress_flag": [0] * len(dates),
             "source_credit_spread": ["fred:BAMLH0A0HYM2"] * len(dates),
+            "source_forward_pe": ["damodaran:histimpl"] * len(dates),
+            "source_erp": ["damodaran:histimpl"] * len(dates),
             "source_real_yield": ["fred:DFII10"] * len(dates),
             "source_net_liquidity": ["derived"] * len(dates),
             "source_funding_stress": ["fred:NFCI"] * len(dates),

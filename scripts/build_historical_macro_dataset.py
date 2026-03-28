@@ -24,6 +24,8 @@ def main(argv: list[str] | None = None) -> int:
     for key in (
         "credit_spread_bps",
         "credit_acceleration_pct_10d",
+        "forward_pe",
+        "erp_pct",
         "real_yield_10y_pct",
         "net_liquidity_usd_bn",
         "liquidity_roc_pct_4w",

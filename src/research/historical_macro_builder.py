@@ -11,19 +11,29 @@ from src.research.data_contracts import (
     summarize_historical_macro_coverage,
     validate_historical_macro_frame,
 )
+from src.research.valuation_history import fetch_historical_valuation_proxy
 
 BUILD_VERSION = "v7.0-class-a-research-r1"
 _CORE_SERIES: tuple[str, ...] = macro_v3.RESEARCH_PRIMARY_SERIES
 
 
-def _asof_align(series_frame: pd.DataFrame, series_id: str, calendar: pd.DatetimeIndex) -> pd.Series:
-    frame = series_frame.reset_index(drop=True).loc[:, ["observation_date", series_id]].copy()
-    frame["observation_date"] = pd.to_datetime(frame["observation_date"], errors="coerce")
-    frame = frame.dropna(subset=["observation_date"]).sort_values("observation_date")
-    frame = frame.drop_duplicates(subset=["observation_date"], keep="last")
-    frame = frame.set_index("observation_date")
+def _asof_align_from_date_column(
+    series_frame: pd.DataFrame,
+    date_column: str,
+    series_id: str,
+    calendar: pd.DatetimeIndex,
+) -> pd.Series:
+    frame = series_frame.reset_index(drop=True).loc[:, [date_column, series_id]].copy()
+    frame[date_column] = pd.to_datetime(frame[date_column], errors="coerce")
+    frame = frame.dropna(subset=[date_column]).sort_values(date_column)
+    frame = frame.drop_duplicates(subset=[date_column], keep="last")
+    frame = frame.set_index(date_column)
     aligned = frame[series_id].reindex(calendar, method="ffill")
     return pd.to_numeric(aligned, errors="coerce")
+
+
+def _asof_align(series_frame: pd.DataFrame, series_id: str, calendar: pd.DatetimeIndex) -> pd.Series:
+    return _asof_align_from_date_column(series_frame, "observation_date", series_id, calendar)
 
 
 def _pct_change(series: pd.Series, periods: int) -> pd.Series:
@@ -89,6 +99,9 @@ def build_historical_macro_dataset(output_path: str | Path | None = None) -> pd.
     missing_core = [series_id for series_id in _CORE_SERIES if series_id not in frames]
     if missing_core:
         raise ValueError(f"Missing core historical research series: {', '.join(missing_core)}")
+    valuation = fetch_historical_valuation_proxy()
+    if valuation is None or valuation.empty:
+        raise ValueError("Missing historical valuation proxy rows")
 
     calendar = _build_calendar(frames)
     if calendar.empty:
@@ -114,6 +127,18 @@ def build_historical_macro_dataset(output_path: str | Path | None = None) -> pd.
     )
     daily["credit_spread_bps"] = daily["BAMLH0A0HYM2"] * 100.0
     daily["credit_acceleration_pct_10d"] = _pct_change(daily["credit_spread_bps"], 10)
+    daily["forward_pe"] = _asof_align_from_date_column(
+        valuation,
+        "effective_date",
+        "forward_pe",
+        calendar,
+    )
+    daily["erp_pct"] = _asof_align_from_date_column(
+        valuation,
+        "effective_date",
+        "erp_pct",
+        calendar,
+    )
     daily["real_yield_10y_pct"] = daily["DFII10"]
     daily["net_liquidity_usd_bn"] = _asof_align(
         weekly_liquidity.loc[:, ["observation_date", "net_liquidity_usd_bn"]],
@@ -130,6 +155,8 @@ def build_historical_macro_dataset(output_path: str | Path | None = None) -> pd.
     daily["funding_stress_flag"] = (daily["NFCI"] > 0).astype(int)
 
     daily["source_credit_spread"] = "fred:BAMLH0A0HYM2"
+    daily["source_forward_pe"] = valuation["source_forward_pe"].dropna().iloc[-1]
+    daily["source_erp"] = valuation["source_erp"].dropna().iloc[-1]
     daily["source_real_yield"] = "fred:DFII10"
     daily["source_net_liquidity"] = "derived:WALCL-WDTGAL-RRPONTSYD"
     daily["source_funding_stress"] = "fred:NFCI"
@@ -140,11 +167,15 @@ def build_historical_macro_dataset(output_path: str | Path | None = None) -> pd.
         "effective_date",
         "credit_spread_bps",
         "credit_acceleration_pct_10d",
+        "forward_pe",
+        "erp_pct",
         "real_yield_10y_pct",
         "net_liquidity_usd_bn",
         "liquidity_roc_pct_4w",
         "funding_stress_flag",
         "source_credit_spread",
+        "source_forward_pe",
+        "source_erp",
         "source_real_yield",
         "source_net_liquidity",
         "source_funding_stress",

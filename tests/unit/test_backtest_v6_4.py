@@ -1,12 +1,13 @@
 import warnings
 
-import pytest
-import pandas as pd
 import numpy as np
-from datetime import date, timedelta
+import pandas as pd
+import pytest
+
 from src.backtest import Backtester, _safe_beta, run_backtest, simulate_leveraged_price
 from src.collector.historical_macro_seeder import HistoricalMacroSeeder
 from src.models import AllocationState, TargetAllocationState
+
 
 @pytest.fixture
 def sample_ohlcv():
@@ -35,7 +36,7 @@ def test_nav_integrity(sample_ohlcv):
     """AC-3: NAV = Cash + QQQ + QLD within tolerance."""
     tester = Backtester(initial_capital=100000)
     summary = tester.simulate_portfolio(sample_ohlcv)
-    
+
     df = summary.daily_timeseries
     # current_nav was tracked in the loop
     # Let's verify it matches the components
@@ -47,18 +48,18 @@ def test_nav_integrity(sample_ohlcv):
 def test_score_candidates_api(sample_ohlcv):
     """Backtester should have a score_candidates API for v6.4."""
     tester = Backtester(initial_capital=100000)
-    
+
     # We want to score a specific allocation state's candidates
     state = AllocationState.BASE_DCA
     candidates = [
         TargetAllocationState(0.3, 0.5, 0.2, 0.9), # 523
         TargetAllocationState(0.3, 0.6, 0.1, 0.8), # 613
     ]
-    
+
     # This method doesn't exist yet
     assert hasattr(tester, "score_candidates")
     scores = tester.score_candidates(sample_ohlcv, state, candidates)
-    
+
     assert len(scores) == len(candidates)
     for s in scores:
         assert "max_drawdown" in s
@@ -148,11 +149,15 @@ def test_run_backtest_rejects_duplicate_effective_dates(monkeypatch, qqq_cache_f
             "effective_date": ["2024-01-03", "2024-01-03"],
             "credit_spread_bps": [350.0, 360.0],
             "credit_acceleration_pct_10d": [0.0, 0.8],
+            "forward_pe": [24.0, 24.0],
+            "erp_pct": [3.5, 3.4],
             "real_yield_10y_pct": [1.25, 1.20],
             "net_liquidity_usd_bn": [250.0, 249.0],
             "liquidity_roc_pct_4w": [0.0, -0.4],
             "funding_stress_flag": [0, 1],
             "source_credit_spread": ["fred:BAMLH0A0HYM2", "fred:BAMLH0A0HYM2"],
+            "source_forward_pe": ["damodaran:histimpl", "damodaran:histimpl"],
+            "source_erp": ["damodaran:histimpl", "damodaran:histimpl"],
             "source_real_yield": ["fred:DFII10", "fred:DFII10"],
             "source_net_liquidity": ["derived:WALCL-WDTGAL-RRPONTSYD", "derived:WALCL-WDTGAL-RRPONTSYD"],
             "source_funding_stress": ["fred:NFCI", "fred:NFCI"],
@@ -191,11 +196,15 @@ def test_simulate_portfolio_v8_runtime_path_does_not_call_aggregate(monkeypatch)
             "effective_date": [d.strftime("%Y-%m-%d") for d in dates],
             "credit_spread_bps": [320.0] * len(dates),
             "credit_acceleration_pct_10d": [0.0] * len(dates),
+            "forward_pe": [24.0] * len(dates),
+            "erp_pct": [3.5] * len(dates),
             "real_yield_10y_pct": [1.25] * len(dates),
             "net_liquidity_usd_bn": [250.0] * len(dates),
             "liquidity_roc_pct_4w": [0.0] * len(dates),
             "funding_stress_flag": [0] * len(dates),
             "source_credit_spread": ["fred:BAMLH0A0HYM2"] * len(dates),
+            "source_forward_pe": ["damodaran:histimpl"] * len(dates),
+            "source_erp": ["damodaran:histimpl"] * len(dates),
             "source_real_yield": ["fred:DFII10"] * len(dates),
             "source_net_liquidity": ["derived"] * len(dates),
             "source_funding_stress": ["fred:NFCI"] * len(dates),
