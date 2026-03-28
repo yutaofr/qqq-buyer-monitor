@@ -11,29 +11,33 @@
     <script defer src="/_vercel/insights/script.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .state-active .glass { background: linear-gradient(135deg, rgba(5, 46, 22, 0.45) 0%, rgba(5, 46, 22, 0.25) 100%); } 
-        .state-frozen .glass { background: linear-gradient(135deg, rgba(30, 58, 138, 0.35) 0%, rgba(30, 58, 138, 0.15) 100%); }
-        .state-stale { background-color: #0d1117; color: #fef2f2; filter: grayscale(1); pointer-events: none; }
-        .pulse { animation: pulse 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
-        .glass { backdrop-filter: blur(25px); border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6); }
-        .factor-card { background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%); border: 1px solid rgba(255, 255, 255, 0.05); }
-        .tree-line { width: 1px; background: rgba(255,255,255,0.08); }
-        .node-lit { background: #34d399; box-shadow: 0 0 20px rgba(52, 211, 153, 0.5); }
-        .node-ghost { background: rgba(255,255,255,0.04); }
-        .branch-line { border-left: 1px solid rgba(255,255,255,0.08); border-top: 1px solid rgba(255,255,255,0.08); }
+        .state-active { background-color: #09090b; color: #f8fafc; }
+        .state-frozen { background-color: #09090b; color: #f8fafc; }
+        .state-active .glass { background: rgba(15, 23, 42, 0.4); border-color: rgba(16, 185, 129, 0.2); } 
+        .state-frozen .glass { background: rgba(15, 23, 42, 0.4); border-color: rgba(139, 92, 246, 0.2); }
+        .state-active .accent-bar { border-left-color: #10b981; }
+        .state-frozen .accent-bar { border-left-color: #8b5cf6; }
+        .state-stale { background-color: #09090b; color: #94a3b8; filter: grayscale(1); pointer-events: none; }
+        .pulse { animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .7; } }
+        .glass { backdrop-filter: blur(30px); border: 1.5px solid rgba(255, 255, 255, 0.05); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8); }
+        .factor-card { background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.05); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3); }
+        .tree-line { width: 1px; background: rgba(255,255,255,0.06); }
+        .node-lit { background: #10b981; box-shadow: 0 0 25px rgba(16, 185, 129, 0.4); }
+        .node-ghost { background: rgba(255,255,255,0.03); }
+        .branch-line { border-left: 1px solid rgba(255,255,255,0.05); border-top: 1px solid rgba(255,255,255,0.05); }
         .text-ghost { opacity: 0.1; filter: blur(0.5px); }
-        #insights-panel { max-height: 0; overflow: hidden; transition: all 0.7s cubic-bezier(0.4, 0, 0.2, 1); }
-        #insights-panel.open { max-height: 2000px; margin-top: 1.5rem; }
+        #insights-panel { max-height: 0; overflow: hidden; transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
+        #insights-panel.open { max-height: 2500px; margin-top: 1.5rem; }
     </style>
 </head>
 <body id="body" class="state-stale min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700">
-    <div class="max-w-[390px] w-full glass rounded-[3rem] p-6 shadow-2xl">
+    <div class="max-w-[390px] w-full glass rounded-[3rem] p-6 shadow-2xl transition-all duration-700">
         <!-- Header -->
         <div class="flex justify-between items-center mb-6 px-1">
             <div>
-                <h1 class="text-2xl font-black tracking-tighter">晴雨表</h1>
-                <p id="version" class="text-[9px] tracking-[0.2em] opacity-30 uppercase">v9.0 Target-Beta-First</p>
+                <h1 class="text-2xl font-black tracking-tighter text-white">晴雨表</h1>
+                <p id="version" class="text-[9px] tracking-[0.2em] opacity-40 text-slate-400 uppercase">v9.0 Target-Beta-First</p>
             </div>
             <div id="indicator" class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.8)]"></div>
         </div>
@@ -42,31 +46,31 @@
         <div id="content" class="space-y-6">
             <!-- Macro Regime -->
             <div class="space-y-1.5 px-2">
-                <p class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">当前宏观</p>
-                <p id="regime" class="text-3xl font-black tracking-tightest">载入中...</p>
-                <p id="regime-desc" class="text-[11px] leading-relaxed opacity-60 italic font-medium"></p>
+                <p class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-50 text-slate-400">当前宏观</p>
+                <p id="regime" class="text-3xl font-black tracking-tightest text-white">载入中...</p>
+                <p id="regime-desc" class="text-[11px] leading-relaxed opacity-70 italic font-medium text-slate-300"></p>
             </div>
 
             <!-- Core Signals Container -->
             <div class="space-y-3">
                 <!-- Target Beta Card -->
-                <div class="factor-card p-5 rounded-[2rem] border-emerald-500/10 space-y-3">
+                <div class="factor-card p-5 rounded-[2rem] border-l-4 border-emerald-500/30 space-y-3 accent-bar transition-all">
                     <div class="flex justify-between items-end">
-                        <p class="text-[10px] font-black uppercase tracking-[0.2em] opacity-40 text-emerald-400">目标 Beta (系统 contract)</p>
-                        <p id="exposure" class="text-2xl font-black tracking-tighter">--</p>
+                        <p class="text-[10px] font-black uppercase tracking-[0.2em] opacity-70 text-emerald-400">目标 Beta (系统 contract)</p>
+                        <p id="exposure" class="text-3xl font-black tracking-tighter text-white">--</p>
                     </div>
                     <div class="w-full h-1.5 bg-white/5 rounded-full overflow-hidden relative">
-                        <div id="exposure-bar" class="h-full bg-emerald-400 opacity-40 transition-all duration-1000" style="width: 0%"></div>
+                        <div id="exposure-bar" class="h-full bg-emerald-400 opacity-60 transition-all duration-1000" style="width: 0%"></div>
                         <div id="leverage-bar" class="absolute top-0 h-full bg-gradient-to-r from-emerald-400 to-orange-400 shadow-[0_0_10px_rgba(251,146,60,0.8)] opacity-0 transition-all duration-1000" style="width: 0%; left: 100%"></div>
                     </div>
-                    <p id="exposure-desc" class="text-[10px] opacity-40 leading-tight"></p>
+                    <p id="exposure-desc" class="text-[10px] opacity-60 leading-tight text-slate-300"></p>
                 </div>
 
                 <!-- Deployment Rhythm Card -->
-                <div class="factor-card p-5 rounded-[2rem] border-blue-500/10 space-y-1.5">
-                    <p class="text-[10px] font-black uppercase tracking-[0.2em] opacity-40 text-blue-400">入场节奏 (Incremental Cash)</p>
-                    <p id="deploy" class="text-2xl font-black tracking-tighter">--</p>
-                    <p id="deploy-desc" class="text-[10px] leading-relaxed opacity-40"></p>
+                <div class="factor-card p-5 rounded-[2rem] border-l-4 border-blue-500/30 space-y-1.5 accent-bar transition-all">
+                    <p class="text-[10px] font-black uppercase tracking-[0.2em] opacity-70 text-blue-400">入场节奏 (Incremental Cash)</p>
+                    <p id="deploy" class="text-3xl font-black tracking-tighter text-white">--</p>
+                    <p id="deploy-desc" class="text-[10px] leading-relaxed opacity-60 text-slate-300"></p>
                 </div>
             </div>
         </div>
@@ -238,17 +242,17 @@
 
         <!-- Meta Footer -->
         <div class="mt-8 pt-6 border-t border-white/[0.05] space-y-2 px-1">
-            <div class="flex justify-between items-center text-[9px] tracking-wider opacity-20">
+            <div class="flex justify-between items-center text-[9px] tracking-wider opacity-30 text-slate-400">
                 <span class="font-bold">数据置信度</span>
-                <span id="fidelity" class="font-black uppercase">UNKNOWN</span>
+                <span id="fidelity" class="font-black uppercase text-white">UNKNOWN</span>
             </div>
-            <div class="flex justify-between items-center text-[9px] tracking-wider opacity-20">
+            <div class="flex justify-between items-center text-[9px] tracking-wider opacity-30 text-slate-400">
                 <span>计算时间 (UTC)</span>
-                <span id="calc-at">--:--</span>
+                <span id="calc-at" class="text-slate-200">--:--</span>
             </div>
-            <div class="flex justify-between items-center text-[9px] tracking-wider opacity-40 font-bold">
+            <div class="flex justify-between items-center text-[9px] tracking-wider opacity-50 font-bold text-slate-400">
                 <span>下次预计更新</span>
-                <span id="expires-at">--:--</span>
+                <span id="expires-at" class="text-white">--:--</span>
             </div>
         </div>
 
@@ -334,11 +338,11 @@
 
                 const state = data.meta.market_state;
                 if (state === 'ACTIVE') {
-                    body.className = 'state-active min-h-screen flex items-center justify-center p-4 font-sans transition-colors duration-700';
-                    indicator.className = 'w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.8)] pulse';
+                    body.className = 'state-active min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700';
+                    indicator.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.8)] pulse';
                 } else {
-                    body.className = 'state-frozen min-h-screen flex items-center justify-center p-4 font-sans transition-colors duration-700';
-                    indicator.className = 'w-3 h-3 rounded-full bg-blue-400 shadow-[0_0_15px_rgba(96,165,250,0.8)]';
+                    body.className = 'state-frozen min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700';
+                    indicator.className = 'w-2.5 h-2.5 rounded-full bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.8)]';
                 }
 
                 // Main Signal - No fallbacks allowed
