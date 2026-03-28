@@ -11,6 +11,7 @@ from src.research.data_contracts import (
     REQUIRED_HISTORICAL_MACRO_COLUMNS,
     validate_historical_macro_frame,
 )
+from src.research.valuation_history import parse_damodaran_histimpl_html
 
 
 def _primary_series_frame(series_id: str, values: list[float], dates: pd.DatetimeIndex) -> pd.DataFrame:
@@ -29,11 +30,15 @@ def _canonical_macro_frame() -> pd.DataFrame:
             "effective_date": ["2024-01-03", "2024-01-04"],
             "credit_spread_bps": [350.0, 355.0],
             "credit_acceleration_pct_10d": [0.0, 0.5],
+            "forward_pe": [24.0, 23.5],
+            "erp_pct": [3.8, 3.9],
             "real_yield_10y_pct": [1.25, 1.20],
             "net_liquidity_usd_bn": [250.0, 249.0],
             "liquidity_roc_pct_4w": [0.0, -0.4],
             "funding_stress_flag": [0, 1],
             "source_credit_spread": ["fred:BAMLH0A0HYM2", "fred:BAMLH0A0HYM2"],
+            "source_forward_pe": ["damodaran:histimpl", "damodaran:histimpl"],
+            "source_erp": ["damodaran:histimpl", "damodaran:histimpl"],
             "source_real_yield": ["fred:DFII10", "fred:DFII10"],
             "source_net_liquidity": ["derived:WALCL-WDTGAL-RRPONTSYD", "derived:WALCL-WDTGAL-RRPONTSYD"],
             "source_funding_stress": ["fred:NFCI", "fred:NFCI"],
@@ -217,6 +222,46 @@ def test_fetch_research_historical_primary_series_ignores_missing_cpff(monkeypat
     assert set(frames) == set(macro_v3.RESEARCH_PRIMARY_SERIES)
 
 
+def test_parse_damodaran_histimpl_html_derives_forward_pe_and_erp():
+    html = """
+    <table>
+      <tr>
+        <th>Year</th><th>Earnings Yield</th><th>Dividend Yield</th><th>S&amp;P 500</th>
+        <th>Earnings*</th><th>Dividends*</th><th>T.Bond Rate</th><th>Smoothed Growth</th><th>Implied ERP (FCFE)</th>
+      </tr>
+      <tr>
+        <td>2023</td><td>4.64%</td><td>1.47%</td><td>4769.83</td><td>221.36</td><td>70.07</td><td>3.88%</td><td>3.68%</td><td>4.60%</td>
+      </tr>
+      <tr>
+        <td>2024</td><td>4.14%</td><td>1.25%</td><td>5881.63</td><td>243.32</td><td>73.40</td><td>4.58%</td><td>4.61%</td><td>4.33%</td>
+      </tr>
+    </table>
+    """
+
+    frame = parse_damodaran_histimpl_html(html)
+
+    assert list(frame.columns) == [
+        "observation_date",
+        "effective_date",
+        "forward_pe",
+        "erp_pct",
+        "source_forward_pe",
+        "source_erp",
+    ]
+    assert frame["observation_date"].tolist() == [
+        pd.Timestamp("2023-12-31"),
+        pd.Timestamp("2024-12-31"),
+    ]
+    assert frame["effective_date"].tolist() == [
+        pd.Timestamp("2024-01-01"),
+        pd.Timestamp("2025-01-01"),
+    ]
+    assert frame["forward_pe"].iloc[0] == pytest.approx(100.0 / 4.64, rel=1e-4)
+    assert frame["erp_pct"].iloc[1] == pytest.approx(4.33)
+    assert frame["source_forward_pe"].eq("damodaran:histimpl").all()
+    assert frame["source_erp"].eq("damodaran:histimpl").all()
+
+
 def test_build_historical_macro_dataset_derives_canonical_fields(monkeypatch, tmp_path):
     dates = pd.date_range("2024-01-01", periods=15, freq="B")
     walcl_dates = pd.date_range("2023-12-27", periods=6, freq="W-WED")
@@ -257,6 +302,20 @@ def test_build_historical_macro_dataset_derives_canonical_fields(monkeypatch, tm
         "fetch_research_historical_primary_series",
         lambda: bundle,
     )
+    monkeypatch.setattr(
+        builder,
+        "fetch_historical_valuation_proxy",
+        lambda: pd.DataFrame(
+            {
+                "observation_date": [pd.Timestamp("2023-12-31"), pd.Timestamp("2024-12-31")],
+                "effective_date": [pd.Timestamp("2024-01-01"), pd.Timestamp("2025-01-01")],
+                "forward_pe": [24.0, 20.0],
+                "erp_pct": [3.8, 4.4],
+                "source_forward_pe": ["damodaran:histimpl", "damodaran:histimpl"],
+                "source_erp": ["damodaran:histimpl", "damodaran:histimpl"],
+            }
+        ),
+    )
 
     output_path = tmp_path / "macro_historical_dump.csv"
     df = builder.build_historical_macro_dataset(output_path=str(output_path))
@@ -267,11 +326,15 @@ def test_build_historical_macro_dataset_derives_canonical_fields(monkeypatch, tm
         "effective_date",
         "credit_spread_bps",
         "credit_acceleration_pct_10d",
+        "forward_pe",
+        "erp_pct",
         "real_yield_10y_pct",
         "net_liquidity_usd_bn",
         "liquidity_roc_pct_4w",
         "funding_stress_flag",
         "source_credit_spread",
+        "source_forward_pe",
+        "source_erp",
         "source_real_yield",
         "source_net_liquidity",
         "source_funding_stress",
@@ -282,9 +345,13 @@ def test_build_historical_macro_dataset_derives_canonical_fields(monkeypatch, tm
     assert df["credit_spread_bps"].iloc[-1] == pytest.approx(118.0)
     assert pd.isna(df["credit_acceleration_pct_10d"].iloc[9])
     assert df["credit_acceleration_pct_10d"].iloc[-1] > 0
+    assert df["forward_pe"].iloc[-1] == pytest.approx(24.0)
+    assert df["erp_pct"].iloc[-1] == pytest.approx(3.8)
     assert df["liquidity_roc_pct_4w"].notna().any()
     assert df["funding_stress_flag"].isin([0, 1]).all()
     assert df["funding_stress_flag"].max() == 1
+    assert df["source_forward_pe"].iloc[0] == "damodaran:histimpl"
+    assert df["source_erp"].iloc[0] == "damodaran:histimpl"
     assert df["source_funding_stress"].iloc[0] == "fred:NFCI"
     assert df["build_version"].nunique() == 1
 
@@ -301,6 +368,20 @@ def test_build_historical_macro_dataset_raises_on_missing_core_series(monkeypatc
         macro_v3,
         "fetch_research_historical_primary_series",
         lambda: bundle,
+    )
+    monkeypatch.setattr(
+        builder,
+        "fetch_historical_valuation_proxy",
+        lambda: pd.DataFrame(
+            {
+                "observation_date": [pd.Timestamp("2024-12-31")],
+                "effective_date": [pd.Timestamp("2025-01-01")],
+                "forward_pe": [20.0],
+                "erp_pct": [4.4],
+                "source_forward_pe": ["damodaran:histimpl"],
+                "source_erp": ["damodaran:histimpl"],
+            }
+        ),
     )
 
     with pytest.raises(ValueError, match="NFCI"):
@@ -331,6 +412,20 @@ def test_build_historical_macro_dataset_collapses_weekend_observations_to_unique
         "fetch_research_historical_primary_series",
         lambda: bundle,
     )
+    monkeypatch.setattr(
+        builder,
+        "fetch_historical_valuation_proxy",
+        lambda: pd.DataFrame(
+            {
+                "observation_date": [pd.Timestamp("2023-12-31")],
+                "effective_date": [pd.Timestamp("2024-01-01")],
+                "forward_pe": [22.0],
+                "erp_pct": [4.0],
+                "source_forward_pe": ["damodaran:histimpl"],
+                "source_erp": ["damodaran:histimpl"],
+            }
+        ),
+    )
 
     df = builder.build_historical_macro_dataset()
 
@@ -351,6 +446,8 @@ def test_historical_macro_seeder_uses_effective_date_visibility():
     visible = seeder.get_features_for_date(pd.Timestamp("2024-01-03").date())
     assert visible["credit_spread"] == 350.0
     assert visible["credit_accel"] == 0.0
+    assert visible["forward_pe"] == 24.0
+    assert visible["erp"] == 3.8
     assert visible["real_yield"] == 1.25
     assert visible["liquidity_roc"] == 0.0
     assert visible["is_funding_stressed"] is False

@@ -10,22 +10,32 @@ def _canonical_macro_frame(
     dates: pd.DatetimeIndex,
     *,
     spreads: list[float],
+    erps: list[float | None] | None = None,
     accelerations: list[float] | None = None,
     liquidity: list[float] | None = None,
     funding: list[int] | None = None,
 ) -> pd.DataFrame:
     size = len(dates)
+    erp_values = erps if erps is not None else [3.5] * size
+    forward_pe = [
+        None if erp is None else 100.0 / (float(erp) + 1.25)
+        for erp in erp_values
+    ]
     return pd.DataFrame(
         {
             "observation_date": [d.strftime("%Y-%m-%d") for d in dates],
             "effective_date": [d.strftime("%Y-%m-%d") for d in dates],
             "credit_spread_bps": spreads,
             "credit_acceleration_pct_10d": accelerations or [0.0] * size,
+            "forward_pe": forward_pe,
+            "erp_pct": erp_values,
             "real_yield_10y_pct": [1.25] * size,
             "net_liquidity_usd_bn": [250.0] * size,
             "liquidity_roc_pct_4w": liquidity or [0.0] * size,
             "funding_stress_flag": funding or [0] * size,
             "source_credit_spread": ["fred:BAMLH0A0HYM2"] * size,
+            "source_forward_pe": ["damodaran:histimpl"] * size,
+            "source_erp": ["damodaran:histimpl"] * size,
             "source_real_yield": ["fred:DFII10"] * size,
             "source_net_liquidity": ["derived:WALCL-WDTGAL-RRPONTSYD"] * size,
             "source_funding_stress": ["fred:NFCI"] * size,
@@ -106,5 +116,18 @@ def test_expectation_matrix_unlocks_risk_on_in_clean_tight_credit():
         macro_seeder=HistoricalMacroSeeder(mock_df=macro),
     )
 
-    assert frame.iloc[-1]["expected_target_beta"] == 1.2
+    assert frame.iloc[-1]["expected_target_beta"] == 1.0
     assert frame.iloc[-1]["expected_deployment_state"] == "DEPLOY_BASE"
+
+
+def test_expectation_matrix_uses_unqualified_cycle_ceiling_when_erp_is_missing():
+    dates = pd.date_range("2024-01-02", periods=6, freq="B")
+    prices = pd.DataFrame({"Close": [100.0, 101.0, 102.0, 103.0, 104.0, 105.0]}, index=dates)
+    macro = _canonical_macro_frame(dates, spreads=[220.0] * len(dates), erps=[None] * len(dates))
+
+    frame = build_market_expectation_matrix(
+        prices,
+        macro_seeder=HistoricalMacroSeeder(mock_df=macro),
+    )
+
+    assert set(frame["expected_target_beta"]) == {0.8}
