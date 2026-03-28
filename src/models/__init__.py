@@ -326,7 +326,7 @@ class SignalResult:
     deployment_action: dict = field(default_factory=dict)
     candidate_selection_audit: list[dict] = field(default_factory=list)
 
-    # v8.2 Evidence Tracing (New)
+    # Runtime Evidence Tracing
     risk_reasons: list[dict] = field(default_factory=list)
     deployment_reasons: list[dict] = field(default_factory=list)
     feature_values: dict = field(default_factory=dict)

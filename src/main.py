@@ -587,7 +587,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
         logger.warning("v9.0 registry not found at '%s' — running in degraded mode (legacy allocation only)", v7_registry_path)
     except (ValueError, KeyError) as exc:
         result.logic_trace.append({"rule": "v7_pipeline_error", "error": str(exc)})
-        logger.warning("v8.2 pipeline error (non-fatal, v6 allocation still valid): %s", exc)
+        logger.warning("v9.0 pipeline error (non-fatal, legacy allocation remains available): %s", exc)
     # ── end v9.0 ──────────────────────────────────────────────────────────────
 
     # v6.2 Narrative Guardrail for legacy output; v8 uses a dedicated recommendation-only summary.

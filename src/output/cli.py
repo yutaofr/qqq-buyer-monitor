@@ -301,7 +301,7 @@ def print_signal(
     if not v8_runtime:
         print(f"Details:   单日加仓: {result.daily_tranche_pct:.0%}, 滚动上限: {result.max_total_add_pct:.1f}x, 置信度: {result.confidence}")
 
-    # v8.2 Strategic Portfolio Alignment
+    # v9.0 Reference Path
     t = result.target_allocation
     print(f"Reference: Cash={t.target_cash_pct*100:.1f}%, QQQ={t.target_qqq_pct*100:.1f}%, QLD={t.target_qld_pct*100:.1f}% | Beta={t.target_beta:.2f}x")
     if v8_runtime:
