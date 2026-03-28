@@ -37,6 +37,7 @@ def _v7_result() -> SignalResult:
         explanation="v7 test",
         risk_state=RiskState.RISK_NEUTRAL,
         deployment_state=DeploymentState.DEPLOY_BASE,
+        cycle_regime="MID_CYCLE",
         selected_candidate_id="neutral-base-001",
         registry_version="2026-03-24-v7.0-r1",
         tier0_regime="NEUTRAL",
@@ -49,6 +50,7 @@ def _v7_result() -> SignalResult:
         estimated_turnover=0.10,
         estimated_cost_drag=0.0015,
         should_adjust=False,
+        cycle_reasons=[{"rule": "mid_cycle"}],
         rebalance_action={"should_adjust": False, "reason": "within_band:gap=0.000"},
         deployment_action={"deploy_mode": "BASE", "reason": "default_base"},
         candidate_selection_audit=[{"candidate_id": "neutral-low-drift", "reason": "higher_adjustment_cost"}],
@@ -93,6 +95,7 @@ def test_save_and_reload_v8_linear_pipeline_fields(tmp_path):
     save_signal(_v7_result(), path=path)
     history = load_history(1, path=path)
     rec = history[0]
+    assert rec["cycle_regime"] == "MID_CYCLE"
     assert rec["tier0_regime"] == "NEUTRAL"
     assert rec["tier0_applied"] is False
     assert rec["raw_target_beta"] == 1.0
@@ -141,5 +144,6 @@ def test_legacy_result_has_null_v7_fields(tmp_path):
     assert rec["estimated_turnover"] is None
     assert rec["estimated_cost_drag"] is None
     assert rec["should_adjust"] is None
+    assert rec["cycle_regime"] is None
     assert rec["rebalance_action"] == {}
     assert rec["candidate_selection_audit"] == []

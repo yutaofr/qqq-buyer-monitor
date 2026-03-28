@@ -315,6 +315,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
 
     from src.engine.allocation_search import select_candidate_with_floor_fallback_v8
     from src.engine.candidate_registry import load_registry, select_runtime_candidates
+    from src.engine.cycle_factor import decide_cycle_state
     from src.engine.deployment_controller import decide_deployment_state
     from src.engine.execution_policy import (
         beta_requires_qld_above_ceiling,
@@ -363,6 +364,18 @@ def run_pipeline(args: argparse.Namespace) -> None:
         near_volume_poc = abs(market_data.price - tier2.poc) / market_data.price <= 0.02
 
     try:
+        erp_value = None
+        if (
+            market_data.forward_pe
+            and market_data.real_yield is not None
+            and market_data.forward_pe > 0
+        ):
+            erp_value = (1.0 / market_data.forward_pe) * 100.0 - market_data.real_yield
+
+        price_vs_ma200 = None
+        if market_data.ma200:
+            price_vs_ma200 = (market_data.price - market_data.ma200) / market_data.ma200
+
         # Build unified feature snapshot from collected data
         v7_snapshot = build_feature_snapshot(
             market_date=market_data.date,
@@ -372,8 +385,10 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 "net_liquidity": market_data.net_liquidity,
                 "liquidity_roc": market_data.liquidity_roc,
                 "real_yield": market_data.real_yield,
+                "erp": erp_value,
                 "funding_stress": funding_stress.get("is_stressed", False) if isinstance(funding_stress, dict) else funding_stress,
                 "close": market_data.price,
+                "price_vs_ma200": price_vs_ma200,
                 "vix": market_data.vix,
                 "breadth": market_data.pct_above_50d,
                 "fear_greed": market_data.fear_greed,
@@ -393,23 +408,17 @@ def run_pipeline(args: argparse.Namespace) -> None:
             raw_quality=data_quality_meta,
         )
 
-        erp_value = None
-        if (
-            market_data.forward_pe
-            and market_data.real_yield is not None
-            and market_data.forward_pe > 0
-        ):
-            erp_value = (1.0 / market_data.forward_pe) * 100.0 - market_data.real_yield
-
         tier0_regime = assess_structural_regime(
             credit_spread=market_data.credit_spread,
             erp=erp_value,
         )
+        cycle_decision = decide_cycle_state(v7_snapshot)
 
         v7_risk = decide_risk_state(
             v7_snapshot,
             rolling_drawdown=rolling_drawdown,
             tier0_regime=tier0_regime,
+            cycle_decision=cycle_decision,
             drawdown_budget=0.30,
         )
 
@@ -433,6 +442,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
 
         result.risk_state = v7_risk.risk_state
         result.deployment_state = v7_deploy.deployment_state
+        result.cycle_regime = cycle_decision.cycle_regime.value
         result.registry_version = registry.registry_version
         result.tier0_regime = tier0_regime
         result.tier0_applied = v7_risk.tier0_applied
@@ -441,6 +451,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
         result.qld_share_ceiling = v7_risk.qld_share_ceiling
 
         # Runtime evidence tracing for the v9.0 surface
+        result.cycle_reasons = list(cycle_decision.reasons)
         result.risk_reasons = list(v7_risk.reasons)
         result.deployment_reasons = list(v7_deploy.reasons)
         result.feature_values = {**v7_snapshot.values}
@@ -515,7 +526,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
                     qld_share_ceiling=v7_risk.qld_share_ceiling,
                 )
             )
-            emergency_override = tier0_regime == "CRISIS" or (
+            emergency_override = tier0_regime == "CRISIS" or cycle_decision.cycle_regime.value == "CAPITULATION" or (
                 rolling_drawdown is not None and rolling_drawdown >= 0.30
             ) or hard_constraint_override
             advisory_decision = build_advisory_rebalance_decision(
@@ -564,8 +575,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
             }
             result.logic_trace = build_runtime_logic_trace(result)
             logger.info(
-                "v9.0 ▶ tier0=%s risk=%s deploy=%s candidate=%s raw_beta=%.2f advised_beta=%.2f adjust=%s",
+                "v10.0 ▶ tier0=%s cycle=%s risk=%s deploy=%s candidate=%s raw_beta=%.2f advised_beta=%.2f adjust=%s",
                 tier0_regime,
+                cycle_decision.cycle_regime.value,
                 v7_risk.risk_state.value,
                 v7_deploy.deployment_state.value,
                 selected_candidate.candidate_id,

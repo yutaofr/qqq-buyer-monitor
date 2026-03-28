@@ -13,7 +13,7 @@ FIXTURE = "tests/fixtures/candidate_registry_v7.json"
 def test_load_registry_reads_certified_candidates():
     registry = load_registry(FIXTURE)
     assert registry.registry_version == "test-v7-r1"
-    assert len(registry.candidates) == 9
+    assert len(registry.candidates) == 12
 
 
 def test_load_registry_version_and_budget():
@@ -70,7 +70,7 @@ def test_select_runtime_candidates_allows_conditional_when_flag_set():
 def test_select_runtime_candidates_returns_empty_for_wrong_state():
     registry = load_registry(FIXTURE)
     candidates = select_runtime_candidates(registry, RiskState.RISK_ON)
-    assert candidates == []
+    assert {candidate.candidate_id for candidate in candidates} == {"capitulation-max-001"}
 
 
 def test_select_runtime_candidates_defense_state():

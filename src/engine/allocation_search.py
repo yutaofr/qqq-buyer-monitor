@@ -115,12 +115,16 @@ def find_best_allocation_v8(
     if not valid:
         return None
 
-    def sort_key(candidate: CertifiedCandidate) -> tuple[float, float, float]:
+    def sort_key(candidate: CertifiedCandidate) -> tuple[float, float, float, float, float, float]:
         metrics = candidate.research_metrics
+        max_drawdown = float(metrics.get("max_drawdown", 1.0))
         return (
             -float(metrics.get("cagr", 0.0)),
-            float(metrics.get("max_drawdown", 1.0)),
+            float(metrics.get("expected_shortfall", max_drawdown)),
+            float(metrics.get("ulcer_index", max_drawdown)),
+            max_drawdown,
             float(metrics.get("mean_interval_beta_deviation", 1.0)),
+            float(metrics.get("turnover", 1.0)),
         )
 
     return sorted(valid, key=sort_key)[0]

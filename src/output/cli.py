@@ -79,7 +79,7 @@ def _format_optional_pct(value: float | None) -> str:
 
 
 def build_runtime_logic_trace(result: SignalResult) -> list[dict]:
-    """Build a v9-aligned decision trace for runtime output surfaces."""
+    """Build a v10-aligned decision trace for runtime output surfaces."""
     if not is_v8_runtime_result(result):
         return result.logic_trace
 
@@ -98,6 +98,14 @@ def build_runtime_logic_trace(result: SignalResult) -> list[dict]:
             "evidence": {
                 "tier0_applied": result.tier0_applied,
                 "erp": result.erp,
+            },
+        },
+        {
+            "step": "cycle_regime",
+            "decision": result.cycle_regime or "n/a",
+            "reason": result.cycle_reasons[0]["rule"] if result.cycle_reasons else "cycle_factor",
+            "evidence": {
+                "qld_share_ceiling": result.qld_share_ceiling,
             },
         },
         {
@@ -158,6 +166,7 @@ def build_runtime_logic_trace(result: SignalResult) -> list[dict]:
 def build_v8_explanation(result: SignalResult) -> str:
     """Build a concise runtime explanation without legacy amount-based wording."""
     tier0 = result.tier0_regime or "n/a"
+    cycle = result.cycle_regime or "n/a"
     risk = result.risk_state.value if result.risk_state else "n/a"
     deploy = result.deployment_state.value if result.deployment_state else "n/a"
     candidate = result.selected_candidate_id or "n/a"
@@ -170,7 +179,8 @@ def build_v8_explanation(result: SignalResult) -> str:
     t = result.target_allocation
 
     parts = [
-        f"v9.0 target-beta-first：Tier-0={tier0}",
+        f"v10.0 cycle-aware target-beta-first：Tier-0={tier0}",
+        f"Cycle={cycle}",
         f"风险={risk}",
         f"beta_ceiling={_format_optional_beta(result.target_exposure_ceiling)}",
         f"qld_ceiling={_format_optional_pct(result.qld_share_ceiling)}",

@@ -111,6 +111,7 @@ def _migrate_blob(blob: dict) -> dict:
     # v8.0+ field migration — null defaults for old records
     blob.setdefault("risk_state", None)
     blob.setdefault("deployment_state", None)
+    blob.setdefault("cycle_regime", None)
     blob.setdefault("selected_candidate_id", None)
     blob.setdefault("registry_version", None)
     blob.setdefault("tier0_regime", None)
@@ -123,6 +124,7 @@ def _migrate_blob(blob: dict) -> dict:
     blob.setdefault("estimated_turnover", None)
     blob.setdefault("estimated_cost_drag", None)
     blob.setdefault("should_adjust", None)
+    blob.setdefault("cycle_reasons", [])
     blob.setdefault("rebalance_action", {})
     blob.setdefault("deployment_action", {})
     blob.setdefault("candidate_selection_audit", [])
@@ -391,6 +393,7 @@ def _to_json_dict(result: SignalResult) -> dict:
         # v7.0 Dual-Controller fields
         "risk_state": result.risk_state.value if result.risk_state is not None else None,
         "deployment_state": result.deployment_state.value if result.deployment_state is not None else None,
+        "cycle_regime": result.cycle_regime,
         "selected_candidate_id": result.selected_candidate_id,
         "registry_version": result.registry_version,
         "tier0_regime": result.tier0_regime,
@@ -406,6 +409,7 @@ def _to_json_dict(result: SignalResult) -> dict:
         "estimated_turnover": _float(result.estimated_turnover),
         "estimated_cost_drag": _float(result.estimated_cost_drag),
         "should_adjust": result.should_adjust,
+        "cycle_reasons": result.cycle_reasons,
         "rebalance_action": result.rebalance_action,
         "deployment_action": result.deployment_action,
         "candidate_selection_audit": result.candidate_selection_audit,

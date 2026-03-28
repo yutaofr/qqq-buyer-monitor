@@ -1,4 +1,4 @@
-"""Discord notification logic for v9 target-beta-first runtime signals."""
+"""Discord notification logic for v10 cycle-aware runtime signals."""
 from __future__ import annotations
 
 import logging
@@ -54,6 +54,7 @@ def _build_decision_path(result: SignalResult) -> str:
     deploy_state = result.deployment_state.value if result.deployment_state else "n/a"
     return (
         f"Tier-0({result.tier0_regime or 'n/a'}) -> "
+        f"Cycle({result.cycle_regime or 'n/a'}) -> "
         f"Risk({risk_state}, beta<={_format_beta(result.target_exposure_ceiling)}, "
         f"qld<={_format_pct(result.qld_share_ceiling)}) -> "
         f"Candidate({result.selected_candidate_id or 'n/a'}) -> "
@@ -73,7 +74,7 @@ def _build_reference_path(result: SignalResult) -> str:
 
 
 def build_discord_payload(result: SignalResult) -> dict:
-    """Build a Discord payload that matches the v9 decision contract."""
+    """Build a Discord payload that matches the v10 decision contract."""
     regime = result.tier0_regime or "NEUTRAL"
     color = REGIME_COLORS.get(regime, COLOR_DEFAULT)
     emoji = _get_regime_emoji(regime)
@@ -86,7 +87,7 @@ def build_discord_payload(result: SignalResult) -> dict:
     description = f"{contract_desc}\n\n> {result.explanation}"
 
     embed = {
-        "title": f"QQQ Monitor v9.0 | Target-Beta Signal - {result.date}",
+        "title": f"QQQ Monitor v10.0 | Target-Beta Signal - {result.date}",
         "description": f"**Market Regime:** {emoji} `{regime}`\n\n{description}",
         "color": color,
         "fields": [
@@ -155,7 +156,7 @@ def build_discord_payload(result: SignalResult) -> dict:
 
 
 def send_discord_signal(result: SignalResult, webhook_url: str) -> bool:
-    """Send a Discord embed aligned with the v9 runtime decision contract."""
+    """Send a Discord embed aligned with the v10 runtime decision contract."""
     if not webhook_url:
         logger.warning("No Discord webhook URL provided, skipping notification.")
         return False

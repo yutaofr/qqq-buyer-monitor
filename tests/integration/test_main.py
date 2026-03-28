@@ -211,7 +211,7 @@ def test_main_json_marks_cached_macro_values_stale(monkeypatch, capsys):
     assert payload["data_quality"]["earnings_revisions_breadth"]["stale_days"] == 5
 
 
-def test_main_json_runtime_trace_uses_v9_decision_chain(monkeypatch, capsys):
+def test_main_json_runtime_trace_uses_v10_decision_chain(monkeypatch, capsys):
     price_history = pd.DataFrame(
         {
             "Open": [400.0, 401.0],
@@ -260,14 +260,16 @@ def test_main_json_runtime_trace_uses_v9_decision_chain(monkeypatch, capsys):
 
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["explanation"].startswith("v9.0 target-beta-first")
+    assert payload["explanation"].startswith("v10.0 cycle-aware target-beta-first")
+    assert payload["cycle_regime"] == "LATE_CYCLE"
     assert payload["tier0_regime"] == "RICH_TIGHTENING"
     assert payload["risk_state"] == "RISK_REDUCED"
     assert payload["target_exposure_ceiling"] == pytest.approx(0.8)
-    assert payload["qld_share_ceiling"] == pytest.approx(0.1)
+    assert payload["qld_share_ceiling"] == pytest.approx(0.0)
     steps = [step["step"] for step in payload["logic_trace"]]
     assert steps == [
         "tier0_regime",
+        "cycle_regime",
         "risk_controller",
         "candidate_selection",
         "beta_advisory",

@@ -14,6 +14,9 @@ def _candidate(
     cagr: float,
     mdd: float,
     qld: float | None = None,
+    expected_shortfall: float | None = None,
+    ulcer_index: float | None = None,
+    turnover: float | None = None,
 ) -> CertifiedCandidate:
     qld = max(0.0, exposure - 0.5) if qld is None else qld
     qqq = exposure - 2.0 * qld
@@ -30,7 +33,10 @@ def _candidate(
         research_metrics={
             "cagr": cagr,
             "max_drawdown": mdd,
+            "expected_shortfall": mdd if expected_shortfall is None else expected_shortfall,
+            "ulcer_index": mdd if ulcer_index is None else ulcer_index,
             "mean_interval_beta_deviation": 0.01,
+            "turnover": 0.01 if turnover is None else turnover,
         },
     )
 
@@ -80,6 +86,37 @@ def test_allocation_search_prefers_higher_cagr_after_constraints():
     best = find_best_allocation_v8(max_beta_ceiling=0.50, qld_share_ceiling=0.0, candidates=candidates)
     assert best is not None
     assert best.candidate_id == "higher-cagr"
+
+
+def test_allocation_search_breaks_cagr_ties_with_tail_risk_metrics():
+    from src.engine.allocation_search import find_best_allocation_v8
+
+    candidates = [
+        _candidate(
+            "lower-tail-risk",
+            1.20,
+            qld=0.25,
+            cagr=0.18,
+            mdd=0.29,
+            expected_shortfall=0.24,
+            ulcer_index=13.0,
+            turnover=0.10,
+        ),
+        _candidate(
+            "lower-mdd-but-worse-tail",
+            1.20,
+            qld=0.20,
+            cagr=0.18,
+            mdd=0.28,
+            expected_shortfall=0.27,
+            ulcer_index=15.0,
+            turnover=0.16,
+        ),
+    ]
+    best = find_best_allocation_v8(max_beta_ceiling=1.20, qld_share_ceiling=0.25, candidates=candidates)
+
+    assert best is not None
+    assert best.candidate_id == "lower-tail-risk"
 
 
 def test_allocation_search_filters_by_qld_share_ceiling():

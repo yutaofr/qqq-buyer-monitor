@@ -46,6 +46,7 @@ def _runtime_result() -> SignalResult:
             "vix": {"usable": True},
         },
     )
+    result.cycle_regime = "LATE_CYCLE"
     result.tier0_regime = "RICH_TIGHTENING"
     result.risk_state = RiskState.RISK_REDUCED
     result.deployment_state = DeploymentState.DEPLOY_BASE
@@ -64,10 +65,12 @@ def _runtime_result() -> SignalResult:
         "path": "qqq_only_new_cash",
     }
     result.risk_reasons = [{"rule": "single_stress", "tier0_regime": "RICH_TIGHTENING"}]
+    result.cycle_reasons = [{"rule": "late_cycle"}]
     result.deployment_reasons = [{"rule": "rich_tightening_base", "path": "qqq_only_new_cash"}]
     result.feature_values = {
         "credit_spread": 321.0,
         "erp": 2.02,
+        "price_vs_ma200": -0.03,
         "net_liquidity": 5818.97,
         "liquidity_roc": 0.78,
         "vix": 31.1,
@@ -100,7 +103,7 @@ def test_discord_notification_uses_v9_target_beta_contract(monkeypatch):
     assert ok is True
     embed = captured["json"]["embeds"][0]
     assert captured["url"] == "https://example.test/webhook"
-    assert "v9.0" in embed["title"]
+    assert "v10.0" in embed["title"]
     assert "v8.2" not in embed["title"]
     assert "Decision Contract" in embed["description"]
     field_names = [field["name"] for field in embed["fields"]]
@@ -110,6 +113,7 @@ def test_discord_notification_uses_v9_target_beta_contract(monkeypatch):
     decision_value = next(field["value"] for field in embed["fields"] if field["name"] == "🧭 Decision Path")
     reference_value = next(field["value"] for field in embed["fields"] if field["name"] == "📎 Reference Path")
     assert "Tier-0(RICH_TIGHTENING)" in decision_value
+    assert "Cycle(LATE_CYCLE)" in decision_value
     assert "Candidate(reduced-limited-001)" in decision_value
     assert "Deployment(DEPLOY_BASE)" in decision_value
     assert "non-binding" in reference_value
