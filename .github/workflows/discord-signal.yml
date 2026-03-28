@@ -2,9 +2,10 @@ name: Discord Daily Signal (17:17 Paris)
 
 on:
   schedule:
-    # Paris 17:17 is:
-    # - 15:17 UTC during Summer (CEST, UTC+2)
-    # - 16:17 UTC during Winter (CET, UTC+1)
+    # 1. Beijing 14:47 (CST, UTC+8) -> 06:47 UTC
+    - cron: '47 06 * * 1-5'
+    
+    # 2. Paris 17:17 (CET/CEST) -> 15:17 or 16:17 UTC
     - cron: '17 15,16 * * 1-5'
   workflow_dispatch:
 
@@ -39,16 +40,25 @@ jobs:
           import pytz
           from datetime import datetime
 
+          # Timezones
           paris_tz = pytz.timezone('Europe/Paris')
+          beijing_tz = pytz.timezone('Asia/Shanghai')
+          
           now_paris = datetime.now(paris_tz)
+          now_beijing = datetime.now(beijing_tz)
+          
           is_dispatch = os.environ.get('EVENT_NAME') == 'workflow_dispatch'
           
-          # Target 17:17. We allow 17:10 to 17:30 to account for GHA scheduling variance.
-          is_target_time = (now_paris.hour == 17 and 10 <= now_paris.minute <= 35)
+          # Target 1: 17:17 Paris (allowing window 17:10-17:35)
+          is_paris_target = (now_paris.hour == 17 and 10 <= now_paris.minute <= 35)
           
-          should_run = "true" if (is_target_time or is_dispatch) else "false"
+          # Target 2: 14:47 Beijing (allowing window 14:40-15:00)
+          is_beijing_target = (now_beijing.hour == 14 and 40 <= now_beijing.minute <= 59)
+          
+          should_run = "true" if (is_paris_target or is_beijing_target or is_dispatch) else "false"
           
           print(f"Current Paris Time: {now_paris.strftime('%H:%M:%S')}")
+          print(f"Current Beijing Time: {now_beijing.strftime('%H:%M:%S')}")
           print(f"Event Name: {os.environ.get('EVENT_NAME')}")
           print(f"Should Run: {should_run}")
           
