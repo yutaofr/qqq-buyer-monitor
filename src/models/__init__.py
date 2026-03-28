@@ -313,6 +313,9 @@ class SignalResult:
     tier0_applied: bool = False
     raw_target_beta: float | None = None
     target_beta: float | None = None
+    target_exposure_ceiling: float | None = None
+    target_cash_floor: float | None = None
+    qld_share_ceiling: float | None = None
     assumed_beta_before: float | None = None
     assumed_beta_after: float | None = None
     friction_blockers: list[str] = field(default_factory=list)

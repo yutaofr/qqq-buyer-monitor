@@ -70,8 +70,93 @@ def is_v8_runtime_result(result: SignalResult) -> bool:
     )
 
 
+def _format_optional_beta(beta: float | None) -> str:
+    return f"{beta:.2f}x" if beta is not None else "n/a"
+
+
+def _format_optional_pct(value: float | None) -> str:
+    return f"{value * 100:.1f}%" if value is not None else "n/a"
+
+
+def build_runtime_logic_trace(result: SignalResult) -> list[dict]:
+    """Build a v9-aligned decision trace for runtime output surfaces."""
+    if not is_v8_runtime_result(result):
+        return result.logic_trace
+
+    target = result.target_allocation
+    raw_target_beta = result.raw_target_beta if result.raw_target_beta is not None else result.target_beta
+    deploy_mode = result.deployment_action.get("deploy_mode", "n/a")
+    deploy_reason = result.deployment_action.get("reason", "n/a")
+    deploy_path = result.deployment_action.get("path")
+    risk_reason = result.rebalance_action.get("reason", "n/a")
+
+    trace = [
+        {
+            "step": "tier0_regime",
+            "decision": result.tier0_regime or "n/a",
+            "reason": "Tier-0 structural regime from macro state",
+            "evidence": {
+                "tier0_applied": result.tier0_applied,
+                "erp": result.erp,
+            },
+        },
+        {
+            "step": "risk_controller",
+            "decision": result.risk_state.value if result.risk_state else "n/a",
+            "reason": result.risk_reasons[0]["rule"] if result.risk_reasons else "risk_controller",
+            "evidence": {
+                "target_exposure_ceiling": result.target_exposure_ceiling,
+                "qld_share_ceiling": result.qld_share_ceiling,
+                "target_cash_floor": result.target_cash_floor,
+            },
+        },
+        {
+            "step": "candidate_selection",
+            "decision": result.selected_candidate_id or "n/a",
+            "reason": "Certified candidate selected under runtime hard constraints",
+            "evidence": {
+                "registry_version": result.registry_version,
+                "rejected_candidates": len(result.candidate_selection_audit),
+            },
+        },
+        {
+            "step": "beta_advisory",
+            "decision": _format_optional_beta(result.target_beta),
+            "reason": risk_reason,
+            "evidence": {
+                "raw_target_beta": raw_target_beta,
+                "should_adjust": result.should_adjust,
+                "friction_blockers": list(result.friction_blockers),
+            },
+        },
+        {
+            "step": "deployment_controller",
+            "decision": result.deployment_state.value if result.deployment_state else "n/a",
+            "reason": deploy_reason,
+            "evidence": {
+                "deploy_mode": deploy_mode,
+                "blood_chip_override_active": result.deployment_action.get("blood_chip_override_active", False),
+                "path": deploy_path,
+            },
+        },
+        {
+            "step": "reference_path",
+            "decision": (
+                f"QQQ={target.target_qqq_pct * 100:.1f}% | "
+                f"QLD={target.target_qld_pct * 100:.1f}% | "
+                f"Cash={target.target_cash_pct * 100:.1f}%"
+            ),
+            "reason": "Reference implementation path for the advised target beta",
+            "evidence": {
+                "target_beta": result.target_beta,
+            },
+        },
+    ]
+    return trace
+
+
 def build_v8_explanation(result: SignalResult) -> str:
-    """Build a concise v8 explanation without legacy amount-based wording."""
+    """Build a concise runtime explanation without legacy amount-based wording."""
     tier0 = result.tier0_regime or "n/a"
     risk = result.risk_state.value if result.risk_state else "n/a"
     deploy = result.deployment_state.value if result.deployment_state else "n/a"
@@ -85,8 +170,10 @@ def build_v8_explanation(result: SignalResult) -> str:
     t = result.target_allocation
 
     parts = [
-        f"v8.2 线性流水线：Tier-0={tier0}",
+        f"v9.0 target-beta-first：Tier-0={tier0}",
         f"风险={risk}",
+        f"beta_ceiling={_format_optional_beta(result.target_exposure_ceiling)}",
+        f"qld_ceiling={_format_optional_pct(result.qld_share_ceiling)}",
         f"候选={candidate}",
         f"registry={registry}",
         f"raw_beta={raw_target_beta:.2f}x" if raw_target_beta is not None else "raw_beta=n/a",
@@ -95,7 +182,7 @@ def build_v8_explanation(result: SignalResult) -> str:
         f"reason={adjust_reason}",
         f"deploy={deploy}",
         f"deploy_reason={deploy_reason}",
-        f"配比 QQQ={t.target_qqq_pct*100:.1f}%",
+        f"参考路径 QQQ={t.target_qqq_pct*100:.1f}%",
         f"QLD={t.target_qld_pct*100:.1f}%",
         f"Cash={t.target_cash_pct*100:.1f}%",
     ]
@@ -104,7 +191,7 @@ def build_v8_explanation(result: SignalResult) -> str:
 
 
 def _print_v7_sections(result: SignalResult, c) -> None:
-    """Render the v8 recommendation summary in two clearly separated sections."""
+    """Render the runtime recommendation summary in clearly separated sections."""
     if not (result.registry_version or result.risk_state or result.deployment_state or result.selected_candidate_id):
         return
 
@@ -125,6 +212,8 @@ def _print_v7_sections(result: SignalResult, c) -> None:
     print(f"\n{c(_BOLD)}风险评估与目标 Beta{c(_RESET)}")
     print(
         f"  分析:    Tier-0={tier0} | 风险状态={risk} | "
+        f"beta_ceiling={_format_optional_beta(result.target_exposure_ceiling)} | "
+        f"qld_ceiling={_format_optional_pct(result.qld_share_ceiling)} | "
         f"候选={candidate} | registry={registry}"
     )
     print(
@@ -134,7 +223,8 @@ def _print_v7_sections(result: SignalResult, c) -> None:
     )
     t = result.target_allocation
     print(
-        "  配比:    "
+        "  参考路径:"
+        " "
         f"QQQ={t.target_qqq_pct*100:.1f}% | "
         f"QLD={t.target_qld_pct*100:.1f}% | "
         f"Cash={t.target_cash_pct*100:.1f}%"
@@ -147,6 +237,22 @@ def _print_v7_sections(result: SignalResult, c) -> None:
     print("  ⚠️ 以上为推荐建议，不代表自动执行。")
 
 
+def _print_runtime_decision_tree(result: SignalResult) -> None:
+    """Print a compact v9 decision tree for runtime output."""
+    raw_target_beta = result.raw_target_beta if result.raw_target_beta is not None else result.target_beta
+    tree = (
+        f"Tier-0({result.tier0_regime or 'n/a'}) -> "
+        f"Risk({result.risk_state.value if result.risk_state else 'n/a'}, "
+        f"beta<={_format_optional_beta(result.target_exposure_ceiling)}, "
+        f"qld<={_format_optional_pct(result.qld_share_ceiling)}) -> "
+        f"Candidate({result.selected_candidate_id or 'n/a'}) -> "
+        f"Advisory({_format_optional_beta(raw_target_beta)}->{_format_optional_beta(result.target_beta)}, "
+        f"{result.rebalance_action.get('reason', 'n/a')}) -> "
+        f"Deployment({result.deployment_state.value if result.deployment_state else 'n/a'})"
+    )
+    print(f"Decision:  {tree}")
+
+
 def print_signal(
     result: SignalResult,
     use_color: bool = True,
@@ -156,7 +262,7 @@ def print_signal(
     """Print a formatted signal summary to stdout."""
     c = lambda code: code if use_color else ""  # noqa: E731
     r = c(_RESET)
-    runtime_version = "v8.2"
+    runtime_version = "v9.0"
 
     t1 = result.tier1
     color, label = _ALLOCATION_STYLE[result.allocation_state]
@@ -197,7 +303,9 @@ def print_signal(
 
     # v8.2 Strategic Portfolio Alignment
     t = result.target_allocation
-    print(f"Target:    Cash={t.target_cash_pct*100:.1f}%, QQQ={t.target_qqq_pct*100:.1f}%, QLD={t.target_qld_pct*100:.1f}% | Beta={t.target_beta:.2f}x")
+    print(f"Reference: Cash={t.target_cash_pct*100:.1f}%, QQQ={t.target_qqq_pct*100:.1f}%, QLD={t.target_qld_pct*100:.1f}% | Beta={t.target_beta:.2f}x")
+    if v8_runtime:
+        _print_runtime_decision_tree(result)
 
     # Data Quality Summary (v6.2: Logic corrected to match data_quality.py structure)
     if result.data_quality:

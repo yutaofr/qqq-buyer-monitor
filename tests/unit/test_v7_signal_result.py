@@ -67,6 +67,9 @@ def test_signal_result_v7_fields_default_to_none():
     assert result.tier0_applied is False
     assert result.raw_target_beta is None
     assert result.target_beta is None
+    assert result.target_exposure_ceiling is None
+    assert result.target_cash_floor is None
+    assert result.qld_share_ceiling is None
     assert result.assumed_beta_before is None
     assert result.assumed_beta_after is None
     assert result.friction_blockers == []
@@ -115,6 +118,9 @@ def test_signal_result_supports_v8_linear_pipeline_fields():
         tier0_applied=True,
         raw_target_beta=0.50,
         target_beta=0.30,
+        target_exposure_ceiling=0.80,
+        target_cash_floor=0.20,
+        qld_share_ceiling=0.10,
         assumed_beta_before=0.50,
         assumed_beta_after=0.30,
         friction_blockers=["max_beta_step"],
@@ -126,6 +132,9 @@ def test_signal_result_supports_v8_linear_pipeline_fields():
     assert result.tier0_applied is True
     assert result.raw_target_beta == 0.50
     assert result.target_beta == 0.30
+    assert result.target_exposure_ceiling == 0.80
+    assert result.target_cash_floor == 0.20
+    assert result.qld_share_ceiling == 0.10
     assert result.assumed_beta_before == 0.50
     assert result.assumed_beta_after == 0.30
     assert result.friction_blockers == ["max_beta_step"]

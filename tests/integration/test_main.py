@@ -7,9 +7,16 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from src.main import run_pipeline
-from src.main import _history
-from src.models import AllocationState, OptionsOverlay, Signal, SignalDetail, SignalResult, Tier1Result, Tier2Result
+from src.main import _history, run_pipeline
+from src.models import (
+    AllocationState,
+    OptionsOverlay,
+    Signal,
+    SignalDetail,
+    SignalResult,
+    Tier1Result,
+    Tier2Result,
+)
 
 
 def _detail(name: str, points: int = 0) -> SignalDetail:
@@ -202,6 +209,73 @@ def test_main_json_marks_cached_macro_values_stale(monkeypatch, capsys):
     assert payload["data_quality"]["fcf_yield"]["stale_days"] == 5
     assert payload["data_quality"]["earnings_revisions_breadth"]["source"] == "cache:macro_state"
     assert payload["data_quality"]["earnings_revisions_breadth"]["stale_days"] == 5
+
+
+def test_main_json_runtime_trace_uses_v9_decision_chain(monkeypatch, capsys):
+    price_history = pd.DataFrame(
+        {
+            "Open": [400.0, 401.0],
+            "High": [402.0, 403.0],
+            "Low": [399.0, 400.0],
+            "Close": [401.0, 402.0],
+            "Volume": [1_000_000, 1_100_000],
+        }
+    )
+
+    monkeypatch.setattr(
+        "src.collector.price.fetch_price_data",
+        lambda: {
+            "date": date(2026, 3, 19),
+            "price": 402.0,
+            "ma200": 395.0,
+            "high_52w": 450.0,
+            "days_since_high": 30,
+            "history": price_history,
+        },
+    )
+    monkeypatch.setattr("src.collector.vix.fetch_vix", lambda: 25.0)
+    monkeypatch.setattr("src.collector.fear_greed.fetch_fear_greed", lambda: 28)
+    monkeypatch.setattr("src.collector.options.fetch_options_chain", lambda spot_price: None)
+    monkeypatch.setattr(
+        "src.collector.breadth.fetch_breadth",
+        lambda: {"adv_dec_ratio": 0.45, "pct_above_50d": 0.3, "ndx_concentration": 0.0},
+    )
+    monkeypatch.setattr("src.collector.macro.fetch_credit_spread", lambda: 470.0)
+    monkeypatch.setattr(
+        "src.collector.fundamentals.fetch_forward_pe",
+        lambda: {"trailing_pe": 28.0, "forward_pe": 24.5, "source": "test"},
+    )
+    monkeypatch.setattr("src.collector.macro_v3.fetch_real_yield", lambda: 1.8)
+    monkeypatch.setattr("src.collector.macro_v3.fetch_fcf_yield", lambda: None)
+    monkeypatch.setattr("src.collector.macro_v3.fetch_earnings_revisions_breadth", lambda: None)
+    monkeypatch.setattr("src.collector.macro_v3.fetch_net_liquidity", lambda: (None, None))
+    monkeypatch.setattr("src.collector.macro_v3.fetch_move_index", lambda: None)
+    monkeypatch.setattr("src.collector.macro_v3.fetch_sector_rotation", lambda: None)
+    monkeypatch.setattr("src.collector.macro_v3.fetch_short_volume_proxy", lambda: None)
+    monkeypatch.setattr("src.store.db.load_latest_macro_state", lambda: None)
+    monkeypatch.setattr("src.store.db.get_historical_series", lambda days=120: None)
+    monkeypatch.setattr("src.store.db.load_history", lambda n=5: [])
+
+    run_pipeline(SimpleNamespace(json=True, no_save=True, no_color=True))
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["explanation"].startswith("v9.0 target-beta-first")
+    assert payload["tier0_regime"] == "RICH_TIGHTENING"
+    assert payload["risk_state"] == "RISK_REDUCED"
+    assert payload["target_exposure_ceiling"] == pytest.approx(0.8)
+    assert payload["qld_share_ceiling"] == pytest.approx(0.1)
+    steps = [step["step"] for step in payload["logic_trace"]]
+    assert steps == [
+        "tier0_regime",
+        "risk_controller",
+        "candidate_selection",
+        "beta_advisory",
+        "deployment_controller",
+        "reference_path",
+    ]
+    assert "allocation_policy" not in steps
+    assert "strategic_allocation" not in steps
 
 
 def test_main_persists_runtime_inputs_when_saving(monkeypatch):
