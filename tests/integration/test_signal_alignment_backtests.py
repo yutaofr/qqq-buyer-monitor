@@ -49,10 +49,10 @@ def test_build_signal_timeseries_returns_pure_beta_and_deployment_signals():
         "deployment_multiplier",
         "selected_candidate_id",
     } <= set(signals.columns)
-    assert signals["signal_target_beta"].tolist() == pytest.approx([1.2, 1.2, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
+    assert signals["signal_target_beta"].tolist() == pytest.approx([1.2, 1.2, 0.8, 0.7, 0.5, 0.5, 0.5, 0.5, 0.5])
     assert signals["raw_target_beta"].tolist() == pytest.approx(signals["signal_target_beta"].tolist())
     assert signals["advised_target_beta"].iloc[0] == pytest.approx(1.2)
-    assert signals["advised_target_beta"].iloc[2] > signals["signal_target_beta"].iloc[2]
+    assert signals["advised_target_beta"].iloc[2] == pytest.approx(signals["signal_target_beta"].iloc[2])
     assert signals["advised_target_beta"].iloc[-1] == pytest.approx(0.5)
     assert signals["deployment_state"].tolist() == [
         "DEPLOY_BASE",
@@ -167,7 +167,7 @@ def test_build_signal_timeseries_uses_market_drawdown_when_state_drawdown_is_abs
 
     signals = Backtester().build_signal_timeseries(ohlcv, macro_seeder=seeder)
 
-    assert signals["signal_target_beta"].iloc[-1] == pytest.approx(0.5)
+    assert signals["signal_target_beta"].iloc[-1] == pytest.approx(0.7)
     assert signals["risk_state"].iloc[-1] in {"RISK_EXIT", "RISK_DEFENSE", "RISK_REDUCED"}
 
 
@@ -178,7 +178,7 @@ def test_target_beta_alignment_backtest_scores_against_expected_series():
     macro = _canonical_macro_frame(dates, [260.0, 260.0, 260.0, 320.0, 320.0, 680.0, 680.0, 680.0, 680.0])
     seeder = HistoricalMacroSeeder(mock_df=macro)
     expected = pd.DataFrame(
-        {"expected_target_beta": [1.2, 1.2, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]},
+        {"expected_target_beta": [1.2, 1.2, 0.8, 0.7, 0.5, 0.5, 0.5, 0.5, 0.5]},
         index=dates,
     )
 

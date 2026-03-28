@@ -98,6 +98,7 @@ def _run_runtime_pipeline(
         scoped_candidates=candidates,
         registry_candidates=list(registry.candidates),
         max_beta_ceiling=risk.target_exposure_ceiling,
+        qld_share_ceiling=risk.qld_share_ceiling,
         max_drawdown_budget=registry.drawdown_budget,
     )
 
@@ -147,7 +148,10 @@ def _run_runtime_pipeline(
         result.estimated_turnover = advisory_decision.estimated_turnover
         result.estimated_cost_drag = advisory_decision.estimated_cost_drag
         result.should_adjust = advisory_decision.should_adjust
-        result.target_allocation = target_allocation_from_beta(advisory_decision.advised_target_beta)
+        result.target_allocation = target_allocation_from_beta(
+            advisory_decision.advised_target_beta,
+            qld_share_ceiling=risk.qld_share_ceiling,
+        )
         result.rebalance_action = {
             "should_adjust": advisory_decision.should_adjust,
             "reason": advisory_decision.adjustment_reason,
@@ -190,6 +194,25 @@ def test_runtime_pipeline_clean_macro_selects_neutral_candidate():
     assert result.tier0_regime == "NEUTRAL"
 
 
+def test_runtime_pipeline_materializes_limited_qld_below_one_beta_when_ceiling_allows():
+    result = _run_runtime_pipeline(
+        {
+            "credit_spread": 300.0,
+            "credit_acceleration": 2.0,
+            "liquidity_roc": 1.0,
+            "funding_stress": False,
+        },
+        forward_pe=20.0,
+        real_yield=1.0,
+    )
+
+    assert result.risk_state == RiskState.RISK_NEUTRAL
+    assert result.target_beta == pytest.approx(0.90)
+    assert result.target_allocation.target_qqq_pct == pytest.approx(0.50)
+    assert result.target_allocation.target_qld_pct == pytest.approx(0.20)
+    assert result.target_allocation.target_cash_pct == pytest.approx(0.30)
+
+
 def test_runtime_pipeline_rich_tightening_selects_beta_capped_candidate():
     result = _run_runtime_pipeline({
         "credit_spread": 470.0,
@@ -199,9 +222,12 @@ def test_runtime_pipeline_rich_tightening_selects_beta_capped_candidate():
         "capitulation_score": 20,
     })
     assert result.risk_state == RiskState.RISK_REDUCED
-    assert result.selected_candidate_id == "reduced-base-001"
-    assert result.target_beta == 0.50
-    assert result.raw_target_beta == 0.50
+    assert result.selected_candidate_id == "reduced-limited-001"
+    assert result.target_beta == pytest.approx(0.80)
+    assert result.raw_target_beta == pytest.approx(0.80)
+    assert result.target_allocation.target_qqq_pct == pytest.approx(0.60)
+    assert result.target_allocation.target_qld_pct == pytest.approx(0.10)
+    assert result.target_allocation.target_cash_pct == pytest.approx(0.30)
 
 
 def test_runtime_pipeline_triple_stress_exits():
@@ -238,6 +264,7 @@ def test_runtime_pipeline_exit_state_keeps_beta_floor_candidate():
     assert result.risk_state == RiskState.RISK_EXIT
     assert result.selected_candidate_id == "exit-floor-001"
     assert result.target_beta == 0.50
+    assert result.target_allocation.target_qld_pct == pytest.approx(0.0)
 
 
 def test_runtime_pipeline_crisis_blood_chip_override_keeps_beta_floor_but_deploys_fast():

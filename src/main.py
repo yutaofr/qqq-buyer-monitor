@@ -312,6 +312,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
     from src.engine.candidate_registry import load_registry, select_runtime_candidates
     from src.engine.deployment_controller import decide_deployment_state
     from src.engine.execution_policy import (
+        beta_requires_qld_above_ceiling,
         build_advisory_rebalance_decision,
         build_advisory_state_from_history,
         build_beta_recommendation,
@@ -430,7 +431,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
         result.registry_version = registry.registry_version
         result.tier0_regime = tier0_regime
         result.tier0_applied = v7_risk.tier0_applied
-        
+
         # v8.2 Evidence Tracing (New)
         result.risk_reasons = list(v7_risk.reasons)
         result.deployment_reasons = list(v7_deploy.reasons)
@@ -442,6 +443,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
             scoped_candidates=candidates,
             registry_candidates=list(registry.candidates),
             max_beta_ceiling=v7_risk.target_exposure_ceiling,
+            qld_share_ceiling=v7_risk.qld_share_ceiling,
             max_drawdown_budget=registry.drawdown_budget,
         )
 
@@ -453,6 +455,13 @@ def run_pipeline(args: argparse.Namespace) -> None:
                     "reason": "exceeds_beta_ceiling",
                     "exposure": candidate.target_effective_exposure,
                     "ceiling": v7_risk.target_exposure_ceiling,
+                })
+            elif candidate.qld_pct > v7_risk.qld_share_ceiling + 1e-9:
+                audit.append({
+                    "candidate_id": candidate.candidate_id,
+                    "reason": "exceeds_qld_share_ceiling",
+                    "qld_pct": candidate.qld_pct,
+                    "ceiling": v7_risk.qld_share_ceiling,
                 })
             elif candidate.research_metrics.get("max_drawdown", 1.0) > registry.drawdown_budget:
                 audit.append({
@@ -491,9 +500,16 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 current_raw_target_beta=beta_rec.target_beta,
                 fallback_beta=beta_rec.target_beta,
             )
+            hard_constraint_override = (
+                advisory_state.assumed_beta > v7_risk.target_exposure_ceiling + 1e-9
+                or beta_requires_qld_above_ceiling(
+                    advisory_state.assumed_beta,
+                    qld_share_ceiling=v7_risk.qld_share_ceiling,
+                )
+            )
             emergency_override = tier0_regime == "CRISIS" or (
                 rolling_drawdown is not None and rolling_drawdown >= 0.30
-            )
+            ) or hard_constraint_override
             advisory_decision = build_advisory_rebalance_decision(
                 raw_recommendation=beta_rec,
                 advisory_state=advisory_state,
@@ -509,7 +525,10 @@ def run_pipeline(args: argparse.Namespace) -> None:
             result.estimated_turnover = advisory_decision.estimated_turnover
             result.estimated_cost_drag = advisory_decision.estimated_cost_drag
             result.should_adjust = advisory_decision.should_adjust
-            result.target_allocation = target_allocation_from_beta(advisory_decision.advised_target_beta)
+            result.target_allocation = target_allocation_from_beta(
+                advisory_decision.advised_target_beta,
+                qld_share_ceiling=v7_risk.qld_share_ceiling,
+            )
             primary_reason = v7_deploy.reasons[0] if v7_deploy.reasons else {}
             blood_chip_reason = next(
                 (

@@ -1,5 +1,5 @@
 """
-Web Exporter (v8.2 Industrial Implementation).
+Web Exporter (v9.0 target-beta-first implementation).
 Provides discretized data for the public dashboard and implements
 timezone-aware market calendar leap logic.
 """
@@ -7,13 +7,20 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+import os
+import time as time_module
+from datetime import UTC, datetime, time, timedelta
+from datetime import date as date_cls
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
-import pandas_market_calendars as mcal
 import pytz
+import requests
+
+try:
+    import pandas_market_calendars as mcal
+except ModuleNotFoundError:  # pragma: no cover - exercised via fallback tests
+    mcal = None
 
 from src.models import SignalResult
 
@@ -112,13 +119,115 @@ logger = logging.getLogger("qqq_monitor.web_exporter")
 
 EASTERN = pytz.timezone("US/Eastern")
 
+
+def _nth_weekday_of_month(year: int, month: int, weekday: int, n: int) -> date_cls:
+    current = date_cls(year, month, 1)
+    while current.weekday() != weekday:
+        current += timedelta(days=1)
+    return current + timedelta(weeks=n - 1)
+
+
+def _last_weekday_of_month(year: int, month: int, weekday: int) -> date_cls:
+    if month == 12:
+        current = date_cls(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        current = date_cls(year, month + 1, 1) - timedelta(days=1)
+    while current.weekday() != weekday:
+        current -= timedelta(days=1)
+    return current
+
+
+def _observed_fixed_holiday(year: int, month: int, day: int) -> date_cls:
+    holiday = date_cls(year, month, day)
+    if holiday.weekday() == 5:
+        return holiday - timedelta(days=1)
+    if holiday.weekday() == 6:
+        return holiday + timedelta(days=1)
+    return holiday
+
+
+def _easter_sunday(year: int) -> date_cls:
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    weekday_offset = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * weekday_offset) // 451
+    month = (h + weekday_offset - 7 * m + 114) // 31
+    day = ((h + weekday_offset - 7 * m + 114) % 31) + 1
+    return date_cls(year, month, day)
+
+
+def _nyse_holidays(year: int) -> set[date_cls]:
+    thanksgiving = _nth_weekday_of_month(year, 11, 3, 4)
+    return {
+        _observed_fixed_holiday(year, 1, 1),
+        _nth_weekday_of_month(year, 1, 0, 3),   # Martin Luther King Jr. Day
+        _nth_weekday_of_month(year, 2, 0, 3),   # Presidents Day
+        _easter_sunday(year) - timedelta(days=2),  # Good Friday
+        _last_weekday_of_month(year, 5, 0),     # Memorial Day
+        _observed_fixed_holiday(year, 6, 19),   # Juneteenth
+        _observed_fixed_holiday(year, 7, 4),    # Independence Day
+        _nth_weekday_of_month(year, 9, 0, 1),   # Labor Day
+        thanksgiving,
+        _observed_fixed_holiday(year, 12, 25),  # Christmas
+    }
+
+
+def _nyse_early_close_days(year: int) -> set[date_cls]:
+    thanksgiving = _nth_weekday_of_month(year, 11, 3, 4)
+    return {
+        thanksgiving + timedelta(days=1),  # Black Friday
+    }
+
+
+class _FallbackNYSECalendar:
+    """Minimal NYSE calendar fallback when pandas_market_calendars is unavailable."""
+
+    def schedule(self, start_date: date_cls, end_date: date_cls) -> pd.DataFrame:
+        rows: list[dict[str, pd.Timestamp]] = []
+        current = start_date
+        while current <= end_date:
+            if current.weekday() < 5 and current not in _nyse_holidays(current.year):
+                open_dt = EASTERN.localize(datetime.combine(current, time(9, 30))).astimezone(UTC)
+                close_time = time(13, 0) if current in _nyse_early_close_days(current.year) else time(16, 0)
+                close_dt = EASTERN.localize(datetime.combine(current, close_time)).astimezone(UTC)
+                rows.append(
+                    {
+                        "market_open": pd.Timestamp(open_dt),
+                        "market_close": pd.Timestamp(close_dt),
+                    }
+                )
+            current += timedelta(days=1)
+        return pd.DataFrame(rows)
+
+    def open_at_time(self, schedule: pd.DataFrame, now_utc: datetime) -> bool:
+        if schedule.empty:
+            return False
+        now_ts = pd.Timestamp(now_utc)
+        open_series = schedule["market_open"]
+        close_series = schedule["market_close"]
+        return bool(((open_series <= now_ts) & (now_ts <= close_series)).any())
+
+
 class MarketCursor:
     """
     Handles market calendar aware calculations to prevent timezone drift
     and incorrect stale warnings during weekends/holidays.
     """
     def __init__(self, calendar_name: str = "NYSE"):
-        self.cal = mcal.get_calendar(calendar_name)
+        if mcal is not None:
+            self.cal = mcal.get_calendar(calendar_name)
+        else:
+            if calendar_name != "NYSE":
+                raise ValueError("Fallback market calendar only supports NYSE")
+            self.cal = _FallbackNYSECalendar()
 
     def _get_schedule(self, now: datetime, days: int = 10) -> pd.DataFrame:
         """Helper to get market schedule around a given time."""
@@ -130,15 +239,15 @@ class MarketCursor:
         """Determines if the market is currently ACTIVE or FROZEN."""
         if now.tzinfo is None:
             raise ValueError("Must pass an aware datetime")
-        
-        now_utc = now.astimezone(timezone.utc)
+
+        now_utc = now.astimezone(UTC)
         schedule = self._get_schedule(now.astimezone(EASTERN), days=1)
-        
+
         try:
             is_open = self.cal.open_at_time(schedule, now_utc)
         except (ValueError, IndexError):
             is_open = False
-            
+
         return "ACTIVE" if is_open else "FROZEN"
 
     def get_expires_at_utc(self, now: datetime, jitter_hours: int = 4) -> datetime:
@@ -149,15 +258,15 @@ class MarketCursor:
         if now.tzinfo is None:
             raise ValueError("Must pass an aware datetime")
 
-        now_utc = now.astimezone(timezone.utc)
+        now_utc = now.astimezone(UTC)
         now_est = now.astimezone(EASTERN)
-        
+
         # Get NYSE schedule for today and next few days
         schedule = self._get_schedule(now_est, days=7)
-        
+
         # Current day's close (UTC)
         today_close = schedule.iloc[0]['market_close'].to_pydatetime()
-        
+
         if now_utc < today_close:
             # Market is open or hasn't closed yet today
             try:
@@ -169,7 +278,7 @@ class MarketCursor:
                 # ACTIVE: Expected next update is next hour on the hour
                 next_expected = (now_est + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
                 # But not past today's close
-                if next_expected.astimezone(timezone.utc) > today_close:
+                if next_expected.astimezone(UTC) > today_close:
                     next_expected = today_close.astimezone(EASTERN)
             else:
                 # Pre-market: Expected update at open
@@ -180,16 +289,23 @@ class MarketCursor:
 
         # Add Jitter Buffer
         expires_at = next_expected + timedelta(hours=jitter_hours)
-        return expires_at.astimezone(timezone.utc)
+        return expires_at.astimezone(UTC)
+
 
 def _discretize_allocation(beta: float) -> str:
     """Maps precise beta/allocation to 10% bands to protect internal logic."""
-    if beta <= 0.05: return "0-5% (极轻仓/现金)"
-    if beta <= 0.25: return "10-20% (防御性)"
-    if beta <= 0.45: return "30-40% (保守)"
-    if beta <= 0.65: return "50-60% (稳健)"
-    if beta <= 0.85: return "70-80% (积极)"
-    if beta <= 1.05: return "90-100% (满仓)"
+    if beta <= 0.05:
+        return "0-5% (极轻仓/现金)"
+    if beta <= 0.25:
+        return "10-20% (防御性)"
+    if beta <= 0.45:
+        return "30-40% (保守)"
+    if beta <= 0.65:
+        return "50-60% (稳健)"
+    if beta <= 0.85:
+        return "70-80% (积极)"
+    if beta <= 1.05:
+        return "90-100% (满仓)"
     return "110-120% (进攻/杠杆)"
 
 REGIME_MAP = {
@@ -207,7 +323,6 @@ DEPLOY_MAP = {
     "PAUSE": {"label": "停止入场", "desc": "风险过载，增量资金持币观望，不接飞刀。"}
 }
 
-import requests
 
 def export_web_snapshot(result: SignalResult, output_path: str | Path | None = None) -> bool:
     """
@@ -215,19 +330,18 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
     Includes Chinese explanations for Regime and Deployment states.
     """
     try:
-        now_utc = datetime.now(timezone.utc)
+        now_utc = datetime.now(UTC)
         cursor = MarketCursor()
-        
+
         market_state = cursor.get_market_state(now_utc)
         expires_at_utc = cursor.get_expires_at_utc(now_utc, jitter_hours=4)
-        
+
         from src.output.report import summarize_data_quality
-        fidelity_summary = summarize_data_quality(result.data_quality)
-        
+
         # Resolve mappings with MUST-HAVE integrity (Fail-Closed)
         regime_key = str(result.tier0_regime)
         deploy_key = result.deployment_action["deploy_mode"]
-        
+
         # Accessing with [] to raise KeyError if missing - system should failure rather than mask
         regime_info = REGIME_MAP[regime_key]
         deploy_info = DEPLOY_MAP[deploy_key]
@@ -238,7 +352,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
 
         payload = {
             "meta": {
-                "version": "v8.2",
+                "version": "v9.0",
                 "calculated_at_utc": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "expires_at_utc": expires_at_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "market_state": market_state
@@ -256,6 +370,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "risk_state": str(result.risk_state),
                 "risk_reasons": result.risk_reasons,
                 "deploy_reasons": result.deployment_reasons,
+                "data_quality_summary": summarize_data_quality(result.data_quality),
                 "factors": {
                     "macro": {
                         "credit_spread": result.feature_values.get("credit_spread"),
@@ -276,7 +391,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
 
         # Populate node traces for the Evidence Facts Table
         traces = []
-        
+
         # 1. Tier-0 Node Trace
         t0_reason = next((r for r in result.risk_reasons if "tier0" in r.get("rule", "")), None)
         if t0_reason:
@@ -298,14 +413,14 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         risk_reason = next((r for r in result.risk_reasons if ("tier0_" not in r.get("rule", "") or not is_risk_veto)), None)
         if not risk_reason and result.risk_reasons:
             risk_reason = result.risk_reasons[0]
-        
+
         if risk_reason:
             rule_id = risk_reason["rule"]
             # FAIL FAST
             info = _LOGIC_CATALOG[rule_id]
             formula = info["formula"]
             explanation = info["explanation"]
-            
+
             if is_risk_veto:
                 formula = f"[VETO] Inherit Tier-0 ({result.tier0_regime})"
                 explanation = f"受顶层宏观制度 ({result.tier0_regime}) 强约束，Risk 节点强制进入防御模式。"
@@ -328,7 +443,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
             info = _LOGIC_CATALOG[rule_id]
             formula = info["formula"]
             explanation = info["explanation"]
-            
+
             if is_deploy_veto:
                 formula = "[VETO] Risk/Macro Ceiling"
                 explanation = "入场节奏受限于更高的风控等级或宏观顶层约束，进入保值模式。"
@@ -341,7 +456,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "explanation": explanation,
                 "result": deploy_info["label"]
             })
-        
+
         payload["evidence"]["node_traces"] = traces
 
         # 1. Local Write (Always for debugging/local history)
@@ -349,19 +464,19 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         local_path.parent.mkdir(parents=True, exist_ok=True)
         with open(local_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
-            
+
         # 2. Production Upload Gating (ADD v3.0 Hardened)
         blob_token = os.environ.get("VERCEL_BLOB_READ_WRITE_TOKEN")
         is_ci = os.environ.get("GITHUB_ACTIONS") == "true"
-        
+
         if is_ci:
             if not blob_token:
                 # FAIL FAST: In CI, missing credentials is a fatal error that must trigger OOB alerts.
                 raise ValueError("CRITICAL FAILURE: VERCEL_BLOB_READ_WRITE_TOKEN is missing in CI environment. Pipeline halted to prevent stale state.")
-            
+
             logger.info("CI Environment detected. Initiating production upload to Vercel Edge...")
             blob_url = "https://blob.vercel-storage.com/status.json"
-            
+
             # VERCEL PROPRIETARY PROTOCOL (Final Surgical Alignment)
             headers = {
                 "authorization": f"Bearer {blob_token}",
@@ -374,36 +489,34 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 # VISIBILITY: Explicitly declare the object as publicly accessible
                 "x-access": "public"
             }
-            
+
             # PHYSICAL ENCODING: Force UTF-8 bytes to prevent payload length/encoding mismatches
-            payload_bytes = json.dumps(payload, ensure_ascii=False).encode('utf-8')
-            
-            import time
+            payload_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             max_retries = 3
             backoff_factor = 2
-            
+
             for attempt in range(max_retries):
                 try:
-                    start_io = time.time()
+                    start_io = time_module.time()
                     resp = requests.put(blob_url, data=payload_bytes, headers=headers, timeout=15)
-                    
+
                     if resp.status_code == 200:
-                        duration = time.time() - start_io
+                        duration = time_module.time() - start_io
                         logger.info("Production snapshot successfully pushed to Vercel Edge (IO: %.2fs).", duration)
                         break
-                    
+
                     logger.error("Vercel Blob Rejection (%d, attempt %d/%d): %s", resp.status_code, attempt+1, max_retries, resp.text)
                     if resp.status_code not in [500, 502, 503, 504]:
                         resp.raise_for_status() # Non-transient error, fail fast
-                        
+
                 except (requests.exceptions.RequestException, Exception) as e:
                     if attempt == max_retries - 1:
                         logger.error("Vercel Blob Upload reached MAX_RETRIES. Final error: %s", e)
                         raise
-                    
+
                     wait_time = backoff_factor ** (attempt + 1)
                     logger.warning("Vercel Blob transient error. Retrying in %ds... (Error: %s)", wait_time, e)
-                    time.sleep(wait_time)
+                    time_module.sleep(wait_time)
         else:
             # Local mode: Graceful skip according to ADD v3.0 Staging Gates policy.
             logger.info("Local mode detected: Skipping cloud upload to protect production integrity.")
@@ -416,5 +529,3 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
             # In CI, propagate the error so the workflow fails and notifies the developer.
             raise
         return False
-
-import os

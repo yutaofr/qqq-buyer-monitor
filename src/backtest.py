@@ -31,6 +31,7 @@ from src.engine.candidate_registry import load_registry, select_runtime_candidat
 from src.engine.deployment_controller import DeploymentDecision, decide_deployment_state
 from src.engine.execution_policy import (
     AdvisoryState,
+    beta_requires_qld_above_ceiling,
     build_advisory_rebalance_decision,
     build_beta_recommendation,
     target_allocation_from_beta,
@@ -633,6 +634,7 @@ class Backtester:
                 scoped_candidates=candidates,
                 registry_candidates=list(registry.candidates),
                 max_beta_ceiling=risk.target_exposure_ceiling,
+                qld_share_ceiling=risk.qld_share_ceiling,
                 max_drawdown_budget=registry.drawdown_budget,
             )
 
@@ -658,12 +660,20 @@ class Backtester:
                 advisory_state,
                 raw_target_beta=raw_target_beta,
             )
+            hard_constraint_override = (
+                advisory_state.assumed_beta > risk.target_exposure_ceiling + 1e-9
+                or beta_requires_qld_above_ceiling(
+                    advisory_state.assumed_beta,
+                    qld_share_ceiling=risk.qld_share_ceiling,
+                )
+            )
             advisory_decision = build_advisory_rebalance_decision(
                 raw_recommendation=recommendation,
                 advisory_state=advisory_state,
                 as_of_date=current_date,
                 emergency_override=tier0_regime == "CRISIS"
-                or (rolling_drawdown is not None and rolling_drawdown >= registry.drawdown_budget),
+                or (rolling_drawdown is not None and rolling_drawdown >= registry.drawdown_budget)
+                or hard_constraint_override,
             )
             advisory_state = advisory_decision.next_state
             signal_target_beta = raw_target_beta
@@ -1249,15 +1259,26 @@ class Backtester:
                 advisory_state,
                 raw_target_beta=raw_target_beta,
             )
+            hard_constraint_override = (
+                advisory_state.assumed_beta > risk.target_exposure_ceiling + 1e-9
+                or beta_requires_qld_above_ceiling(
+                    advisory_state.assumed_beta,
+                    qld_share_ceiling=risk.qld_share_ceiling,
+                )
+            )
             advisory_decision = build_advisory_rebalance_decision(
                 raw_recommendation=recommendation,
                 advisory_state=advisory_state,
                 as_of_date=current_date,
                 emergency_override=tier0_regime == "CRISIS"
-                or (rolling_drawdown is not None and rolling_drawdown >= registry.drawdown_budget),
+                or (rolling_drawdown is not None and rolling_drawdown >= registry.drawdown_budget)
+                or hard_constraint_override,
             )
             advisory_state = advisory_decision.next_state
-            advised_target = target_allocation_from_beta(advisory_decision.advised_target_beta)
+            advised_target = target_allocation_from_beta(
+                advisory_decision.advised_target_beta,
+                qld_share_ceiling=risk.qld_share_ceiling,
+            )
 
             if active_nav_before_rebalance > 0:
                 current_qqq_val = units_qqq * p_qqq
@@ -1982,7 +2003,7 @@ def run_backtest(
     finally:
         tier0_logger.setLevel(previous_tier0_level)
 
-    print("\n--- v8.2 Linear Pipeline Backtest Summary ---")
+    print("\n--- v9.0 Linear Pipeline Backtest Summary ---")
     print(f"Weekly add events: {len(summary.events)}")
     print(f"Tactical Max Drawdown: {_format_pct(summary.tactical_mdd)}")
     print(f"Baseline DCA Max Drawdown: {_format_pct(summary.baseline_mdd)}")

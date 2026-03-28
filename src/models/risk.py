@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class RiskState(str, Enum):
+class RiskState(StrEnum):
     """Represents the current macro risk regime for portfolio exposure decisions."""
     RISK_ON = "RISK_ON"
     RISK_NEUTRAL = "RISK_NEUTRAL"
@@ -23,3 +23,4 @@ class RiskDecision:
     target_cash_floor: float
     reasons: tuple = ()
     tier0_applied: bool = False
+    qld_share_ceiling: float = 0.0
