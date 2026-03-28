@@ -375,20 +375,35 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "x-access": "public"
             }
             
-            import time
-            start_io = time.time()
-            
             # PHYSICAL ENCODING: Force UTF-8 bytes to prevent payload length/encoding mismatches
             payload_bytes = json.dumps(payload, ensure_ascii=False).encode('utf-8')
             
-            resp = requests.put(blob_url, data=payload_bytes, headers=headers, timeout=15)
+            import time
+            max_retries = 3
+            backoff_factor = 2
             
-            if resp.status_code != 200:
-                logger.error("Vercel Blob Rejection (%d): %s", resp.status_code, resp.text)
-                
-            resp.raise_for_status()
-            duration = time.time() - start_io
-            logger.info("Production snapshot successfully pushed to Vercel Edge (IO: %.2fs).", duration)
+            for attempt in range(max_retries):
+                try:
+                    start_io = time.time()
+                    resp = requests.put(blob_url, data=payload_bytes, headers=headers, timeout=15)
+                    
+                    if resp.status_code == 200:
+                        duration = time.time() - start_io
+                        logger.info("Production snapshot successfully pushed to Vercel Edge (IO: %.2fs).", duration)
+                        break
+                    
+                    logger.error("Vercel Blob Rejection (%d, attempt %d/%d): %s", resp.status_code, attempt+1, max_retries, resp.text)
+                    if resp.status_code not in [500, 502, 503, 504]:
+                        resp.raise_for_status() # Non-transient error, fail fast
+                        
+                except (requests.exceptions.RequestException, Exception) as e:
+                    if attempt == max_retries - 1:
+                        logger.error("Vercel Blob Upload reached MAX_RETRIES. Final error: %s", e)
+                        raise
+                    
+                    wait_time = backoff_factor ** (attempt + 1)
+                    logger.warning("Vercel Blob transient error. Retrying in %ds... (Error: %s)", wait_time, e)
+                    time.sleep(wait_time)
         else:
             # Local mode: Graceful skip according to ADD v3.0 Staging Gates policy.
             logger.info("Local mode detected: Skipping cloud upload to protect production integrity.")
