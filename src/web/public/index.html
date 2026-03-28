@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QQQ 晴雨表 - v8.2 决策仪表盘</title>
+    <title>QQQ 晴雨表 - v9.0 Target-Beta 决策仪表盘</title>
     <!-- Vercel Analytics -->
     <script>
         window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
@@ -35,7 +35,7 @@
         <div class="flex justify-between items-center mb-10">
             <div>
                 <h1 class="text-3xl font-black tracking-tighter">晴雨表</h1>
-                <p id="version" class="text-[10px] tracking-[0.2em] opacity-40 uppercase">v8.2 Industrial</p>
+                <p id="version" class="text-[10px] tracking-[0.2em] opacity-40 uppercase">v9.0 Target-Beta-First</p>
             </div>
             <div id="indicator" class="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.8)]"></div>
         </div>
@@ -52,7 +52,7 @@
             <!-- Existing Position (Exposure) -->
             <div class="space-y-2">
                 <div class="flex justify-between items-end">
-                    <p class="text-[11px] font-bold uppercase tracking-[0.15em] opacity-50">风险敞口 (存量)</p>
+                    <p class="text-[11px] font-bold uppercase tracking-[0.15em] opacity-50">目标 Beta (系统 contract)</p>
                     <p id="exposure" class="text-xl font-bold tracking-tight">--</p>
                 </div>
                 <div class="w-full h-1.5 bg-white/10 rounded-full overflow-hidden relative">
@@ -62,11 +62,25 @@
                 <p id="exposure-desc" class="text-[10px] opacity-50"></p>
             </div>
 
+            <!-- Candidate & Decision Path -->
+            <div class="space-y-2">
+                <p class="text-[11px] font-bold uppercase tracking-[0.15em] opacity-50">认证候选 / 决策路径</p>
+                <p id="candidate" class="text-base font-black tracking-tight">--</p>
+                <p id="decision-path" class="text-[10px] leading-relaxed opacity-60">--</p>
+            </div>
+
             <!-- Incremental Cash (Deployment) -->
             <div class="space-y-2">
                 <p class="text-[11px] font-bold uppercase tracking-[0.15em] opacity-50">入场节奏 (增量)</p>
                 <p id="deploy" class="text-2xl font-black tracking-tight">--</p>
                 <p id="deploy-desc" class="text-[10px] leading-relaxed opacity-50"></p>
+            </div>
+
+            <!-- Reference Path -->
+            <div class="space-y-2">
+                <p class="text-[11px] font-bold uppercase tracking-[0.15em] opacity-50">参考路径（非 contract）</p>
+                <p id="reference-path" class="text-sm font-bold tracking-tight">--</p>
+                <p id="reference-desc" class="text-[10px] leading-relaxed opacity-50"></p>
             </div>
         </div>
 
@@ -80,6 +94,10 @@
 
         <!-- Insights Panel -->
         <div id="insights-panel" class="space-y-12">
+            <div class="space-y-2">
+                <p class="text-[9px] font-bold uppercase tracking-[0.2em] opacity-30">Tier-0 -> Risk -> Candidate -> Advisory -> Deployment</p>
+                <p class="text-[10px] leading-relaxed opacity-50">系统 contract 是目标 Beta；Deployment 只作用于新增现金，且唯一买入标的是 QQQ。</p>
+            </div>
             <!-- Dual Pipeline Visualizer -->
             <div class="relative space-y-6">
                 <!-- Tier 0: Unified Macro Center -->
@@ -108,7 +126,7 @@
                     <div class="w-1/2 space-y-8 border-r border-white/5 pr-2">
                         <div class="relative pl-4 border-l border-white/10">
                             <div class="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-white/20"></div>
-                            <p class="text-[9px] font-bold opacity-30 uppercase tracking-widest mb-1">Stock Beta</p>
+                            <p class="text-[9px] font-bold opacity-30 uppercase tracking-widest mb-1">Risk -> Candidate -> Advisory</p>
                             <p id="tree-risk" class="text-xs font-black tracking-tight">--</p>
                             <div class="flex flex-wrap gap-1 mt-2">
                                 <span class="text-[8px] px-1 py-0.5 text-ghost">EXIT (0.5x)</span>
@@ -124,7 +142,7 @@
                     <div class="w-1/2 space-y-8 pl-2">
                         <div class="relative pl-4 border-l border-white/10">
                             <div class="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-white/20"></div>
-                            <p class="text-[9px] font-bold opacity-30 uppercase tracking-widest mb-1">Incremental DCA</p>
+                            <p class="text-[9px] font-bold opacity-30 uppercase tracking-widest mb-1">Deployment (QQQ New Cash)</p>
                             <p id="tree-deploy" class="text-xs font-black tracking-tight">--</p>
                             <div class="flex flex-wrap gap-1 mt-2">
                                 <span class="text-[8px] px-1 py-0.5 text-ghost">FAST</span>
@@ -205,7 +223,7 @@
 
         <!-- Decision Tree Link -->
         <div class="pt-2">
-            <a href="https://github.com/yutaofr/qqq-buyer-monitor/wiki/User-Manual-(v8.2)" 
+            <a href="https://github.com/yutaofr/qqq-buyer-monitor/blob/main/docs/v9.0_risk_management_add.md" 
                target="_blank" 
                class="flex items-center justify-between px-5 py-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/20 transition-all duration-300 group">
                 <div class="flex items-center space-x-3">
@@ -214,7 +232,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                         </svg>
                     </div>
-                    <span class="text-sm font-bold tracking-tight opacity-70 group-hover:opacity-100 transition-opacity">决策树说明 (v8.2)</span>
+                    <span class="text-sm font-bold tracking-tight opacity-70 group-hover:opacity-100 transition-opacity">决策树说明 (v9.0)</span>
                 </div>
                 <svg class="w-4 h-4 opacity-30 group-hover:opacity-60 transition-all transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path>
@@ -263,15 +281,20 @@
 
         function validateData(data) {
             // Strict AC-3 Data Integrity Check
-            const required = [
-                data?.meta?.calculated_at_utc,
-                data?.meta?.expires_at_utc,
-                data?.signal?.regime,
-                data?.signal?.exposure_band,
-                data?.signal?.deploy_rhythm,
-                data?.evidence?.node_traces,
-                data?.evidence?.factors?.macro?.credit_spread,
-                data?.evidence?.factors?.macro?.erp
+                const required = [
+                    data?.meta?.calculated_at_utc,
+                    data?.meta?.expires_at_utc,
+                    data?.signal?.regime,
+                    data?.signal?.contract,
+                    data?.signal?.target_beta,
+                    data?.signal?.candidate_id,
+                    data?.signal?.decision_path,
+                    data?.signal?.exposure_band,
+                    data?.signal?.deploy_rhythm,
+                    data?.signal?.reference_path?.qqq_pct,
+                    data?.evidence?.node_traces,
+                    data?.evidence?.factors?.macro?.credit_spread,
+                    data?.evidence?.factors?.macro?.erp
             ];
             if (required.some(v => v === undefined || v === null)) {
                 throw new Error("INTEGRITY_CHECK_FAILED: Missing critical decision field");
@@ -289,7 +312,7 @@
                 const simName = urlParams.get('sim');
                 const fetchUrl = simName ? `simulations/${simName}.json` : LOCAL_JSON;
 
-                // v8.2 Fix: Prioritize local data for sub-second synchronization and dev verification
+                // v9.0: prioritize local data for sub-second synchronization and dev verification
                 try {
                     res = await fetch(fetchUrl + '?t=' + Date.now());
                     if (!res.ok) throw new Error("Local fetch failed");
@@ -323,9 +346,10 @@
                 }
 
                 // Main Signal - No fallbacks allowed
+                document.getElementById('version').textContent = `${data.meta.version} Target-Beta-First`;
                 document.getElementById('regime').textContent = data.signal.regime;
                 document.getElementById('regime-desc').textContent = data.signal.regime_desc;
-                document.getElementById('exposure').textContent = data.signal.exposure_band;
+                document.getElementById('exposure').textContent = `${data.signal.target_beta.toFixed(2)}x · ${data.signal.exposure_band}`;
                 
                 // Leverage-Aware Progress Bar
                 const match = data.signal.exposure_band.match(/(\d+)-(\d+)%/);
@@ -346,9 +370,16 @@
                     levBar.classList.remove('pulse');
                 }
 
-                document.getElementById('exposure-desc').textContent = data.signal.exposure_desc;
+                document.getElementById('exposure-desc').textContent = data.signal.contract_desc;
+                document.getElementById('candidate').textContent = data.signal.candidate_id;
+                document.getElementById('decision-path').textContent = data.signal.decision_path;
                 document.getElementById('deploy').textContent = data.signal.deploy_rhythm;
                 document.getElementById('deploy-desc').textContent = data.signal.deploy_desc;
+                document.getElementById('reference-path').textContent =
+                    `QQQ ${(data.signal.reference_path.qqq_pct * 100).toFixed(1)}% | ` +
+                    `QLD ${(data.signal.reference_path.qld_pct * 100).toFixed(1)}% | ` +
+                    `Cash ${(data.signal.reference_path.cash_pct * 100).toFixed(1)}%`;
+                document.getElementById('reference-desc').textContent = data.signal.reference_desc;
                 document.getElementById('fidelity').textContent = data.signal.fidelity;
                 
                 document.getElementById('calc-at').textContent = data.meta.calculated_at_utc.replace('T', ' ').replace('Z', '');
@@ -358,14 +389,15 @@
                 if (data.evidence) {
                     const ev = data.evidence;
                     const regime = data.signal.regime;
-                    const risk_key = ev.risk_state.split('.').pop();
+                    const risk_key = ev.risk_state;
                     const deploy_key = data.evidence.deploy_reasons[0]?.rule?.includes('fast') ? 'FAST' : 
                                      data.evidence.deploy_reasons[0]?.rule?.includes('slow') ? 'SLOW' :
                                      data.evidence.deploy_reasons[0]?.rule?.includes('pause') ? 'PAUSE' : 'BASE';
                     
                     document.getElementById('tree-t0').textContent = regime;
-                    document.getElementById('tree-risk').textContent = risk_key;
-                    document.getElementById('tree-deploy').textContent = data.signal.deploy_rhythm;
+                    document.getElementById('tree-risk').textContent =
+                        `${risk_key} → ${data.signal.candidate_id} → ${data.signal.target_beta.toFixed(2)}x`;
+                    document.getElementById('tree-deploy').textContent = `${data.signal.deploy_rhythm} · QQQ only`;
 
                     // Highlight mapping
                     const updateGhostTags = (id, activeKey, activeLabel = "") => {
@@ -399,9 +431,11 @@
                     
                     const TYPE_COLORS = {
                         'MACRO': 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
-                        'VETO': 'text-purple-400 bg-purple-400/10 border-purple-400/20',
                         'SIGNAL': 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20',
-                        'TACTICAL': 'text-blue-400 bg-blue-400/10 border-blue-400/20'
+                        'FILTER': 'text-amber-300 bg-amber-300/10 border-amber-300/20',
+                        'ADVISORY': 'text-fuchsia-300 bg-fuchsia-300/10 border-fuchsia-300/20',
+                        'TACTICAL': 'text-blue-400 bg-blue-400/10 border-blue-400/20',
+                        'REFERENCE': 'text-slate-300 bg-slate-300/10 border-slate-300/20'
                     };
 
                     (ev.node_traces || []).forEach(trace => {
@@ -411,9 +445,9 @@
                         const rawType = trace.trace_type || trace.type || 'SIGNAL';
                         const typeKey = rawType.toUpperCase();
                         const typeClass = TYPE_COLORS[typeKey] || 'text-white/40 bg-white/5 border-white/10';
-                        const isVeto = typeKey === 'VETO';
+                        const isHighlight = typeKey === 'ADVISORY' || typeKey === 'REFERENCE';
                         
-                        row.className = `border-b border-white/5 hover:bg-white/[0.02] transition-colors ${isVeto ? 'bg-purple-900/5' : ''}`;
+                        row.className = `border-b border-white/5 hover:bg-white/[0.02] transition-colors ${isHighlight ? 'bg-white/[0.02]' : ''}`;
                         row.innerHTML = `
                             <td class="px-4 py-4 align-top">
                                 <div class="font-bold text-white/70 mb-1">${trace.node}</div>
@@ -422,7 +456,7 @@
                                 </span>
                             </td>
                             <td class="px-4 py-4 space-y-2">
-                                <div class="font-mono text-[9px] ${isVeto ? 'text-purple-400 bg-purple-400/5 border-purple-400/10' : 'text-emerald-400 bg-emerald-400/5 border-emerald-400/10'} px-2 py-1 rounded inline-block border">
+                                <div class="font-mono text-[9px] ${isHighlight ? 'text-slate-200 bg-slate-200/5 border-slate-200/10' : 'text-emerald-400 bg-emerald-400/5 border-emerald-400/10'} px-2 py-1 rounded inline-block border">
                                     ${trace.formula}
                                 </div>
                                 <div class="text-[10px] leading-relaxed opacity-60 italic">
@@ -430,7 +464,7 @@
                                 </div>
                             </td>
                             <td class="px-4 py-4 align-top text-right">
-                                <span class="text-[10px] font-black tracking-tight text-white px-2 py-1 rounded bg-white/5 border border-white/10 ${isVeto ? 'border-purple-500/30 text-purple-200' : ''}">
+                                <span class="text-[10px] font-black tracking-tight text-white px-2 py-1 rounded bg-white/5 border border-white/10 ${isHighlight ? 'border-slate-400/30 text-slate-100' : ''}">
                                     ${trace.result}
                                 </span>
                             </td>

@@ -24,100 +24,143 @@ except ModuleNotFoundError:  # pragma: no cover - exercised via fallback tests
 
 from src.models import SignalResult
 
-# v8.2 Decision Logic Reference (Formula + Explanation)
-_LOGIC_CATALOG = {
-    # Tier-0 Macro
-    "tier0_crisis": {
-        "formula": "Spread >= 650 || ERP < 1.0%",
-        "explanation": "系统性信用枯竭或风险溢价极度缺失，进入熔断模式。"
-    },
-    "tier0_rich_tightening": {
-        "formula": "Spread >= 450 || ERP < 2.5%",
-        "explanation": "估值性价比降低或融资极度收紧，审慎减少敞口。"
-    },
-    "tier0_transition_stress": {
-        "formula": "Credit Stress (Transition)",
-        "explanation": "处于信用扩张与收缩的转换期，波动率中枢抬升，需动态防御。"
-    },
-    "tier0_euphoric": {
-        "formula": "Spread < 350 && ERP > 4.5%",
-        "explanation": "宏观环境处于极度贪婪后期，估值修复完毕，需预防均值回归。"
-    },
-    # Risk Controller (Class A stress hierarchy)
-    "triple_stress": {
-        "formula": "Accel && !Liq && Stress",
-        "explanation": "【三重压力并发】信用加速 + 流动性枯竭 + 融资压力同时亮红灯。-> 强制避险 (上限 0.5x)"
-    },
-    "dual_stress": {
-        "formula": "Stress Count >= 2 || Spread >= 600",
-        "explanation": "【双重压力并发】触发两项信号或利差触及 600bps 警戒线。-> 强化防御 (上限 0.7x)"
-    },
-    "single_stress": {
-        "formula": "Stress Count == 1 || Spread > 500",
-        "explanation": "【单边恶化】满足一项信号或利差 > 500bps。-> 适度减仓 (上限 0.8x)"
-    },
-    "clean_macro": {
-        "formula": "No Stress Signals",
-        "explanation": "环境清洁。依据 Tier-0 或信用趋势决定基准 (1.0x) 或 进攻 (1.2x) 状态。"
-    },
-    "drawdown_budget_breached": {
-        "formula": "Drawdown >= 30%",
-        "explanation": "触及组合最大回撤预算硬约束。-> 强制避险 (上限 0.5x)"
-    },
-    # Deployment Controller (DCA Rhythm)
-    "tactical_stress_pause": {
-        "formula": "Tactical Stress >= 70",
-        "explanation": "短线交易情绪过热或结构性失衡，暂停增量入场。"
-    },
-    "missing_credit_spread_pause": {
-        "formula": "Credit Spread Is None",
-        "explanation": "底层信用数据缺失，基于审慎原则停止所有交易指令。"
-    },
-    "deep_drawdown_pause": {
-        "formula": "Drawdown >= 25% || Spread >= 650",
-        "explanation": "净值深幅回撤或利差进入危机区，停止增量入场以保留余粮。"
-    },
-    "left_tail_fast": {
-        "formula": "Drawdown >= 12% & 20D Return <= -8%",
-        "explanation": "【左侧确认】满足大级别回撤补偿逻辑，启动 2.0x 加速抄底。"
-    },
-    "pullback_fast": {
-        "formula": "Drawdown >= 8% & 5D Return <= 0.0%",
-        "explanation": "【浅调加速】满足短期回撤补偿条件，利用波动率提升入场节奏。"
-    },
-    "stress_slow": {
-        "formula": "Macro Stress || DD >= 15%",
-        "explanation": "受外部环境压力或净值回撤影响，将入场节奏降至 0.5x 以平滑风险。"
-    },
-    "risk_defense_slow": {
-        "formula": "Risk State = DEFENSE",
-        "explanation": "跟随风控模块进入防御姿态，自动将增量节奏下调至 0.5x。"
-    },
-    "risk_reduced_slow": {
-        "formula": "Risk State = REDUCED",
-        "explanation": "跟随风控模块进入减仓姿态，增量入场同步放缓至 0.5x。"
-    },
-    "rich_tightening_base": {
-        "formula": "T0=RICH && DD < 15%",
-        "explanation": "【估值收紧】宏观虽然收紧但暂无实质回撤，维持 1.0x 基准节奏观察。"
-    },
-    "blood_chip_crisis_override": {
-        "formula": "Crisis && Panic && Value",
-        "explanation": "【血筹特例】虽然处于危机制度，但战术指标触发极端超卖，开启左侧入场。"
-    },
-    "risk_ceiling": {
-        "formula": "Proposed > Ceiling",
-        "explanation": "入场节奏受限于更高的风控等级或宏观顶层约束。"
-    },
-    "default_base": {
-        "formula": "Standard Path",
-        "explanation": "无特殊偏差信号，按基准配置计划 1.0x 稳步推进。"
-    }
-}
-
 logger = logging.getLogger("qqq_monitor.web_exporter")
 
 EASTERN = pytz.timezone("US/Eastern")
+
+
+def _format_beta(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.2f}x"
+
+
+def _format_pct(value: float | None) -> str:
+    return "n/a" if value is None else f"{value * 100:.1f}%"
+
+
+def _format_pct_points(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.2f}%"
+
+
+def _build_decision_path(result: SignalResult) -> str:
+    raw_beta = result.raw_target_beta if result.raw_target_beta is not None else result.target_beta
+    risk_state = result.risk_state.value if result.risk_state else "n/a"
+    deploy_state = result.deployment_state.value if result.deployment_state else "n/a"
+    return (
+        f"Tier-0({result.tier0_regime or 'n/a'}) -> "
+        f"Risk({risk_state}) -> "
+        f"Candidate({result.selected_candidate_id or 'n/a'}) -> "
+        f"Advisory({_format_beta(raw_beta)}->{_format_beta(result.target_beta)}) -> "
+        f"Deployment({deploy_state})"
+    )
+
+
+def _build_runtime_traces(result: SignalResult) -> list[dict]:
+    from src.output.cli import build_runtime_logic_trace
+
+    traces = result.logic_trace
+    if not traces or traces[0].get("step") != "tier0_regime":
+        traces = build_runtime_logic_trace(result)
+    return traces
+
+
+def _build_web_node_traces(result: SignalResult) -> list[dict]:
+    node_traces: list[dict] = []
+    for trace in _build_runtime_traces(result):
+        step = trace.get("step", "unknown")
+        decision = trace.get("decision", "n/a")
+        reason = trace.get("reason", "n/a")
+        evidence = trace.get("evidence", {})
+
+        if step == "tier0_regime":
+            formula = f"Tier-0={decision} | ERP={_format_pct_points(evidence.get('erp'))}"
+            node_traces.append(
+                {
+                    "step": step,
+                    "node": "Tier-0 宏观制度",
+                    "trace_type": "MACRO",
+                    "formula": formula,
+                    "explanation": reason,
+                    "result": decision,
+                }
+            )
+        elif step == "risk_controller":
+            formula = (
+                f"beta<={_format_beta(evidence.get('target_exposure_ceiling'))} | "
+                f"qld<={_format_pct(evidence.get('qld_share_ceiling'))} | "
+                f"cash>={_format_pct(evidence.get('target_cash_floor'))}"
+            )
+            node_traces.append(
+                {
+                    "step": step,
+                    "node": "Risk 风险控制器",
+                    "trace_type": "SIGNAL",
+                    "formula": formula,
+                    "explanation": reason,
+                    "result": decision,
+                }
+            )
+        elif step == "candidate_selection":
+            formula = (
+                f"registry={evidence.get('registry_version', 'n/a')} | "
+                f"rejected={evidence.get('rejected_candidates', 0)}"
+            )
+            node_traces.append(
+                {
+                    "step": step,
+                    "node": "Candidate 认证候选",
+                    "trace_type": "FILTER",
+                    "formula": formula,
+                    "explanation": reason,
+                    "result": decision,
+                }
+            )
+        elif step == "beta_advisory":
+            raw_beta = _format_beta(evidence.get("raw_target_beta"))
+            formula = (
+                f"raw={raw_beta} | advised={decision} | "
+                f"adjust={evidence.get('should_adjust', False)}"
+            )
+            node_traces.append(
+                {
+                    "step": step,
+                    "node": "Advisory Beta 建议",
+                    "trace_type": "ADVISORY",
+                    "formula": formula,
+                    "explanation": reason,
+                    "result": decision,
+                }
+            )
+        elif step == "deployment_controller":
+            formula = (
+                f"mode={evidence.get('deploy_mode', 'n/a')} | "
+                f"path={evidence.get('path') or 'qqq_only_new_cash'}"
+            )
+            node_traces.append(
+                {
+                    "step": step,
+                    "node": "Deployment 新现金节奏",
+                    "trace_type": "TACTICAL",
+                    "formula": formula,
+                    "explanation": reason,
+                    "result": decision,
+                }
+            )
+        elif step == "reference_path":
+            formula = str(decision)
+            node_traces.append(
+                {
+                    "step": step,
+                    "node": "Reference 参考路径",
+                    "trace_type": "REFERENCE",
+                    "formula": formula,
+                    "explanation": (
+                        "参考路径仅用于说明一种实现目标 beta 的仓位组合，不是系统强制配比。"
+                    ),
+                    "result": f"Beta={_format_beta(evidence.get('target_beta'))}",
+                }
+            )
+
+    return node_traces
 
 
 def _nth_weekday_of_month(year: int, month: int, weekday: int, n: int) -> date_cls:
@@ -317,17 +360,16 @@ REGIME_MAP = {
 }
 
 DEPLOY_MAP = {
-    "FAST": {"label": "快速入场", "desc": "机会窗口开启，增量资金应积极部署。"},
-    "BASE": {"label": "常规入场", "desc": "遵循定投节奏，维持基准部署速率。"},
-    "SLOW": {"label": "减速入场", "desc": "防御姿态，降低入场频率以规避波动。"},
-    "PAUSE": {"label": "停止入场", "desc": "风险过载，增量资金持币观望，不接飞刀。"}
+    "FAST": {"label": "快速入场", "desc": "仅针对新增现金的 QQQ 买入节奏加速。"},
+    "BASE": {"label": "常规入场", "desc": "仅针对新增现金的 QQQ 买入节奏维持基准。"},
+    "SLOW": {"label": "减速入场", "desc": "仅针对新增现金的 QQQ 买入节奏放缓。"},
+    "PAUSE": {"label": "停止入场", "desc": "仅针对新增现金暂停 QQQ 买入，保留现金。"}
 }
 
 
 def export_web_snapshot(result: SignalResult, output_path: str | Path | None = None) -> bool:
     """
-    Exports a discretized snapshot and uploads to Vercel Blob if in CI.
-    Includes Chinese explanations for Regime and Deployment states.
+    Export a web snapshot aligned with the v9 target-beta-first runtime contract.
     """
     try:
         now_utc = datetime.now(UTC)
@@ -350,24 +392,44 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         if result.target_beta is None:
             raise ValueError(f"CRITICAL DATA GAP: result.target_beta is None at {now_utc}")
 
+        reference_path = {
+            "qqq_pct": result.target_allocation.target_qqq_pct,
+            "qld_pct": result.target_allocation.target_qld_pct,
+            "cash_pct": result.target_allocation.target_cash_pct,
+        }
         payload = {
             "meta": {
                 "version": "v9.0",
                 "calculated_at_utc": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "expires_at_utc": expires_at_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "market_state": market_state
+                "market_state": market_state,
             },
             "signal": {
                 "regime": regime_info["label"],
                 "regime_desc": regime_info["desc"],
+                "contract": "target_beta_signal",
+                "contract_desc": (
+                    "系统输出 contract 是 target_beta 信号；用户自行决定资产配置比例，"
+                    "风险带和参考路径只用于帮助理解实现区间。"
+                ),
+                "target_beta": result.target_beta,
+                "raw_target_beta": (
+                    result.raw_target_beta if result.raw_target_beta is not None else result.target_beta
+                ),
+                "beta_ceiling": result.target_exposure_ceiling,
+                "qld_ceiling": result.qld_share_ceiling,
+                "candidate_id": result.selected_candidate_id,
+                "decision_path": _build_decision_path(result),
                 "exposure_band": _discretize_allocation(result.target_beta),
-                "exposure_desc": "存量资金目前的理想风险敞口上限。",
+                "exposure_desc": "目标 Beta 对应的存量风险带，用于帮助理解风险区间。",
                 "deploy_rhythm": deploy_info["label"],
                 "deploy_desc": deploy_info["desc"],
-                "fidelity": "高 (可靠)"
+                "reference_path": reference_path,
+                "reference_desc": "参考路径仅用于说明一种实现目标 beta 的仓位组合，不是系统强制配比。",
+                "fidelity": "高 (可靠)",
             },
             "evidence": {
-                "risk_state": str(result.risk_state),
+                "risk_state": result.risk_state.value if result.risk_state else None,
                 "risk_reasons": result.risk_reasons,
                 "deploy_reasons": result.deployment_reasons,
                 "data_quality_summary": summarize_data_quality(result.data_quality),
@@ -383,81 +445,11 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                         "fear_greed": result.feature_values.get("fear_greed"),
                         "rolling_drawdown": result.feature_values.get("rolling_drawdown"),
                         "tactical_stress": result.feature_values.get("tactical_stress_score"),
-                    }
+                    },
                 },
-                "node_traces": []
-            }
+                "node_traces": _build_web_node_traces(result),
+            },
         }
-
-        # Populate node traces for the Evidence Facts Table
-        traces = []
-
-        # 1. Tier-0 Node Trace
-        t0_reason = next((r for r in result.risk_reasons if "tier0" in r.get("rule", "")), None)
-        if t0_reason:
-            rule_id = t0_reason["rule"]
-            # FAIL FAST: use [] to raise KeyError if rule_id is missing from catalog
-            info = _LOGIC_CATALOG[rule_id]
-            traces.append({
-                "node": "Tier-0 宏观指挥官",
-                "trace_type": "MACRO",
-                "rule": rule_id,
-                "formula": info["formula"],
-                "explanation": info["explanation"],
-                "result": t0_reason["tier0_regime"]
-            })
-
-        # 2. Risk Node Trace
-        # Detect if Risk was Vetoed by Tier-0
-        is_risk_veto = any("tier0_" in r.get("rule", "") for r in result.risk_reasons)
-        risk_reason = next((r for r in result.risk_reasons if ("tier0_" not in r.get("rule", "") or not is_risk_veto)), None)
-        if not risk_reason and result.risk_reasons:
-            risk_reason = result.risk_reasons[0]
-
-        if risk_reason:
-            rule_id = risk_reason["rule"]
-            # FAIL FAST
-            info = _LOGIC_CATALOG[rule_id]
-            formula = info["formula"]
-            explanation = info["explanation"]
-
-            if is_risk_veto:
-                formula = f"[VETO] Inherit Tier-0 ({result.tier0_regime})"
-                explanation = f"受顶层宏观制度 ({result.tier0_regime}) 强约束，Risk 节点强制进入防御模式。"
-
-            traces.append({
-                "node": "Risk 风险控制器",
-                "trace_type": "VETO" if is_risk_veto else "SIGNAL",
-                "rule": rule_id,
-                "formula": formula,
-                "explanation": explanation,
-                "result": str(result.risk_state).split(".")[-1]
-            })
-
-        # 3. Deployment Node Trace
-        deploy_reason = result.deployment_reasons[0] if result.deployment_reasons else None
-        if deploy_reason:
-            rule_id = deploy_reason["rule"]
-            is_deploy_veto = ("ceiling" in rule_id)
-            # FAIL FAST
-            info = _LOGIC_CATALOG[rule_id]
-            formula = info["formula"]
-            explanation = info["explanation"]
-
-            if is_deploy_veto:
-                formula = "[VETO] Risk/Macro Ceiling"
-                explanation = "入场节奏受限于更高的风控等级或宏观顶层约束，进入保值模式。"
-
-            traces.append({
-                "node": "Deploy 部署引擎",
-                "trace_type": "VETO" if is_deploy_veto else "TACTICAL",
-                "rule": rule_id,
-                "formula": formula,
-                "explanation": explanation,
-                "result": deploy_info["label"]
-            })
-
-        payload["evidence"]["node_traces"] = traces
 
         # 1. Local Write (Always for debugging/local history)
         local_path = Path(output_path) if output_path else Path("src/web/public/status.json")

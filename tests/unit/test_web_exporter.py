@@ -1,15 +1,29 @@
 """
-Unit tests for WebExporter (v8.2 Industrial).
-Focuses on timezone-aware leap logic, market calendar awareness, and DST transitions.
+Unit tests for the web exporter.
+Focuses on timezone-aware leap logic and the v9 runtime narrative contract.
 """
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
+from datetime import date as date_cls
+from pathlib import Path
 
 import pytest
 import pytz
 
-from src.output.web_exporter import MarketCursor
+from src.models import (
+    Signal,
+    SignalDetail,
+    SignalResult,
+    TargetAllocationState,
+    Tier1Result,
+    Tier2Result,
+)
+from src.models.deployment import DeploymentState
+from src.models.risk import RiskState
+from src.output.cli import build_runtime_logic_trace, build_v8_explanation
+from src.output.web_exporter import MarketCursor, export_web_snapshot
 
 # Timezone constants
 EASTERN = pytz.timezone("US/Eastern")
@@ -25,6 +39,70 @@ def to_eastern(dt_str: str) -> datetime:
     """Helper to create an aware Eastern datetime from string."""
     dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
     return EASTERN.localize(dt)
+
+
+def _detail(name: str) -> SignalDetail:
+    return SignalDetail(name, 0.0, 0, (0, 0), False, False)
+
+
+def _runtime_result() -> SignalResult:
+    t1 = Tier1Result(
+        score=50,
+        drawdown_52w=_detail("dd"),
+        ma200_deviation=_detail("ma"),
+        vix=_detail("vix"),
+        fear_greed=_detail("fg"),
+        breadth=_detail("br"),
+    )
+    t2 = Tier2Result(0, None, None, None, False, False, False, True, "yf", 0, 0)
+    result = SignalResult(
+        date=date_cls(2026, 3, 27),
+        price=562.58,
+        signal=Signal.WATCH,
+        final_score=110,
+        tier1=t1,
+        tier2=t2,
+        explanation="placeholder",
+        target_allocation=TargetAllocationState(0.60, 0.30, 0.10, 0.50),
+        confidence="high",
+        data_quality={
+            "credit_spread": {"usable": True},
+            "erp": {"usable": True},
+            "vix": {"usable": True},
+        },
+    )
+    result.tier0_regime = "RICH_TIGHTENING"
+    result.risk_state = RiskState.RISK_REDUCED
+    result.deployment_state = DeploymentState.DEPLOY_BASE
+    result.selected_candidate_id = "reduced-limited-001"
+    result.registry_version = "2026-03-24-v7.0-r1"
+    result.raw_target_beta = 0.80
+    result.target_beta = 0.50
+    result.target_exposure_ceiling = 0.80
+    result.target_cash_floor = 0.20
+    result.qld_share_ceiling = 0.10
+    result.should_adjust = False
+    result.rebalance_action = {"reason": "upshift_confirmation"}
+    result.deployment_action = {
+        "deploy_mode": "BASE",
+        "reason": "rich_tightening_base",
+        "path": "qqq_only_new_cash",
+    }
+    result.risk_reasons = [{"rule": "single_stress", "tier0_regime": "RICH_TIGHTENING"}]
+    result.deployment_reasons = [{"rule": "rich_tightening_base", "path": "qqq_only_new_cash"}]
+    result.feature_values = {
+        "credit_spread": 321.0,
+        "erp": 2.02,
+        "net_liquidity": 5818.97,
+        "liquidity_roc": 0.78,
+        "vix": 31.1,
+        "fear_greed": 10.0,
+        "rolling_drawdown": 0.113,
+        "tactical_stress_score": 52,
+    }
+    result.logic_trace = build_runtime_logic_trace(result)
+    result.explanation = build_v8_explanation(result)
+    return result
 
 
 def test_friday_close_leap_to_monday(cursor):
@@ -127,3 +205,46 @@ def test_strict_aware_datetime_requirement(cursor):
     naive_dt = datetime(2026, 3, 27, 16, 0)
     with pytest.raises(ValueError, match="aware datetime"):
         cursor.get_expires_at_utc(now=naive_dt)
+
+
+def test_export_web_snapshot_contains_v9_decision_chain(tmp_path, monkeypatch):
+    result = _runtime_result()
+    output_path = tmp_path / "status.json"
+
+    monkeypatch.setattr(MarketCursor, "get_market_state", lambda self, now: "FROZEN")
+    monkeypatch.setattr(
+        MarketCursor,
+        "get_expires_at_utc",
+        lambda self, now, jitter_hours=4: datetime(2026, 3, 30, 17, 30, tzinfo=UTC),
+    )
+
+    ok = export_web_snapshot(result, output_path=output_path)
+
+    assert ok is True
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["meta"]["version"] == "v9.0"
+    assert payload["signal"]["contract"] == "target_beta_signal"
+    assert payload["signal"]["target_beta"] == 0.50
+    assert payload["signal"]["candidate_id"] == "reduced-limited-001"
+    assert "用户自行决定资产配置比例" in payload["signal"]["contract_desc"]
+    assert "仅用于说明一种实现目标 beta 的仓位组合" in payload["signal"]["reference_desc"]
+    assert payload["signal"]["reference_path"]["qqq_pct"] == 0.30
+    steps = [trace["step"] for trace in payload["evidence"]["node_traces"]]
+    assert steps == [
+        "tier0_regime",
+        "risk_controller",
+        "candidate_selection",
+        "beta_advisory",
+        "deployment_controller",
+        "reference_path",
+    ]
+
+
+def test_web_index_narrative_uses_v9_target_beta_contract():
+    html = Path("src/web/public/index.html").read_text(encoding="utf-8")
+
+    assert "v9.0" in html
+    assert "v8.2" not in html
+    assert "目标 Beta (系统 contract)" in html
+    assert "参考路径（非 contract）" in html
+    assert "Tier-0 -> Risk -> Candidate -> Advisory -> Deployment" in html
