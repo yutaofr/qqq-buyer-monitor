@@ -16,6 +16,7 @@ def _canonical_macro_frame() -> pd.DataFrame:
             "effective_date": ["2024-01-03", "2024-01-04"],
             "credit_spread_bps": [350.0, 360.0],
             "credit_acceleration_pct_10d": [0.0, 0.8],
+            "erp_pct": [3.5, 3.4],
             "real_yield_10y_pct": [1.25, 1.20],
             "net_liquidity_usd_bn": [250.0, 249.0],
             "liquidity_roc_pct_4w": [0.0, -0.4],
@@ -235,6 +236,7 @@ def test_run_signal_audits_returns_dual_alignment_summaries(tmp_path, capsys):
             "effective_date": [d.strftime("%Y-%m-%d") for d in dates],
             "credit_spread_bps": [260.0, 260.0, 260.0, 320.0, 320.0, 680.0, 680.0, 680.0, 680.0],
             "credit_acceleration_pct_10d": [0.0] * len(dates),
+            "erp_pct": [3.5] * len(dates),
             "real_yield_10y_pct": [1.25] * len(dates),
             "net_liquidity_usd_bn": [250.0] * len(dates),
             "liquidity_roc_pct_4w": [0.0] * len(dates),
@@ -252,7 +254,7 @@ def test_run_signal_audits_returns_dual_alignment_summaries(tmp_path, capsys):
     expectations = pd.DataFrame(
         {
             "date": dates,
-            "expected_target_beta": [1.2, 1.2, 0.8, 0.7, 0.5, 0.5, 0.5, 0.5, 0.5],
+            "expected_target_beta": [1.0, 0.9, 0.8, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
             "expected_deployment_state": [
                 "DEPLOY_BASE",
                 "DEPLOY_FAST",

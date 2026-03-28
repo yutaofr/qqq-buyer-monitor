@@ -7,6 +7,7 @@ import pytest
 
 from src.engine.allocation_search import select_candidate_with_floor_fallback_v8
 from src.engine.candidate_registry import load_registry, select_runtime_candidates
+from src.engine.cycle_factor import decide_cycle_state
 from src.engine.deployment_controller import decide_deployment_state
 from src.engine.execution_policy import (
     build_advisory_rebalance_decision,
@@ -73,6 +74,8 @@ def _run_runtime_pipeline(
         "real_yield": real_yield,
         "funding_stress": False,
         "close": 450.0,
+        "breadth": 0.50,
+        "price_vs_ma200": 0.02,
         "capitulation_score": 10,
         "tactical_stress_score": 10,
     }
@@ -83,8 +86,10 @@ def _run_runtime_pipeline(
         raw_quality={},
     )
     erp = (1.0 / forward_pe) * 100.0 - real_yield
+    snapshot.values["erp"] = erp
+    cycle = decide_cycle_state(snapshot)
     tier0_regime = assess_structural_regime(baseline.get("credit_spread"), erp)
-    risk = decide_risk_state(snapshot, tier0_regime=tier0_regime)
+    risk = decide_risk_state(snapshot, tier0_regime=tier0_regime, cycle_decision=cycle)
     deploy = decide_deployment_state(
         snapshot,
         risk,
@@ -104,6 +109,7 @@ def _run_runtime_pipeline(
 
     result.risk_state = risk.risk_state
     result.deployment_state = deploy.deployment_state
+    result.cycle_regime = cycle.cycle_regime.value
     result.registry_version = registry.registry_version
     result.tier0_regime = tier0_regime
     result.tier0_applied = risk.tier0_applied
@@ -186,48 +192,80 @@ def test_runtime_pipeline_clean_macro_selects_neutral_candidate():
             "credit_acceleration": 2.0,
             "liquidity_roc": 1.0,
             "funding_stress": False,
+            "breadth": 0.50,
+            "price_vs_ma200": 0.03,
         },
         forward_pe=20.0,
         real_yield=1.0,
     )
     assert result.risk_state == RiskState.RISK_NEUTRAL
+    assert result.cycle_regime == "MID_CYCLE"
     assert result.tier0_regime == "NEUTRAL"
 
 
-def test_runtime_pipeline_materializes_limited_qld_below_one_beta_when_ceiling_allows():
+def test_runtime_pipeline_mid_cycle_prefers_pure_qqq_candidate():
     result = _run_runtime_pipeline(
         {
             "credit_spread": 300.0,
             "credit_acceleration": 2.0,
             "liquidity_roc": 1.0,
             "funding_stress": False,
+            "breadth": 0.50,
+            "price_vs_ma200": 0.03,
         },
         forward_pe=20.0,
         real_yield=1.0,
     )
 
     assert result.risk_state == RiskState.RISK_NEUTRAL
+    assert result.cycle_regime == "MID_CYCLE"
+    assert result.selected_candidate_id == "neutral-core-001"
     assert result.target_beta == pytest.approx(0.90)
-    assert result.target_allocation.target_qqq_pct == pytest.approx(0.50)
-    assert result.target_allocation.target_qld_pct == pytest.approx(0.20)
-    assert result.target_allocation.target_cash_pct == pytest.approx(0.30)
+    assert result.target_allocation.target_qqq_pct == pytest.approx(0.90)
+    assert result.target_allocation.target_qld_pct == pytest.approx(0.00)
+    assert result.target_allocation.target_cash_pct == pytest.approx(0.10)
 
 
-def test_runtime_pipeline_rich_tightening_selects_beta_capped_candidate():
+def test_runtime_pipeline_recovery_allows_limited_qld_candidate():
+    result = _run_runtime_pipeline(
+        {
+            "credit_spread": 420.0,
+            "credit_acceleration": -8.0,
+            "liquidity_roc": 1.0,
+            "funding_stress": False,
+            "breadth": 0.45,
+            "price_vs_ma200": -0.01,
+            "capitulation_score": 15,
+        },
+        forward_pe=20.0,
+        real_yield=1.0,
+    )
+    assert result.risk_state == RiskState.RISK_NEUTRAL
+    assert result.cycle_regime == "RECOVERY"
+    assert result.selected_candidate_id == "recovery-limited-001"
+    assert result.target_allocation.target_qld_pct == pytest.approx(0.10)
+    assert result.target_allocation.target_qqq_pct == pytest.approx(0.80)
+    assert result.target_allocation.target_cash_pct == pytest.approx(0.10)
+
+
+def test_runtime_pipeline_late_cycle_selects_pure_qqq_beta_capped_candidate():
     result = _run_runtime_pipeline({
         "credit_spread": 470.0,
         "credit_acceleration": 0.0,
         "liquidity_roc": 1.0,
         "funding_stress": False,
+        "breadth": 0.30,
+        "price_vs_ma200": -0.03,
         "capitulation_score": 20,
     })
     assert result.risk_state == RiskState.RISK_REDUCED
-    assert result.selected_candidate_id == "reduced-limited-001"
+    assert result.cycle_regime == "LATE_CYCLE"
+    assert result.selected_candidate_id == "reduced-tight-001"
     assert result.target_beta == pytest.approx(0.80)
     assert result.raw_target_beta == pytest.approx(0.80)
-    assert result.target_allocation.target_qqq_pct == pytest.approx(0.60)
-    assert result.target_allocation.target_qld_pct == pytest.approx(0.10)
-    assert result.target_allocation.target_cash_pct == pytest.approx(0.30)
+    assert result.target_allocation.target_qqq_pct == pytest.approx(0.80)
+    assert result.target_allocation.target_qld_pct == pytest.approx(0.00)
+    assert result.target_allocation.target_cash_pct == pytest.approx(0.20)
 
 
 def test_runtime_pipeline_triple_stress_exits():
@@ -238,6 +276,27 @@ def test_runtime_pipeline_triple_stress_exits():
         "credit_spread": 680.0,
     })
     assert result.risk_state == RiskState.RISK_EXIT
+
+
+def test_runtime_pipeline_capitulation_unlocks_risk_on_limited_qld():
+    result = _run_runtime_pipeline(
+        {
+            "credit_spread": 620.0,
+            "credit_acceleration": -5.0,
+            "liquidity_roc": 1.0,
+            "funding_stress": False,
+            "breadth": 0.25,
+            "price_vs_ma200": -0.10,
+            "capitulation_score": 40,
+            "rolling_drawdown": 0.20,
+        },
+        forward_pe=15.0,
+        real_yield=1.0,
+    )
+    assert result.risk_state == RiskState.RISK_ON
+    assert result.cycle_regime == "CAPITULATION"
+    assert result.selected_candidate_id == "capitulation-max-001"
+    assert result.target_allocation.target_qld_pct == pytest.approx(0.25)
 
 
 def test_runtime_pipeline_provides_registry_audit_surface():

@@ -1,8 +1,4 @@
-"""
-Web Exporter (v9.0 target-beta-first implementation).
-Provides discretized data for the public dashboard and implements
-timezone-aware market calendar leap logic.
-"""
+"""Web exporter for the v10.0 cycle-aware target-beta contract."""
 from __future__ import annotations
 
 import json
@@ -47,6 +43,7 @@ def _build_decision_path(result: SignalResult) -> str:
     deploy_state = result.deployment_state.value if result.deployment_state else "n/a"
     return (
         f"Tier-0({result.tier0_regime or 'n/a'}) -> "
+        f"Cycle({result.cycle_regime or 'n/a'}) -> "
         f"Risk({risk_state}) -> "
         f"Candidate({result.selected_candidate_id or 'n/a'}) -> "
         f"Advisory({_format_beta(raw_beta)}->{_format_beta(result.target_beta)}) -> "
@@ -77,6 +74,18 @@ def _build_web_node_traces(result: SignalResult) -> list[dict]:
                 {
                     "step": step,
                     "node": "Tier-0 宏观制度",
+                    "trace_type": "MACRO",
+                    "formula": formula,
+                    "explanation": reason,
+                    "result": decision,
+                }
+            )
+        elif step == "cycle_regime":
+            formula = f"Cycle={decision} | qld<={_format_pct(evidence.get('qld_share_ceiling'))}"
+            node_traces.append(
+                {
+                    "step": step,
+                    "node": "Cycle 周期制度",
                     "trace_type": "MACRO",
                     "formula": formula,
                     "explanation": reason,
@@ -369,7 +378,7 @@ DEPLOY_MAP = {
 
 def export_web_snapshot(result: SignalResult, output_path: str | Path | None = None) -> bool:
     """
-    Export a web snapshot aligned with the v9 target-beta-first runtime contract.
+    Export a web snapshot aligned with the v10 cycle-aware runtime contract.
     """
     try:
         now_utc = datetime.now(UTC)
@@ -399,7 +408,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         }
         payload = {
             "meta": {
-                "version": "v9.0",
+                "version": "v10.0",
                 "calculated_at_utc": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "expires_at_utc": expires_at_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "market_state": market_state,
@@ -412,6 +421,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                     "系统输出 contract 是 target_beta 信号；用户自行决定资产配置比例，"
                     "风险带和参考路径只用于帮助理解实现区间。"
                 ),
+                "cycle_regime": result.cycle_regime,
                 "target_beta": result.target_beta,
                 "raw_target_beta": (
                     result.raw_target_beta if result.raw_target_beta is not None else result.target_beta

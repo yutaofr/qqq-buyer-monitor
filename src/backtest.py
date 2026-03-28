@@ -28,6 +28,7 @@ from src.engine.allocation_search import (
     select_candidate_with_floor_fallback_v8,
 )
 from src.engine.candidate_registry import load_registry, select_runtime_candidates
+from src.engine.cycle_factor import decide_cycle_state
 from src.engine.deployment_controller import DeploymentDecision, decide_deployment_state
 from src.engine.execution_policy import (
     AdvisoryState,
@@ -294,6 +295,37 @@ def _derive_tactical_stress_score(prices: pd.Series, loc: int) -> int:
     if rally >= 0.08:
         return 60
     return 10
+
+
+def _rolling_price_vs_ma200(prices: pd.Series, loc: int, *, window: int = 200) -> float | None:
+    """Approximate trend versus a trailing 200-day average using only past prices."""
+    start = max(0, loc - window + 1)
+    trailing_window = prices.iloc[start : loc + 1]
+    if trailing_window.empty:
+        return None
+    ma200_proxy = float(trailing_window.mean())
+    if ma200_proxy <= 0:
+        return None
+    current = float(prices.iloc[loc])
+    return current / ma200_proxy - 1.0
+
+
+def _rolling_breadth_proxy(prices: pd.Series, loc: int, *, window: int = 50) -> float | None:
+    """Map price-vs-trailing-mean into a simple breadth proxy for cycle research."""
+    start = max(0, loc - window + 1)
+    trailing_window = prices.iloc[start : loc + 1]
+    if trailing_window.empty:
+        return None
+    ma50_proxy = float(trailing_window.mean())
+    if ma50_proxy <= 0:
+        return None
+    current = float(prices.iloc[loc])
+    deviation = current / ma50_proxy - 1.0
+    if deviation >= 0.05:
+        return 0.65
+    if deviation <= -0.05:
+        return 0.20
+    return 0.40
 
 
 def _deployment_state_to_legacy_state(deployment_state: str, risk_state: str) -> AllocationState:
@@ -575,6 +607,14 @@ class Backtester:
                 BASE_WEEKLY_DCA_UNITS * p_qqq,
             ) or 0.0
             erp = _coerce_optional_float(row.get("erp"), macro_features.get("erp"))
+            price_vs_ma200 = _coerce_optional_float(
+                row.get("price_vs_ma200"),
+                _rolling_price_vs_ma200(prices_qqq, loc),
+            )
+            breadth = _coerce_optional_float(
+                row.get("breadth"),
+                _rolling_breadth_proxy(prices_qqq, loc),
+            )
 
             snapshot = build_feature_snapshot(
                 market_date=current_date,
@@ -587,7 +627,7 @@ class Backtester:
                     "funding_stress": macro_features.get("is_funding_stressed", False),
                     "close": p_qqq,
                     "vix": None,
-                    "breadth": None,
+                    "breadth": breadth,
                     "fear_greed": None,
                     "tactical_stress_score": tactical_stress_score,
                     "capitulation_score": capitulation_score,
@@ -595,6 +635,8 @@ class Backtester:
                     "five_day_return": five_day_return,
                     "twenty_day_return": twenty_day_return,
                     "persistence_score": 0,
+                    "erp": erp,
+                    "price_vs_ma200": price_vs_ma200,
                     "price_vix_divergence": _coerce_optional_bool(
                         row.get("price_vix_divergence", False)
                     ),
@@ -613,10 +655,12 @@ class Backtester:
                 credit_spread=macro_features.get("credit_spread"),
                 erp=erp,
             )
+            cycle_decision = decide_cycle_state(snapshot)
             risk = decide_risk_state(
                 snapshot,
                 rolling_drawdown=rolling_drawdown,
                 tier0_regime=tier0_regime,
+                cycle_decision=cycle_decision,
                 drawdown_budget=registry.drawdown_budget,
             )
             deploy = decide_deployment_state(
@@ -672,6 +716,7 @@ class Backtester:
                 advisory_state=advisory_state,
                 as_of_date=current_date,
                 emergency_override=tier0_regime == "CRISIS"
+                or cycle_decision.cycle_regime.value == "CAPITULATION"
                 or (rolling_drawdown is not None and rolling_drawdown >= registry.drawdown_budget)
                 or hard_constraint_override,
             )
@@ -689,6 +734,9 @@ class Backtester:
                     "twenty_day_return": twenty_day_return,
                     "available_new_cash": available_new_cash,
                     "tier0_regime": tier0_regime,
+                    "cycle_regime": cycle_decision.cycle_regime.value,
+                    "cycle_target_exposure_ceiling": cycle_decision.target_exposure_ceiling,
+                    "cycle_qld_share_ceiling": cycle_decision.qld_share_ceiling,
                     "risk_state": risk.risk_state.value,
                     "deployment_state": deploy.deployment_state.value,
                     "deployment_multiplier": float(deploy.dca_multiplier),
@@ -699,6 +747,7 @@ class Backtester:
                     "raw_target_beta": raw_target_beta,
                     "signal_target_beta": signal_target_beta,
                     "advised_target_beta": advisory_decision.advised_target_beta,
+                    "qld_share_ceiling": risk.qld_share_ceiling,
                     "assumed_beta_before": advisory_decision.assumed_beta_before,
                     "assumed_beta_after": advisory_decision.assumed_beta_after,
                     "friction_blockers": list(advisory_decision.friction_blockers),
@@ -1160,6 +1209,8 @@ class Backtester:
             tactical_stress_score = _derive_tactical_stress_score(prices_qqq, loc)
             five_day_return = float(five_day_returns.iloc[loc])
             twenty_day_return = float(twenty_day_returns.iloc[loc])
+            price_vs_ma200 = _rolling_price_vs_ma200(prices_qqq, loc)
+            breadth = _rolling_breadth_proxy(prices_qqq, loc)
 
             snapshot = build_feature_snapshot(
                 market_date=current_date,
@@ -1172,7 +1223,7 @@ class Backtester:
                     "funding_stress": macro_features.get("is_funding_stressed", False),
                     "close": p_qqq,
                     "vix": None,
-                    "breadth": None,
+                    "breadth": breadth,
                     "fear_greed": None,
                     "tactical_stress_score": tactical_stress_score,
                     "capitulation_score": capitulation_score,
@@ -1180,6 +1231,8 @@ class Backtester:
                     "five_day_return": five_day_return,
                     "twenty_day_return": twenty_day_return,
                     "persistence_score": 0,
+                    "erp": macro_features.get("erp"),
+                    "price_vs_ma200": price_vs_ma200,
                 },
                 raw_quality={},
             )
@@ -1187,11 +1240,13 @@ class Backtester:
                 credit_spread=macro_features.get("credit_spread"),
                 erp=macro_features.get("erp"),
             )
+            cycle_decision = decide_cycle_state(snapshot)
 
             risk = decide_risk_state(
                 snapshot,
                 rolling_drawdown=rolling_drawdown,
                 tier0_regime=tier0_regime,
+                cycle_decision=cycle_decision,
                 drawdown_budget=registry.drawdown_budget,
             )
 
@@ -1230,6 +1285,7 @@ class Backtester:
                 scoped_candidates=candidates,
                 registry_candidates=list(registry.candidates),
                 max_beta_ceiling=risk.target_exposure_ceiling,
+                qld_share_ceiling=risk.qld_share_ceiling,
                 max_drawdown_budget=registry.drawdown_budget,
             )
 
@@ -1271,6 +1327,7 @@ class Backtester:
                 advisory_state=advisory_state,
                 as_of_date=current_date,
                 emergency_override=tier0_regime == "CRISIS"
+                or cycle_decision.cycle_regime.value == "CAPITULATION"
                 or (rolling_drawdown is not None and rolling_drawdown >= registry.drawdown_budget)
                 or hard_constraint_override,
             )
@@ -1339,6 +1396,10 @@ class Backtester:
                     "deployment_reason_path": deployment_reason_path,
                     "blood_chip_override_active": blood_chip_override_active,
                     "tier0_regime": tier0_regime,
+                    "cycle_regime": cycle_decision.cycle_regime.value,
+                    "cycle_target_exposure_ceiling": cycle_decision.target_exposure_ceiling,
+                    "cycle_qld_share_ceiling": cycle_decision.qld_share_ceiling,
+                    "qld_share_ceiling": risk.qld_share_ceiling,
                     "selected_candidate_id": selected_candidate_id,
                     "used_beta_floor_fallback": used_floor_fallback,
                     "raw_target_beta": raw_target_beta,

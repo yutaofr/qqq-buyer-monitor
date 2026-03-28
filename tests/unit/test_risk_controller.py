@@ -263,6 +263,111 @@ def test_risk_controller_crisis_forces_exit_even_when_micro_is_clean():
     assert decision.qld_share_ceiling == 0.00
 
 
+def test_risk_controller_cycle_late_cycle_forbids_qld_even_when_micro_is_clean():
+    from src.models.cycle import CycleDecision, CycleRegime
+
+    snap = _snap({
+        "credit_spread": 320.0,
+        "credit_acceleration": 0.0,
+        "liquidity_roc": 1.0,
+        "funding_stress": False,
+    })
+    decision = decide_risk_state(
+        snap,
+        tier0_regime="NEUTRAL",
+        cycle_decision=CycleDecision(
+            cycle_regime=CycleRegime.LATE_CYCLE,
+            target_exposure_ceiling=0.80,
+            qld_share_ceiling=0.0,
+            reasons=({"rule": "late_cycle"},),
+        ),
+        drawdown_budget=0.30,
+    )
+
+    assert decision.risk_state == RiskState.RISK_REDUCED
+    assert decision.target_exposure_ceiling == 0.80
+    assert decision.qld_share_ceiling == 0.0
+
+
+def test_risk_controller_cycle_capitulation_can_unlock_risk_on():
+    from src.models.cycle import CycleDecision, CycleRegime
+
+    snap = _snap({
+        "credit_spread": 620.0,
+        "credit_acceleration": -5.0,
+        "liquidity_roc": 1.0,
+        "funding_stress": False,
+    })
+    decision = decide_risk_state(
+        snap,
+        tier0_regime="NEUTRAL",
+        cycle_decision=CycleDecision(
+            cycle_regime=CycleRegime.CAPITULATION,
+            target_exposure_ceiling=1.20,
+            qld_share_ceiling=0.25,
+            reasons=({"rule": "capitulation"},),
+        ),
+        drawdown_budget=0.30,
+    )
+
+    assert decision.risk_state == RiskState.RISK_ON
+    assert decision.target_exposure_ceiling == 1.20
+    assert decision.qld_share_ceiling == 0.25
+
+
+def test_risk_controller_cycle_capitulation_overrides_transition_stress():
+    from src.models.cycle import CycleDecision, CycleRegime
+
+    snap = _snap({
+        "credit_spread": 620.0,
+        "credit_acceleration": -5.0,
+        "liquidity_roc": 1.0,
+        "funding_stress": False,
+    })
+    decision = decide_risk_state(
+        snap,
+        tier0_regime="TRANSITION_STRESS",
+        cycle_decision=CycleDecision(
+            cycle_regime=CycleRegime.CAPITULATION,
+            target_exposure_ceiling=1.20,
+            qld_share_ceiling=0.25,
+            reasons=({"rule": "capitulation"},),
+        ),
+        drawdown_budget=0.30,
+    )
+
+    assert decision.risk_state == RiskState.RISK_ON
+    assert decision.target_exposure_ceiling == 1.20
+    assert decision.qld_share_ceiling == 0.25
+
+
+def test_risk_controller_cycle_capitulation_overrides_drawdown_defense_band():
+    from src.models.cycle import CycleDecision, CycleRegime
+
+    snap = _snap({
+        "credit_spread": 620.0,
+        "credit_acceleration": -5.0,
+        "liquidity_roc": 1.0,
+        "funding_stress": False,
+    })
+    decision = decide_risk_state(
+        snap,
+        rolling_drawdown=0.26,
+        tier0_regime="TRANSITION_STRESS",
+        cycle_decision=CycleDecision(
+            cycle_regime=CycleRegime.CAPITULATION,
+            target_exposure_ceiling=1.20,
+            qld_share_ceiling=0.25,
+            reasons=({"rule": "capitulation"},),
+        ),
+        drawdown_budget=0.30,
+    )
+
+    assert decision.risk_state == RiskState.RISK_ON
+    assert decision.target_exposure_ceiling == 1.20
+    assert decision.qld_share_ceiling == 0.25
+
+
 def test_risk_controller_reduced_and_defense_keep_limited_qld_participation():
     reduced = decide_risk_state(
         _snap(

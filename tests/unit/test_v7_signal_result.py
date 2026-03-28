@@ -63,6 +63,8 @@ def test_signal_result_v7_fields_default_to_none():
     assert result.rebalance_action == {}
     assert result.deployment_action == {}
     assert result.candidate_selection_audit == []
+    assert result.cycle_regime is None
+    assert result.cycle_reasons == []
     assert result.tier0_regime is None
     assert result.tier0_applied is False
     assert result.raw_target_beta is None
@@ -114,6 +116,7 @@ def test_signal_result_supports_v8_linear_pipeline_fields():
         tier1=t1,
         tier2=t2,
         explanation="",
+        cycle_regime="LATE_CYCLE",
         tier0_regime="RICH_TIGHTENING",
         tier0_applied=True,
         raw_target_beta=0.50,
@@ -128,6 +131,7 @@ def test_signal_result_supports_v8_linear_pipeline_fields():
         estimated_cost_drag=0.003,
         should_adjust=True,
     )
+    assert result.cycle_regime == "LATE_CYCLE"
     assert result.tier0_regime == "RICH_TIGHTENING"
     assert result.tier0_applied is True
     assert result.raw_target_beta == 0.50

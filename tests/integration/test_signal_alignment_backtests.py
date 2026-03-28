@@ -7,13 +7,20 @@ from src.backtest import Backtester
 from src.collector.historical_macro_seeder import HistoricalMacroSeeder
 
 
-def _canonical_macro_frame(dates: pd.DatetimeIndex, spreads: list[float]) -> pd.DataFrame:
+def _canonical_macro_frame(
+    dates: pd.DatetimeIndex,
+    spreads: list[float],
+    *,
+    erps: list[float] | None = None,
+) -> pd.DataFrame:
+    erp_values = erps if erps is not None else [3.5] * len(dates)
     return pd.DataFrame(
         {
             "observation_date": [d.strftime("%Y-%m-%d") for d in dates],
             "effective_date": [d.strftime("%Y-%m-%d") for d in dates],
             "credit_spread_bps": spreads,
             "credit_acceleration_pct_10d": [0.0] * len(dates),
+            "erp_pct": erp_values,
             "real_yield_10y_pct": [1.25] * len(dates),
             "net_liquidity_usd_bn": [250.0] * len(dates),
             "liquidity_roc_pct_4w": [0.0] * len(dates),
@@ -48,10 +55,12 @@ def test_build_signal_timeseries_returns_pure_beta_and_deployment_signals():
         "deployment_state",
         "deployment_multiplier",
         "selected_candidate_id",
+        "cycle_regime",
+        "qld_share_ceiling",
     } <= set(signals.columns)
-    assert signals["signal_target_beta"].tolist() == pytest.approx([1.2, 1.2, 0.8, 0.7, 0.5, 0.5, 0.5, 0.5, 0.5])
+    assert signals["signal_target_beta"].tolist() == pytest.approx([1.0, 0.9, 0.8, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
     assert signals["raw_target_beta"].tolist() == pytest.approx(signals["signal_target_beta"].tolist())
-    assert signals["advised_target_beta"].iloc[0] == pytest.approx(1.2)
+    assert signals["advised_target_beta"].iloc[0] == pytest.approx(1.0)
     assert signals["advised_target_beta"].iloc[2] == pytest.approx(signals["signal_target_beta"].iloc[2])
     assert signals["advised_target_beta"].iloc[-1] == pytest.approx(0.5)
     assert signals["deployment_state"].tolist() == [
@@ -64,6 +73,17 @@ def test_build_signal_timeseries_returns_pure_beta_and_deployment_signals():
         "DEPLOY_PAUSE",
         "DEPLOY_PAUSE",
         "DEPLOY_PAUSE",
+    ]
+    assert signals["cycle_regime"].tolist() == [
+        "RECOVERY",
+        "MID_CYCLE",
+        "MID_CYCLE",
+        "MID_CYCLE",
+        "MID_CYCLE",
+        "BUST",
+        "BUST",
+        "BUST",
+        "BUST",
     ]
 
 
@@ -123,14 +143,15 @@ def test_build_signal_timeseries_unlocks_risk_on_under_tight_spreads_without_erp
     dates = pd.date_range("2024-01-02", periods=3, freq="B")
     prices = pd.Series([100.0, 101.0, 102.0], index=dates)
     ohlcv = pd.DataFrame({"Close": prices}, index=dates)
-    macro = _canonical_macro_frame(dates, [220.0, 220.0, 220.0])
+    macro = _canonical_macro_frame(dates, [220.0, 220.0, 220.0], erps=[None, None, None])
     seeder = HistoricalMacroSeeder(mock_df=macro)
 
     signals = Backtester().build_signal_timeseries(ohlcv, macro_seeder=seeder)
 
-    assert set(signals["risk_state"]) == {"RISK_ON"}
-    assert (signals["signal_target_beta"] >= 1.1).all()
-    assert (signals["advised_target_beta"] >= 1.1).all()
+    assert set(signals["cycle_regime"]) == {"UNQUALIFIED"}
+    assert set(signals["risk_state"]) == {"RISK_NEUTRAL"}
+    assert (signals["signal_target_beta"] == 0.5).all()
+    assert (signals["advised_target_beta"] == 0.5).all()
 
 
 def test_build_signal_timeseries_unlocks_euphoric_risk_on_when_erp_is_present():
@@ -154,8 +175,9 @@ def test_build_signal_timeseries_unlocks_euphoric_risk_on_when_erp_is_present():
     )
 
     assert set(signals["tier0_regime"]) == {"EUPHORIC"}
-    assert set(signals["risk_state"]) == {"RISK_ON"}
-    assert (signals["signal_target_beta"] > 1.0).all()
+    assert set(signals["cycle_regime"]) == {"RECOVERY"}
+    assert set(signals["risk_state"]) == {"RISK_NEUTRAL"}
+    assert (signals["signal_target_beta"] == 1.0).all()
 
 
 def test_build_signal_timeseries_uses_market_drawdown_when_state_drawdown_is_absent():
@@ -167,7 +189,8 @@ def test_build_signal_timeseries_uses_market_drawdown_when_state_drawdown_is_abs
 
     signals = Backtester().build_signal_timeseries(ohlcv, macro_seeder=seeder)
 
-    assert signals["signal_target_beta"].iloc[-1] == pytest.approx(0.7)
+    assert signals["rolling_drawdown"].iloc[-1] == pytest.approx(0.26)
+    assert signals["signal_target_beta"].iloc[-1] == pytest.approx(0.5)
     assert signals["risk_state"].iloc[-1] in {"RISK_EXIT", "RISK_DEFENSE", "RISK_REDUCED"}
 
 
@@ -178,7 +201,7 @@ def test_target_beta_alignment_backtest_scores_against_expected_series():
     macro = _canonical_macro_frame(dates, [260.0, 260.0, 260.0, 320.0, 320.0, 680.0, 680.0, 680.0, 680.0])
     seeder = HistoricalMacroSeeder(mock_df=macro)
     expected = pd.DataFrame(
-        {"expected_target_beta": [1.2, 1.2, 0.8, 0.7, 0.5, 0.5, 0.5, 0.5, 0.5]},
+        {"expected_target_beta": [1.0, 0.9, 0.8, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]},
         index=dates,
     )
 

@@ -12,6 +12,8 @@ import pandas as pd
 from src.models.audit import DecisionAudit as DecisionAudit
 from src.models.candidate import CandidateRegistry as CandidateRegistry
 from src.models.candidate import CertifiedCandidate as CertifiedCandidate
+from src.models.cycle import CycleDecision as CycleDecision
+from src.models.cycle import CycleRegime as CycleRegime
 from src.models.deployment import DeploymentState
 
 # v7.0 state models (imported here for re-export convenience)
@@ -307,6 +309,7 @@ class SignalResult:
     # v7.0 Dual-Controller fields (all optional for backward compatibility)
     risk_state: RiskState | None = None
     deployment_state: DeploymentState | None = None
+    cycle_regime: str | None = None
     selected_candidate_id: str | None = None
     registry_version: str | None = None
     tier0_regime: str | None = None
@@ -327,6 +330,7 @@ class SignalResult:
     candidate_selection_audit: list[dict] = field(default_factory=list)
 
     # Runtime Evidence Tracing
+    cycle_reasons: list[dict] = field(default_factory=list)
     risk_reasons: list[dict] = field(default_factory=list)
     deployment_reasons: list[dict] = field(default_factory=list)
     feature_values: dict = field(default_factory=dict)

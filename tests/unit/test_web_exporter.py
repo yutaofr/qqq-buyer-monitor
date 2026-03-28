@@ -71,6 +71,7 @@ def _runtime_result() -> SignalResult:
             "vix": {"usable": True},
         },
     )
+    result.cycle_regime = "LATE_CYCLE"
     result.tier0_regime = "RICH_TIGHTENING"
     result.risk_state = RiskState.RISK_REDUCED
     result.deployment_state = DeploymentState.DEPLOY_BASE
@@ -89,10 +90,12 @@ def _runtime_result() -> SignalResult:
         "path": "qqq_only_new_cash",
     }
     result.risk_reasons = [{"rule": "single_stress", "tier0_regime": "RICH_TIGHTENING"}]
+    result.cycle_reasons = [{"rule": "late_cycle"}]
     result.deployment_reasons = [{"rule": "rich_tightening_base", "path": "qqq_only_new_cash"}]
     result.feature_values = {
         "credit_spread": 321.0,
         "erp": 2.02,
+        "price_vs_ma200": -0.03,
         "net_liquidity": 5818.97,
         "liquidity_roc": 0.78,
         "vix": 31.1,
@@ -222,8 +225,9 @@ def test_export_web_snapshot_contains_v9_decision_chain(tmp_path, monkeypatch):
 
     assert ok is True
     payload = json.loads(output_path.read_text(encoding="utf-8"))
-    assert payload["meta"]["version"] == "v9.0"
+    assert payload["meta"]["version"] == "v10.0"
     assert payload["signal"]["contract"] == "target_beta_signal"
+    assert payload["signal"]["cycle_regime"] == "LATE_CYCLE"
     assert payload["signal"]["target_beta"] == 0.50
     assert payload["signal"]["candidate_id"] == "reduced-limited-001"
     assert "用户自行决定资产配置比例" in payload["signal"]["contract_desc"]
@@ -232,6 +236,7 @@ def test_export_web_snapshot_contains_v9_decision_chain(tmp_path, monkeypatch):
     steps = [trace["step"] for trace in payload["evidence"]["node_traces"]]
     assert steps == [
         "tier0_regime",
+        "cycle_regime",
         "risk_controller",
         "candidate_selection",
         "beta_advisory",
@@ -243,7 +248,7 @@ def test_export_web_snapshot_contains_v9_decision_chain(tmp_path, monkeypatch):
 def test_web_index_narrative_uses_v9_target_beta_contract():
     html = Path("src/web/public/index.html").read_text(encoding="utf-8")
 
-    assert "v9.0" in html
+    assert "v10.0" in html
     assert "v8.2" not in html
     assert "目标 Beta (系统 contract)" in html
-    assert "Tier-0 -> Risk -> Candidate -> Advisory -> Deployment" in html
+    assert "Tier-0 -> Cycle -> Risk -> Candidate -> Advisory -> Deployment" in html
