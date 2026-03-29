@@ -99,6 +99,9 @@ v8.2 no longer uses the old `AllocationState` operating matrix at runtime. It se
 The current production architecture is the v8.2 linear pipeline documented above. The `docs/v8.0_linear_pipeline_*` files are archived baseline references for the v8.0/v8.1/v8.2 redesign progression.
 The diagram below reflects the exhaustive v8.2 decision logic, including Tier-0 regimes, multi-factor risk stress, and deployment overrides.
 
+### 🖼️ v10.0 Regime Framework
+![QQQ v10.0 Regime Framework](docs/images/regime_framework_en.png)
+
 ```mermaid
 flowchart TD
     subgraph Data_Layer ["Input: Class A & B Features"]
