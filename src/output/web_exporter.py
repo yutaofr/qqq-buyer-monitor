@@ -363,7 +363,7 @@ def _discretize_allocation(beta: float) -> str:
 REGIME_MAP = {
     "CRISIS": {"label": "流动性危机 (CRISIS)", "desc": "信用利差极度走阔，系统性风险爆发，强制防御。"},
     "TRANSITION_STRESS": {"label": "压力过渡 (STRESS)", "desc": "市场波动加剧，信贷条件收紧，建议审慎缩减敞口。"},
-    "RICH_TIGHTENING": {"label": "结构性高估 (RICH)", "desc": "估值性价比极低，政策环境收紧，禁止增加杠杆。"},
+    "RICH_TIGHTENING": {"label": "流动性边际收紧 (RICH_TIGHTENING)", "desc": "估值性价比极低，政策环境收紧，禁止增加杠杆。"},
     "NEUTRAL": {"label": "中性平衡 (NEUTRAL)", "desc": "估值与流动性处于动态平衡，维持基准配置。"},
     "EUPHORIC": {"label": "过度狂热 (EUPHORIC)", "desc": "市场情绪过热，定价脱离物理现实，获利离场。"}
 }

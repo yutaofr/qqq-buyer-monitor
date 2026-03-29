@@ -105,16 +105,16 @@ def test_discord_notification_uses_v9_target_beta_contract(monkeypatch):
     assert captured["url"] == "https://example.test/webhook"
     assert "v10.0" in embed["title"]
     assert "v8.2" not in embed["title"]
-    assert "Decision Contract" in embed["description"]
+    assert "🎯 Target Beta" in embed["description"]
     field_names = [field["name"] for field in embed["fields"]]
-    assert "🧭 Decision Path" in field_names
-    assert "📎 Reference Path" in field_names
+    assert "🧭 Detailed Decision Path" in field_names
+    assert "📎 Reference Allocation" in field_names
     assert "📊 Recommended Portfolio" not in field_names
-    decision_value = next(field["value"] for field in embed["fields"] if field["name"] == "🧭 Decision Path")
-    reference_value = next(field["value"] for field in embed["fields"] if field["name"] == "📎 Reference Path")
-    assert "Tier-0(RICH_TIGHTENING)" in decision_value
-    assert "Cycle(LATE_CYCLE)" in decision_value
-    assert "Candidate(reduced-limited-001)" in decision_value
-    assert "Deployment(DEPLOY_BASE)" in decision_value
+    decision_value = next(field["value"] for field in embed["fields"] if field["name"] == "🧭 Detailed Decision Path")
+    reference_value = next(field["value"] for field in embed["fields"] if field["name"] == "📎 Reference Allocation")
+    assert "Tier-0 (Macro):** `RICH_TIGHTENING`" in decision_value
+    assert "Cycle (Tactical):** `LATE_CYCLE`" in decision_value
+    assert "Candidate Selection:** `reduced-limited-001`" in decision_value
+    assert "Deployment:** `DEPLOY_BASE`" in decision_value
     assert "non-binding" in reference_value
     assert "QQQ=30.0%" in reference_value

@@ -1,0 +1,124 @@
+{
+  "meta": {
+    "version": "v10.0",
+    "calculated_at_utc": "2026-03-29T15:13:56Z",
+    "expires_at_utc": "2026-03-30T17:30:00Z",
+    "market_state": "FROZEN"
+  },
+  "signal": {
+    "regime": "流动性边际收紧 (RICH_TIGHTENING)",
+    "regime_desc": "估值性价比极低，政策环境收紧，禁止增加杠杆。",
+    "contract": "target_beta_signal",
+    "contract_desc": "系统输出 contract 是 target_beta 信号；用户自行决定资产配置比例，风险带和参考路径只用于帮助理解实现区间。",
+    "cycle_regime": "末端 (LATE_CYCLE)",
+    "target_beta": 0.5,
+    "raw_target_beta": 0.8,
+    "beta_ceiling": 0.8,
+    "qld_ceiling": 0.0,
+    "candidate_id": "reduced-tight-001",
+    "decision_path": "Tier-0(RICH_TIGHTENING) -> Cycle(LATE_CYCLE) -> Risk(RISK_REDUCED) -> Candidate(reduced-tight-001) -> Advisory(0.80x->0.50x) -> Deployment(DEPLOY_BASE)",
+    "exposure_band": "50-60% (稳健)",
+    "exposure_desc": "目标 Beta 对应的存量风险带，用于帮助理解风险区间。",
+    "deploy_rhythm": "常规入场",
+    "deploy_desc": "仅针对新增现金的 QQQ 买入节奏维持基准。",
+    "reference_path": {
+      "qqq_pct": 0.5,
+      "qld_pct": 0.0,
+      "cash_pct": 0.5
+    },
+    "reference_desc": "参考路径仅用于说明一种实现目标 beta 的仓位组合，不是系统强制配比。",
+    "fidelity": "高 (可靠)"
+  },
+  "evidence": {
+    "risk_state": "RISK_REDUCED",
+    "risk_reasons": [
+      {
+        "rule": "tier0_rich_tightening",
+        "tier0_regime": "RICH_TIGHTENING"
+      },
+      {
+        "rule": "late_cycle",
+        "spread": 321.0,
+        "erp": 2.0217227235438884
+      }
+    ],
+    "deploy_reasons": [
+      {
+        "rule": "rich_tightening_base"
+      }
+    ],
+    "data_quality_summary": "6/6 可用",
+    "factors": {
+      "macro": {
+        "credit_spread": 321.0,
+        "erp": 2.0217227235438884,
+        "net_liquidity": 5818.972,
+        "liquidity_roc": 0.7847531108067666
+      },
+      "tactical": {
+        "vix": 31.049999237060547,
+        "fear_greed": 10,
+        "rolling_drawdown": null,
+        "tactical_stress": 40
+      }
+    },
+    "node_traces": [
+      {
+        "step": "tier0_regime",
+        "node": "Tier-0 宏观制度",
+        "trace_type": "MACRO",
+        "formula": "Tier-0=RICH_TIGHTENING | ERP=2.02%",
+        "explanation": "Tier-0 structural regime from macro state",
+        "result": "RICH_TIGHTENING"
+      },
+      {
+        "step": "cycle_regime",
+        "node": "Cycle 周期制度",
+        "trace_type": "MACRO",
+        "formula": "Cycle=LATE_CYCLE | qld<=0.0%",
+        "explanation": "late_cycle",
+        "result": "LATE_CYCLE"
+      },
+      {
+        "step": "risk_controller",
+        "node": "Risk 风险控制器",
+        "trace_type": "SIGNAL",
+        "formula": "beta<=0.80x | qld<=0.0% | cash>=20.0%",
+        "explanation": "tier0_rich_tightening",
+        "result": "RISK_REDUCED"
+      },
+      {
+        "step": "candidate_selection",
+        "node": "Candidate 认证候选",
+        "trace_type": "FILTER",
+        "formula": "registry=2026-03-24-v7.0-r1 | rejected=0",
+        "explanation": "Certified candidate selected under runtime hard constraints",
+        "result": "reduced-tight-001"
+      },
+      {
+        "step": "beta_advisory",
+        "node": "Advisory Beta 建议",
+        "trace_type": "ADVISORY",
+        "formula": "raw=0.80x | advised=0.50x | adjust=False",
+        "explanation": "upshift_confirmation",
+        "result": "0.50x"
+      },
+      {
+        "step": "deployment_controller",
+        "node": "Deployment 新现金节奏",
+        "trace_type": "TACTICAL",
+        "formula": "mode=BASE | path=qqq_only_new_cash",
+        "explanation": "rich_tightening_base",
+        "result": "DEPLOY_BASE"
+      },
+      {
+        "step": "reference_path",
+        "node": "Reference 参考路径",
+        "trace_type": "REFERENCE",
+        "formula": "QQQ=50.0% | QLD=0.0% | Cash=50.0%",
+        "explanation": "参考路径仅用于说明一种实现目标 beta 的仓位组合，不是系统强制配比。",
+        "result": "Beta=0.50x"
+      }
+    ]
+  }
+}

@@ -227,7 +227,7 @@ def test_export_web_snapshot_contains_v9_decision_chain(tmp_path, monkeypatch):
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["meta"]["version"] == "v10.0"
     assert payload["signal"]["contract"] == "target_beta_signal"
-    assert payload["signal"]["cycle_regime"] == "LATE_CYCLE"
+    assert payload["signal"]["cycle_regime"] == "末端 (LATE_CYCLE)"
     assert payload["signal"]["target_beta"] == 0.50
     assert payload["signal"]["candidate_id"] == "reduced-limited-001"
     assert "用户自行决定资产配置比例" in payload["signal"]["contract_desc"]
@@ -250,5 +250,5 @@ def test_web_index_narrative_uses_v9_target_beta_contract():
 
     assert "v10.0" in html
     assert "v8.2" not in html
-    assert "目标 Beta (系统 contract)" in html
+    assert "建议 Beta 决策 (Advisory)" in html
     assert "Tier-0 -> Cycle -> Risk -> Candidate -> Advisory -> Deployment" in html
