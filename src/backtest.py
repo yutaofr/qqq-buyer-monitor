@@ -48,7 +48,11 @@ from src.models import (
     Tier1Result,
     Tier2Result,
 )
-from src.models.deployment import DeploymentState
+from src.models.deployment import (
+    DEPLOYMENT_MULTIPLIER_BY_STATE,
+    DeploymentState,
+    deployment_multiplier_for_state,
+)
 from src.models.risk import RiskState
 from src.output.backtest_plots import save_beta_backtest_figure
 from src.research.data_contracts import (
@@ -62,6 +66,8 @@ logger = logging.getLogger(__name__)
 _PARALLEL_FALLBACK_WARNED = False
 _EXPECTED_TARGET_BETA_COLUMN = "expected_target_beta"
 _EXPECTED_DEPLOYMENT_COLUMN = "expected_deployment_state"
+_EXPECTED_DEPLOYMENT_MULTIPLIER_COLUMN = "expected_deployment_multiplier"
+_EXPECTED_DEPLOYMENT_CASH_COLUMN = "expected_deployment_cash"
 _DEPLOYMENT_STATE_RANK = {
     DeploymentState.DEPLOY_FAST.value: 4,
     DeploymentState.DEPLOY_RECOVER.value: 3,
@@ -115,9 +121,9 @@ def _coerce_optional_float(value: object, default: float | None = None) -> float
     return float(value)
 
 
-def _coerce_optional_bool(value: object) -> bool:
+def _coerce_optional_bool(value: object, default: bool = False) -> bool:
     if value is None or pd.isna(value):
-        return False
+        return default
     return bool(value)
 
 
@@ -125,6 +131,18 @@ def _coerce_optional_str(value: object) -> str | None:
     if value is None or pd.isna(value):
         return None
     return str(value)
+
+
+def _coerce_optional_deployment_multiplier(
+    value: object,
+    *,
+    state: object = None,
+) -> float | None:
+    if value is not None and not pd.isna(value):
+        return float(value)
+    if state is None or pd.isna(state):
+        return None
+    return float(deployment_multiplier_for_state(str(state)) or 0.0)
 
 
 def _deployment_reason_rule(decision: DeploymentDecision) -> str:
@@ -484,6 +502,26 @@ class DeploymentAlignmentSummary:
     within_one_step_ratio: float
     daily_timeseries: pd.DataFrame
 
+
+@dataclass(frozen=True)
+class DeploymentPacingAlignmentSummary:
+    """Continuous pacing-alignment metrics for incremental cash deployment."""
+
+    compared_points: int
+    mean_error: float
+    mean_absolute_error: float
+    rmse: float
+    error_variance: float
+    error_std_dev: float
+    correlation: float
+    explained_variance: float
+    within_tolerance_ratio: float
+    actual_mean_pacing: float
+    expected_mean_pacing: float
+    cash_mean_absolute_error: float
+    cash_rmse: float
+    daily_timeseries: pd.DataFrame
+
 def simulate_leveraged_price(prices: pd.Series, leverage: float = 2.0) -> pd.Series:
     """
     Simulates a leveraged ETF price series based on underlying daily returns.
@@ -563,6 +601,7 @@ class Backtester:
         previous_risk_state: RiskState | None = None
         advisory_state: AdvisoryState | None = None
         rows: list[dict[str, Any]] = []
+        add_dates = set(prices_qqq.index[::WEEKLY_ADD_INTERVAL])
 
         for loc, dt in enumerate(prices_qqq.index):
             p_qqq = float(prices_qqq.iloc[loc])
@@ -602,9 +641,10 @@ class Backtester:
                 row.get("twenty_day_return"),
                 float(twenty_day_returns.iloc[loc]),
             ) or 0.0
+            funding_event = _coerce_optional_bool(row.get("funding_event"), default=dt in add_dates)
             available_new_cash = _coerce_optional_float(
                 row.get("available_new_cash"),
-                BASE_WEEKLY_DCA_UNITS * p_qqq,
+                BASE_WEEKLY_DCA_UNITS * p_qqq if funding_event else 0.0,
             ) or 0.0
             erp = _coerce_optional_float(row.get("erp"), macro_features.get("erp"))
             price_vs_ma200 = _coerce_optional_float(
@@ -722,6 +762,15 @@ class Backtester:
             )
             advisory_state = advisory_decision.next_state
             signal_target_beta = raw_target_beta
+            expected_deployment_multiplier = _coerce_optional_deployment_multiplier(
+                row.get(_EXPECTED_DEPLOYMENT_MULTIPLIER_COLUMN),
+                state=row.get(_EXPECTED_DEPLOYMENT_COLUMN),
+            )
+            expected_deployment_cash = _coerce_optional_float(
+                row.get(_EXPECTED_DEPLOYMENT_CASH_COLUMN),
+                None if expected_deployment_multiplier is None else available_new_cash * expected_deployment_multiplier,
+            )
+            actual_deployment_cash = available_new_cash * float(deploy.dca_multiplier)
 
             rows.append(
                 {
@@ -729,10 +778,13 @@ class Backtester:
                     "close": p_qqq,
                     _EXPECTED_TARGET_BETA_COLUMN: _coerce_optional_float(row.get(_EXPECTED_TARGET_BETA_COLUMN)),
                     _EXPECTED_DEPLOYMENT_COLUMN: _coerce_optional_str(row.get(_EXPECTED_DEPLOYMENT_COLUMN)),
+                    _EXPECTED_DEPLOYMENT_MULTIPLIER_COLUMN: expected_deployment_multiplier,
+                    _EXPECTED_DEPLOYMENT_CASH_COLUMN: expected_deployment_cash,
                     "rolling_drawdown": rolling_drawdown,
                     "five_day_return": five_day_return,
                     "twenty_day_return": twenty_day_return,
                     "available_new_cash": available_new_cash,
+                    "funding_event": funding_event,
                     "tier0_regime": tier0_regime,
                     "cycle_regime": cycle_decision.cycle_regime.value,
                     "cycle_target_exposure_ceiling": cycle_decision.target_exposure_ceiling,
@@ -740,6 +792,7 @@ class Backtester:
                     "risk_state": risk.risk_state.value,
                     "deployment_state": deploy.deployment_state.value,
                     "deployment_multiplier": float(deploy.dca_multiplier),
+                    "actual_deployment_cash": actual_deployment_cash,
                     "deployment_reason_rule": deployment_reason_rule,
                     "deployment_reason_path": deployment_reason_path,
                     "blood_chip_override_active": blood_chip_override_active,
@@ -832,6 +885,133 @@ class Backtester:
             exact_match_ratio=float(compared["deployment_exact_match"].mean()),
             mean_rank_abs_error=float(compared["deployment_rank_abs_error"].mean()),
             within_one_step_ratio=float(compared["deployment_within_one_step"].mean()),
+            daily_timeseries=signals,
+        )
+
+    def backtest_deployment_pacing_alignment(
+        self,
+        ohlcv: pd.DataFrame,
+        *,
+        expected_matrix: pd.DataFrame | pd.Series,
+        macro_seeder: HistoricalMacroSeeder | None = None,
+        registry_path: str = "data/candidate_registry_v7.json",
+        tolerance: float = 0.25,
+    ) -> DeploymentPacingAlignmentSummary:
+        """Score deployment pacing as a continuous incremental-cash decision surface."""
+        signals = self.build_signal_timeseries(
+            ohlcv,
+            macro_seeder=macro_seeder,
+            registry_path=registry_path,
+            expected_matrix=expected_matrix,
+        ).copy()
+
+        if _EXPECTED_DEPLOYMENT_MULTIPLIER_COLUMN not in signals.columns:
+            signals[_EXPECTED_DEPLOYMENT_MULTIPLIER_COLUMN] = signals.get(
+                _EXPECTED_DEPLOYMENT_COLUMN,
+                pd.Series(index=signals.index, dtype=object),
+            ).map(
+                lambda value: None
+                if value is None or pd.isna(value)
+                else DEPLOYMENT_MULTIPLIER_BY_STATE.get(str(value))
+            )
+
+        if "available_new_cash" not in signals.columns:
+            if "close" not in signals.columns:
+                raise ValueError("deployment pacing audit requires available_new_cash or close")
+            funding_event = signals.get(
+                "funding_event",
+                pd.Series(False, index=signals.index, dtype=bool),
+            )
+            signals["available_new_cash"] = (
+                pd.to_numeric(signals["close"], errors="coerce")
+                * BASE_WEEKLY_DCA_UNITS
+                * funding_event.astype(bool).astype(float)
+            )
+
+        if "actual_deployment_cash" not in signals.columns:
+            signals["actual_deployment_cash"] = (
+                pd.to_numeric(signals["available_new_cash"], errors="coerce")
+                * pd.to_numeric(signals["deployment_multiplier"], errors="coerce")
+            )
+
+        if _EXPECTED_DEPLOYMENT_CASH_COLUMN not in signals.columns:
+            signals[_EXPECTED_DEPLOYMENT_CASH_COLUMN] = (
+                pd.to_numeric(signals["available_new_cash"], errors="coerce")
+                * pd.to_numeric(signals[_EXPECTED_DEPLOYMENT_MULTIPLIER_COLUMN], errors="coerce")
+            )
+
+        event_mask = signals.get("funding_event")
+        if event_mask is None:
+            event_mask = pd.to_numeric(signals["available_new_cash"], errors="coerce").fillna(0.0) > 0
+        else:
+            event_mask = event_mask.fillna(False).astype(bool)
+
+        compared = signals[
+            event_mask
+            & signals[_EXPECTED_DEPLOYMENT_MULTIPLIER_COLUMN].notna()
+            & signals["deployment_multiplier"].notna()
+        ].copy()
+        if compared.empty:
+            compared = signals[
+                signals[_EXPECTED_DEPLOYMENT_MULTIPLIER_COLUMN].notna()
+                & signals["deployment_multiplier"].notna()
+            ].copy()
+        if compared.empty:
+            raise ValueError(
+                "expected_matrix must contain at least one expected_deployment_multiplier value"
+            )
+
+        compared["deployment_pacing_error"] = (
+            pd.to_numeric(compared["deployment_multiplier"], errors="coerce")
+            - pd.to_numeric(compared[_EXPECTED_DEPLOYMENT_MULTIPLIER_COLUMN], errors="coerce")
+        )
+        compared["deployment_pacing_abs_error"] = compared["deployment_pacing_error"].abs()
+        compared["deployment_pacing_sq_error"] = compared["deployment_pacing_error"] ** 2
+        compared["deployment_pacing_within_tolerance"] = (
+            compared["deployment_pacing_abs_error"] <= tolerance
+        )
+        compared["deployment_cash_error"] = (
+            pd.to_numeric(compared["actual_deployment_cash"], errors="coerce")
+            - pd.to_numeric(compared[_EXPECTED_DEPLOYMENT_CASH_COLUMN], errors="coerce")
+        )
+        compared["deployment_cash_abs_error"] = compared["deployment_cash_error"].abs()
+        compared["deployment_cash_sq_error"] = compared["deployment_cash_error"] ** 2
+        compared["cumulative_actual_deployment_cash"] = pd.to_numeric(
+            compared["actual_deployment_cash"], errors="coerce"
+        ).cumsum()
+        compared["cumulative_expected_deployment_cash"] = pd.to_numeric(
+            compared[_EXPECTED_DEPLOYMENT_CASH_COLUMN], errors="coerce"
+        ).cumsum()
+        signals.loc[compared.index, compared.columns] = compared
+
+        expected_pacing = pd.to_numeric(compared[_EXPECTED_DEPLOYMENT_MULTIPLIER_COLUMN], errors="coerce")
+        actual_pacing = pd.to_numeric(compared["deployment_multiplier"], errors="coerce")
+        pacing_error = pd.to_numeric(compared["deployment_pacing_error"], errors="coerce")
+        error_variance = float(pacing_error.var(ddof=0))
+        correlation = actual_pacing.corr(expected_pacing)
+        if pd.isna(correlation):
+            correlation = 1.0 if np.allclose(actual_pacing, expected_pacing) else 0.0
+        expected_variance = float(expected_pacing.var(ddof=0))
+        explained_variance = (
+            1.0 - (error_variance / expected_variance)
+            if expected_variance > 0
+            else (1.0 if error_variance <= 1e-12 else 0.0)
+        )
+
+        return DeploymentPacingAlignmentSummary(
+            compared_points=len(compared),
+            mean_error=float(pacing_error.mean()),
+            mean_absolute_error=float(compared["deployment_pacing_abs_error"].mean()),
+            rmse=float(np.sqrt(compared["deployment_pacing_sq_error"].mean())),
+            error_variance=error_variance,
+            error_std_dev=float(np.sqrt(error_variance)),
+            correlation=float(correlation),
+            explained_variance=float(explained_variance),
+            within_tolerance_ratio=float(compared["deployment_pacing_within_tolerance"].mean()),
+            actual_mean_pacing=float(actual_pacing.mean()),
+            expected_mean_pacing=float(expected_pacing.mean()),
+            cash_mean_absolute_error=float(compared["deployment_cash_abs_error"].mean()),
+            cash_rmse=float(np.sqrt(compared["deployment_cash_sq_error"].mean())),
             daily_timeseries=signals,
         )
 
@@ -1974,6 +2154,19 @@ def _print_deployment_alignment_summary(summary: DeploymentAlignmentSummary) -> 
     print(f"Within One Step Ratio: {summary.within_one_step_ratio:.2%}")
 
 
+def _print_deployment_pacing_alignment_summary(summary: DeploymentPacingAlignmentSummary) -> None:
+    print("\n--- Deployment Pacing Alignment Audit ---")
+    print(f"Compared points: {summary.compared_points}")
+    print(f"Mean Error: {summary.mean_error:.4f}")
+    print(f"Mean Absolute Error: {summary.mean_absolute_error:.4f}")
+    print(f"RMSE: {summary.rmse:.4f}")
+    print(f"Error Variance: {summary.error_variance:.6f}")
+    print(f"Error Std Dev: {summary.error_std_dev:.4f}")
+    print(f"Within Tolerance Ratio: {summary.within_tolerance_ratio:.2%}")
+    print(f"Cash MAE: {summary.cash_mean_absolute_error:.2f}")
+    print(f"Cash RMSE: {summary.cash_rmse:.2f}")
+
+
 def run_signal_audits(
     expectation_path: str,
     *,
@@ -1985,7 +2178,7 @@ def run_signal_audits(
     allow_synthetic_macro: bool = False,
 ) -> dict[str, object]:
     """Run expectation-driven signal audits for target beta and/or deployment pace."""
-    if mode not in {"both", "beta", "deployment"}:
+    if mode not in {"both", "beta", "deployment", "pacing", "all"}:
         raise ValueError(f"Unsupported audit mode: {mode}")
 
     qqq = _load_price_history(cache_path)
@@ -2007,7 +2200,7 @@ def run_signal_audits(
     tier0_logger.setLevel(logging.ERROR)
     try:
         results: dict[str, object] = {}
-        if mode in {"both", "beta"}:
+        if mode in {"both", "beta", "all"}:
             beta_summary = tester.backtest_target_beta_alignment(
                 qqq,
                 expected_matrix=expectations,
@@ -2018,7 +2211,7 @@ def run_signal_audits(
             _print_target_beta_alignment_summary(beta_summary)
             results["beta"] = beta_summary
 
-        if mode in {"both", "deployment"}:
+        if mode in {"both", "deployment", "all"}:
             deployment_summary = tester.backtest_deployment_alignment(
                 qqq,
                 expected_matrix=expectations,
@@ -2027,6 +2220,16 @@ def run_signal_audits(
             )
             _print_deployment_alignment_summary(deployment_summary)
             results["deployment"] = deployment_summary
+
+        if mode in {"pacing", "all"}:
+            pacing_summary = tester.backtest_deployment_pacing_alignment(
+                qqq,
+                expected_matrix=expectations,
+                macro_seeder=seeder,
+                registry_path=registry_path,
+            )
+            _print_deployment_pacing_alignment_summary(pacing_summary)
+            results["pacing"] = pacing_summary
     finally:
         tier0_logger.setLevel(previous_tier0_level)
 
@@ -2150,10 +2353,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="QQQ signal backtests and expectation-driven audits")
     parser.add_argument(
         "--mode",
-        choices=["portfolio", "beta", "deployment", "both"],
+        choices=["portfolio", "beta", "deployment", "pacing", "both", "all"],
         default="portfolio",
         help="`portfolio` runs the legacy mixed performance backtest. "
-        "`beta`, `deployment`, or `both` run expectation-driven signal audits.",
+        "`beta`, `deployment`, `pacing`, `both`, or `all` run expectation-driven signal audits.",
     )
     parser.add_argument(
         "--expectations",

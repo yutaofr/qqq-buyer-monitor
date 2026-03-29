@@ -33,6 +33,8 @@ SIGNAL_EXPECTATION_EXPECTED_COLUMNS: tuple[str, ...] = (
     "expected_deployment_state",
 )
 SIGNAL_EXPECTATION_OPTIONAL_NUMERIC_COLUMNS: tuple[str, ...] = (
+    "expected_deployment_multiplier",
+    "expected_deployment_cash",
     "rolling_drawdown",
     "available_new_cash",
     "erp",
@@ -168,6 +170,13 @@ def validate_signal_expectation_frame(df: pd.DataFrame) -> None:
         if invalid.any():
             bad_rows = frame.index[invalid].tolist()
             raise ValueError(f"expected_target_beta must be between 0.5 and 1.2: rows {bad_rows}")
+
+    if "expected_deployment_multiplier" in frame.columns:
+        multiplier = pd.to_numeric(frame["expected_deployment_multiplier"], errors="coerce")
+        invalid = multiplier.notna() & ((multiplier < 0.0) | (multiplier > 2.0))
+        if invalid.any():
+            bad_rows = frame.index[invalid].tolist()
+            raise ValueError(f"expected_deployment_multiplier must be between 0.0 and 2.0: rows {bad_rows}")
 
     for column in SIGNAL_EXPECTATION_OPTIONAL_NUMERIC_COLUMNS:
         if column in frame.columns:

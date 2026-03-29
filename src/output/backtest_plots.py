@@ -157,3 +157,132 @@ def save_beta_backtest_figure(
     finally:
         plt.close(fig)
     return saved_paths
+
+
+def build_deployment_pacing_figure(daily_ts: pd.DataFrame, summary: Any | None = None):
+    """Build a continuous deployment-pacing backtest figure."""
+    matplotlib.use("Agg", force=True)
+    import matplotlib.pyplot as plt
+
+    frame = _coerce_frame(daily_ts)
+    required = {
+        "actual_deployment_cash",
+        "expected_deployment_cash",
+        "deployment_multiplier",
+        "expected_deployment_multiplier",
+        "deployment_pacing_error",
+    }
+    missing = required.difference(frame.columns)
+    if missing:
+        raise ValueError(
+            "daily_timeseries missing deployment pacing columns: " + ", ".join(sorted(missing))
+        )
+
+    fig, axes = plt.subplots(
+        4,
+        1,
+        figsize=(14, 12),
+        sharex=True,
+        constrained_layout=True,
+        gridspec_kw={"height_ratios": [2.2, 1.4, 1.4, 1.1], "hspace": 0.08},
+    )
+    ax_price, ax_pace, ax_cash, ax_error = axes
+    fig.patch.set_facecolor("#ffffff")
+    for axis in axes:
+        axis.set_facecolor("#ffffff")
+        axis.grid(True, axis="y", color="#d9dee7", linewidth=0.8, alpha=0.85)
+        axis.tick_params(colors="#2b3440")
+        for spine in axis.spines.values():
+            spine.set_color("#c5ccd6")
+
+    ax_price.plot(frame.index, frame["close"], label="QQQ Close", color="#0b5fff", linewidth=2.0)
+    ax_price.set_ylabel("QQQ Price ($)", fontsize=12, color="#2b3440")
+    ax_price.yaxis.set_major_formatter(mtick.StrMethodFormatter("${x:,.0f}"))
+    ax_price.legend(loc="upper left", frameon=False, fontsize=10)
+
+    ax_pace.step(
+        frame.index,
+        frame["deployment_multiplier"],
+        where="post",
+        label="Actual Pace",
+        color="#f28c28",
+        linewidth=1.8,
+    )
+    ax_pace.step(
+        frame.index,
+        frame["expected_deployment_multiplier"],
+        where="post",
+        label="Expected Pace",
+        color="#4c7a3f",
+        linewidth=1.6,
+        linestyle="--",
+    )
+    ax_pace.set_ylabel("Pacing Multiplier", fontsize=12, color="#2b3440")
+    ax_pace.legend(loc="upper left", frameon=False, fontsize=10)
+
+    ax_cash.plot(
+        frame.index,
+        frame["actual_deployment_cash"],
+        label="Actual Deployment Cash",
+        color="#ff6b6b",
+        linewidth=1.7,
+    )
+    ax_cash.plot(
+        frame.index,
+        frame["expected_deployment_cash"],
+        label="Expected Deployment Cash",
+        color="#2d9cdb",
+        linewidth=1.5,
+        linestyle="--",
+    )
+    ax_cash.set_ylabel("Deployment Cash ($)", fontsize=12, color="#2b3440")
+    ax_cash.yaxis.set_major_formatter(mtick.StrMethodFormatter("${x:,.0f}"))
+    ax_cash.legend(loc="upper left", frameon=False, fontsize=10)
+
+    error_series = frame["deployment_pacing_error"].astype(float)
+    ax_error.axhline(0.0, color="#8f99ab", linewidth=1.0, linestyle="--")
+    ax_error.plot(frame.index, error_series, label="Pacing Error", color="#c0392b", linewidth=1.4)
+    ax_error.fill_between(frame.index, 0.0, error_series, color="#f5b7b1", alpha=0.45)
+    ax_error.set_ylabel("Pacing Error", fontsize=12, color="#2b3440")
+    ax_error.legend(loc="upper left", frameon=False, fontsize=10)
+
+    mae = float(summary.mean_absolute_error) if summary is not None and hasattr(summary, "mean_absolute_error") else float(error_series.abs().mean())
+    rmse = float(summary.rmse) if summary is not None and hasattr(summary, "rmse") else float((error_series.pow(2).mean()) ** 0.5)
+    variance = float(summary.error_variance) if summary is not None and hasattr(summary, "error_variance") else float(error_series.var(ddof=0))
+    within_ratio = (
+        float(summary.within_tolerance_ratio)
+        if summary is not None and hasattr(summary, "within_tolerance_ratio")
+        else float((error_series.abs() <= 0.25).mean())
+    )
+    ax_price.set_title(
+        "v10.0 Deployment Pacing Backtest\n"
+        f"MAE: {mae:.3f} | RMSE: {rmse:.3f} | Var: {variance:.4f} | Within Band: {within_ratio:.2%}",
+        fontsize=14,
+        pad=12,
+        color="#18212b",
+    )
+    ax_error.set_xlabel("Date", fontsize=12, color="#2b3440")
+    ax_price.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+    return fig
+
+
+def save_deployment_pacing_figure(
+    daily_ts: pd.DataFrame,
+    summary: Any | None,
+    output_paths: Sequence[str | Path],
+) -> list[Path]:
+    """Save the deployment pacing figure to one or more paths."""
+    matplotlib.use("Agg", force=True)
+    import matplotlib.pyplot as plt
+
+    fig = build_deployment_pacing_figure(daily_ts, summary=summary)
+    saved_paths: list[Path] = []
+    try:
+        for output_path in output_paths:
+            path = Path(output_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(path, dpi=300, bbox_inches="tight", facecolor=fig.get_facecolor())
+            saved_paths.append(path)
+    finally:
+        plt.close(fig)
+    return saved_paths
