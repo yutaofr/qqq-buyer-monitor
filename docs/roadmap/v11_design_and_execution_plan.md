@@ -1,67 +1,66 @@
 # v11.0 Design and Execution Plan: Probabilistic & Permanent Dual-Track Architecture
 
 ## 1. 核心愿景 (Vision)
-v11.0 代码代号 "Entropy"，旨在构建一个**永久双轨 (Permanent Dual-Track)** 的决策引擎。通过贝叶斯推理融合宏观先验与战术似然，并在物理层面彻底隔离存量风险与增量机会，实现极端环境下的理性决策。
+v11.0 "Entropy" 旨在构建一个基于统计严谨性的永久双轨决策引擎。核心目标是剔除一切前向泄漏（Forward-Looking Bias），通过**信号正交化**与**核密度估计 (KDE)**，建立真实的概率预测优势。
 
 ---
 
-## 2. 贝叶斯推理规范 (Bayesian Inference Specification)
+## 2. 贝叶斯推理与正交标定协议 (Bayesian Orthogonality)
 
-### 2.1 决策公式
-最终仓位决策基于各 Regime 的后验概率：
-$$P(Regime_i | Tactical) = \frac{P(Tactical | Regime_i) \times P(Regime_macro_i)}{Z}$$
+### 2.1 信号解耦 (De-coupling Labels and Evidence)
+为了避免循环定义，系统在标定（训练标签）与推理（观测证据）上使用互不重叠的信号组：
+*   **标定信号 (Regime Labels)**: **仅限信贷/流动性维度**。
+    *   `Spread_pct`, `Spread_Acceleration`, `Liquidity_ROC`.
+*   **推理信号 (Likelihood Evidence)**: **仅限市场/价格维度**。
+    *   `VIX_pct`, `Market_Breadth`, `Drawdown`, `Price_Momentum`.
 
-### 2.2 似然函数校准协议 (Likelihood Calibration Protocol)
-*   **经验分布建模**: 拒绝参数化假设，采用 1995-2020 样本集的经验直方图。
-*   **Regime 样本划分**: 基于 NBER 衰退标定（BUST）与 Forward Return 聚类标定（CAPITULATION, LATE_CYCLE 等）。
-*   **似然得分提取**: 对于实时输入的战术信号向量（VIX, Breadth, DD），在对应 Regime 的历史分布中提取似然概率。
-*   **避免过拟合**: 似然函数每 12 个月更新一次，且必须通过 Leave-one-out 交叉验证。
+### 2.2 标定优先级协议 (Labeling Priority Protocol)
+为防止信号重叠导致样本污染，历史样本点按以下**严格顺序**进行唯一标定：
+1.  **BUST**: `Spread_pct >= 0.90`. (优先级最高)
+2.  **CAPITULATION**: `Spread_pct >= 0.80` 且 `Spread_Acceleration <= 0` 且 `Liquidity_ROC > 0`.
+3.  **LATE_CYCLE**: `ERP_pct <= 0.15` 且 `Spread_pct > 0.65`.
+4.  **RECOVERY**: `Spread_20d_delta < -30bps` 且 `Liquidity_ROC > 0`.
+5.  **MID_CYCLE**: 上述条件均不满足时的默认状态。
 
----
-
-## 3. 永久双轨架构 (Permanent Dual-Track Architecture)
-
-系统在逻辑与资金层面执行**物理隔离**，且**永久不合流**，以保持决策纯净度。
-
-### 3.1 桶 A：存量维护轨道 (Legacy Bucket)
-*   **资金来源**: 初始存量资金。
-*   **核心逻辑**: 锚定 HWM (High Water Mark)。在宏观 $P(BUST)$ 上升时强制减仓。
-*   **目标**: 长期资本保护，执行低频、高确定性的宏观调仓。
-
-### 3.2 桶 B：增量部署轨道 (Active Bucket)
-*   **资金来源**: **仅限外部新现金注入**。严禁桶 A 资金转入。
-*   **核心逻辑**: T+0 盈亏比驱动。不受存量水位污染，专注于捕捉 `CAPITULATION` 与 `RECOVERY` 阶段的超额收益。
-*   **目标**: 优化增量购买力，执行“猎杀式”入场。
-
-### 3.3 零耦合原则 (Zero-Coupling)
-*   桶 A 与 桶 B 的仓位决策逻辑完全解耦。
-*   桶 B 决策引擎禁止读取桶 A 的持仓成本与盈亏状态。
+### 2.3 似然函数计算 (Likelihood via Percentile-PCA & KDE)
+*   **标准化**: 所有推理信号在进入 PCA 前必须进行 **20年滚动分位数标准化**（Rank-order Transformation），将数值缩放至 [0, 1]。
+*   **降维**: 对标准化后的向量进行 PCA 降维，提取反映信号排名结构的主成分。
+*   **估计**: 使用 KDE 构建 $P(Price\_Rank\_Structure | Credit\_Regime)$。
 
 ---
 
-## 4. 执行计划：POC 验证路径 (The POC Roadmap)
+## 3. 永久双轨与总风险监控 (Dual-Track & Risk Aggregator)
 
-### 阶段 1：特征库构建与似然标定 (Feature Engineering & Likelihood)
-*   构建 1995-2026 的“分位数特征库”。
-*   建立各战术信号在五个 Regime 下的历史频率分布表。
+### 3.1 决策隔离与桶 B 规模 (Isolation & Sizing)
+*   **决策解耦**: 桶 A (Legacy) 与 桶 B (Active) 逻辑完全隔离。
+*   **桶 B 规模公式**: 
+    $$Size_B = New\_Cash \times P(CAPITULATION) \times Opportunity\_Score \times 0.5\_Kelly\_Cap$$
+    *   该公式确保回测的风险调整后 Alpha 在实盘中具有严格的执行一致性。
 
-### 阶段 2：模型原型与 Walk-Forward 审计
-*   **审计协议**: 
-    *   以 5 年为训练窗，滚动验证 1 年。
-    *   **对照组**: v10 HSM 确定性模型。
-    *   **实验组**: v11 Probabilistic Bayesian 模型。
-*   **压力测试**: 特别审计 2000 (Dot-com), 2008 (Lehman), 2020 (Covid), 2025 (Tariff Shock) 四个关键窗口。
-
-### 阶段 3：质量指标验证 (Quality Metrics)
-*   **入场质量 (Bottom Proximity)**: 测量桶 B 在 `CAPITULATION` 触发后的入场点相对于真实底部的距离（时间与空间维度）。
+### 3.2 组合风险汇总层 (Consolidated Risk Layer)
+*   **监控指标**: `Combined_VaR(95%, 10-day)`.
+*   **警报阈值**: 超过参考本金 15% 时触发预警。
 
 ---
 
-## 5. 验收标准 (Revised Metrics)
-1.  **入场精度**: 桶 B 在重大回撤（>20%）中的入场点处于底部 15% 价格区间的概率 > 70%。
-2.  **预测增益**: 贝叶斯模型的 Brier Score 显著优于 Climatological Baseline（历史基础概率模型）。
-3.  **架构纯净度**: 桶 A/B 代码物理隔离，无任何共用的状态读取接口。
-4.  **纪律性**: 桶 B 资金流向存量账户的“会计合流”仅作为结果展示，不参与逻辑运算。
+## 4. POC 验证路径 (The POC Roadmap)
+
+### 阶段 1：特征库构建与似然标定 (Feature & Likelihood)
+*   **任务**: 按照 2.2 节优先级协议进行无污染标定。
+*   **任务**: 执行分位数 PCA 与 KDE 分布建模。
+
+### 阶段 2：Regime 感知型 Purged Walk-Forward 审计
+*   **动态禁运 (Embargo Days)**: `BUST`: 60d | `LATE_CYCLE`: 45d | `CAPITULATION`: 30d | `RECOVERY`: 20d | `MID_CYCLE`: 10d.
+
+### 阶段 3：风险调整增量 Alpha (Success Metrics)
+*   基于 3.1 节规模公式，测量桶 B 相对 QQQ VWAP 的风险调整后溢价。
 
 ---
-*Architect Review Note: v11 moves away from complexity. The strength lies in the permanent separation of fear (Bucket A) and opportunity (Bucket B).*
+
+## 5. 验收标准 (Final Success Metrics)
+1.  **分维度 Brier Score**: $P(BUST)$ 和 $P(CAPITULATION)$ 预测质量显著优于历史频率模型。
+2.  **入场质量**: 桶 B 规模公式下的风险调整后 Alpha 显著为正。
+3.  **贝叶斯正交性**: 标定与推理信号在代码实现层面物理隔离且逻辑正交。
+
+---
+*Architect Review Note: v11 architecture is now fully converged with explicit implementation constraints (Priority, Percentile-PCA, Sizing). Ready for POC Phase 1.*
