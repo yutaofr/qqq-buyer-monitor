@@ -1,6 +1,7 @@
-import pytest
-import requests
 from unittest.mock import MagicMock, patch
+
+import requests
+
 from src.collector.macro import fetch_credit_spread
 from src.collector.macro_v3 import fetch_real_yield
 

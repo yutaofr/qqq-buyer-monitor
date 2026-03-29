@@ -1,8 +1,9 @@
-import pytest
 from datetime import date
-from src.models import MarketData, Signal, Tier1Result, Tier2Result, SignalDetail
-from src.engine.tier1 import calculate_descent_velocity
+
 from src.engine.aggregator import aggregate
+from src.engine.tier1 import calculate_descent_velocity
+from src.models import MarketData, Signal, SignalDetail, Tier1Result, Tier2Result
+
 
 def test_descent_velocity_panic():
     # 10% drop in 10 days
@@ -50,7 +51,7 @@ def test_greedy_signal_trigger():
         market_regime="QUIET"
     )
     t2 = Tier2Result(0, None, None, None, False, False, True, True, "bs", 0, 0)
-    
+
     # price=110, ma50=100 (10% overextended)
     result = aggregate(date(2025, 1, 1), 110.0, t1, t2, ma50=100.0)
     assert result.signal == Signal.GREEDY

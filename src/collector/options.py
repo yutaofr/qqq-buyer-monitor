@@ -116,7 +116,7 @@ def _process_side(
     out["option_type"] = option_type
     oi = df["openInterest"].fillna(0).astype(int)
     vol = df["volume"].fillna(0).astype(int)
-    
+
     # Fallback to Volume if OI is zero (common in stale/broken yfinance data)
     oi_zero_mask = (oi == 0) & (vol > 0)
     if oi_zero_mask.any():
@@ -124,7 +124,7 @@ def _process_side(
             "Found %d strikes with 0 Open Interest but positive Volume for expiration %s. Using Volume as fallback.",
             oi_zero_mask.sum(), expiration
         )
-    
+
     out["openInterest"] = np.where(oi > 0, oi, vol)
     out["impliedVolatility"] = df["impliedVolatility"].fillna(0.3).astype(float)
 

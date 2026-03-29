@@ -1,12 +1,12 @@
-import pandas as pd
-import numpy as np
 import logging
-import matplotlib.pyplot as plt
 import os
-from datetime import date
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
 from src.backtest import Backtester
 from src.collector.historical_macro_seeder import HistoricalMacroSeeder
-from src.models import AllocationState
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,15 +23,15 @@ def run_scenario(name, start, end, macro_generator):
             ohlcv = ohlcv_full.loc[start:end]
         else:
             ohlcv = yf.Ticker("QQQ").history(start=start, end=end)
-            
+
         if ohlcv.empty:
             print(f"Warning: No price data for {name}")
             return None
-            
+
         dates = pd.date_range(start=start, end=end, freq="D")
         mock_macro = macro_generator(dates)
         seeder = HistoricalMacroSeeder(mock_df=mock_macro)
-        
+
         backtester = Backtester(initial_capital=100000)
         # v6.4 Fix: Enable Rolling Dynamic Search for faithful personal allocation simulation
         summary = backtester.simulate_portfolio(ohlcv, seeder, enable_dynamic_search=True)
@@ -99,7 +99,7 @@ def plot_stress_test(name, summary, filename):
     ax1.set_title(f"Scenario: {name} - Net Asset Value (NAV) [v6.4 Personal]", fontsize=14, fontweight='bold')
     ax1.set_ylabel("USD")
     ax1.legend(); ax1.grid(True, alpha=0.3)
-    
+
     ax2.plot(df.index, df['cash_pct'], label='Cash Allocation %', color='blue')
     states = df['state'].unique()
     colors = {"CASH_FLIGHT": "red", "DELEVERAGE": "orange", "WATCH_DEFENSE": "yellow", "FAST_ACCUMULATE": "lightgreen"}
@@ -110,7 +110,7 @@ def plot_stress_test(name, summary, filename):
     ax2.set_title("Dynamic Regime & Risk Enforcement", fontsize=12)
     ax2.set_ylabel("Cash %"); ax2.set_ylim(0, 100)
     ax2.legend(loc='upper left', fontsize='small'); ax2.grid(True, alpha=0.3)
-    
+
     ax3.plot(df.index, df['credit_accel'], label='Credit Spread Accel (10d)', color='purple')
     ax3.axhline(15.0, color='red', linestyle=':', label='Trigger Threshold (15%)')
     ax3.set_title("Macro Gravity: Credit Momentum", fontsize=12)
@@ -120,7 +120,7 @@ def plot_stress_test(name, summary, filename):
 def generate_report(results):
     report = "# v6.4 宏观压力测试报告 (个人资产配置验证版)\n\n"
     report += "## 1. 测试综述\n本报告基于 v6.4 升级后的“個人資產配置引擎”運行。重點驗證了 AC-5 (30% 回撤預算) 的硬約束執行情況，以及 Rolling Dynamic Search 在不同市場情景下的自適應能力。\n\n"
-    
+
     for name, summary in results.items():
         if not summary: continue
         report += f"### 情景：{name}\n"
@@ -131,18 +131,18 @@ def generate_report(results):
         report += f"- **防御改善度:** {improvement:.2f}% (MDD 淨改善)\n"
         report += f"- **AC-3 淨值完整性:** {summary.nav_integrity:.6f} (Measured)\n"
         report += f"- **AC-4 貝塔保真度 (Mean Dev):** {summary.mean_interval_beta_deviation:.4f}\n"
-        
+
         if summary.interval_beta_audit:
             report += "  - **關鍵有效區間審計:**\n"
             for metrics in summary.interval_beta_audit[:3]:
                 report += f"    - {metrics['state']}: Realized={metrics['realized']:.2f}, Target={metrics['target']:.2f}, Dev={metrics['deviation']:.2f}\n"
-        
+
         events = summary.events
         bullish_events = [e for e in events if e.state == "FAST_ACCUMULATE"]
         if bullish_events:
             avg_entry = np.mean([e.price for e in bullish_events])
             report += f"- **現金部署效率:** 在反轉初期成功部署了存量現金，平均回補價格: ${avg_entry:.2f}\n"
-        
+
         states = [e.state for e in summary.events]
         from collections import Counter
         counts = Counter(states)
@@ -151,17 +151,17 @@ def generate_report(results):
             if counts.get(s, 0) > 0:
                 report += f"  - {s}: {counts[s]} 週\n"
         report += "\n"
-        
+
     all_deviations = [s.mean_interval_beta_deviation for s in results.values() if s]
     global_mean_dev = np.mean(all_deviations) if all_deviations else 0.0
     worst_dev = np.max(all_deviations) if all_deviations else 0.0
-    
+
     report += "## 2. 個人配置有效性結論\n"
-    
+
     status = "通過 (PASS)" if worst_dev <= 0.05 else "不通過 (FAIL)"
     report += f"- **AC-4 貝塔保真度 [{status}]**: 跨所有情景的偏差均值為 {global_mean_dev:.4f}，最差情景為 {worst_dev:.4f}。\n"
     report += "- **AC-5 風險預算執行**: 實測顯示系統在極端壓力情景下，通過動態搜索成功觸發了安全回退機制，有效保護了個人投資者的資產完整性。\n"
-    
+
     with open("docs/v6.4_stress_test_report.md", "w") as f:
         f.write(report)
     print("\n[SUCCESS] v6.4 Personal Allocation and Risk Budget verified.")

@@ -1,10 +1,10 @@
-import pytest
-from src.engine.allocation_search import generate_candidates, find_best_allocation
+from src.engine.allocation_search import find_best_allocation, generate_candidates
 from src.models import AllocationState, TargetAllocationState
+
 
 def test_generate_candidates_srd_bounds():
     """AC-6: Candidates must stay within SRD-defined bands."""
-    
+
     # FAST_ACCUMULATE: 442 or 433
     fast = generate_candidates(AllocationState.FAST_ACCUMULATE)
     assert len(fast) == 2

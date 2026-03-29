@@ -3,8 +3,8 @@ from __future__ import annotations
 import importlib
 import inspect
 
-import pytest
 import pandas as pd
+import pytest
 
 backtest = importlib.import_module("src.backtest")
 

@@ -1,19 +1,24 @@
-import pytest
-import os
-import json
 from datetime import date
-from src.store.db import (
-    load_runtime_inputs,
-    save_signal,
-    load_history,
-    save_runtime_inputs,
-    load_latest_runtime_inputs,
-    _to_json_dict,
-    _migrate_blob,
-)
+
+import pytest
+
 from src.models import (
-    SignalResult, Signal, Tier1Result, Tier2Result, AllocationState, TargetAllocationState, SignalDetail
+    Signal,
+    SignalDetail,
+    SignalResult,
+    TargetAllocationState,
+    Tier1Result,
+    Tier2Result,
 )
+from src.store.db import (
+    _migrate_blob,
+    load_history,
+    load_latest_runtime_inputs,
+    load_runtime_inputs,
+    save_runtime_inputs,
+    save_signal,
+)
+
 
 @pytest.fixture
 def temp_db(tmp_path):
@@ -30,9 +35,9 @@ def test_persistence_v6_4_fields(temp_db):
         breadth=SignalDetail("br", 0, 0, (0,0), False, False),
     )
     t2 = Tier2Result(0, None, None, None, False, False, False, True, "yf", 0, 0)
-    
+
     target = TargetAllocationState(target_cash_pct=0.1, target_qqq_pct=0.8, target_qld_pct=0.1, target_beta=1.0)
-    
+
     result = SignalResult(
         date=date(2026, 3, 23),
         price=400.0,
@@ -43,13 +48,13 @@ def test_persistence_v6_4_fields(temp_db):
         explanation="Test",
         target_allocation=target,
     )
-    
+
     save_signal(result, path=temp_db)
     history = load_history(n=1, path=temp_db)
-    
+
     assert len(history) == 1
     blob = history[0]
-    
+
     assert blob["target_allocation"]["target_beta"] == 1.0
 
 def test_migration_from_v6_2():
@@ -65,9 +70,9 @@ def test_migration_from_v6_2():
             "net_exposure_pct": 0.5
         }
     }
-    
+
     migrated = _migrate_blob(old_blob)
-    
+
     assert "target_allocation" in migrated
     assert migrated["target_allocation"]["target_beta"] == 0.9 # default
     # v8.1: Purged legacy portfolio fields

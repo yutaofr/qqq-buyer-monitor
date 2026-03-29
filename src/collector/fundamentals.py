@@ -1,7 +1,6 @@
 import logging
+
 import yfinance as yf
-import requests
-from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +15,7 @@ def fetch_forward_pe(ticker: str = "QQQ") -> dict:
     Combines yfinance with institutional consensus logic.
     """
     result = {"trailing_pe": None, "forward_pe": None, "source": "yfinance"}
-    
+
     # 1. Primary: yfinance
     try:
         q = yf.Ticker(ticker)

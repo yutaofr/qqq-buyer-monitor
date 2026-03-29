@@ -27,7 +27,7 @@ def fetch_price_data(ticker: str = "QQQ", as_of: date | None = None) -> dict:
     # yfinance end date is exclusive. To include target_date, we query up to target_date + 1.
     target_date = as_of or date.today()
     query_end = target_date + timedelta(days=1)
-    
+
     # Need at least 2 years of history for v6.0 indicators (POC, Variance Ratio, Z-Scores)
     # 2 years = ~500 trading days
     start = target_date - timedelta(days=735)
@@ -64,9 +64,9 @@ def fetch_price_data(ticker: str = "QQQ", as_of: date | None = None) -> dict:
         price, ma200, high_52w, days_since_high, record_date,
     )
     return {
-        "price": price, 
-        "ma200": ma200, 
-        "high_52w": high_52w, 
+        "price": price,
+        "ma200": ma200,
+        "high_52w": high_52w,
         "days_since_high": days_since_high,
         "date": record_date,
         "history": hist # Return full history for indicator calculations

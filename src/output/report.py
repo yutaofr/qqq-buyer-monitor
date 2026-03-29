@@ -4,8 +4,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from src.store.db import _to_json_dict  # reuse the serialiser
 from src.models import SignalResult
+from src.store.db import _to_json_dict  # reuse the serialiser
 
 
 def summarize_data_quality(data_quality: dict[str, dict[str, Any]]) -> str:

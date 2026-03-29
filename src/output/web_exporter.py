@@ -74,7 +74,7 @@ def _build_web_node_traces(result: SignalResult) -> list[dict]:
                 {
                     "step": step,
                     "node": "Tier-0 宏观制度",
-                    "trace_type": "MACRO",
+                    "type": "MACRO",
                     "formula": formula,
                     "explanation": reason,
                     "result": decision,
@@ -86,7 +86,7 @@ def _build_web_node_traces(result: SignalResult) -> list[dict]:
                 {
                     "step": step,
                     "node": "Cycle 周期制度",
-                    "trace_type": "MACRO",
+                    "type": "MACRO",
                     "formula": formula,
                     "explanation": reason,
                     "result": decision,
@@ -102,7 +102,7 @@ def _build_web_node_traces(result: SignalResult) -> list[dict]:
                 {
                     "step": step,
                     "node": "Risk 风险控制器",
-                    "trace_type": "SIGNAL",
+                    "type": "SIGNAL",
                     "formula": formula,
                     "explanation": reason,
                     "result": decision,
@@ -117,7 +117,7 @@ def _build_web_node_traces(result: SignalResult) -> list[dict]:
                 {
                     "step": step,
                     "node": "Candidate 认证候选",
-                    "trace_type": "FILTER",
+                    "type": "FILTER",
                     "formula": formula,
                     "explanation": reason,
                     "result": decision,
@@ -133,7 +133,7 @@ def _build_web_node_traces(result: SignalResult) -> list[dict]:
                 {
                     "step": step,
                     "node": "Advisory Beta 建议",
-                    "trace_type": "ADVISORY",
+                    "type": "ADVISORY",
                     "formula": formula,
                     "explanation": reason,
                     "result": decision,
@@ -148,7 +148,7 @@ def _build_web_node_traces(result: SignalResult) -> list[dict]:
                 {
                     "step": step,
                     "node": "Deployment 新现金节奏",
-                    "trace_type": "TACTICAL",
+                    "type": "TACTICAL",
                     "formula": formula,
                     "explanation": reason,
                     "result": decision,
@@ -160,7 +160,7 @@ def _build_web_node_traces(result: SignalResult) -> list[dict]:
                 {
                     "step": step,
                     "node": "Reference 参考路径",
-                    "trace_type": "REFERENCE",
+                    "type": "REFERENCE",
                     "formula": formula,
                     "explanation": (
                         "参考路径仅用于说明一种实现目标 beta 的仓位组合，不是系统强制配比。"

@@ -1,7 +1,12 @@
-import pandas as pd
 import numpy as np
-import pytest
-from src.utils.stats import calculate_mean_reversion_score, calculate_volume_poc, calculate_sma_deviation_zscore
+import pandas as pd
+
+from src.utils.stats import (
+    calculate_mean_reversion_score,
+    calculate_sma_deviation_zscore,
+    calculate_volume_poc,
+)
+
 
 def test_calculate_mean_reversion_score_high():
     # Extreme oversold deviation (Z-score < -2)
@@ -35,7 +40,7 @@ def test_calculate_sma_deviation_zscore_extreme():
     steady = [100.0] * 300
     crash = [50.0]
     series = pd.Series(steady + crash)
-    
+
     zs = calculate_sma_deviation_zscore(series, window=200, rolling_window=500)
     # Deviation should be extreme negative
     assert zs < -3.0

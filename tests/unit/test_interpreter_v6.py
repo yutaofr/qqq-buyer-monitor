@@ -1,5 +1,5 @@
-import pytest
 from src.output.interpreter import NarrativeEngine
+
 
 def test_narrative_engine_summarizes_trace():
     # Mock a logic trace from aggregate engine
@@ -23,10 +23,10 @@ def test_narrative_engine_summarizes_trace():
             "evidence": {"regime": "RICH_TIGHTENING", "tactical": "CAPITULATION"}
         }
     ]
-    
+
     engine = NarrativeEngine()
     narrative = engine.generate(trace)
-    
+
     # Assertions: check for key plain-language sections
     assert "大势背景" in narrative
     assert "群众情绪" in narrative
@@ -58,10 +58,10 @@ def test_narrative_engine_risk_containment_honesty():
             "evidence": {"regime": "NEUTRAL", "tactical": "PANIC"}
         }
     ]
-    
+
     engine = NarrativeEngine()
     narrative = engine.generate(trace)
-    
+
     # Assertions for honesty
     assert "风险控制" in narrative
     assert "保护模式" in narrative

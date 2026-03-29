@@ -5,15 +5,11 @@ from dataclasses import asdict, fields
 
 import pandas as pd
 import pytest
+
 from src.engine.tier2 import (
-    calculate_tier2,
-    SUPPORT_ZONE_PCT,
-    UPSIDE_MIN_PCT,
-    SCORE_SUPPORT_CONFIRMED,
     SCORE_SUPPORT_BROKEN,
-    SCORE_UPSIDE_OPEN,
-    SCORE_GAMMA_POSITIVE,
-    SCORE_NEGATIVE_GAMMA_BROKEN,
+    SCORE_SUPPORT_CONFIRMED,
+    calculate_tier2,
 )
 from src.models import OptionsOverlay, Tier2Result
 
@@ -156,7 +152,7 @@ class TestRefinements:
         result = calculate_tier2(399.0, basic_df)
         assert result.support_confirmed is True
         assert result.support_broken is False
-        
+
         # PW=400, price=397 is -0.75% -> beyond 0.5% buffer
         result = calculate_tier2(397.0, basic_df)
         assert result.support_broken is True
@@ -167,7 +163,7 @@ class TestRefinements:
         result = calculate_tier2(435.0, basic_df)
         assert result.upside_open is True
         assert result.call_wall_distance_pct == 0.99
-        
+
     def test_cleared_call_wall_finds_next(self):
         df = _make_df([
             {"strike": 400.0, "expiration": "2026-03-21", "option_type": "call",
@@ -177,5 +173,5 @@ class TestRefinements:
         ])
         # Price 410 is above 400. Should use 450 as next wall.
         result = calculate_tier2(410.0, df)
-        assert result.upside_open is True 
+        assert result.upside_open is True
         assert abs(result.call_wall_distance_pct - 0.0976) < 0.001

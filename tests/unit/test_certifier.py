@@ -3,14 +3,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.research.certifier import (
-    certify_candidates,
-    export_registry_json,
-    REQUIRED_METRICS,
-    _certify_status,
-)
 from src.models.candidate import CandidateRegistry
 from src.models.risk import RiskState
+from src.research.certifier import (
+    REQUIRED_METRICS,
+    _certify_status,
+    certify_candidates,
+    export_registry_json,
+)
 
 
 def _price_history(n: int = 252) -> pd.DataFrame:

@@ -15,8 +15,6 @@ from src.models.candidate import CertifiedCandidate as CertifiedCandidate
 from src.models.cycle import CycleDecision as CycleDecision
 from src.models.cycle import CycleRegime as CycleRegime
 from src.models.deployment import DeploymentState
-
-# v7.0 state models (imported here for re-export convenience)
 from src.models.risk import RiskState
 
 

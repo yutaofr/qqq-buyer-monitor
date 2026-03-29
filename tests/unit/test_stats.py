@@ -1,6 +1,5 @@
-import pandas as pd
-import pytest
 from src.utils.stats import calculate_zscore
+
 
 def test_calculate_zscore_basic():
     # Provide 20 elements: 19 zeros and then 100

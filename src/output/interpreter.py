@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, List, Dict
+from typing import Any
+
 from src.models import AllocationState
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ class NarrativeEngine:
             "加仓": "存量调整",
         }
 
-    def generate(self, logic_trace: List[Dict[str, Any]]) -> str:
+    def generate(self, logic_trace: list[dict[str, Any]]) -> str:
         """Generates a combined human-readable string summarizing the logic trace."""
         narratives = []
         step_map = {
@@ -38,7 +39,7 @@ class NarrativeEngine:
             name = step.get("step", "Unknown")
             decision = step.get("decision", "N/A")
             reason = step.get("reason", "")
-            
+
             # Legacy test compatibility: some tests expect '为什么' or '减速/保守' in the text
             if name == "allocation_policy":
                 if "capped by" in reason or "TIGHTENING" in reason:
@@ -50,7 +51,7 @@ class NarrativeEngine:
             narratives.append(f"{label}: {decision} ({reason})")
         return " | ".join(narratives)
 
-    def print_narrative(self, logic_trace: List[Dict[str, Any]]) -> None:
+    def print_narrative(self, logic_trace: list[dict[str, Any]]) -> None:
         """Prints a human-readable interpretation of the decision process."""
         print("\n--- 决策逻辑深度解读 (Narrative) ---")
         for step in logic_trace:
@@ -59,7 +60,7 @@ class NarrativeEngine:
             reason = step.get("reason", "")
             print(f"[{name:18s}] -> {decision:18s} | {reason}")
 
-    def print_decision_tree(self, logic_trace: List[Dict[str, Any]]) -> None:
+    def print_decision_tree(self, logic_trace: list[dict[str, Any]]) -> None:
         """Prints the logic flow as a symbolic tree."""
         print("\n--- 逻辑决策链 (Decision Tree) ---")
         indent = ""
@@ -74,20 +75,20 @@ class NarrativeEngine:
         v6.2 Narrative Guardrail: Filters out bullish vocabulary in defensive states.
         """
         if state not in (
-            AllocationState.WATCH_DEFENSE, 
-            AllocationState.DELEVERAGE, 
+            AllocationState.WATCH_DEFENSE,
+            AllocationState.DELEVERAGE,
             AllocationState.CASH_FLIGHT
         ):
             return text
-            
+
         filtered_text = text
         for bullish, defensive in self.defensive_mapping.items():
             # Use regex to replace while maintaining some sentence flow
             filtered_text = re.sub(bullish, defensive, filtered_text)
-            
+
         if filtered_text != text:
             logger.info("Narrative Guardrail active: filtered bullish biased vocabulary.")
-            
+
         return filtered_text
 
     def format_explanation(self, explanation: str, state: AllocationState) -> str:

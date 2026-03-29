@@ -132,7 +132,6 @@ def _migrate_blob(blob: dict) -> dict:
     # Remove purged legacy fields if present
     blob.pop("current_portfolio", None)
     blob.pop("effective_exposure", None)
-    blob.pop("interval_beta_audit", None)
 
     return blob
 
@@ -413,4 +412,5 @@ def _to_json_dict(result: SignalResult) -> dict:
         "rebalance_action": result.rebalance_action,
         "deployment_action": result.deployment_action,
         "candidate_selection_audit": result.candidate_selection_audit,
+        "interval_beta_audit": result.interval_beta_audit,
     }

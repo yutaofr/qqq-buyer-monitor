@@ -3,10 +3,8 @@ from __future__ import annotations
 
 import json
 from datetime import date
-from unittest.mock import MagicMock, patch
 
 import pandas as pd
-import pytest
 
 from src.engine.aggregator import aggregate
 from src.engine.data_quality import build_data_quality
@@ -15,7 +13,6 @@ from src.engine.tier2 import calculate_tier2
 from src.models import AllocationState, MarketData, Signal
 from src.output.cli import print_signal
 from src.output.report import to_json
-
 
 # ── Shared mock data ──────────────────────────────────────────────────────────
 
@@ -71,10 +68,10 @@ class TestFullPipeline:
         data.forward_pe = 25.0 # EY = 4.0
         data.real_yield = 1.5  # ERP = 2.5
         data.liquidity_roc = 0.5
-        
+
         t1 = calculate_tier1(data)
         t2 = calculate_tier2(data.price, data.options_df, ohlcv_history=data.ohlcv_history)
-        result = aggregate(data.date, data.price, t1, t2, credit_spread=data.credit_spread, 
+        result = aggregate(data.date, data.price, t1, t2, credit_spread=data.credit_spread,
                           forward_pe=data.forward_pe, real_yield=data.real_yield, liquidity_roc=data.liquidity_roc)
 
         assert t1.score >= 100, f"Expected Tier-1 score>=100, got {t1.score}"

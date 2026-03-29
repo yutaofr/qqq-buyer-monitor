@@ -10,7 +10,10 @@ import pandas as pd
 
 from src.models.candidate import CandidateRegistry, CertifiedCandidate
 from src.models.risk import RiskState
-from src.research.data_contracts import REQUIRED_HISTORICAL_MACRO_COLUMNS, validate_historical_macro_frame
+from src.research.data_contracts import (
+    REQUIRED_HISTORICAL_MACRO_COLUMNS,
+    validate_historical_macro_frame,
+)
 
 # Required research metrics fields (SRD AC-8)
 REQUIRED_METRICS = {
@@ -86,7 +89,7 @@ def _validate_macro_history(macro_history: pd.DataFrame | None) -> pd.DataFrame:
         for column in _CERTIFIER_CLASS_A_COLUMNS:
             series = macro_history[column]
             if column == "funding_stress_flag":
-                invalid_flags = series.dropna().map(lambda value: value not in {0, 1, True, False})
+                invalid_flags = series.dropna().map(lambda value: value not in {0, 1})
                 if invalid_flags.any():
                     bad_rows = series.index[series.notna() & invalid_flags].tolist()
                     raise ValueError(f"Invalid funding_stress_flag values: rows {bad_rows}")

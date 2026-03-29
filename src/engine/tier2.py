@@ -15,6 +15,7 @@ import logging
 import pandas as pd
 
 from src.models import OptionsOverlay, Tier2Result
+from src.utils.stats import calculate_volume_poc
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +23,6 @@ logger = logging.getLogger(__name__)
 SUPPORT_ZONE_PCT = 0.03   # put wall is "confirmed" if price is within 3% above
 UPSIDE_MIN_PCT = 0.05     # call wall gives "open upside" if >= 5% above price
 BUFFER_PCT = 0.005        # 0.5% buffer zone to prevent signal flickering near walls
-
-from src.utils.stats import calculate_volume_poc
 
 # Scoring table
 SCORE_SUPPORT_CONFIRMED = 15
@@ -71,7 +70,7 @@ def evaluate_tier2_rules(
     ohlcv_history: pd.DataFrame | None = None
 ) -> Tier2Result:
     """
-    Unified decision engine for Tier-2 rules. 
+    Unified decision engine for Tier-2 rules.
     Can be used by both live monitor and backtest.
     """
     support_confirmed = False

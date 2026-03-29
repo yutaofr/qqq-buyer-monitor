@@ -2,15 +2,15 @@ import os
 import sys
 from datetime import date
 from pathlib import Path
-from dataclasses import dataclass, field
 
 # Add src to path
 sys.path.append(os.getcwd())
 
-from src.models import SignalResult, Tier1Result, Tier2Result, Signal, AllocationState
-from src.models.risk import RiskState
+from src.models import Signal, SignalResult, Tier1Result, Tier2Result
 from src.models.deployment import DeploymentState
+from src.models.risk import RiskState
 from src.output.web_exporter import export_web_snapshot
+
 
 def create_mock_result(
     tier0_regime="NEUTRAL",
@@ -23,10 +23,10 @@ def create_mock_result(
 ):
     # Dummy results
     t1 = Tier1Result(score=50, drawdown_52w=None, ma200_deviation=None, vix=None, fear_greed=None, breadth=None)
-    t2 = Tier2Result(adjustment=0, put_wall=None, call_wall=None, gamma_flip=None, support_confirmed=True, 
-                    support_broken=False, upside_open=True, gamma_positive=True, gamma_source="bs", 
+    t2 = Tier2Result(adjustment=0, put_wall=None, call_wall=None, gamma_flip=None, support_confirmed=True,
+                    support_broken=False, upside_open=True, gamma_positive=True, gamma_source="bs",
                     put_wall_distance_pct=0.0, call_wall_distance_pct=0.0)
-    
+
     res = SignalResult(
         date=date.today(),
         price=560.0,
@@ -60,7 +60,7 @@ def create_mock_result(
 def run_simulations():
     output_dir = Path("src/web/public/simulations")
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     scenarios = [
         # 1. Macro Crisis Veto
         {

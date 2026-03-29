@@ -1,13 +1,19 @@
 """Focused tests for the allocation policy mapping."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import date
 
 import pytest
 
 from src.engine.aggregator import aggregate, recommend_allocation
-from src.models import AllocationState, OptionsOverlay, Signal, SignalDetail, Tier1Result, Tier2Result
+from src.models import (
+    AllocationState,
+    OptionsOverlay,
+    Signal,
+    SignalDetail,
+    Tier1Result,
+    Tier2Result,
+)
 
 
 def _signal(name: str, points: int) -> SignalDetail:

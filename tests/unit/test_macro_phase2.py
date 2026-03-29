@@ -1,7 +1,9 @@
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
-import pytest
-from unittest.mock import patch, MagicMock
-from src.collector.macro_v3 import fetch_net_liquidity, fetch_move_index
+
+from src.collector.macro_v3 import fetch_move_index, fetch_net_liquidity
+
 
 @patch("src.collector.macro_v3.fetch_fred_data")
 def test_fetch_net_liquidity_success(mock_fred):
@@ -10,9 +12,9 @@ def test_fetch_net_liquidity_success(mock_fred):
     # TGA: 500 Billion
     # RRP: 1000 Billion
     # Net: 8000 - 500 - 1000 = 6500 Billion
-    
+
     dates = pd.date_range(start="2024-01-01", periods=10, freq="W")
-    
+
     def side_effect(series_id):
         df = pd.DataFrame({
             "observation_date": dates,
@@ -27,7 +29,7 @@ def test_fetch_net_liquidity_success(mock_fred):
         return df
 
     mock_fred.side_effect = side_effect
-    
+
     val, roc = fetch_net_liquidity()
     assert val == 6500.0
     assert roc == 0.0
@@ -37,6 +39,6 @@ def test_fetch_move_index_success(mock_ticker):
     mock_instance = MagicMock()
     mock_instance.history.return_value = pd.DataFrame({"Close": [80.5]}, index=[pd.Timestamp("2024-01-01")])
     mock_ticker.return_value = mock_instance
-    
+
     val = fetch_move_index()
     assert val == 80.5

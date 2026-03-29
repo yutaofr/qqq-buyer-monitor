@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.engine.deployment_controller import DeploymentDecision
-from src.engine.risk_controller import RiskDecision
 from src.models.candidate import CertifiedCandidate
 
 

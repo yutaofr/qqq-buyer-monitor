@@ -81,14 +81,14 @@ def build_discord_payload(result: SignalResult) -> dict:
     cycle_emoji = _get_regime_emoji(cycle_regime)
     risk_state = result.risk_state.value if result.risk_state else "n/a"
     deploy_state = result.deployment_state.value if result.deployment_state else "n/a"
-    
+
     # MOBILE OPTIMIZED SUMMARY
     summary_header = (
         f"### 🎯 Target Beta: `{_format_beta(result.target_beta)}`\n"
         f"**Macro Regime:** {macro_emoji} `{macro_regime}`\n"
         f"**Tactical Cycle:** {cycle_emoji} `{cycle_regime}`"
     )
-    
+
     contract_desc = (
         "> 系统输出目标 Beta 信号；用户自行决定资产配置比例，参考路径不具备强制约束力。"
     )

@@ -43,7 +43,7 @@ def fetch_breadth(as_of: date | None = None) -> dict:
         adv_dec_ratio, pct_above_50d, ndx_concentration, target_date
     )
     return {
-        "adv_dec_ratio": adv_dec_ratio, 
+        "adv_dec_ratio": adv_dec_ratio,
         "pct_above_50d": pct_above_50d,
         "ndx_concentration": ndx_concentration
     }
@@ -78,7 +78,7 @@ def _fetch_adv_dec_ratio(start: date, end: date) -> float:
 
     # All tickers failed: derive proxy from QQQ 5-day return
     logger.warning(
-        "All breadth tickers unavailable %s; using QQQ return proxy. query_end=%s", 
+        "All breadth tickers unavailable %s; using QQQ return proxy. query_end=%s",
         _BREADTH_CANDIDATES, end
     )
     # The 'end' passed here is already query_end (target_date + 1).
@@ -152,15 +152,15 @@ def _fetch_ndx_concentration(as_of: date) -> float:
                 ma50 = float(hist["Close"].rolling(50, min_periods=40).mean().iloc[-1])
                 return (close - ma50) / ma50
             return None
-            
+
         qqq_dev = get_dev("QQQ")
         qqew_dev = get_dev("QQEW")
-        
+
         if qqq_dev is not None and qqew_dev is not None:
             spread = qqq_dev - qqew_dev
             return spread
-            
+
     except Exception as exc:
         logger.warning("Could not compute NDX concentration proxy: %s", exc)
-    
+
     return 0.0

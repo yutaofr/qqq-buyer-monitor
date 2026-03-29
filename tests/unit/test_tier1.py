@@ -1,10 +1,12 @@
 """Unit tests for Tier-1 signal engine."""
 from __future__ import annotations
 
-import pytest
-from src.engine.tier1 import calculate_tier1, DRAWDOWN_THRESHOLDS, VIX_THRESHOLDS
-from src.models import MarketData
 from datetime import date
+
+import pytest
+
+from src.engine.tier1 import calculate_tier1
+from src.models import MarketData
 
 
 def _make_data(**overrides) -> MarketData:
@@ -193,15 +195,15 @@ class TestBonuses:
         result = calculate_tier1(data)
         assert result.fcf_bonus == 15
         assert result.score == 15
-        
+
     def test_divergence_bonus_applied(self, mocker):
         # Mocking check_divergences to return +20 for revision divergence
         mocker.patch("src.engine.tier1.check_divergences", return_value={"bonus_score": 20, "price_revision": True})
-        
+
         import pandas as pd
         data = _make_data(history_window=pd.DataFrame({"dummy": [1]}), earnings_revisions_breadth=60.0)
         result = calculate_tier1(data)
-        
+
         assert result.divergence_bonus == 20
         assert result.divergence_flags["price_revision"] is True
         assert result.score == 20
@@ -223,15 +225,15 @@ class TestBonuses:
     def test_all_bonuses_combined(self, mocker):
         mocker.patch("src.engine.tier1.check_divergences", return_value={"bonus_score": 15, "price_vix": True})
         import pandas as pd
-        
+
         data = _make_data(
             forward_pe=35.0, # expensive -> -10
             fcf_yield=5.0, # deep value -> +15
             history_window=pd.DataFrame({"dummy": [1]}) # divergence -> +15
         )
-        
+
         result = calculate_tier1(data)
-        
+
         assert result.valuation_bonus == -10
         assert result.fcf_bonus == 15
         assert result.divergence_bonus == 15

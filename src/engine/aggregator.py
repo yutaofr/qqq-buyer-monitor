@@ -9,11 +9,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 
+import pandas as pd
+
 from src.engine.allocation_search import find_best_allocation, generate_candidates
 from src.engine.tier0_macro import assess_structural_regime
 from src.models import (
     AllocationState,
-    CurrentPortfolioState,
     OptionsOverlay,
     Signal,
     SignalResult,
@@ -560,10 +561,14 @@ def _build_explanation(
         parts.append(f"综合判断：市场已偏热，暂停追高。{allocation_note}")
     elif allocation_state == AllocationState.FAST_ACCUMULATE:
         div_reasons = []
-        if tier1.divergence_flags.get("price_revision"): div_reasons.append("基本面上修")
-        if tier1.divergence_flags.get("price_breadth"): div_reasons.append("市场广度提升")
-        if tier1.divergence_flags.get("price_vix"): div_reasons.append("恐慌情绪衰减")
-        if tier1.divergence_flags.get("price_rsi"): div_reasons.append("动能底背离")
+        if tier1.divergence_flags.get("price_revision"):
+            div_reasons.append("基本面上修")
+        if tier1.divergence_flags.get("price_breadth"):
+            div_reasons.append("市场广度提升")
+        if tier1.divergence_flags.get("price_vix"):
+            div_reasons.append("恐慌情绪衰减")
+        if tier1.divergence_flags.get("price_rsi"):
+            div_reasons.append("动能底背离")
         div_str = " + ".join(div_reasons) if div_reasons else "多重背离确认"
         parts.append(f"🔥 🌟 综合判断：技术与情绪共振，允许提高加仓速度。价格由于底背离（{div_str}）展现出逆势强度。")
     elif allocation_state == AllocationState.SLOW_ACCUMULATE:

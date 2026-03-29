@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import logging
 
-logger = logging.getLogger(__name__)
-
 from src.engine.divergence import check_divergences
 from src.engine.fundamentals import calculate_fcf_bonus, calculate_valuation_weight
 from src.models import MarketData, SignalDetail, Tier1Result
@@ -17,6 +15,8 @@ from src.utils.stats import (
     calculate_mean_reversion_score,
     calculate_sma_deviation_zscore,
 )
+
+logger = logging.getLogger(__name__)
 
 # ── Gradient thresholds (low, high) ──────────────────────────────────────────
 # Signal 1: 52-week high drawdown  (higher = more bullish)

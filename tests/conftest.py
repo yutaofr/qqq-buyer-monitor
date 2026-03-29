@@ -1,11 +1,12 @@
 """Shared pytest fixtures."""
 from __future__ import annotations
 
+from datetime import date
+
 import pandas as pd
 import pytest
 
 from src.models import MarketData
-from datetime import date
 
 
 @pytest.fixture
