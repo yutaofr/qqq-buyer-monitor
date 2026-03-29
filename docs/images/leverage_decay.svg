@@ -1,0 +1,56 @@
+<svg width="600" height="350" viewBox="0 0 600 350" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="decayShade" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#B71C1C;stop-opacity:0.2" />
+      <stop offset="100%" style="stop-color:#B71C1C;stop-opacity:0.05" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+      <feComponentTransfer in="blur" result="glow">
+        <feFuncA type="linear" slope="0.6" />
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode in="glow" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Professional Grid -->
+  <line x1="50" y1="50" x2="50" y2="300" stroke="#CFD8DC" stroke-width="1.5" />
+  <line x1="50" y1="50" x2="550" y2="50" stroke="#CFD8DC" stroke-width="1.5" />
+  
+  <!-- Axes Labels (Chinese) -->
+  <text x="15" y="40" font-family="PingFang SC, Microsoft YaHei" font-size="12" fill="#455A64">净值 (NAV)</text>
+  <text x="535" y="75" font-family="PingFang SC, Microsoft YaHei" font-size="12" fill="#455A64">时间</text>
+
+  <!-- QQQ Path (Royal Blue) -->
+  <path d="M 50 50 L 120 100 L 190 70 L 260 140 L 330 90 L 400 170 L 470 110 L 540 190" fill="none" stroke="#1A237E" stroke-width="2.5" opacity="0.7">
+    <animate attributeName="stroke-dasharray" from="0,1000" to="1000,0" dur="5s" repeatCount="indefinite" />
+  </path>
+  
+  <!-- Theoretical 2x Path (Dashed Slate) -->
+  <path d="M 50 50 L 120 150 L 190 90 L 260 230 L 330 130 L 400 290 L 470 170 L 540 330" fill="none" stroke="#455A64" stroke-width="1" stroke-dasharray="8,4" />
+
+  <!-- QLD Actual Path (Deep Amber/Orange with Decay) -->
+  <path d="M 50 50 L 120 160 L 190 100 L 260 260 L 330 160 L 400 340 L 470 230 L 540 380" fill="none" stroke="#E67E22" stroke-width="3" filter="url(#glow)">
+    <animate attributeName="stroke-dasharray" from="0,1000" to="1000,0" dur="5s" repeatCount="indefinite" />
+  </path>
+  
+  <!-- Volatility Decay Region (Highlight) -->
+  <path d="M 540 330 L 540 380 L 470 230 L 470 170 Z" fill="url(#decayShade)" filter="blur(2px)">
+    <animate attributeName="opacity" values="0.7; 1; 0.7" dur="2s" repeatCount="indefinite" />
+  </path>
+  
+  <text x="545" y="360" font-family="PingFang SC, YaHei" font-size="14" fill="#B71C1C" font-weight="bold">δ-Decay 波动率磨损</text>
+  
+  <!-- Legend (Localized) -->
+  <g transform="translate(410, 100)">
+    <rect x="-10" y="-10" width="160" height="90" rx="10" fill="white" opacity="0.9" stroke="#CFD8DC" />
+    <line x1="0" y1="10" x2="20" y2="10" stroke="#1A237E" stroke-width="2.5" /><text x="30" y="14" font-family="YaHei" font-size="11" fill="#1A237E">QQQ (1倍现货)</text>
+    <line x1="0" y1="35" x2="20" y2="35" stroke="#E67E22" stroke-width="3" /><text x="30" y="39" font-family="YaHei" font-size="11" fill="#E67E22">QLD (2倍杠杆 实际)</text>
+    <line x1="0" y1="60" x2="20" y2="60" stroke="#455A64" stroke-width="1" stroke-dasharray="4,2" /><text x="30" y="64" font-family="YaHei" font-size="11" fill="#455A64">理论 2倍期望 (Linear)</text>
+  </g>
+  
+  <text x="165" y="30" font-family="PingFang SC, YaHei" font-size="20" font-weight="bold" fill="#1A237E">杠杆物理学：波动率陷阱</text>
+</svg>
