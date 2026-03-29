@@ -117,6 +117,7 @@ flowchart TD
 $$
 \text{BUST} \equiv (S \ge 650) \lor (\alpha_{S} \ge 15 \land \text{趋势破位})
 $$
+
 ![Liquidity Shock Surface](../images/liquidity_shock_surface.png)
 
 * **逻辑**：当信贷断裂时，估值再便宜也无效。系统一票否决其他所有周期，强制进入 0.5x 防守死局。**注意：BUST 拥有最高优先级，在极端危机期（如 2020 年 3 月）会先于 CAPITULATION 触发，确保生存。**
