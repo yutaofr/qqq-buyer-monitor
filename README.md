@@ -1,30 +1,34 @@
-# QQQ Buy-Signal & Strategic Allocation Monitor (v8.2)
+# QQQ Buy-Signal & Cycle-Driven Allocation Monitor (v10.0)
 
-A production-grade QQQ/QLD/Cash recommendation engine built around the **v8.2 Linear Pipeline Architecture**.
+A production-grade QQQ/QLD/Cash recommendation engine built around the **v10.0 Cycle-Driven Architecture**.
 
 The system now has a strict boundary:
 - It recommends **target portfolio beta**.
 - It recommends **incremental cash deployment pace**.
-- It does **not** calculate dollar amounts.
+- It governs **QLD leverage selection** based on cycle eligibility.
 - It does **not** manage a wallet or execute trades.
 
-## v8.2 Architecture
+## v10.0 Architecture
 
-### Tier-0 Macro Regime
-`assess_structural_regime()` classifies the structural regime from credit spreads and ERP:
-`EUPHORIC | NEUTRAL | RICH_TIGHTENING | TRANSITION_STRESS | CRISIS`.
+### Cycle Decision (The Engine)
+`CycleDecision` classifies the market cycle from ERP, credit spreads, breadth, and trend:
+`BUST | LATE_CYCLE | MID_CYCLE | RECOVERY | CAPITULATION`.
 
-Tier-0 is the top-level constraint:
-- Hard constraint on the **Risk Controller** beta ceiling.
-- Soft constraint on the **Deployment Controller** pace.
+Cycle-Driven logic:
+- **CAPITULATION**: Beta 1.20x | QLD 25% | FAST BUY (Extreme bottoms)
+- **RECOVERY**: Beta 1.00x | QLD 10% | BASE BUY (Trend healing)
+- **MID_CYCLE**: Beta 0.90x | QLD 0.0% | BASE BUY (Normal bull)
+- **LATE_CYCLE**: Beta 0.80x | QLD 0.0% | SLOW BUY (Overvalued/Failing)
+- **BUST**: Beta 0.50x | QLD 0.0% | PAUSE (Structural crisis)
 
 ### Risk Controller
-Determines the allowed exposure ceiling from **Class A macro data** plus the Tier-0 regime.
+Determines the allowed exposure ceiling from **Class A macro data** plus the Cycle regime.
 Outputs `RiskDecision` with:
 - `risk_state`
 - `target_exposure_ceiling`
+- `qld_share_ceiling`
 - `target_cash_floor`
-- `tier0_applied`
+- `cycle_applied`
 
 Key semantics:
 - `EUPHORIC` unlocks `RISK_ON` and allows `>1.0` target beta when the registry has compliant candidates.
@@ -104,32 +108,32 @@ The diagram below reflects the exhaustive v8.2 decision logic, including Tier-0 
 
 ```mermaid
 flowchart TD
-    subgraph Data_Layer ["Input: Class A & B Features"]
+    subgraph Data_Layer ["Input: Factors & Sensors"]
         direction LR
-        Macro["Macro: CS, CA, LROC, FS, ERP, RY"]
-        Tactical["Tactical: VIX, F&G, Breadth, DD, Returns"]
+        Cycle_Factors["Cycle: ERP, CS, Breadth, Trend (MA200)"]
+        Macro["Macro: LROC, FS, CA"]
         Structure["Structure: Walls, Gamma, POC"]
     end
 
-    Data_Layer --> T0_Commander
+    Data_Layer --> Cycle_Choice
 
-    subgraph T0_Commander ["Tier-0: Structural Regime"]
+    subgraph Cycle_Choice ["Cycle Decision: The Framework"]
         direction TB
-        T0_Logic{"CS & ERP Ladder"}
-        T0_Logic --> CRISIS["CRISIS (CS>=650 | ERP<1.0)"]
-        T0_Logic --> TRANSITION_STRESS["TRANSITION (CS>=550 | CS>=500 & ERP<2.5)"]
-        T0_Logic --> RICH_TIGHTENING["RICH_TIGHT (CS>=450 | ERP<2.5)"]
-        T0_Logic --> EUPHORIC["EUPHORIC (CS<250 & ERP>=5.0)"]
-        T0_Logic --> NEUTRAL["NEUTRAL (Default)"]
+        C_Logic{"SRD v10-0 Logic"}
+        C_Logic --> CAP["CAPITULATION (1.20x / 25% QLD)"]
+        C_Logic --> REC["RECOVERY (1.00x / 10% QLD)"]
+        C_Logic --> MID["MID_CYCLE (0.90x / 0.0% QLD)"]
+        C_Logic --> LATE["LATE_CYCLE (0.80x / 0.0% QLD)"]
+        C_Logic --> BUST["BUST (0.50x / 0.0% QLD)"]
     end
 
-    T0_Commander --> Risk_Controller
+    Cycle_Choice --> Risk_Controller
 
     subgraph Risk_Controller ["Risk Controller: Exposure Ceiling"]
         direction TB
         Veto{Hard Veto?}
-        Veto -- Missing CS/Data --> RISK_REDUCED
-        Veto -- T0:CRISIS / DD >= 30% --> RISK_EXIT
+        Veto -- Missing Data --> RISK_REDUCED
+        Veto -- BUST / DD >= 30% --> RISK_EXIT
         
         Stress{Stress Bucket?}
         Stress -- Triple:CA+LROC+FS --> RISK_EXIT
@@ -137,35 +141,33 @@ flowchart TD
         Stress -- Single/Warn --> RISK_REDUCED
         
         Clean{Clean / Euphoric?}
-        Clean -- T0:EUPHORIC / Tight Credit --> RISK_ON
+        Clean -- RECOVERY/MID --> RISK_ON
         Clean -- Default --> RISK_NEUTRAL
     end
 
     Risk_Controller --> Search_Engine
-    T0_Commander --> Deployment_Controller
+    Cycle_Choice --> Deployment_Controller
 
     subgraph Search_Engine ["Search: Candidate Registry"]
         Registry[(Certified Registry)]
-        Registry --> Scoping{Scope by Risk State}
+        Registry --> Scoping{Scope by Risk & Cycle}
         Scoping --> Selection{Filtered Search}
         Selection -- Respect Ceiling/Budget --> Best_Candidate
     end
 
     subgraph Deployment_Controller ["Deployment: Incremental Pace"]
         direction TB
-        D_Ceiling["Effective Ceiling: min(Risk, Tier0)"]
+        D_Ceiling["Effective Ceiling: min(Risk, Cycle)"]
         
         D_Logic{Pace Logic}
         D_Logic -- "Tactical Stress (>=70) / Price Chasing" --> D_PAUSE
-        D_Logic -- "Blood-Chip Crisis Override" --> D_FAST
+        D_Logic -- "Blood-Chip Override" --> D_FAST
         D_Logic -- "Left-Tail confirmation" --> D_FAST
-        D_Logic -- "Structural Stress (CS/CA/LROC/DD)" --> D_SLOW
+        D_Logic -- "Structural Stress" --> D_SLOW
         D_Logic -- "Pullback confirmation" --> D_FAST
         
         Defaults{Defaults}
         Defaults -- "RISK_DEFENSE" --> D_SLOW
-        Defaults -- "RISK_REDUCED + Shallow DD" --> D_BASE
-        Defaults -- "Other RISK_REDUCED" --> D_SLOW
         Defaults -- "Normal" --> D_BASE
 
         D_Ceiling --> D_Logic
@@ -174,10 +176,10 @@ flowchart TD
     Best_Candidate --> Recommendation
     Deployment_Controller --> Recommendation
 
-    subgraph Recommendation [Output: Recommendation Surface]
+    subgraph Recommendation [Output: Pure Recommendation]
         target_beta["Target Portfolio Beta"]
         advised_beta["Advised Beta w/ Friction"]
-        deployment_multiplier["Deployment Pace Multiplier"]
+        deployment_multiplier["Deployment Pace"]
         allocation["Recomm. QQQ/QLD/Cash %"]
     end
 ```
