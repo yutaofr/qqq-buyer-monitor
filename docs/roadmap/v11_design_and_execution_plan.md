@@ -1,66 +1,56 @@
 # v11.0 Design and Execution Plan: Probabilistic & Permanent Dual-Track Architecture
 
 ## 1. 核心愿景 (Vision)
-v11.0 "Entropy" 旨在构建一个基于统计严谨性的永久双轨决策引擎。核心目标是剔除一切前向泄漏（Forward-Looking Bias），通过**信号正交化**与**核密度估计 (KDE)**，建立真实的概率预测优势。
+v11.0 "Entropy" 旨在构建一个基于统计严谨性的永久双轨决策引擎。核心目标是剔除前向泄漏，通过**正交信号组**与**规则+似然混合模型**，实现对极端回撤的理性猎杀。
 
 ---
 
-## 2. 贝叶斯推理与正交标定协议 (Bayesian Orthogonality)
+## 2. 贝叶斯推理与标定协议 (Bayesian Orthogonality)
 
-### 2.1 信号解耦 (De-coupling Labels and Evidence)
-为了避免循环定义，系统在标定（训练标签）与推理（观测证据）上使用互不重叠的信号组：
+### 2.1 信号正交化 (De-coupling Labels and Evidence)
 *   **标定信号 (Regime Labels)**: **仅限信贷/流动性维度**。
     *   `Spread_pct`, `Spread_Acceleration`, `Liquidity_ROC`.
 *   **推理信号 (Likelihood Evidence)**: **仅限市场/价格维度**。
     *   `VIX_pct`, `Market_Breadth`, `Drawdown`, `Price_Momentum`.
+*   **输入规范**: 推理信号在进入 PCA 前必须经过 20 年滚动分位数标准化。
 
-### 2.2 标定优先级协议 (Labeling Priority Protocol)
-为防止信号重叠导致样本污染，历史样本点按以下**严格顺序**进行唯一标定：
-1.  **BUST**: `Spread_pct >= 0.90`. (优先级最高)
-2.  **CAPITULATION**: `Spread_pct >= 0.80` 且 `Spread_Acceleration <= 0` 且 `Liquidity_ROC > 0`.
-3.  **LATE_CYCLE**: `ERP_pct <= 0.15` 且 `Spread_pct > 0.65`.
-4.  **RECOVERY**: `Spread_20d_delta < -30bps` 且 `Liquidity_ROC > 0`.
-5.  **MID_CYCLE**: 上述条件均不满足时的默认状态。
-
-### 2.3 似然函数计算 (Likelihood via Percentile-PCA & KDE)
-*   **标准化**: 所有推理信号在进入 PCA 前必须进行 **20年滚动分位数标准化**（Rank-order Transformation），将数值缩放至 [0, 1]。
-*   **降维**: 对标准化后的向量进行 PCA 降维，提取反映信号排名结构的主成分。
-*   **估计**: 使用 KDE 构建 $P(Price\_Rank\_Structure | Credit\_Regime)$。
+### 2.2 Regime 标定优先级与方法论 (Revised)
+1.  **BUST (KDE)**: `Spread_pct >= 0.90`. (优先级 1)
+2.  **CAPITULATION (Rule-based)**: `Spread_pct >= 0.80` 且 `Spread_Acceleration <= 0` 且 `Liquidity_ROC > 0`.
+    *   *注: 鉴于样本稀疏 (N=20)，此状态由规则强制触发，KDE 仅做微调。*
+3.  **RECOVERY (KDE)**: `Spread_20d_delta < -30bps` 且 `Liquidity_ROC > 0`.
+4.  **MID_CYCLE (KDE)**: 默认状态。
+5.  **LATE_CYCLE (Constraint Overlay)**: `ERP_pct <= 0.15`.
+    *   *决策: 不作为独立分类器，作为全局敞口上限 (0.8x) 的硬拦截器。*
 
 ---
 
-## 3. 永久双轨与总风险监控 (Dual-Track & Risk Aggregator)
+## 3. 永久双轨与 Blood-Chip 通道 (Dual-Track & Blood-Chip)
 
-### 3.1 决策隔离与桶 B 规模 (Isolation & Sizing)
-*   **决策解耦**: 桶 A (Legacy) 与 桶 B (Active) 逻辑完全隔离。
-*   **桶 B 规模公式**: 
-    $$Size_B = New\_Cash \times P(CAPITULATION) \times Opportunity\_Score \times 0.5\_Kelly\_Cap$$
-    *   该公式确保回测的风险调整后 Alpha 在实盘中具有严格的执行一致性。
+### 3.1 桶 B 规模公式 (The Multiplicative Law)
+$$Size_B = New\_Cash \times [P(CAPITULATION) + P(RECOVERY)] \times Opportunity\_Score \times 0.5\_Kelly\_Cap$$
+*   **严禁使用加法拼接仓位。**
+*   **Opportunity_Score**: 基于 VIX 峰值与 Drawdown 深度，作为入场激进度的乘数。
 
-### 3.2 组合风险汇总层 (Consolidated Risk Layer)
-*   **监控指标**: `Combined_VaR(95%, 10-day)`.
-*   **警报阈值**: 超过参考本金 15% 时触发预警。
-
----
-
-## 4. POC 验证路径 (The POC Roadmap)
-
-### 阶段 1：特征库构建与似然标定 (Feature & Likelihood)
-*   **任务**: 按照 2.2 节优先级协议进行无污染标定。
-*   **任务**: 执行分位数 PCA 与 KDE 分布建模。
-
-### 阶段 2：Regime 感知型 Purged Walk-Forward 审计
-*   **动态禁运 (Embargo Days)**: `BUST`: 60d | `LATE_CYCLE`: 45d | `CAPITULATION`: 30d | `RECOVERY`: 20d | `MID_CYCLE`: 10d.
-
-### 阶段 3：风险调整增量 Alpha (Success Metrics)
-*   基于 3.1 节规模公式，测量桶 B 相对 QQQ VWAP 的风险调整后溢价。
+### 3.2 Blood-Chip (DEPLOY_FAST) 逻辑
+当 `Regime == BUST` 但 `Spread_Acceleration <= 0` 且 `Liquidity_ROC > +0.5%` 时，`RiskController` 开启 `DEPLOY_FAST` 通道：
+*   允许新现金以 100% 权重直接购买 QQQ 现货。
+*   无视 BUST 状态下的常规 0.5x 敞口限制。
 
 ---
 
-## 5. 验收标准 (Final Success Metrics)
-1.  **分维度 Brier Score**: $P(BUST)$ 和 $P(CAPITULATION)$ 预测质量显著优于历史频率模型。
-2.  **入场质量**: 桶 B 规模公式下的风险调整后 Alpha 显著为正。
-3.  **贝叶斯正交性**: 标定与推理信号在代码实现层面物理隔离且逻辑正交。
+## 4. POC 阶段 3R (Revised Alpha Audit)
+
+在进入正式实现前，必须执行 **3R 轮模拟**，验证修复后的架构性能：
+*   **目标**: 使用上述**乘法公式**与 **DEPLOY_FAST 通道**，重新审计 2020 年和 2022 年场景。
+*   **验收**: 2020 年的入场成本必须显著优于 (或至少对齐) VWAP，证明 Blood-Chip 逻辑的有效性。
 
 ---
-*Architect Review Note: v11 architecture is now fully converged with explicit implementation constraints (Priority, Percentile-PCA, Sizing). Ready for POC Phase 1.*
+
+## 5. 验收标准 (Final Metrics)
+1.  **Alpha 质量**: 桶 B 在 3R 模拟中必须展现出正向的风险调整后增益。
+2.  **Brier 分解**: $P(BUST)$ 的 Brier Score 必须显著优于历史频率模型。
+3.  **架构纯净度**: 标定与推理信号物理隔离，LATE_CYCLE 硬拦截器逻辑独立。
+
+---
+*Architect Review Note: v11 architecture is now logically closed with the inclusion of Blood-Chip logic and Multiplicative Sizing. POC Phase 3R is mandatory before any production code is written.*
