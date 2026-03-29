@@ -69,9 +69,15 @@ $$
   <img src="../images/credit_pulse.svg" width="500" alt="Credit Spread Event Horizon"/>
 </p>
 
-    $$\alpha_{S} = \frac{S_t - S_{t-20}}{20} \text{ (Credit Acceleration threshold: > 15 bps)}$$
-    $$ROC_{L} = \frac{L_t - L_{t-20}}{L_{t-20}} \times 100 \text{ (Liquidity ROC threshold: < -2\%)}$$
-    不看 M2，只看高收益债利差及其加速度。这代表了市场里最真实的违约恐惧和资金成本。
+$$
+\alpha_{S} = \frac{S_{t} - S_{t-20}}{20} \quad \text{(信用利差加速度阈值: > 15 bps)}
+$$
+
+$$
+ROC_{L} = \frac{L_{t} - L_{t-20}}{L_{t-20}} \times 100\% \quad \text{(流动性变化率阈值: < -2\%)}
+$$
+
+不看 M2，只看高收益债利差及其加速度。这代表了市场里最真实的违约恐惧和资金成本。
 
 * **资本开支周期 + 心理情绪周期 $\rightarrow$ 压缩为 `Breadth`, `Trend` & `Drawdown`**：
     不看新闻情绪，只看有多少股票跌破 200 日均线，以及散户爆仓砸出的物理深坑。
@@ -106,18 +112,24 @@ flowchart TD
     class DCA neutral;
 ```
 
-1. **第一层绝对统治：流动性休克 (`BUST`)**
-    $$\text{BUST} \equiv (S \ge 650) \lor (\alpha_{S} \ge 15 \land \text{Trend\_Broken})$$
-    ![Liquidity Shock Surface](../images/liquidity_shock_surface.png)
-    * **逻辑**：当信贷断裂时，估值再便宜也无效。系统一票否决其他所有周期，强制进入 0.5x 防守死局。**注意：BUST 拥有最高优先级，在极端危机期（如 2020 年 3 月）会先于 CAPITULATION 触发，确保生存。**
+### 1. 第一层绝对统治：流动性休克 (BUST)
 
-2. **第二层严苛共振：绝望投降 (`CAPITULATION`)**
-    * `IF Spread >= 600 AND ERP >= 4.5% AND Drawdown >= 18% AND Accel <= 0`。
-    * **逻辑**：这是一个极其严苛的 **AND 门**。情绪崩溃、估值极低、信贷休克但美联储已出手止血。四大周期完美共振，系统才允许拔出 QLD 进行猎杀。
+$$
+\text{BUST} \equiv (S \ge 650) \lor (\alpha_{S} \ge 15 \land \text{趋势破位})
+$$
+![Liquidity Shock Surface](../images/liquidity_shock_surface.png)
 
-3. **第三层结构腐烂：周期末端 (`LATE_CYCLE`)**
-    * `IF ERP < 2.5% AND (Spread >= 450 OR Breadth <= 40%)`。
-    * **逻辑**：没有发生暴跌，但定价周期（ERP）极度昂贵。此时只要信贷微缩或广度腐烂，系统立刻触发 **OR 门**，强制没收杠杆权限，防患于未崩。
+* **逻辑**：当信贷断裂时，估值再便宜也无效。系统一票否决其他所有周期，强制进入 0.5x 防守死局。**注意：BUST 拥有最高优先级，在极端危机期（如 2020 年 3 月）会先于 CAPITULATION 触发，确保生存。**
+
+### 2. 第二层严苛共振：绝望投降 (CAPITULATION)
+
+* **准则**：`IF Spread >= 600 AND ERP >= 4.5% AND Drawdown >= 18% AND Accel <= 0`。
+* **逻辑**：这是一个极其严苛的 **AND 门**。情绪崩溃、估值极低、信贷休克但美联储已出手止血。四大周期完美共振，系统才允许拔出 QLD 进行猎杀。
+
+### 3. 第三层结构腐烂：周期末端 (LATE_CYCLE)
+
+* **准则**：`IF ERP < 2.5% AND (Spread >= 450 OR Breadth <= 40%)`。
+* **逻辑**：没有发生暴跌，但定价周期（ERP）极度昂贵。此时只要信贷微缩或广度腐烂，系统立刻触发 **OR 门**，强制没收杠杆权限，防患于未崩。
 
 ---
 
@@ -186,8 +198,11 @@ flowchart LR
   <img src="../images/leverage_decay.svg" width="550" alt="The Volatility Decay Trap"/>
 </p>
 
-    $$DD_{QLD} = 2 \times DD_{QQQ} + \delta_{decay}$$
-    18% 的回撤是 2 倍杠杆账户 (QLD) 触发 40%~50% 净值损耗（Margin Call 临界点）的物理门槛，是判断“绝望投降 (Capitulation)”的统计学起点。
+$$
+DD_{QLD} = 2 \times DD_{QQQ} + \delta_{decay}
+$$
+
+18% 的回撤是 2 倍杠杆账户 (QLD) 触发 40%~50% 净值损耗（Margin Call 临界点）的物理门槛，是判断“绝望投降 (Capitulation)”的统计学起点。
 
 ```mermaid
 flowchart LR
