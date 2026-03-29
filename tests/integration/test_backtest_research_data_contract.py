@@ -272,6 +272,7 @@ def test_run_signal_audits_returns_dual_alignment_summaries(tmp_path, capsys):
                 "DEPLOY_PAUSE",
                 "DEPLOY_PAUSE",
             ],
+            "expected_deployment_multiplier": [1.0, 2.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         }
     )
     expectation_path = tmp_path / "expectations.csv"
@@ -290,6 +291,61 @@ def test_run_signal_audits_returns_dual_alignment_summaries(tmp_path, capsys):
     assert set(results) == {"beta", "deployment"}
     assert results["beta"].mean_absolute_error == pytest.approx(0.0)
     assert results["deployment"].exact_match_ratio == pytest.approx(1.0)
+
+
+def test_run_signal_audits_supports_continuous_deployment_pacing_mode(tmp_path, capsys):
+    dates = pd.date_range("2024-01-02", periods=25, freq="B")
+    qqq = pd.DataFrame({"Close": [100.0 - (i * 0.8) for i in range(25)]}, index=dates)
+    cache_path = tmp_path / "qqq_history_cache.csv"
+    qqq.to_csv(cache_path)
+
+    macro = pd.DataFrame(
+        {
+            "observation_date": [d.strftime("%Y-%m-%d") for d in dates],
+            "effective_date": [d.strftime("%Y-%m-%d") for d in dates],
+            "credit_spread_bps": [320.0] * 10 + [520.0] * 5 + [680.0] * 10,
+            "credit_acceleration_pct_10d": [0.0] * len(dates),
+            "forward_pe": [24.0] * len(dates),
+            "erp_pct": [3.5] * len(dates),
+            "real_yield_10y_pct": [1.25] * len(dates),
+            "net_liquidity_usd_bn": [250.0] * len(dates),
+            "liquidity_roc_pct_4w": [0.0] * len(dates),
+            "funding_stress_flag": [0] * len(dates),
+            "source_credit_spread": ["fred:BAMLH0A0HYM2"] * len(dates),
+            "source_forward_pe": ["damodaran:histimpl"] * len(dates),
+            "source_erp": ["damodaran:histimpl"] * len(dates),
+            "source_real_yield": ["fred:DFII10"] * len(dates),
+            "source_net_liquidity": ["derived:WALCL-WDTGAL-RRPONTSYD"] * len(dates),
+            "source_funding_stress": ["fred:NFCI"] * len(dates),
+            "build_version": ["v7.0-class-a-research-r1"] * len(dates),
+        }
+    )
+    macro_path = tmp_path / "macro_historical_dump.csv"
+    macro.to_csv(macro_path, index=False)
+
+    expectations = pd.DataFrame(
+        {
+            "date": dates,
+            "expected_deployment_state": ["DEPLOY_BASE"] * 10 + ["DEPLOY_SLOW"] * 5 + ["DEPLOY_PAUSE"] * 10,
+            "expected_deployment_multiplier": [1.0] * 10 + [0.5] * 5 + [0.0] * 10,
+        }
+    )
+    expectation_path = tmp_path / "expectations.csv"
+    expectations.to_csv(expectation_path, index=False)
+
+    results = run_signal_audits(
+        str(expectation_path),
+        mode="pacing",
+        cache_path=str(cache_path),
+        macro_path=str(macro_path),
+        registry_path="data/candidate_registry_v7.json",
+    )
+
+    output = capsys.readouterr().out
+    assert "--- Deployment Pacing Alignment Audit ---" in output
+    assert set(results) == {"pacing"}
+    assert 0.0 <= results["pacing"].within_tolerance_ratio <= 1.0
+    assert results["pacing"].compared_points > 0
 
 
 def test_run_signal_audits_rejects_synthetic_macro_dataset_for_acceptance(tmp_path):

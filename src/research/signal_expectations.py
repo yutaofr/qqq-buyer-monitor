@@ -5,7 +5,7 @@ import pandas as pd
 
 from src.backtest import BASE_WEEKLY_DCA_UNITS
 from src.collector.historical_macro_seeder import HistoricalMacroSeeder
-from src.models.deployment import DeploymentState
+from src.models.deployment import DeploymentState, deployment_multiplier_for_state
 from src.research.data_contracts import validate_signal_expectation_frame
 
 _BETA_FLOOR = 0.50
@@ -338,6 +338,22 @@ def build_market_expectation_matrix(
         liquidity_roc = float(features.get("liquidity_roc") or 0.0)
         erp = features.get("erp")
         funding_stress = bool(features.get("is_funding_stressed"))
+        funding_event = loc % 5 == 0
+        available_new_cash = BASE_WEEKLY_DCA_UNITS * float(prices.iloc[loc]) if funding_event else 0.0
+        expected_deployment_state = _expected_deployment_state(
+            credit_spread=None if credit_spread is None else float(credit_spread),
+            credit_accel=credit_accel,
+            liquidity_roc=liquidity_roc,
+            funding_stress=funding_stress,
+            rolling_drawdown=rolling_drawdown,
+            five_day_return=float(five_day_return.iloc[loc]),
+            twenty_day_return=float(twenty_day_return.iloc[loc]),
+            capitulation_score=_derive_capitulation_score(price_drawdown),
+            tactical_stress_score=_derive_tactical_stress_score(prices, loc),
+        )
+        expected_deployment_multiplier = (
+            float(deployment_multiplier_for_state(expected_deployment_state) or 0.0)
+        )
 
         rows.append(
             {
@@ -352,19 +368,12 @@ def build_market_expectation_matrix(
                     price_vs_ma200=trend_proxy,
                     rolling_drawdown=rolling_drawdown,
                 ),
-                "expected_deployment_state": _expected_deployment_state(
-                    credit_spread=None if credit_spread is None else float(credit_spread),
-                    credit_accel=credit_accel,
-                    liquidity_roc=liquidity_roc,
-                    funding_stress=funding_stress,
-                    rolling_drawdown=rolling_drawdown,
-                    five_day_return=float(five_day_return.iloc[loc]),
-                    twenty_day_return=float(twenty_day_return.iloc[loc]),
-                    capitulation_score=_derive_capitulation_score(price_drawdown),
-                    tactical_stress_score=_derive_tactical_stress_score(prices, loc),
-                ),
+                "expected_deployment_state": expected_deployment_state,
+                "expected_deployment_multiplier": expected_deployment_multiplier,
                 "rolling_drawdown": rolling_drawdown,
-                "available_new_cash": BASE_WEEKLY_DCA_UNITS * float(prices.iloc[loc]),
+                "available_new_cash": available_new_cash,
+                "expected_deployment_cash": available_new_cash * expected_deployment_multiplier,
+                "funding_event": funding_event,
                 "erp": erp,
                 "capitulation_score": _derive_capitulation_score(price_drawdown),
                 "tactical_stress_score": _derive_tactical_stress_score(prices, loc),

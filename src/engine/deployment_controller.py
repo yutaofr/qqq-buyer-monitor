@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from src.engine.feature_pipeline import FeatureSnapshot
 from src.engine.risk_controller import RiskDecision
-from src.models.deployment import DeploymentState
+from src.models.deployment import DeploymentState, deployment_multiplier_for_state
 from src.models.risk import RiskState
 
 _CAPITULATION_FAST_THRESHOLD = 30
@@ -117,16 +117,9 @@ def _build_decision(
     *,
     pause_new_cash: bool = False,
 ) -> DeploymentDecision:
-    multiplier_map = {
-        DeploymentState.DEPLOY_PAUSE: 0.0,
-        DeploymentState.DEPLOY_SLOW: 0.5,
-        DeploymentState.DEPLOY_BASE: 1.0,
-        DeploymentState.DEPLOY_RECOVER: 1.0,
-        DeploymentState.DEPLOY_FAST: 2.0,
-    }
     return DeploymentDecision(
         deployment_state=deployment_state,
-        dca_multiplier=multiplier_map[deployment_state],
+        dca_multiplier=float(deployment_multiplier_for_state(deployment_state) or 0.0),
         pause_new_cash=pause_new_cash,
         reasons=tuple(reasons),
     )

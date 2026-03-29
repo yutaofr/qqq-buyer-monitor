@@ -63,12 +63,19 @@ def test_expectation_matrix_respects_beta_floor_and_cap():
         "date",
         "expected_target_beta",
         "expected_deployment_state",
+        "expected_deployment_multiplier",
+        "expected_deployment_cash",
         "rolling_drawdown",
         "available_new_cash",
         "capitulation_score",
         "tactical_stress_score",
     }
     assert frame["expected_target_beta"].between(0.5, 1.2).all()
+    assert frame["expected_deployment_multiplier"].between(0.0, 2.0).all()
+    assert (
+        frame["expected_deployment_cash"]
+        == frame["available_new_cash"] * frame["expected_deployment_multiplier"]
+    ).all()
 
 
 def test_expectation_matrix_pauses_deployment_in_crisis():
@@ -84,6 +91,8 @@ def test_expectation_matrix_pauses_deployment_in_crisis():
     final_row = frame.iloc[-1]
     assert final_row["expected_target_beta"] == 0.5
     assert final_row["expected_deployment_state"] == "DEPLOY_PAUSE"
+    assert final_row["expected_deployment_multiplier"] == 0.0
+    assert final_row["expected_deployment_cash"] == 0.0
 
 
 def test_expectation_matrix_unlocks_fast_deployment_during_crisis_liquidity_reversal():
@@ -104,6 +113,8 @@ def test_expectation_matrix_unlocks_fast_deployment_during_crisis_liquidity_reve
     final_row = frame.iloc[-1]
     assert final_row["expected_target_beta"] == 0.5
     assert final_row["expected_deployment_state"] == "DEPLOY_FAST"
+    assert final_row["expected_deployment_multiplier"] == 2.0
+    assert final_row["expected_deployment_cash"] == final_row["available_new_cash"] * 2.0
 
 
 def test_expectation_matrix_unlocks_risk_on_in_clean_tight_credit():
@@ -118,6 +129,7 @@ def test_expectation_matrix_unlocks_risk_on_in_clean_tight_credit():
 
     assert frame.iloc[-1]["expected_target_beta"] == 1.0
     assert frame.iloc[-1]["expected_deployment_state"] == "DEPLOY_BASE"
+    assert frame.iloc[-1]["expected_deployment_multiplier"] == 1.0
 
 
 def test_expectation_matrix_uses_unqualified_cycle_ceiling_when_erp_is_missing():
