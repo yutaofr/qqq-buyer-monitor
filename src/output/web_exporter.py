@@ -361,11 +361,20 @@ def _discretize_allocation(beta: float) -> str:
     return "110-120% (进攻/杠杆)"
 
 REGIME_MAP = {
-    "CRISIS": {"label": "危机", "desc": "流动性枯竭，系统性风险爆发，首要任务是生存。"},
-    "TRANSITION_STRESS": {"label": "压力过渡", "desc": "市场波动加剧，不确定性上升，建议缩减敞口。"},
-    "RICH_TIGHTENING": {"label": "紧缩/高估", "desc": "估值性价比降低，政策环境收紧，审慎防御。"},
-    "NEUTRAL": {"label": "中性", "desc": "估值与流动性处于平衡点，趋势不明，维持基准。"},
-    "EUPHORIC": {"label": "狂热", "desc": "市场处于泡沫阶段，贪婪情绪过载，准备撤退。"}
+    "CRISIS": {"label": "流动性危机 (CRISIS)", "desc": "信用利差极度走阔，系统性风险爆发，强制防御。"},
+    "TRANSITION_STRESS": {"label": "压力过渡 (STRESS)", "desc": "市场波动加剧，信贷条件收紧，建议审慎缩减敞口。"},
+    "RICH_TIGHTENING": {"label": "结构性高估 (RICH)", "desc": "估值性价比极低，政策环境收紧，禁止增加杠杆。"},
+    "NEUTRAL": {"label": "中性平衡 (NEUTRAL)", "desc": "估值与流动性处于动态平衡，维持基准配置。"},
+    "EUPHORIC": {"label": "过度狂热 (EUPHORIC)", "desc": "市场情绪过热，定价脱离物理现实，获利离场。"}
+}
+
+CYCLE_REGIME_MAP = {
+    "BUST": {"label": "休克 (BUST)", "desc": "信贷断裂引发流动性休克，一票否决所有进攻。"},
+    "CAPITULATION": {"label": "投降 (CAPITULATION)", "desc": "绝望式抛售触及极值，高赔率波动率猎杀点。"},
+    "RECOVERY": {"label": "修复 (RECOVERY)", "desc": "最差阶段已过，趋势开始共振回归。"},
+    "MID_CYCLE": {"label": "中性 (MID_CYCLE)", "desc": "周期中性平稳期，穿越波动的基准轨道。"},
+    "LATE_CYCLE": {"label": "末端 (LATE_CYCLE)", "desc": "周期动能衰减，结构性腐烂增加，审慎去杠杆。"},
+    "UNQUALIFIED": {"label": "无特征", "desc": "当前周期特征不明确，维持基准建议。"}
 }
 
 DEPLOY_MAP = {
@@ -421,7 +430,10 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                     "系统输出 contract 是 target_beta 信号；用户自行决定资产配置比例，"
                     "风险带和参考路径只用于帮助理解实现区间。"
                 ),
-                "cycle_regime": result.cycle_regime,
+                "cycle_regime": (
+                    CYCLE_REGIME_MAP.get(str(result.cycle_regime), {"label": str(result.cycle_regime)})["label"]
+                    if result.cycle_regime else "NEUTRAL"
+                ),
                 "target_beta": result.target_beta,
                 "raw_target_beta": (
                     result.raw_target_beta if result.raw_target_beta is not None else result.target_beta

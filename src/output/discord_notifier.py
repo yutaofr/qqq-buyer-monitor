@@ -29,13 +29,13 @@ REGIME_COLORS = {
 
 
 def _get_regime_emoji(regime: str | None) -> str:
-    if regime == "CRISIS":
+    if regime in ["CRISIS", "BUST"]:
         return "🚨"
-    if regime == "TRANSITION_STRESS":
+    if regime in ["TRANSITION_STRESS", "LATE_CYCLE"]:
         return "🧯"
-    if regime == "RICH_TIGHTENING":
+    if regime in ["RICH_TIGHTENING", "REDUCED"]:
         return "🛡️"
-    if regime == "EUPHORIC":
+    if regime in ["EUPHORIC", "CAPITULATION"]:
         return "💎"
     return "⚖️"
 
@@ -53,13 +53,12 @@ def _build_decision_path(result: SignalResult) -> str:
     risk_state = result.risk_state.value if result.risk_state else "n/a"
     deploy_state = result.deployment_state.value if result.deployment_state else "n/a"
     return (
-        f"Tier-0({result.tier0_regime or 'n/a'}) -> "
-        f"Cycle({result.cycle_regime or 'n/a'}) -> "
-        f"Risk({risk_state}, beta<={_format_beta(result.target_exposure_ceiling)}, "
-        f"qld<={_format_pct(result.qld_share_ceiling)}) -> "
-        f"Candidate({result.selected_candidate_id or 'n/a'}) -> "
-        f"Advisory({_format_beta(raw_beta)}->{_format_beta(result.target_beta)}) -> "
-        f"Deployment({deploy_state})"
+        f"🔘 **Tier-0 (Macro):** `{result.tier0_regime or 'n/a'}`\n"
+        f"↳ **Cycle (Tactical):** `{result.cycle_regime or 'n/a'}`\n"
+        f"↳ **Risk Gate:** `{risk_state} (beta<={_format_beta(result.target_exposure_ceiling)})`\n"
+        f"↳ **Candidate Selection:** `{result.selected_candidate_id or 'n/a'}`\n"
+        f"↳ **Beta Advisory:** `{_format_beta(raw_beta)}` → **`{_format_beta(result.target_beta)}`**\n"
+        f"↳ **Deployment:** `{deploy_state}`"
     )
 
 
@@ -75,63 +74,57 @@ def _build_reference_path(result: SignalResult) -> str:
 
 def build_discord_payload(result: SignalResult) -> dict:
     """Build a Discord payload that matches the v10 decision contract."""
-    regime = result.tier0_regime or "NEUTRAL"
-    color = REGIME_COLORS.get(regime, COLOR_DEFAULT)
-    emoji = _get_regime_emoji(regime)
+    macro_regime = result.tier0_regime or "NEUTRAL"
+    cycle_regime = result.cycle_regime or "NEUTRAL"
+    color = REGIME_COLORS.get(macro_regime, COLOR_DEFAULT)
+    macro_emoji = _get_regime_emoji(macro_regime)
+    cycle_emoji = _get_regime_emoji(cycle_regime)
     risk_state = result.risk_state.value if result.risk_state else "n/a"
     deploy_state = result.deployment_state.value if result.deployment_state else "n/a"
-    contract_desc = (
-        "**Decision Contract:** `target_beta`\n"
-        "系统输出的是目标 Beta 信号；用户自行决定资产配置比例，参考路径仅用于说明一种实现方式。"
+    
+    # MOBILE OPTIMIZED SUMMARY
+    summary_header = (
+        f"### 🎯 Target Beta: `{_format_beta(result.target_beta)}`\n"
+        f"**Macro Regime:** {macro_emoji} `{macro_regime}`\n"
+        f"**Tactical Cycle:** {cycle_emoji} `{cycle_regime}`"
     )
-    description = f"{contract_desc}\n\n> {result.explanation}"
+    
+    contract_desc = (
+        "> 系统输出目标 Beta 信号；用户自行决定资产配置比例，参考路径不具备强制约束力。"
+    )
+    description = f"{summary_header}\n\n{contract_desc}\n\n**Briefing:** {result.explanation}"
 
     embed = {
-        "title": f"QQQ Monitor v10.0 | Target-Beta Signal - {result.date}",
-        "description": f"**Market Regime:** {emoji} `{regime}`\n\n{description}",
+        "title": f"QQQ v10.0 | Runtime Decision - {result.date}",
+        "description": description,
         "color": color,
         "fields": [
             {
-                "name": "🎯 Target Beta Contract",
-                "value": f"`{_format_beta(result.target_beta)}`",
-                "inline": True,
-            },
-            {
-                "name": "🛡️ Risk Gate",
+                "name": "🛡️ Technical Execution Audit",
                 "value": (
-                    f"`{risk_state}`\n"
-                    f"`beta<={_format_beta(result.target_exposure_ceiling)} | "
-                    f"qld<={_format_pct(result.qld_share_ceiling)}`"
+                    f"**Risk Gate:** `{risk_state}`\n"
+                    f"**New Cash Pace:** `{deploy_state}`\n"
+                    f"**Candidate:** `{result.selected_candidate_id or 'n/a'}`"
                 ),
-                "inline": True,
+                "inline": False,
             },
             {
-                "name": "🚀 New Cash Pace",
-                "value": f"`{deploy_state}`\n`QQQ-only new cash`",
-                "inline": True,
-            },
-            {
-                "name": "🧪 Candidate",
-                "value": f"`{result.selected_candidate_id or 'n/a'}`",
-                "inline": True,
-            },
-            {
-                "name": "🧭 Decision Path",
+                "name": "🧭 Detailed Decision Path",
                 "value": _build_decision_path(result),
                 "inline": False,
             },
             {
-                "name": "📎 Reference Path",
-                "value": _build_reference_path(result),
+                "name": "📎 Reference Allocation",
+                "value": f"`{_build_reference_path(result)}`",
                 "inline": False,
             },
             {
-                "name": "💰 Current Price",
+                "name": "💰 Price",
                 "value": f"`${result.price:,.2f}`",
                 "inline": True,
             },
             {
-                "name": "📈 Signal Score",
+                "name": "📈 Score",
                 "value": f"`{result.final_score}/100`",
                 "inline": True,
             },

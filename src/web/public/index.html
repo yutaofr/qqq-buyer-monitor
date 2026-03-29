@@ -27,8 +27,8 @@
         .node-ghost { background: rgba(255,255,255,0.03); }
         .branch-line { border-left: 1px solid rgba(255,255,255,0.05); border-top: 1px solid rgba(255,255,255,0.05); }
         .text-ghost { opacity: 0.1; filter: blur(0.5px); }
-        #insights-panel { max-height: 0; overflow: hidden; transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
-        #insights-panel.open { max-height: 2500px; margin-top: 1.5rem; }
+        #insights-panel { max-height: 0; overflow: hidden; opacity: 0; pointer-events: none; transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
+        #insights-panel.open { max-height: 2500px; margin-top: 1.5rem; opacity: 1; pointer-events: auto; }
     </style>
 </head>
 <body id="body" class="state-stale min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700">
@@ -44,26 +44,44 @@
 
         <!-- Main Logic -->
         <div id="content" class="space-y-6">
-            <!-- Macro Regime -->
-            <div class="space-y-1.5 px-2">
-                <p class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-50 text-slate-400">当前宏观</p>
-                <p id="regime" class="text-3xl font-black tracking-tightest text-white">载入中...</p>
-                <p id="regime-desc" class="text-[11px] leading-relaxed opacity-70 italic font-medium text-slate-300"></p>
+            <!-- Macro & Cycle Regime -->
+            <div class="grid grid-cols-2 gap-3 px-2">
+                <div class="space-y-0.5">
+                    <p class="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40 text-slate-400">宏观 (Macro)</p>
+                    <p id="regime" class="text-lg font-black tracking-tight text-white line-clamp-1">--</p>
+                </div>
+                <div class="space-y-0.5 border-l border-white/5 pl-3 text-right">
+                    <p class="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40 text-slate-400">战术周期 (Cycle)</p>
+                    <p id="cycle-regime" class="text-lg font-black tracking-tight text-emerald-400 line-clamp-1">--</p>
+                </div>
+            </div>
+            <div class="px-2">
+                <p id="regime-desc" class="text-[10px] leading-tight opacity-50 italic font-medium text-slate-400"></p>
             </div>
 
             <!-- Core Signals Container -->
             <div class="space-y-3">
                 <!-- Target Beta Card -->
-                <div class="factor-card p-5 rounded-[2rem] border-l-4 border-emerald-500/30 space-y-3 accent-bar transition-all">
+                <div class="factor-card p-5 rounded-[2.5rem] border-l-4 border-emerald-500/30 space-y-4 accent-bar transition-all">
                     <div class="flex justify-between items-end">
-                        <p class="text-[10px] font-black uppercase tracking-[0.2em] opacity-70 text-emerald-400">目标 Beta (系统 contract)</p>
-                        <p id="exposure" class="text-3xl font-black tracking-tighter text-white">--</p>
+                        <p class="text-[9px] font-black uppercase tracking-[0.2em] opacity-50 text-emerald-400">建议 Beta 决策 (Advisory)</p>
+                        <p id="exposure" class="text-4xl font-black tracking-tighter text-white">--</p>
                     </div>
                     <div class="w-full h-1.5 bg-white/5 rounded-full overflow-hidden relative">
                         <div id="exposure-bar" class="h-full bg-emerald-400 opacity-60 transition-all duration-1000" style="width: 0%"></div>
                         <div id="leverage-bar" class="absolute top-0 h-full bg-gradient-to-r from-emerald-400 to-orange-400 shadow-[0_0_10px_rgba(251,146,60,0.8)] opacity-0 transition-all duration-1000" style="width: 0%; left: 100%"></div>
                     </div>
-                    <p id="exposure-desc" class="text-[10px] opacity-60 leading-tight text-slate-300"></p>
+                    <!-- BETA LOGIC INPUTS -->
+                    <div class="flex justify-between items-center text-[9px] font-bold uppercase tracking-wider">
+                        <div class="flex flex-col space-y-0.5">
+                            <span class="opacity-30">宏观上限 (Limit)</span>
+                            <span id="beta-ceiling" class="text-slate-200">--</span>
+                        </div>
+                        <div class="flex flex-col space-y-0.5 text-right">
+                            <span class="opacity-30">策略建议 (Suggested)</span>
+                            <span id="raw-beta" class="text-emerald-500/80">--</span>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Deployment Rhythm Card -->
@@ -75,16 +93,27 @@
             </div>
         </div>
 
-        <!-- Curiosity Toggle -->
-        <button onclick="toggleInsights()" class="mt-6 w-full flex items-center justify-center space-x-2 py-3.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.05] transition-all group">
-            <span class="text-[9px] font-bold uppercase tracking-[0.3em] opacity-30 group-hover:opacity-70 transition-opacity">查看决策链路・好奇心模式</span>
-            <svg id="chevron" class="w-2.5 h-2.5 opacity-20 group-hover:opacity-60 transition-all transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M19 9l-7 7-7-7"></path>
-            </svg>
-        </button>
+        <!-- Secondary Actions (Curiosity & Manual) -->
+        <div class="flex flex-row gap-3 mt-8">
+            <button onclick="toggleInsights()" class="flex-1 flex items-center justify-center space-x-2 py-3.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.05] transition-all group">
+                <span class="text-[9px] font-bold uppercase tracking-[0.3em] opacity-30 group-hover:opacity-70 transition-opacity">决策链路 (Audit)</span>
+                <svg id="chevron" class="w-2.5 h-2.5 opacity-20 group-hover:opacity-60 transition-all transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </button>
+            <a href="https://github.com/yutaofr/qqq-buyer-monitor/wiki/QQQ-Monitor-%E7%94%A8%E6%88%B7%E5%86%B3%E7%AD%96%E6%89%8B%E5%86%8C-(v10.0)" 
+               target="_blank" 
+               class="flex-1 flex items-center justify-center space-x-2 py-3.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.05] transition-all group text-white">
+                <span class="text-[9px] font-bold uppercase tracking-[0.3em] opacity-30 group-hover:opacity-70 transition-opacity">运行手册 (Wiki)</span>
+                <svg class="w-2.5 h-2.5 opacity-20 group-hover:opacity-60 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                </svg>
+            </a>
+        </div>
 
         <!-- Insights Panel -->
-        <div id="insights-panel" class="p-1 space-y-10">
+        <div id="insights-panel">
+            <div class="p-1 space-y-10">
             <!-- Candidate & Decision Path (Moved to Insights) -->
             <div class="space-y-4 factor-card p-5 rounded-[2rem] border-emerald-500/10">
                 <p class="text-[9px] font-black uppercase tracking-[0.2em] opacity-30">认证候选 (Candidate) / 决策路径</p>
@@ -101,16 +130,30 @@
             <!-- Dual Pipeline Visualizer -->
             <div class="relative space-y-6">
                 <!-- Tier 0: Unified Macro Center -->
-                <div class="flex flex-col items-center mb-8">
+                <div class="flex flex-col items-center mb-12">
                     <div id="node-t0" class="w-4 h-4 rounded-full node-lit mb-2"></div>
                     <p class="text-[9px] font-bold opacity-30 uppercase tracking-[0.2em]">Tier-0 Macro Regime</p>
                     <p id="tree-t0" class="text-xl font-black tracking-tight">--</p>
-                    <div class="flex flex-wrap justify-center gap-2 mt-2 max-w-[240px]">
+                    <div class="flex flex-wrap justify-center gap-2 mt-2 max-w-[280px]">
                         <span class="text-[9px] px-1.5 py-0.5 text-ghost">CRISIS</span>
-                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">TRANSITION_STRESS</span>
-                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">RICH_TIGHTENING</span>
+                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">STRESS</span>
+                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">RICH</span>
                         <span class="text-[9px] px-1.5 py-0.5 text-ghost">NEUTRAL</span>
                         <span class="text-[9px] px-1.5 py-0.5 text-ghost">EUPHORIC</span>
+                    </div>
+                </div>
+
+                <!-- Tier 1: Tactical Cycle -->
+                <div class="flex flex-col items-center mb-12">
+                    <div id="node-t1" class="w-4 h-4 rounded-full node-lit mb-2"></div>
+                    <p class="text-[9px] font-bold opacity-30 uppercase tracking-[0.2em]">Tier-1 Cycle Stage</p>
+                    <p id="tree-cycle" class="text-xl font-black tracking-tight">--</p>
+                    <div class="flex flex-wrap justify-center gap-2 mt-2 max-w-[320px]">
+                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">BUST</span>
+                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">CAPITULATION</span>
+                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">RECOVERY</span>
+                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">MID_CYCLE</span>
+                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">LATE_CYCLE</span>
                     </div>
                 </div>
 
@@ -221,24 +264,6 @@
             </div>
         </div>
 
-        <!-- Decision Tree Link -->
-        <div class="pt-2">
-            <a href="https://github.com/yutaofr/qqq-buyer-monitor/wiki/QQQ-Monitor-%E7%94%A8%E6%88%B7%E5%86%B3%E7%AD%96%E6%89%8B%E5%86%8C-(v10.0)" 
-               target="_blank" 
-               class="flex items-center justify-between px-5 py-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/20 transition-all duration-300 group">
-                <div class="flex items-center space-x-3">
-                    <div class="p-2 rounded-lg bg-white/5 group-hover:bg-white/10 transition-colors">
-                        <svg class="w-4 h-4 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                        </svg>
-                    </div>
-                    <span class="text-sm font-bold tracking-tight opacity-70 group-hover:opacity-100 transition-opacity">决策树说明 (v10.0)</span>
-                </div>
-                <svg class="w-4 h-4 opacity-30 group-hover:opacity-60 transition-all transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path>
-                </svg>
-            </a>
-        </div>
 
         <!-- Meta Footer -->
         <div class="mt-8 pt-6 border-t border-white/[0.05] space-y-2 px-1">
@@ -281,20 +306,19 @@
 
         function validateData(data) {
             // Strict AC-3 Data Integrity Check
-                const required = [
-                    data?.meta?.calculated_at_utc,
-                    data?.meta?.expires_at_utc,
-                    data?.signal?.regime,
-                    data?.signal?.contract,
-                    data?.signal?.target_beta,
-                    data?.signal?.candidate_id,
-                    data?.signal?.decision_path,
-                    data?.signal?.exposure_band,
-                    data?.signal?.deploy_rhythm,
-                    data?.signal?.reference_path?.qqq_pct,
-                    data?.evidence?.node_traces,
-                    data?.evidence?.factors?.macro?.credit_spread,
-                    data?.evidence?.factors?.macro?.erp
+            const required = [
+                data?.meta?.calculated_at_utc,
+                data?.meta?.expires_at_utc,
+                data?.signal?.regime,
+                data?.signal?.cycle_regime,
+                data?.signal?.target_beta,
+                data?.signal?.raw_target_beta,
+                data?.signal?.beta_ceiling,
+                data?.signal?.candidate_id,
+                data?.signal?.decision_path,
+                data?.signal?.exposure_band,
+                data?.signal?.deploy_rhythm,
+                data?.evidence?.node_traces
             ];
             if (required.some(v => v === undefined || v === null)) {
                 throw new Error("INTEGRITY_CHECK_FAILED: Missing critical decision field");
@@ -312,7 +336,6 @@
                 const simName = urlParams.get('sim');
                 const fetchUrl = simName ? `simulations/${simName}.json` : LOCAL_JSON;
 
-                // v9.0: prioritize local data for sub-second synchronization and dev verification
                 try {
                     res = await fetch(fetchUrl + '?t=' + Date.now());
                     if (!res.ok) throw new Error("Local fetch failed");
@@ -323,18 +346,14 @@
 
                 if (!res.ok) throw new Error("No data source available");
                 const data = await res.json();
-                
-                // FAIL FAST
                 validateData(data);
 
                 const now = new Date();
                 const expiresAt = new Date(data.meta.expires_at_utc);
-                
                 if (now > expiresAt) throw new Error("Signal Expired");
 
                 body.classList.remove('state-stale');
                 staleMsg.classList.add('hidden');
-                staleMsg.querySelector('p').textContent = "物理链路中断 - 信号失效"; // Reset text
 
                 const state = data.meta.market_state;
                 if (state === 'ACTIVE') {
@@ -345,42 +364,45 @@
                     indicator.className = 'w-2.5 h-2.5 rounded-full bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.8)]';
                 }
 
-                // Main Signal - No fallbacks allowed
-                document.getElementById('version').textContent = `${data.meta.version} Target-Beta-First`;
-                document.getElementById('regime').textContent = data.signal.regime;
-                document.getElementById('regime-desc').textContent = data.signal.regime_desc;
-                document.getElementById('exposure').textContent = `${data.signal.target_beta.toFixed(2)}x · ${data.signal.exposure_band}`;
+                const safeUpdate = (id, val, suffix = "") => {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = val !== undefined && val !== null ? val + suffix : '--';
+                };
+
+                safeUpdate('version', `${data.meta.version} Target-Beta-First`);
+                safeUpdate('regime', data.signal.regime);
+                safeUpdate('cycle-regime', data.signal.cycle_regime);
+                safeUpdate('regime-desc', data.signal.regime_desc);
+                safeUpdate('exposure', data.signal.target_beta.toFixed(2) + 'x');
+                safeUpdate('beta-ceiling', data.signal.beta_ceiling.toFixed(2) + 'x (上限)');
+                safeUpdate('raw-beta', data.signal.raw_target_beta.toFixed(2) + 'x (建议)');
+                safeUpdate('deploy', data.signal.deploy_rhythm);
+                safeUpdate('deploy-desc', data.signal.deploy_desc);
                 
-                // Leverage-Aware Progress Bar
                 const match = data.signal.exposure_band.match(/(\d+)-(\d+)%/);
                 const maxVal = match ? parseInt(match[2]) : 0;
                 const baseBar = document.getElementById('exposure-bar');
                 const levBar = document.getElementById('leverage-bar');
-                
-                if (maxVal > 100) {
-                    baseBar.style.width = '100%';
-                    levBar.style.width = (maxVal - 100) + '%';
-                    levBar.style.left = '80%'; // Rescale slightly to avoid container overflow, or keep at 100% if container allows
-                    levBar.classList.add('opacity-100');
-                    levBar.classList.add('pulse');
-                } else {
-                    baseBar.style.width = maxVal + '%';
-                    levBar.style.width = '0%';
-                    levBar.classList.remove('opacity-100');
-                    levBar.classList.remove('pulse');
+                if (baseBar && levBar) {
+                    if (maxVal > 100) {
+                        baseBar.style.width = '100%';
+                        levBar.style.width = (maxVal - 100) + '%';
+                        levBar.style.left = '80%'; 
+                        levBar.classList.add('opacity-100', 'pulse');
+                    } else {
+                        baseBar.style.width = maxVal + '%';
+                        levBar.style.width = '0%';
+                        levBar.classList.remove('opacity-100', 'pulse');
+                    }
                 }
 
-                document.getElementById('exposure-desc').textContent = data.signal.contract_desc;
-                document.getElementById('candidate').textContent = data.signal.candidate_id;
-                document.getElementById('decision-path').textContent = data.signal.decision_path;
-                document.getElementById('deploy').textContent = data.signal.deploy_rhythm;
-                document.getElementById('deploy-desc').textContent = data.signal.deploy_desc;
-                document.getElementById('fidelity').textContent = data.signal.fidelity;
-                
-                document.getElementById('calc-at').textContent = data.meta.calculated_at_utc.replace('T', ' ').replace('Z', '');
-                document.getElementById('expires-at').textContent = expiresAt.toLocaleString('zh-CN', { hour12: false });
+                safeUpdate('candidate', data.signal.candidate_id);
+                safeUpdate('decision-path', data.signal.decision_path);
+                safeUpdate('contract-desc', data.signal.contract_desc);
+                safeUpdate('fidelity', data.signal.fidelity);
+                safeUpdate('calc-at', data.meta.calculated_at_utc.replace('T', ' ').replace('Z', ''));
+                safeUpdate('expires-at', expiresAt.toLocaleString('zh-CN', { hour12: false }));
 
-                // Evidence Rendering
                 if (data.evidence) {
                     const ev = data.evidence;
                     const regime = data.signal.regime;
@@ -389,94 +411,77 @@
                                      data.evidence.deploy_reasons[0]?.rule?.includes('slow') ? 'SLOW' :
                                      data.evidence.deploy_reasons[0]?.rule?.includes('pause') ? 'PAUSE' : 'BASE';
                     
-                    document.getElementById('tree-t0').textContent = regime;
-                    document.getElementById('tree-risk').textContent =
-                        `${risk_key} → ${data.signal.candidate_id} → ${data.signal.target_beta.toFixed(2)}x`;
-                    document.getElementById('tree-deploy').textContent = `${data.signal.deploy_rhythm} · QQQ only`;
+                    safeUpdate('tree-t0', regime);
+                    safeUpdate('tree-cycle', data.signal.cycle_regime);
+                    safeUpdate('tree-risk', `${risk_key} → ${data.signal.candidate_id} → ${data.signal.target_beta.toFixed(2)}x`);
+                    safeUpdate('tree-deploy', `${data.signal.deploy_rhythm} · QQQ only`);
 
-                    // Highlight mapping
                     const updateGhostTags = (id, activeKey, activeLabel = "") => {
-                        const container = document.getElementById(id).parentElement;
+                        const el = document.getElementById(id);
+                        if (!el) return;
+                        const container = el.parentElement;
                         const tags = container.querySelectorAll('span');
                         const key = (activeKey || "").toUpperCase();
                         const label = (activeLabel || "").toUpperCase();
-                        
                         tags.forEach(t => {
                             const tagText = t.textContent.toUpperCase();
                             const isMatch = (key.includes(tagText) || tagText.includes(key)) || 
                                            (label && (label.includes(tagText) || tagText.includes(label)));
-                            
-                            if (isMatch) {
-                                t.className = 'text-[8px] font-bold text-emerald-400 opacity-100 px-1.5 py-0.5 rounded bg-emerald-400/10 border border-emerald-400/20 transition-all';
-                                t.style.filter = 'none';
-                            } else {
-                                t.className = 'text-[8px] font-medium text-ghost px-1.5 py-0.5';
-                                t.style.filter = 'blur(0.5px)';
-                            }
+                            t.className = isMatch ? 
+                                'text-[8px] font-bold text-emerald-400 opacity-100 px-1.5 py-0.5 rounded bg-emerald-400/10 border border-emerald-400/20 transition-all' : 
+                                'text-[8px] font-medium text-ghost px-1.5 py-0.5';
+                            t.style.filter = isMatch ? 'none' : 'blur(0.5px)';
                         });
                     };
 
                     updateGhostTags('tree-t0', ev.risk_reasons[0]?.tier0_regime || "", regime);
+                    updateGhostTags('tree-cycle', data.signal.cycle_regime);
                     updateGhostTags('tree-risk', risk_key);
                     updateGhostTags('tree-deploy', deploy_key);
 
-                    // Decision Table Rendering
                     const tableBody = document.getElementById('evidence-table-body');
-                    tableBody.innerHTML = '';
-                    
-                    const TYPE_COLORS = {
-                        'MACRO': 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
-                        'SIGNAL': 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20',
-                        'FILTER': 'text-amber-300 bg-amber-300/10 border-amber-300/20',
-                        'ADVISORY': 'text-fuchsia-300 bg-fuchsia-300/10 border-fuchsia-300/20',
-                        'TACTICAL': 'text-blue-400 bg-blue-400/10 border-blue-400/20',
-                        'REFERENCE': 'text-slate-300 bg-slate-300/10 border-slate-300/20'
-                    };
+                    if (tableBody) {
+                        tableBody.innerHTML = '';
+                        const TYPE_COLORS = {
+                            'MACRO': 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
+                            'SIGNAL': 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20',
+                            'FILTER': 'text-amber-300 bg-amber-300/10 border-amber-300/20',
+                            'ADVISORY': 'text-fuchsia-300 bg-fuchsia-300/10 border-fuchsia-300/20',
+                            'TACTICAL': 'text-blue-400 bg-blue-400/10 border-blue-400/20',
+                            'REFERENCE': 'text-slate-300 bg-slate-300/10 border-slate-300/20'
+                        };
+                        (ev.node_traces || []).forEach(trace => {
+                            const row = document.createElement('tr');
+                            const rawType = trace.trace_type || trace.type || 'SIGNAL';
+                            const typeKey = rawType.toUpperCase();
+                            const typeClass = TYPE_COLORS[typeKey] || 'text-white/40 bg-white/5 border-white/10';
+                            const isHighlight = typeKey === 'ADVISORY' || typeKey === 'REFERENCE';
+                            row.className = `border-b border-white/5 hover:bg-white/[0.02] transition-colors ${isHighlight ? 'bg-white/[0.02]' : ''}`;
+                            row.innerHTML = `
+                                <td class="px-4 py-4 align-top">
+                                    <div class="font-bold text-white/70 mb-1">${trace.node}</div>
+                                    <span class="text-[8px] px-1.5 py-0.5 rounded-full border ${typeClass} font-black uppercase tracking-tighter">${rawType}</span>
+                                </td>
+                                <td class="px-4 py-4 space-y-2">
+                                    <div class="font-mono text-[9px] ${isHighlight ? 'text-slate-200 bg-slate-200/5 border-slate-200/10' : 'text-emerald-400 bg-emerald-400/5 border-emerald-400/10'} px-2 py-1 rounded inline-block border">${trace.formula}</div>
+                                    <div class="text-[10px] leading-relaxed opacity-60 italic">${trace.explanation}</div>
+                                </td>
+                                <td class="px-4 py-4 align-top text-right">
+                                    <span class="text-[10px] font-black tracking-tight text-white px-2 py-1 rounded bg-white/5 border border-white/10 ${isHighlight ? 'border-slate-400/30 text-slate-100' : ''}">${trace.result}</span>
+                                </td>
+                            `;
+                            tableBody.appendChild(row);
+                        });
+                    }
 
-                    (ev.node_traces || []).forEach(trace => {
-                        const row = document.createElement('tr');
-                        
-                        // Robust type check to prevent UNDEFINED badges (AC-3 Data Integrity)
-                        const rawType = trace.trace_type || trace.type || 'SIGNAL';
-                        const typeKey = rawType.toUpperCase();
-                        const typeClass = TYPE_COLORS[typeKey] || 'text-white/40 bg-white/5 border-white/10';
-                        const isHighlight = typeKey === 'ADVISORY' || typeKey === 'REFERENCE';
-                        
-                        row.className = `border-b border-white/5 hover:bg-white/[0.02] transition-colors ${isHighlight ? 'bg-white/[0.02]' : ''}`;
-                        row.innerHTML = `
-                            <td class="px-4 py-4 align-top">
-                                <div class="font-bold text-white/70 mb-1">${trace.node}</div>
-                                <span class="text-[8px] px-1.5 py-0.5 rounded-full border ${typeClass} font-black uppercase tracking-tighter">
-                                    ${rawType}
-                                </span>
-                            </td>
-                            <td class="px-4 py-4 space-y-2">
-                                <div class="font-mono text-[9px] ${isHighlight ? 'text-slate-200 bg-slate-200/5 border-slate-200/10' : 'text-emerald-400 bg-emerald-400/5 border-emerald-400/10'} px-2 py-1 rounded inline-block border">
-                                    ${trace.formula}
-                                </div>
-                                <div class="text-[10px] leading-relaxed opacity-60 italic">
-                                    ${trace.explanation}
-                                </div>
-                            </td>
-                            <td class="px-4 py-4 align-top text-right">
-                                <span class="text-[10px] font-black tracking-tight text-white px-2 py-1 rounded bg-white/5 border border-white/10 ${isHighlight ? 'border-slate-400/30 text-slate-100' : ''}">
-                                    ${trace.result}
-                                </span>
-                            </td>
-                        `;
-                        tableBody.appendChild(row);
-                    });
-
-                    const f = ev.factors;
-                    document.getElementById('val-spread').textContent = f.macro.credit_spread ? f.macro.credit_spread.toFixed(0) + ' bps' : '--';
-                    document.getElementById('val-erp').textContent = f.macro.erp ? f.macro.erp.toFixed(2) + '%' : '--';
-                    document.getElementById('val-liq').textContent = f.macro.liquidity_roc ? (f.macro.liquidity_roc > 0 ? '+' : '') + f.macro.liquidity_roc.toFixed(2) + '%' : '--';
-                    
-                    document.getElementById('val-vix').textContent = f.tactical.vix ? f.tactical.vix.toFixed(1) : '--';
-                    document.getElementById('val-fg').textContent = f.tactical.fear_greed || '--';
-                    document.getElementById('val-stress').textContent = (f.tactical.tactical_stress || 0) + ' pts';
+                    const f = ev.factors || {};
+                    safeUpdate('val-spread', f.macro?.credit_spread, ' bps');
+                    safeUpdate('val-erp', f.macro?.erp ? f.macro.erp.toFixed(2) : '--', '%');
+                    safeUpdate('val-liq', f.macro?.liquidity_roc ? (f.macro.liquidity_roc > 0 ? '+' : '') + f.macro.liquidity_roc.toFixed(2) : '--', '%');
+                    safeUpdate('val-vix', f.tactical?.vix ? f.tactical.vix.toFixed(1) : '--');
+                    safeUpdate('val-fg', f.tactical?.fear_greed);
+                    safeUpdate('val-stress', f.tactical?.tactical_stress, ' pts');
                 }
-
             } catch (e) {
                 console.error("Dashboard Error:", e);
                 body.className = 'state-stale min-h-screen flex items-center justify-center p-4 font-sans';
