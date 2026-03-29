@@ -43,7 +43,7 @@ def plot_dca_performance():
     ax1.plot(daily_ts.index, daily_ts['baseline_nav'], label='Baseline Benchmark (DCA)', color='#ff3366', linewidth=1.5, alpha=0.7)
 
     # Highlight add events
-    adds = daily_ts[daily_ts['deployment_state'] != 'DEPLOY_PAUSE']
+    daily_ts[daily_ts['deployment_state'] != 'DEPLOY_PAUSE']
 
     ax1.set_title(f'v8.1 QQQ Add-Timing Performance vs Baseline DCA\nAvg Cost Improvement: {summary.average_cost_improvement_vs_baseline_dca*100:.2f}% | Signal Beta: {summary.signal_beta:.2f}', fontsize=14, pad=15)
     ax1.set_ylabel('Portfolio NAV ($)', fontsize=12)

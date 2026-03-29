@@ -27,9 +27,12 @@ def macro_2008(dates):
     # 假设 2008-09-15 (雷曼) 之前开始恶化
     vals = []
     for d in dates:
-        if d < pd.Timestamp("2008-09-01"): vals.append(3.0)
-        elif d < pd.Timestamp("2008-10-15"): vals.append(3.0 + (d - pd.Timestamp("2008-09-01")).days * 0.2)
-        else: vals.append(10.0)
+        if d < pd.Timestamp("2008-09-01"):
+            vals.append(3.0)
+        elif d < pd.Timestamp("2008-10-15"):
+            vals.append(3.0 + (d - pd.Timestamp("2008-09-01")).days * 0.2)
+        else:
+            vals.append(10.0)
     df["BAMLH0A0HYM2"] = vals
     df["liquidity_roc"] = -3.0 # 全程流动性紧缩
     df["is_funding_stressed"] = [d > pd.Timestamp("2008-09-15") for d in dates]
@@ -56,7 +59,8 @@ def generate_report(results):
     report += "## 1. 测试综述\n本报告验证了 v6.2 防御逻辑在历史极端危机下的表现。通过注入历史信贷利差与流动性特征，量化了系统对本金的保护能力。\n\n"
 
     for name, summary in results.items():
-        if not summary: continue
+        if not summary:
+            continue
         report += f"### 情景：{name}\n"
         report += f"- **战术最大回撤 (Tactical MDD):** {summary.tactical_mdd * 100:.2f}%\n"
         report += f"- **基准最大回撤 (Baseline MDD):** {summary.baseline_mdd * 100:.2f}%\n"

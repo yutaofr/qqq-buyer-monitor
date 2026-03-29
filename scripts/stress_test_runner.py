@@ -46,9 +46,12 @@ def macro_2000(dates):
     df = pd.DataFrame({"observation_date": dates})
     vals = []
     for d in dates:
-        if d < pd.Timestamp("2000-03-10"): vals.append(5.0)
-        elif d < pd.Timestamp("2002-10-01"): vals.append(5.0 + (d - pd.Timestamp("2000-03-10")).days * 0.01)
-        else: vals.append(max(5.0, 10.0 - (d - pd.Timestamp("2002-10-01")).days * 0.05))
+        if d < pd.Timestamp("2000-03-10"):
+            vals.append(5.0)
+        elif d < pd.Timestamp("2002-10-01"):
+            vals.append(5.0 + (d - pd.Timestamp("2000-03-10")).days * 0.01)
+        else:
+            vals.append(max(5.0, 10.0 - (d - pd.Timestamp("2002-10-01")).days * 0.05))
     df["BAMLH0A0HYM2"] = vals
     df["liquidity_roc"] = [(-4.0 if d < pd.Timestamp("2003-01-01") else 2.0) for d in dates]
     df["is_funding_stressed"] = [pd.Timestamp("2000-05-01") < d < pd.Timestamp("2003-01-01") for d in dates]
@@ -58,10 +61,14 @@ def macro_2008(dates):
     df = pd.DataFrame({"observation_date": dates})
     vals = []
     for d in dates:
-        if d < pd.Timestamp("2008-09-01"): vals.append(3.0)
-        elif d < pd.Timestamp("2008-12-31"): vals.append(3.0 + (d - pd.Timestamp("2008-09-01")).days * 0.1)
-        elif d < pd.Timestamp("2009-03-09"): vals.append(10.0)
-        else: vals.append(max(3.0, 10.0 - (d - pd.Timestamp("2009-03-09")).days * 0.1))
+        if d < pd.Timestamp("2008-09-01"):
+            vals.append(3.0)
+        elif d < pd.Timestamp("2008-12-31"):
+            vals.append(3.0 + (d - pd.Timestamp("2008-09-01")).days * 0.1)
+        elif d < pd.Timestamp("2009-03-09"):
+            vals.append(10.0)
+        else:
+            vals.append(max(3.0, 10.0 - (d - pd.Timestamp("2009-03-09")).days * 0.1))
     df["BAMLH0A0HYM2"] = vals
     df["liquidity_roc"] = [(-3.0 if d < pd.Timestamp("2009-03-01") else 4.0) for d in dates]
     df["is_funding_stressed"] = [pd.Timestamp("2008-09-15") < d < pd.Timestamp("2009-04-01") for d in dates]
@@ -91,14 +98,16 @@ def macro_2025_tariff(dates):
 # --- Visualization ---
 
 def plot_stress_test(name, summary, filename):
-    if summary.daily_timeseries is None: return
+    if summary.daily_timeseries is None:
+        return
     df = summary.daily_timeseries
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 15), sharex=True)
     ax1.plot(df.index, df['nav'], label='Personal Portfolio (v6.4)', color='green', linewidth=2)
     ax1.plot(df.index, df['baseline_nav'], label='Baseline DCA', color='gray', linestyle='--', alpha=0.7)
     ax1.set_title(f"Scenario: {name} - Net Asset Value (NAV) [v6.4 Personal]", fontsize=14, fontweight='bold')
     ax1.set_ylabel("USD")
-    ax1.legend(); ax1.grid(True, alpha=0.3)
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
 
     ax2.plot(df.index, df['cash_pct'], label='Cash Allocation %', color='blue')
     states = df['state'].unique()
@@ -108,21 +117,28 @@ def plot_stress_test(name, summary, filename):
             mask = df['state'] == state
             ax2.fill_between(df.index, 0, 100, where=mask, color=colors[state], alpha=0.2, label=f"State: {state}")
     ax2.set_title("Dynamic Regime & Risk Enforcement", fontsize=12)
-    ax2.set_ylabel("Cash %"); ax2.set_ylim(0, 100)
-    ax2.legend(loc='upper left', fontsize='small'); ax2.grid(True, alpha=0.3)
+    ax2.set_ylabel("Cash %")
+    ax2.set_ylim(0, 100)
+    ax2.legend(loc='upper left', fontsize='small')
+    ax2.grid(True, alpha=0.3)
 
     ax3.plot(df.index, df['credit_accel'], label='Credit Spread Accel (10d)', color='purple')
     ax3.axhline(15.0, color='red', linestyle=':', label='Trigger Threshold (15%)')
     ax3.set_title("Macro Gravity: Credit Momentum", fontsize=12)
-    ax3.set_ylabel("Accel %"); ax3.legend(); ax3.grid(True, alpha=0.3)
-    plt.tight_layout(); plt.savefig(filename, dpi=300); plt.close()
+    ax3.set_ylabel("Accel %")
+    ax3.legend()
+    ax3.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(filename, dpi=300)
+    plt.close()
 
 def generate_report(results):
     report = "# v6.4 宏观压力测试报告 (个人资产配置验证版)\n\n"
     report += "## 1. 测试综述\n本报告基于 v6.4 升级后的“個人資產配置引擎”運行。重點驗證了 AC-5 (30% 回撤預算) 的硬約束執行情況，以及 Rolling Dynamic Search 在不同市場情景下的自適應能力。\n\n"
 
     for name, summary in results.items():
-        if not summary: continue
+        if not summary:
+            continue
         report += f"### 情景：{name}\n"
         report += f"![{name}](images/backtest_v6.4_{name.lower().replace(' ', '_').replace('-', '_')}.png)\n\n"
         report += f"- **戰術最大回撤 (Tactical MDD):** {summary.tactical_mdd * 100:.2f}%\n"

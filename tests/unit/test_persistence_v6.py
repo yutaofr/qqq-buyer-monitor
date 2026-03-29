@@ -93,7 +93,6 @@ def test_v6_3_strategic_fields_db_roundtrip(tmp_path):
 
     # 1. 构造带有战略字段的 Result
     t = TargetAllocationState(target_cash_pct=0.1, target_qqq_pct=0.9, target_qld_pct=0.0, target_beta=0.9)
-    audit = [{"state": "BASE_DCA", "realized": 0.89, "target": 0.90, "deviation": 0.01}]
 
     # 极简 t1/t2
     detail = SignalDetail("test", 0.0, 0, (0, 0), False, False)

@@ -6,8 +6,8 @@ from src.collector.macro import fetch_credit_spread
 from src.collector.macro_v3 import fetch_real_yield
 
 # Mock Treasury XML response
-TREASURY_XML_MOCK = """<atom:feed xmlns:atom="http://www.w3.org/2005/Atom" 
-    xmlns:d="http://schemas.microsoft.com/ado/2007/08/dataservices" 
+TREASURY_XML_MOCK = """<atom:feed xmlns:atom="http://www.w3.org/2005/Atom"
+    xmlns:d="http://schemas.microsoft.com/ado/2007/08/dataservices"
     xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata">
     <atom:entry>
         <m:properties>
@@ -48,7 +48,7 @@ def test_credit_spread_fallback_to_treasury(mock_get):
 def test_real_yield_fallback_to_treasury(mock_get):
     """Verify real yield falls back to Treasury when FRED fails."""
     # We must patch yfinance to prevent live calls if Treasury also fails
-    with patch('yfinance.Ticker') as mock_yf:
+    with patch('yfinance.Ticker'):
         val = fetch_real_yield()
         # Nominal 4.5 - 2.0 proxy = 2.5
         assert val == 2.5

@@ -17,11 +17,17 @@ def create_mock_result(
     risk_state=RiskState.RISK_NEUTRAL,
     deploy_state=DeploymentState.DEPLOY_BASE,
     target_beta=1.0,
-    risk_rules=[{"rule": "clean_macro"}],
-    deploy_rules=[{"rule": "default_base"}],
-    feature_values={}
+    risk_rules=None,
+    deploy_rules=None,
+    feature_values=None
 ):
     # Dummy results
+    if feature_values is None:
+        feature_values = {}
+    if deploy_rules is None:
+        deploy_rules = [{"rule": "default_base"}]
+    if risk_rules is None:
+        risk_rules = [{"rule": "clean_macro"}]
     t1 = Tier1Result(score=50, drawdown_52w=None, ma200_deviation=None, vix=None, fear_greed=None, breadth=None)
     t2 = Tier2Result(adjustment=0, put_wall=None, call_wall=None, gamma_flip=None, support_confirmed=True,
                     support_broken=False, upside_open=True, gamma_positive=True, gamma_source="bs",

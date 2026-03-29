@@ -20,7 +20,7 @@ def check_2025():
     qqq_dates = [d.date() for d in qqq.index]
     vix_dates = [d.date() for d in vix.index]
 
-    vix_dict = dict(zip(vix_dates, vix["Close"]))
+    vix_dict = dict(zip(vix_dates, vix["Close"], strict=False))
     df["VIX"] = [vix_dict.get(d, None) for d in qqq_dates]
     df["VIX"] = df["VIX"].ffill()
     df = df.dropna()
@@ -33,9 +33,12 @@ def check_2025():
             dev_50 = (row["Close"] - row["MA50"]) / row["MA50"]
             if pd.isna(dev_50):
                 pct_50 = 0.5
-            elif dev_50 > 0.05: pct_50 = 0.65
-            elif dev_50 < -0.05: pct_50 = 0.20
-            else: pct_50 = 0.40
+            elif dev_50 > 0.05:
+                pct_50 = 0.65
+            elif dev_50 < -0.05:
+                pct_50 = 0.20
+            else:
+                pct_50 = 0.40
 
             lookback_df_60 = df[df.index <= dt].tail(60).copy()
 
