@@ -370,6 +370,11 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
                 real_yield=float(real_yield) if real_yield else 0.0,
             )
 
+        # ── Final Persistence Sync (v11.18) ──────────────────────────────────────
+        if cloud.is_ci:
+            logger.info("Synchronizing updated state (signals.db, macro_dump) back to Cloud...")
+            cloud.push_state(sync_files)
+
         # MANDATORY: Sync feature library to cloud whenever persistence is active in CI
         export_feature_library_to_blob()
         logger.info("v11 signal and cloud memory successfully persisted.")
