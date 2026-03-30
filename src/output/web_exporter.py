@@ -64,7 +64,7 @@ def _build_runtime_traces(result: SignalResult) -> list[dict]:
     traces = result.logic_trace
     if result.engine_version == "v11":
         return traces
-        
+
     if not traces or (len(traces) > 0 and traces[0].get("step") != "tier0_regime"):
         traces = build_runtime_logic_trace(result)
     return traces
@@ -466,14 +466,14 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
 
         # Resolve mappings with MUST-HAVE integrity (Fail-Closed)
         is_v11 = result.engine_version == "v11"
-        
+
         # v11 unified regime vs v10 dual regime
         if is_v11 and result.v11_probabilities:
             # Pick top posterior for V11
             regime_key = max(result.v11_probabilities.items(), key=lambda x: x[1])[0]
         else:
             regime_key = str(result.tier0_regime) if result.tier0_regime else "NEUTRAL"
-            
+
         deploy_key = _get_deployment_state_str(result)
 
         # Accessing with [] to raise KeyError if missing - system should failure rather than mask
@@ -489,7 +489,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
             "qld_pct": result.target_allocation.target_qld_pct,
             "cash_pct": result.target_allocation.target_cash_pct,
         }
-        
+
         # V11 specific descriptive contract
         contract_desc = (
             "系统输出为概率优先的连续目标 Beta；"
@@ -671,12 +671,12 @@ def export_feature_library_to_blob(library_path: str | Path = "data/v11_feature_
                     logger.info("V11 Feature Library successfully persisted to cloud.")
                     return True
 
-                logger.error("Vercel Blob Sync Failed (%d, attempt %d/%d): %s", 
+                logger.error("Vercel Blob Sync Failed (%d, attempt %d/%d): %s",
                              resp.status_code, attempt+1, max_retries, resp.text)
                 if resp.status_code not in [500, 502, 503, 504]:
                     break # Non-transient error
             except Exception as e:
-                logger.warning("Transient error during library sync (attempt %d/%d): %s", 
+                logger.warning("Transient error during library sync (attempt %d/%d): %s",
                                attempt+1, max_retries, e)
 
             if attempt < max_retries - 1:

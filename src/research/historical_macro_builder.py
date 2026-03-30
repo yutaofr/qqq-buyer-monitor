@@ -150,6 +150,8 @@ def build_historical_macro_dataset(output_path: str | Path | None = None) -> pd.
         "liquidity_roc_pct_4w",
         calendar,
     )
+    # NFCI is a standard deviation index. Positive = Tighter.
+    daily["nfci_raw"] = daily["NFCI"]
     # CPFF is a rate series and `> 0` is not a stress signal. Keep the runtime
     # and research paths consistent by deriving the boolean flag from NFCI only.
     daily["funding_stress_flag"] = (daily["NFCI"] > 0).astype(int)
@@ -158,6 +160,7 @@ def build_historical_macro_dataset(output_path: str | Path | None = None) -> pd.
     daily["source_forward_pe"] = valuation["source_forward_pe"].dropna().iloc[-1]
     daily["source_erp"] = valuation["source_erp"].dropna().iloc[-1]
     daily["source_real_yield"] = "fred:DFII10"
+    daily["source_nfci"] = "fred:NFCI"
     daily["source_net_liquidity"] = "derived:WALCL-WDTGAL-RRPONTSYD"
     daily["source_funding_stress"] = "fred:NFCI"
     daily["build_version"] = BUILD_VERSION
@@ -170,6 +173,7 @@ def build_historical_macro_dataset(output_path: str | Path | None = None) -> pd.
         "forward_pe",
         "erp_pct",
         "real_yield_10y_pct",
+        "nfci_raw",
         "net_liquidity_usd_bn",
         "liquidity_roc_pct_4w",
         "funding_stress_flag",
@@ -177,6 +181,7 @@ def build_historical_macro_dataset(output_path: str | Path | None = None) -> pd.
         "source_forward_pe",
         "source_erp",
         "source_real_yield",
+        "source_nfci",
         "source_net_liquidity",
         "source_funding_stress",
         "build_version",

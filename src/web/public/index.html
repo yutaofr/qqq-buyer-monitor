@@ -53,7 +53,7 @@
                 <div id="indicator" class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.5)]"></div>
                 <span id="market-label" class="text-[10px] sm:text-[11px] font-black opacity-60 uppercase tracking-widest">--</span>
             </div>
-            <p class="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase">v11.0 Bayesian</p>
+            <p class="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase">v11.5 Probabilistic</p>
         </div>
 
         <div class="mt-12 sm:mt-14 mb-8 sm:mb-12">
@@ -227,12 +227,14 @@
                 const bar = document.getElementById('exposure-bar'); const beta = data.signal.target_beta;
                 bar.style.width = Math.min(100, beta * 83.33) + '%'; bar.className = beta > 1.0 ? 'h-full overclock' : 'h-full bg-emerald-500';
                 
-                const fullReg = data.signal.regime.toUpperCase(); const cycReg = data.signal.cycle_regime.toUpperCase();
+                const fullReg = data.signal.regime.toUpperCase(); 
+                const cycReg = (data.signal.cycle_regime || "").toUpperCase();
                 const bucket = (data.signal.reference_path.qld_pct > 0 ? "QLD" : (data.signal.reference_path.qqq_pct > 0.1 ? "QQQ" : "CASH"));
                 
                 document.querySelectorAll('.tag').forEach(t => {
                     const key = t.getAttribute('data-key');
-                    if (fullReg.includes(key) || cycReg.includes(key) || key === bucket) {
+                    // v11.5 Parity: Check against Bayesian Posteriors or identified regime
+                    if (fullReg.includes(key) || cycReg.includes(key) || key === bucket || (data.signal.v11_probabilities && data.signal.v11_probabilities[key] > 0.4)) {
                         t.className = 'tag node-active text-[10px] px-3 py-2 border border-emerald-500/50 rounded-2xl transition-all duration-1000';
                     } else { t.className = 'tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl'; }
                 });

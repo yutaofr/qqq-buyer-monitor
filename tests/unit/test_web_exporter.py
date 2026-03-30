@@ -248,7 +248,7 @@ def test_export_web_snapshot_contains_v9_decision_chain(tmp_path, monkeypatch):
 def test_web_index_narrative_uses_v9_target_beta_contract():
     html = Path("src/web/public/index.html").read_text(encoding="utf-8")
 
-    assert "v11.0" in html
+    assert "v11.5" in html
     assert "v8.2" not in html
     assert "Beta 建议" in html
     # The linear path is v10 legacy, v11 uses Bayesian Probabilities shown in prob-container

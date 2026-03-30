@@ -1,13 +1,13 @@
 
-import pandas as pd
-import pytest
-import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-import io
 
-from src.output.web_exporter import export_feature_library_to_blob
+import pandas as pd
+import pytest
+
 from src.engine.v11.core.feature_library import FeatureLibraryManager
+from src.output.web_exporter import export_feature_library_to_blob
+
 
 @pytest.fixture
 def mock_env(monkeypatch):
@@ -21,19 +21,19 @@ def test_export_feature_library_to_blob_retry_logic(mock_env):
         m1 = MagicMock()
         m1.status_code = 503
         m1.text = "Service Unavailable"
-        
+
         m2 = MagicMock()
         m2.status_code = 200
-        
+
         mock_put.side_effect = [m1, m2]
-        
+
         # 创建临时测试文件
         test_csv = Path("data/v11_feature_library.csv")
         if not test_csv.exists():
             pd.DataFrame({"observation_date": ["2026-03-30"], "val": [1]}).to_csv(test_csv, index=False)
-            
+
         success = export_feature_library_to_blob(library_path=str(test_csv))
-        
+
         assert success is True
         assert mock_put.call_count == 2
         args, kwargs = mock_put.call_args
@@ -48,28 +48,28 @@ def test_feature_library_manager_cloud_pull_and_merge(mock_env, tmp_path):
         "observation_date": ["2026-03-01", "2026-03-02"],
         "val": [10, 20]
     }).to_csv(local_path, index=False)
-    
+
     # 2. 模拟云端数据
     cloud_content = pd.DataFrame({
         "observation_date": ["2026-03-02", "2026-03-03"],
         "val": [99, 30]
     }).to_csv(index=False).encode("utf-8")
-    
+
     with patch("src.engine.v11.core.feature_library.requests.get") as mock_get:
         # 第一步：模拟 List API 返回边缘 URL
         m_list = MagicMock()
         m_list.status_code = 200
         m_list.json.return_value = {"blobs": [{"url": "https://edge.test/v11_feature_library.csv"}]}
-        
+
         # 第二步：模拟从边缘 URL 下载 CSV
         m_get = MagicMock()
         m_get.status_code = 200
         m_get.content = cloud_content
-        
+
         mock_get.side_effect = [m_list, m_get]
-        
+
         manager = FeatureLibraryManager(storage_path=str(local_path), persist=False)
-        
+
         # 3. 校验合并结果
         assert len(manager.df) == 3
         val_02 = manager.df[manager.df["observation_date"] == "2026-03-02"]["val"].iloc[0]
@@ -80,14 +80,14 @@ def test_feature_library_manager_fallback_on_failure(mock_env, tmp_path):
     """验证自愈逻辑：云端 404 时应无缝使用本地数据。"""
     local_path = tmp_path / "local_lib.csv"
     pd.DataFrame({"observation_date": ["2026-03-01"], "val": [1]}).to_csv(local_path, index=False)
-    
+
     with patch("src.engine.v11.core.feature_library.requests.get") as mock_get:
         mock_resp = MagicMock()
         mock_resp.status_code = 404
         mock_get.return_value = mock_resp
-        
+
         manager = FeatureLibraryManager(storage_path=str(local_path), persist=False)
-        
+
         # 虽云端失败，但本地数据应加载成功
         assert len(manager.df) == 1
         assert manager.df.iloc[0]["val"] == 1

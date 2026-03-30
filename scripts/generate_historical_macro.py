@@ -24,22 +24,24 @@ def _build_dev_fixture_frame() -> pd.DataFrame:
     frame["forward_pe"] = 24.0
     frame["erp_pct"] = 2.7
     frame["real_yield_10y_pct"] = 1.5
+    frame["nfci_raw"] = -0.1
     frame["net_liquidity_usd_bn"] = 250.0
     frame["funding_stress_flag"] = 0
 
     regimes = [
-        ("2000-03-10", "2003-12-31", 1000.0, 32.0, 1.2, 0.5, 180.0, 1),
-        ("2008-09-01", "2009-06-01", 2000.0, 15.0, 6.0, 1.0, 120.0, 1),
-        ("2020-02-15", "2020-05-01", 800.0, 18.0, 5.2, 0.8, 90.0, 1),
-        ("2021-06-01", "2021-11-01", 200.0, 29.0, 1.8, -1.0, 270.0, 0),
-        ("2022-01-01", "2022-12-31", 500.0, 20.0, 4.0, 2.0, 150.0, 0),
+        ("2000-03-10", "2003-12-31", 1000.0, 32.0, 1.2, 0.5, -0.1, 180.0, 1),
+        ("2008-09-01", "2009-06-01", 2000.0, 15.0, 6.0, 1.0, 0.5, 120.0, 1),
+        ("2020-02-15", "2020-05-01", 800.0, 18.0, 5.2, 0.8, 0.2, 90.0, 1),
+        ("2021-06-01", "2021-11-01", 200.0, 29.0, 1.8, -1.0, -0.2, 270.0, 0),
+        ("2022-01-01", "2022-12-31", 500.0, 20.0, 4.0, 2.0, 0.1, 150.0, 0),
     ]
-    for start, end, spread_bps, forward_pe, erp_pct, real_yield, liquidity_bn, stressed in regimes:
+    for start, end, spread_bps, forward_pe, erp_pct, real_yield, nfci, liquidity_bn, stressed in regimes:
         mask = (frame["observation_date"] >= start) & (frame["observation_date"] <= end)
         frame.loc[mask, "credit_spread_bps"] = spread_bps
         frame.loc[mask, "forward_pe"] = forward_pe
         frame.loc[mask, "erp_pct"] = erp_pct
         frame.loc[mask, "real_yield_10y_pct"] = real_yield
+        frame.loc[mask, "nfci_raw"] = nfci
         frame.loc[mask, "net_liquidity_usd_bn"] = liquidity_bn
         frame.loc[mask, "funding_stress_flag"] = stressed
 
@@ -50,6 +52,7 @@ def _build_dev_fixture_frame() -> pd.DataFrame:
     frame["source_forward_pe"] = SOURCE_TAG
     frame["source_erp"] = SOURCE_TAG
     frame["source_real_yield"] = SOURCE_TAG
+    frame["source_nfci"] = SOURCE_TAG
     frame["source_net_liquidity"] = SOURCE_TAG
     frame["source_funding_stress"] = SOURCE_TAG
     frame["build_version"] = BUILD_VERSION

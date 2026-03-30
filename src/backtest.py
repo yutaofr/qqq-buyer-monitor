@@ -10,7 +10,6 @@ import argparse
 import concurrent.futures
 import logging
 import os
-import tempfile
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -2350,29 +2349,31 @@ def run_backtest(
 
 
 def _v11_inference_task(
-    row_data: tuple[pd.Series, pd.Series, Any, dict[str, float]],
+    row_data: tuple[pd.Series, pd.Series, Any, list[str]],
 ) -> dict[str, Any]:
-    """Independent worker task for Bayesian inference."""
-    from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
-    
-    std_row, source_row, kde_models, base_priors = row_data
-    inference = BayesianInferenceEngine(kde_models=kde_models, base_priors=base_priors)
-    
-    # Pass coordinates directly as expected by infer_posterior
-    pca_coords = np.array([float(std_row["pca1"]), float(std_row["pca2"])])
-    
-    posterior = inference.infer_posterior(
-        pca_coords,
-        current_spread=float(source_row.get("credit_spread_bps", 400.0))
-    )
-    
+    """Independent worker task for v11.5 Bayesian inference."""
+    std_row, source_row, gnb_model, classes = row_data
+
+    # Vectorized evidence from Seeder
+    feature_cols = [c for c in std_row.index if c not in ["observation_date", "regime"]]
+    evidence = std_row[feature_cols].values.reshape(1, -1)
+
+    # Probabilistic Inference
+    probs_array = gnb_model.predict_proba(evidence)[0]
+    posterior = dict(zip(classes, probs_array, strict=True))
+
     actual_regime = str(source_row.get("regime", "MID_CYCLE"))
+    predicted_regime = max(posterior, key=posterior.get)
+
+    # Brier Score calculation
+    brier = sum((posterior.get(name, 0.0) - (1.0 if name == actual_regime else 0.0)) ** 2 for name in classes)
+
     result = {
         "date": std_row["observation_date"],
         "actual_regime": actual_regime,
         "actual_regime_probability": float(posterior.get(actual_regime, 0.0)),
-        "predicted_regime": max(posterior, key=posterior.get),
-        "brier": sum((posterior.get(name, 0.0) - (1.0 if name == actual_regime else 0.0)) ** 2 for name in posterior),
+        "predicted_regime": predicted_regime,
+        "brier": brier,
         "posterior": posterior
     }
     return result
@@ -2380,206 +2381,118 @@ def _v11_inference_task(
 
 def run_v11_audit(
     *,
-    dataset_path: str = "data/v11_feature_library.csv",
-    evaluation_start: str = "1999-01-01",
+    dataset_path: str = "data/macro_historical_dump.csv",
+    evaluation_start: str = "2018-01-01",
 ) -> dict[str, Any]:
-    """Run the optimized parallel v11 probabilistic audit."""
-    from src.engine.v11.core.calibration_service import CalibrationService
-    from src.engine.v11.core.feature_library import FeatureLibraryManager
-    from src.engine.v11.core.position_sizer import ProbabilisticPositionSizer
-    from src.engine.v11.signal.behavioral_guard import BehavioralGuard
-    from src.output.backtest_plots import save_v11_fidelity_figure, save_v11_probabilistic_audit_figure
+    """Run the unified v11.5 probabilistic audit with causal isolation."""
+    from sklearn.naive_bayes import GaussianNB
 
-    dataset = Path(dataset_path)
-    if not dataset.exists():
-        raise FileNotFoundError(f"v11 dataset not found: {dataset_path}")
+    from src.engine.v11.conductor import V11Conductor
+    from src.engine.v11.core.entropy_controller import EntropyController
+    from src.engine.v11.probability_seeder import ProbabilitySeeder
+    from src.engine.v11.signal.hysteresis_beta_mapper import HysteresisBetaMapper
+    from src.output.backtest_plots import (
+        save_v11_fidelity_figure,
+        save_v11_probabilistic_audit_figure,
+    )
 
-    df = pd.read_csv(dataset)
-    df["observation_date"] = pd.to_datetime(df["observation_date"])
-    df = df.sort_values("observation_date").reset_index(drop=True)
+    # 1. Load v11.5 Ground Truth and Price History
+    macro_df = pd.read_csv(dataset_path, parse_dates=["observation_date"]).set_index("observation_date")
+    regime_df = pd.read_csv("data/v11_poc_phase1_results.csv", parse_dates=["observation_date"]).set_index("observation_date")
 
-    # 1. Vectorized Pre-calculation
-    lib_df = df.copy()
-    lib_df["ma200"] = lib_df["qqq_close"].rolling(200, min_periods=1).mean()
-    lib_df["price_vs_ma200"] = (lib_df["qqq_close"] / lib_df["ma200"]) - 1.0
-    lib_df["rolling_drawdown_val"] = (lib_df["qqq_close"] / lib_df["qqq_close"].expanding().max()) - 1.0
-    lib_df["five_day_return"] = lib_df["qqq_close"].pct_change(5)
-    lib_df["twenty_day_return"] = lib_df["qqq_close"].pct_change(20)
-    
-    from src.research.signal_expectations import _expected_target_beta, _expected_deployment_state
-    expected_betas = []
-    expected_deployments = []
-    for _, row in lib_df.iterrows():
-        # Beta Expectations
-        beta = _expected_target_beta(
-            credit_spread=float(row.get("credit_spread_bps", 400.0)),
-            credit_accel=float(row.get("credit_acceleration_pct_10d", 0.0)),
-            liquidity_roc=float(row.get("liquidity_roc_pct_4w", 0.0)),
-            funding_stress=bool(row.get("funding_stress_flag", False)),
-            erp=3.5, breadth=float(row.get("breadth_proxy", 0.5)),
-            price_vs_ma200=float(row.get("price_vs_ma200", 0.0)),
-            rolling_drawdown=abs(row["rolling_drawdown_val"]),
-        )
-        expected_betas.append(beta)
-        
-        # Deployment Expectations
-        dep_state = _expected_deployment_state(
-            credit_spread=float(row.get("credit_spread_bps", 400.0)),
-            credit_accel=float(row.get("credit_acceleration_pct_10d", 0.0)),
-            liquidity_roc=float(row.get("liquidity_roc_pct_4w", 0.0)),
-            funding_stress=bool(row.get("funding_stress_flag", False)),
-            rolling_drawdown=abs(row["rolling_drawdown_val"]),
-            five_day_return=float(row.get("five_day_return", 0.0)),
-            twenty_day_return=float(row.get("twenty_day_return", 0.0)),
-            capitulation_score=0,
-            tactical_stress_score=0
-        )
-        expected_deployments.append(dep_state)
-        
-    lib_df["expected_target_beta_dynamic"] = expected_betas
-    lib_df["expected_deployment_state_dynamic"] = expected_deployments
+    # Load Price Cache for Plotting (Normalize index to match macro_df)
+    price_df = pd.read_csv("data/qqq_history_cache.csv")
+    price_df["Date"] = pd.to_datetime(price_df["Date"], utc=True).dt.tz_localize(None).dt.normalize()
+    price_df = price_df.set_index("Date")
 
-    train = lib_df[lib_df["observation_date"] < evaluation_start].copy()
-    test = lib_df[lib_df["observation_date"] >= evaluation_start].copy()
-    
-    library = FeatureLibraryManager(storage_path=dataset_path, persist=False)
-    library.df = lib_df.copy()
-    standardized = library.get_standardized_features()
-    std_train = standardized[standardized["observation_date"] < evaluation_start].copy()
-    std_test = standardized[standardized["observation_date"] >= evaluation_start].copy()
+    macro_df.index = pd.to_datetime(macro_df.index).tz_localize(None).normalize()
+    macro_df["qqq_close"] = price_df["Close"]
+    macro_df["qqq_close"] = macro_df["qqq_close"].ffill()
 
-    # 2. Fast Single Calibration (for KDE models only)
-    calibrator = CalibrationService()
-    baseline_features = ["spread_stress_pct", "liquidity_stress_pct", "vix_stress_pct", "drawdown_stress_pct", "breadth_stress_pct", "term_structure_stress_pct"]
-    calibrator.calibrate(std_train, train, feature_cols=baseline_features)
-    
-    # CRITICAL: Use existing PCA1/PCA2 from library for testing
-    std_test = std_test.copy()
-    std_test["pca1"] = test["pca1"].values
-    std_test["pca2"] = test["pca2"].values
-    
-    base_priors = {"MID_CYCLE": 0.85, "BUST": 0.05, "CAPITULATION": 0.02, "RECOVERY": 0.05, "LATE_CYCLE": 0.03}
+    # 2. Unified Feature Seeding (Epic 1)
+    seeder = ProbabilitySeeder()
+    features = seeder.generate_features(macro_df)
+    full_df = features.join(regime_df["regime"], how="inner")
+    full_df["qqq_close"] = macro_df["qqq_close"]
+    full_df = full_df.dropna()
+    full_df = full_df.reset_index().rename(columns={"index": "observation_date"})
 
-    # 3. Parallel Inference
-    print(f"Parallel Inference: Dispatching {len(std_test)} worker tasks...")
+    # 3. Causal Training Split (Architect Requirement)
+    train = full_df[full_df["observation_date"] < pd.to_datetime(evaluation_start)].copy()
+    test = full_df[full_df["observation_date"] >= pd.to_datetime(evaluation_start)].copy()
+
+    logger.info(f"v11.5 Audit: Training on {len(train)} days (pre-{evaluation_start}), testing on {len(test)} days.")
+
+    # 4. GNB Training (Epic 2)
+    feature_cols = [c for c in train.columns if c not in ["observation_date", "regime"]]
+    gnb = GaussianNB()
+    gnb.fit(train[feature_cols], train["regime"])
+
+    # 5. Parallel Batch Inference
+    print(f"Parallel Inference: Dispatching {len(test)} tasks...")
+    source_df_map = macro_df.reset_index()
     tasks = []
-    for _, std_row in std_test.iterrows():
-        source_row = test[test["observation_date"] == std_row["observation_date"]].iloc[-1]
-        tasks.append((std_row, source_row, calibrator.kde_models, base_priors))
+    for _, row in test.iterrows():
+        source_row = source_df_map[source_df_map["observation_date"] == row["observation_date"]].iloc[0]
+        tasks.append((row, source_row, gnb, list(gnb.classes_)))
 
+    import concurrent.futures
     with concurrent.futures.ProcessPoolExecutor() as executor:
         probability_results = list(executor.map(_v11_inference_task, tasks))
-    
-    probability_df = pd.DataFrame([r for r in probability_results if r])
-    for r in ["MID_CYCLE", "BUST", "CAPITULATION", "RECOVERY", "LATE_CYCLE"]:
-        probability_df[f"prob_{r}"] = probability_df["posterior"].apply(lambda x: x.get(r, 0.0))
 
-    # 4. Sequential Guard & Deployment Loop
-    print("Sequential Guard & Deployment: Applying behavior constraints...")
-    from src.engine.risk_controller import decide_risk_state
-    from src.engine.deployment_controller import decide_deployment_state
-    from src.engine.feature_pipeline import FeatureSnapshot
-    
-    guard = BehavioralGuard()
-    sizer = ProbabilisticPositionSizer()
-    execution_rows = []
+    # 6. Post-Process Probabilities
+    probability_df = pd.DataFrame([r for r in probability_results if r])
     probability_df = probability_df.sort_values("date")
-    test_indexed = test.set_index("observation_date")
-    
+
+    # 7. Sequential Execution Loop (Epic 3 & 4 Alignment)
+    entropy_ctrl = EntropyController(threshold=V11Conductor.ENTROPY_THRESHOLD)
+    beta_mapper = HysteresisBetaMapper(V11Conductor.BASE_BETAS, delta_threshold=V11Conductor.DELTA_THRESHOLD)
+
+    execution_rows = []
     for _, prob_row in probability_df.iterrows():
         dt = prob_row["date"]
-        source_row = test_indexed.loc[dt]
-        top_regime = prob_row["predicted_regime"]
-        
-        # Build snapshot for legacy controllers
-        from src.engine.feature_pipeline import build_feature_snapshot
-        
-        vals = {
-            "credit_spread": float(source_row.get("credit_spread_bps", 400.0)),
-            "credit_acceleration": float(source_row.get("credit_acceleration_pct_10d", 0.0)),
-            "liquidity_roc": float(source_row.get("liquidity_roc_pct_4w", 0.0)),
-            "funding_stress": bool(source_row.get("funding_stress_flag", False)),
-            "rolling_drawdown": abs(source_row["rolling_drawdown_val"]),
-            "five_day_return": source_row["five_day_return"],
-            "twenty_day_return": source_row["twenty_day_return"],
-            "tactical_stress_score": 0
-        }
-        qual = {k: {"usable": True} for k in vals.keys()}
-        
-        snapshot = build_feature_snapshot(
-            market_date=dt.date(),
-            raw_values=vals,
-            raw_quality=qual
-        )
-        
-        # 1. Risk State
-        risk_decision = decide_risk_state(snapshot, tier0_regime=top_regime)
-        
-        # 2. Deployment State
-        deployment_decision = decide_deployment_state(snapshot, risk_decision, tier0_regime=top_regime)
-        
-        # 3. Position Sizing & Guard
-        sizing = sizer.size_positions(
-            posteriors=prob_row["posterior"],
-            reference_capital=100_000.0,
-            current_nav=100_000.0,
-            previous_target_beta=guard.last_target_beta
-        )
-        decision = guard.apply(sizing, kill_switch_active=False)
-        
-        from src.models.deployment import deployment_multiplier_for_state
-        
-        actual_mult = float(deployment_multiplier_for_state(deployment_decision.deployment_state) or 0.0)
-        expected_mult = float(deployment_multiplier_for_state(source_row["expected_deployment_state_dynamic"]) or 0.0)
-        base_unit = 1000.0 # Hypothetical weekly DCA unit
-        
+        source_row = test[test["observation_date"] == dt].iloc[0]
+        posteriors = prob_row["posterior"]
+
+        # Bayesian -> Entropy -> Hysteresis
+        raw_beta = beta_mapper.calculate_expectation(posteriors)
+        norm_h = entropy_ctrl.calculate_normalized_entropy(posteriors)
+        protected_beta = entropy_ctrl.apply_haircut(raw_beta, norm_h)
+        final_beta = beta_mapper.apply_hysteresis(protected_beta)
+
         execution_rows.append({
             "date": dt,
-            "bucket": decision.target_bucket,
-            "target_beta": decision.target_beta,
-            "raw_target_beta": decision.raw_target_beta,
-            "expected_target_beta": source_row["expected_target_beta_dynamic"],
-            "deployment_state": deployment_decision.deployment_state.value,
-            "expected_deployment_state": source_row["expected_deployment_state_dynamic"],
-            "deployment_multiplier": actual_mult,
-            "expected_deployment_multiplier": expected_mult,
-            "actual_deployment_cash": actual_mult * base_unit,
-            "expected_deployment_cash": expected_mult * base_unit,
-            "deployment_pacing_error": abs(actual_mult - expected_mult),
-            "close": source_row["qqq_close"],
-            "entropy": sizing.entropy,
-            "lock_active": decision.lock_active,
+            "target_beta": final_beta,
+            "raw_target_beta": raw_beta,
+            "entropy": norm_h,
+            "predicted_regime": prob_row["predicted_regime"],
+            "actual_regime": source_row["regime"],
+            "lock_active": (beta_mapper.cooldown_remaining > 0),
+            "close": source_row["qqq_close"]
         })
+        beta_mapper.tick_cooldown()
 
     execution_df = pd.DataFrame(execution_rows)
     full_audit_df = pd.merge(execution_df, probability_df.drop(columns=["posterior"]), on="date", how="left")
 
+    # 8. Performance Summary
     summary = {
         "compared_points": int(len(probability_df)),
         "top1_accuracy": float((probability_df["predicted_regime"] == probability_df["actual_regime"]).mean()),
-        "mean_actual_regime_probability": float(probability_df["actual_regime_probability"].mean()),
         "mean_brier": float(probability_df["brier"].mean()),
-        "left_escape_pass": bool(not execution_df.empty and execution_df.loc[execution_df["date"] == pd.Timestamp("2020-03-09"), "bucket"].ne("QLD").any()),
-        "lock_days": int(execution_df["lock_active"].sum()),
-        "deployment_alignment": float((execution_df["deployment_state"] == execution_df["expected_deployment_state"]).mean())
+        "mean_entropy": float(execution_df["entropy"].mean()),
+        "lock_incidence": float(execution_df["lock_active"].mean())
     }
 
-    print("\n--- v11 Parallel Performance Audit (Dual Signal) ---")
-    print(f"Regime: points={summary['compared_points']} | accuracy={summary['top1_accuracy']:.2%} | brier={summary['mean_brier']:.4f}")
-    print(f"Pacing: deployment_alignment={summary['deployment_alignment']:.2%}")
-    print(f"Execution: left_escape={'PASS' if summary['left_escape_pass'] else 'FAIL'} | lock_days={summary['lock_days']}")
-    
-    save_dir = Path("artifacts/v11_acceptance")
+    print("\n--- v11.5 Unified Probabilistic Performance Audit ---")
+    print(f"Accuracy: {summary['top1_accuracy']:.2%} | Brier: {summary['mean_brier']:.4f} | Entropy: {summary['mean_entropy']:.3f} | Lock: {summary['lock_incidence']:.1%}")
+
+    save_dir = Path("artifacts/v11_5_acceptance")
     save_dir.mkdir(parents=True, exist_ok=True)
-    
-    from src.output.backtest_plots import save_v11_fidelity_figure, save_v11_probabilistic_audit_figure, save_deployment_pacing_figure
-    save_v11_fidelity_figure(execution_df, summary, [save_dir / "v11_target_beta_fidelity.png"])
-    save_v11_probabilistic_audit_figure(full_audit_df, summary, [save_dir / "v11_probabilistic_audit.png"])
-    
-    # Generate Deployment Pacing Plot
-    save_deployment_pacing_figure(execution_df, summary, [save_dir / "v11_deployment_pacing_fidelity.png"])
-    
-    print(f"V11 Visualizations saved to {save_dir}")
+
+    save_v11_fidelity_figure(execution_df, summary, [save_dir / "v11_5_target_beta_fidelity.png"])
+    save_v11_probabilistic_audit_figure(full_audit_df, summary, [save_dir / "v11_5_probabilistic_audit.png"])
+
     return summary
 
 

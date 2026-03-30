@@ -36,8 +36,10 @@ def mock_requests_get(url, *args, **kwargs):
     return response
 
 @patch('requests.get', side_effect=mock_requests_get)
-def test_credit_spread_fallback_to_treasury(mock_get):
+@patch('subprocess.run')
+def test_credit_spread_fallback_to_treasury(mock_subprocess, mock_get):
     """Verify credit spread falls back to Treasury when FRED and Chicago Fed fail."""
+    mock_subprocess.side_effect = Exception("Curl failed")
     spread = fetch_credit_spread()
     # YC Spread = 4.5 - 3.5 = 1.0
     # Synthetic = 350 + (1.0 - 1.0) * 125 = 350
@@ -45,8 +47,10 @@ def test_credit_spread_fallback_to_treasury(mock_get):
     assert mock_get.call_count >= 2 # At least FRED and Treasury (and maybe Chicago Fed)
 
 @patch('requests.get', side_effect=mock_requests_get)
-def test_real_yield_fallback_to_treasury(mock_get):
+@patch('subprocess.run')
+def test_real_yield_fallback_to_treasury(mock_subprocess, mock_get):
     """Verify real yield falls back to Treasury when FRED fails."""
+    mock_subprocess.side_effect = Exception("Curl failed")
     # We must patch yfinance to prevent live calls if Treasury also fails
     with patch('yfinance.Ticker'):
         val = fetch_real_yield()

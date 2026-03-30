@@ -4,6 +4,7 @@ Maintains the 25-year historical dataset required for consistent EWMA ranking.
 from __future__ import annotations
 
 import io
+import logging
 import os
 from pathlib import Path
 
@@ -11,9 +12,6 @@ import pandas as pd
 import requests
 
 from src.engine.v11.core.adaptive_memory import ExogenousMemoryOperator
-
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +35,7 @@ class FeatureLibraryManager:
         # Cloud Sync (List then Get to handle Vercel's Edge URL mapping)
         is_ci = os.environ.get("GITHUB_ACTIONS") == "true"
         blob_token = os.environ.get("VERCEL_BLOB_READ_WRITE_TOKEN")
-        
+
         if is_ci and blob_token:
             try:
                 # 1. List blobs to find the correct edge URL for the feature library
@@ -47,25 +45,25 @@ class FeatureLibraryManager:
                     "x-api-version": "7"
                 }
                 list_resp = requests.get(list_url, headers=headers, timeout=10)
-                
+
                 if list_resp.status_code == 200:
                     blobs = list_resp.json().get("blobs", [])
                     if blobs:
                         download_url = blobs[0]["url"]
                         logger.info("Syncing V11 Library from cloud edge: %s", download_url)
-                        
+
                         # 2. Download from the actual Edge URL
                         resp = requests.get(download_url, timeout=15)
                         if resp.status_code == 200:
                             cloud_df = pd.read_csv(io.BytesIO(resp.content))
                             cloud_df["observation_date"] = pd.to_datetime(cloud_df["observation_date"])
-                            
+
                             # Merge and deduplicate, prioritizing cloud data
                             if local_df.empty:
                                 local_df = cloud_df
                             else:
                                 local_df = pd.concat([local_df, cloud_df]).drop_duplicates(subset=["observation_date"], keep="last")
-                            
+
                             logger.info("V11 Feature Library synced from cloud (Total rows: %d)", len(local_df))
                         else:
                             logger.warning("V11 Cloud download failed (%d)", resp.status_code)

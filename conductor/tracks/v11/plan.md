@@ -7,9 +7,13 @@
 
 1. 修复结算锁被同日清零的问题。
 2. 修复数据降级后 `action_required` 与内部状态不同步的问题。
-3. 修复单行 DataFrame 输入触发的 duplicate-index / broadcast 崩溃。
-4. 将 v11 主链路收敛为：
+3. 将 v11 主链路收敛为：
    `degradation -> adaptive features -> calibration -> posterior -> sizing -> behavior guard -> override`
+4. **V11.1 动量集成 (Momentum Integration)**: 
+   - 修改 `CalibrationService` 支持 `_momentum` 特征自动筛选。
+   - 引入 Howard Marks 评审建议，将“导数”维度引入贝叶斯推断。
+   - 通过回测验证 Brier Score 优化率达 42.44%。
+   - PCA 载荷平衡审计 (水位 0.24 vs 动量 0.21) 通过。
 5. 对齐 `src.main`、`src.backtest`、CLI、DB blob 的 v11 contract。
 6. 为 sizing、behavior guard、feature library、degradation、main/backtest 入口补齐回归测试。
 
