@@ -123,16 +123,19 @@ python -m src.backtest --mode v11
 ### 8.4 核心图表解说 (Chart Guide)
 
 #### 1. Stock-Beta 保真度图 (`v11_target_beta_fidelity.png`)
+![Stock-Beta Fidelity](../artifacts/v11_acceptance/v11_target_beta_fidelity.png)
 *   **绿色虚线 (Expected)**：代表“上帝视角”下的大周期期望。在 `MID_CYCLE` 锚定 1.0，`BUST` 时降至 0.5，复苏期升至 1.2。
 *   **橙色实线 (Advised)**：v11 实际给出的 Beta 建议。
-*   **解读**：当橙色实线在崩盘前（如 2008Q3）果断下穿绿色虚线，代表系统成功识别了信贷/流动性层面的结构性恶化。
+*   **解读**：当橙色实线在崩盘前（如 2008Q3）果断下穿绿色虚线，代表系统成功识别了信贷/流动性层性的结构性恶化。
 
 #### 2. 概率审计图 (`v11_probabilistic_audit.png`)
+![Probabilistic Audit](../artifacts/v11_acceptance/v11_probabilistic_audit.png)
 *   **堆叠色块**：展示了贝叶斯五态（MID, BUST, CAP, RECO, LATE）的后验概率漂移。
 *   **深灰色阴影 (Entropy)**：代表系统的“困惑度”。
 *   **解读**：当 Entropy 飙升时，系统会自动缩减仓位（不确定性惩罚）。你会发现在重大危机爆发前夕，Entropy 往往会有脉冲式跳升。
 
 #### 3. 增量资金节奏图 (`v11_deployment_pacing_fidelity.png`)
+![Deployment Pacing](../artifacts/v11_acceptance/v11_deployment_pacing_fidelity.png)
 *   **分段阶梯**：展示了 `FAST (2.0x)`、`BASE (1.0x)`、`SLOW (0.5x)` 和 `PAUSE (0.0x)` 的切换轨迹。
 *   **解读**：该图证明了 v11 能够根据 Class B 的战术特征（如回撤深度、短线动量）精准调节新增资金的入场步调，实现“越跌越买，过热停买”。
 
