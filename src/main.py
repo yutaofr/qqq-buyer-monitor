@@ -111,6 +111,8 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
         f"top_posterior={ordered_probs[0][0]}={ordered_probs[0][1]:.2%}"
     )
 
+    top_regime = ordered_probs[0][0]
+
     return SignalResult(
         date=runtime_result["date"],
         price=float(price),
@@ -139,6 +141,8 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
         target_beta=float(runtime_result["target_beta"]),
         should_adjust=bool(runtime_result["signal"].get("action_required", False)),
         rebalance_action=dict(runtime_result["signal"]),
+        tier0_regime=top_regime,
+        cycle_regime=top_regime,
         engine_version="v11",
         v11_probabilities={k: float(v) for k, v in runtime_result["probabilities"].items()},
         v11_entropy=float(runtime_result.get("entropy", 0.0)),
@@ -933,12 +937,12 @@ def run_pipeline(args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="QQQ Buy-Signal Monitor (v9.0 target-beta-first)")
+    parser = argparse.ArgumentParser(description="QQQ Buy-Signal Monitor (v11.0 probabilistic)")
     parser.add_argument(
         "--engine",
         choices=["v10", "v11"],
-        default="v10",
-        help="Runtime engine to execute (default: v10).",
+        default="v11",
+        help="Runtime engine to execute (default: v11).",
     )
     parser.add_argument("--json", action="store_true", help="Output JSON report")
     parser.add_argument("--export-web", action="store_true", help="Export discretized snapshot for Web dashboard")
