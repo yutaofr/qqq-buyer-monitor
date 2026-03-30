@@ -72,9 +72,12 @@ class V11Conductor:
 
     def _initialize_model(self, macro_data_path: str, regime_data_path: str) -> GaussianNB:
         """JIT training of the Bayesian regime inference model."""
+        import os
+        from pathlib import Path
+        
+        # 1. Cold Start: Macro Seeding
         if not os.path.exists(macro_data_path):
             logger.warning("BOOTSTRAP: %s is missing. Re-seeding with varianced baseline.", macro_data_path)
-            # v11.18.20 High-Variance Seed to silence sklearn zero-variance warnings
             seed_df = pd.DataFrame(
                 [
                     {"observation_date": "2023-01-01", "erp_pct": 0.04, "real_yield_10y_pct": 0.015, "credit_spread_bps": 400.0, "net_liquidity_usd_bn": 5800.0},
@@ -84,13 +87,29 @@ class V11Conductor:
                 ]
             )
             seed_df.set_index("observation_date", inplace=True)
+            Path(macro_data_path).parent.mkdir(parents=True, exist_ok=True)
             seed_df.to_csv(macro_data_path)
             macro_df = seed_df
         else:
             macro_df = pd.read_csv(macro_data_path, index_col="observation_date", parse_dates=True)
-             
-        # Load raw data
-        regime_df = pd.read_csv(regime_data_path, parse_dates=["observation_date"]).set_index("observation_date")
+
+        # 2. Cold Start: Regime Seeding (v11_poc_phase1_results.csv)
+        if not os.path.exists(regime_data_path):
+            logger.warning("BOOTSTRAP: %s is missing. Generating default labels.", regime_data_path)
+            regime_seed = pd.DataFrame(
+                [
+                    {"observation_date": "2023-01-01", "regime": "MID_CYCLE"},
+                    {"observation_date": "2023-01-02", "regime": "LATE_CYCLE"},
+                    {"observation_date": "2023-01-03", "regime": "MID_CYCLE"},
+                    {"observation_date": "2023-01-04", "regime": "MID_CYCLE"},
+                ]
+            )
+            regime_seed.set_index("observation_date", inplace=True)
+            Path(regime_data_path).parent.mkdir(parents=True, exist_ok=True)
+            regime_seed.to_csv(regime_data_path)
+            regime_df = regime_seed
+        else:
+            regime_df = pd.read_csv(regime_data_path, parse_dates=["observation_date"]).set_index("observation_date")
 
         # Generate features via unified seeder
         features = self.seeder.generate_features(macro_df)
@@ -130,10 +149,9 @@ class V11Conductor:
         # Ensure T-0 data is integrated into the seeder's causal window
         features = self.seeder.generate_features(raw_t0_data)
         latest_vector = features.iloc[-1].values
-
         # 2. Bayesian Inference (Epic 2)
-        # We wrap the GNB predict_proba to match the SRD interface
-        probs = self.gnb.predict_proba(latest_vector.reshape(1, -1))
+        # We pass the DataFrame slice [ -1: ] to preserve column names and silence warnings.
+        probs = self.gnb.predict_proba(features.iloc[-1:])
         probs_array = probs[0]
         posteriors = {str(k): float(v) for k, v in zip(self.gnb.classes_, probs_array, strict=True)}
 
