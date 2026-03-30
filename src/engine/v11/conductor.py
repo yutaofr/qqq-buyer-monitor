@@ -203,6 +203,8 @@ class V11Conductor:
             "target_beta": final_beta,
             "raw_target_beta": raw_beta_expectation,
             "deployment_readiness": deployment_readiness,
+            "cdr_sharpe": e_sharpe,
+            "erp_percentile": erp_percentile,
             "target_allocation": self._calculate_dollars(final_beta),
             "feature_values": feature_values,
             "data_quality": quality,

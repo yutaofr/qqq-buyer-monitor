@@ -1,9 +1,9 @@
 {
   "meta": {
     "version": "v11",
-    "calculated_at_utc": "2026-03-30T01:27:03Z",
-    "expires_at_utc": "2026-03-30T17:30:00Z",
-    "market_state": "FROZEN"
+    "calculated_at_utc": "2026-03-30T16:47:35Z",
+    "expires_at_utc": "2026-03-30T21:00:00Z",
+    "market_state": "ACTIVE"
   },
   "signal": {
     "regime": "中期平稳 (MID_CYCLE)",
@@ -11,50 +11,54 @@
     "contract": "target_beta_signal",
     "contract_desc": "系统输出为概率优先的连续目标 Beta；后验概率决定方向，信息熵惩罚（Entropy Penalty）控制缩放，行为守卫（Behavioral Guard）负责离散化执行。",
     "cycle_regime": "中期平稳 (MID_CYCLE)",
-    "target_beta": 0.9,
-    "raw_target_beta": 0.9,
+    "target_beta": 1.0,
+    "raw_target_beta": 1.0041894591214529,
     "beta_ceiling": 1.2,
     "qld_ceiling": null,
     "candidate_id": "v11_probabilistic",
-    "decision_path": "Tier-0(n/a) -> Cycle(n/a) -> Risk(n/a) -> Candidate(n/a) -> Advisory(0.90x->0.90x) -> Deployment(n/a)",
+    "decision_path": "Tier-0(n/a) -> Cycle(n/a) -> Risk(n/a) -> Candidate(n/a) -> Advisory(1.00x->1.00x) -> Deployment(BASE)",
     "exposure_band": "90-100% (满仓)",
     "exposure_desc": "目标 Beta 对应的存量风险带，用于帮助理解风险区间。",
-    "deploy_rhythm": "常规入场",
-    "deploy_desc": "仅针对新增现金的 QQQ 买入节奏维持基准。",
+    "deploy_rhythm": "86.6% 就绪度",
+    "deploy_desc": "基于 Bayesian Kelly 期望的连续入场系数 [0, 1]。",
     "reference_path": {
-      "qqq_pct": 0.8999997943399999,
+      "qqq_pct": 1.0,
       "qld_pct": 0.0,
-      "cash_pct": 0.10000020566
+      "cash_pct": 0.0
     },
     "reference_desc": "参考路径仅用于说明一种实现目标 beta 的仓位组合，不是系统强制配比。",
     "fidelity": "高 (Bayesian)",
     "v11_probabilities": {
-      "MID_CYCLE": 0.9999999440493444,
-      "BUST": 2.3124126153136102e-58,
-      "CAPITULATION": 2.2380262198301666e-08,
-      "RECOVERY": 4.0717984524231765e-24,
-      "LATE_CYCLE": 3.357039329745249e-08
+      "BUST": 0.0010833384667577545,
+      "CAPITULATION": 2.1157595396080975e-07,
+      "LATE_CYCLE": 0.0019418324483485637,
+      "MID_CYCLE": 0.9457797748519026,
+      "RECOVERY": 0.05119484265703721
     },
-    "v11_entropy": 1e-06,
+    "v11_entropy": 0.13943069372326677,
     "lock_active": false
   },
   "evidence": {
     "risk_state": "V11_CONTINUOUS",
     "risk_reasons": [],
-    "deploy_reasons": [],
-    "data_quality_summary": "4/4 可用",
+    "deploy_reasons": [
+      {
+        "rule": "default_base"
+      }
+    ],
+    "data_quality_summary": "2/2 可用",
     "factors": {
       "macro": {
-        "credit_spread": 321.0,
-        "erp": 2.0217227235438884,
-        "net_liquidity": 5818.972,
-        "liquidity_roc": 0.7847531108067666
+        "credit_spread": 342.0,
+        "erp": 0.0,
+        "net_liquidity": 0.0,
+        "liquidity_roc": null
       },
       "tactical": {
-        "vix": 31.049999237060547,
-        "fear_greed": 10,
+        "vix": 30.360000610351562,
+        "fear_greed": null,
         "rolling_drawdown": null,
-        "tactical_stress": 49
+        "tactical_stress": 0
       }
     },
     "node_traces": [
@@ -62,9 +66,9 @@
         "step": "degradation",
         "node": "Data Degradation 数据降级",
         "type": "FILTER",
-        "formula": "quality=1.00",
+        "formula": "quality=0.00",
         "explanation": "物理常识校验与清洗，质量分低于 0.5 时强制 CASH。",
-        "result": "1.00"
+        "result": "0.00"
       },
       {
         "step": "posterior",
@@ -78,9 +82,9 @@
         "step": "position_sizer",
         "node": "Probabilistic Sizing 仓位建议",
         "type": "ADVISORY",
-        "formula": "raw_beta=0.90x",
+        "formula": "raw_beta=1.00x",
         "explanation": "基于后验分布与信息熵惩罚（Entropy Penalty）生成目标 Beta。",
-        "result": "0.90x"
+        "result": "1.00x"
       },
       {
         "step": "behavior_guard",
@@ -89,6 +93,14 @@
         "formula": "bucket=QQQ",
         "explanation": "施加执行级约束，包括死区滞后、结算锁与单日变动上限。",
         "result": "QQQ"
+      },
+      {
+        "step": "deployment_controller",
+        "node": "Deployment 概率入场",
+        "type": "TACTICAL",
+        "formula": "CDR=86.6% | E[Sharpe]=1.01 | ERP_Rank=100.0%",
+        "explanation": "基于贝叶斯期望 Sharpe 与结构性估值百分位（CDR）决定新增资金节奏。",
+        "result": "86.6% Readiness"
       }
     ]
   }
