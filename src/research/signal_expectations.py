@@ -252,21 +252,25 @@ def _expected_target_beta(
             base_beta = cycle_ceiling
 
     # 2. Price-Based Dynamic Adjustment (The "Left-Side" Correction)
-    # If price is far above MA200 (overextended), reduce beta slightly.
-    # If price is in a pullback (drawdown > 0), increase beta slightly within ceiling.
+    # Aggressive adjustment to reflect valuation/momentum expectations
     price_adjustment = 0.0
     
-    # Overextension penalty: -0.05 beta for every 10% above MA200
-    if price_vs_ma200 > 0.10:
-        price_adjustment -= min(0.15, (price_vs_ma200 - 0.10) * 0.5)
+    # Overextension penalty: Start tapering above MA200
+    # -0.10 beta for every 10% deviation above MA200
+    if price_vs_ma200 > 0.0:
+        price_adjustment -= price_vs_ma200 * 1.0 # 10% above -> -0.10 beta
         
-    # Dip-buying bonus: +0.05 beta for every 5% drawdown (capped)
-    if rolling_drawdown > 0.05:
-        price_adjustment += min(0.10, (rolling_drawdown - 0.05) * 1.0)
+    # Dip-buying bonus: Linear increase during drawdown
+    # +0.10 beta for every 5% drawdown
+    if rolling_drawdown > 0.02:
+        price_adjustment += (rolling_drawdown - 0.02) * 2.0 # 7% DD -> +0.10 beta
+
+    # Max adjustment cap to keep it realistic
+    price_adjustment = max(-0.30, min(0.30, price_adjustment))
 
     final_beta = base_beta + price_adjustment
     
-    # Hard constraints enforcement
+    # Hard constraints enforcement: Ensure we stay within [0.5, 1.2]
     return float(max(_BETA_FLOOR, min(_BETA_MAX, final_beta)))
 
 

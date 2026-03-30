@@ -2459,18 +2459,22 @@ def run_v11_audit(
         # Use full test window for richer visualization
         stress_window = test.copy()
 
+        # Prepare expectations lookup with date strings for robust matching
+        expectations_map = expectations.copy()
+        expectations_map["date_str"] = pd.to_datetime(expectations_map["date"]).dt.strftime("%Y-%m-%d")
+        expectations_lookup = expectations_map.set_index("date_str")["expected_target_beta"].to_dict()
+
         execution_rows: list[dict[str, Any]] = []
         for _, row in stress_window.iterrows():
             runtime = conductor.daily_run(pd.DataFrame([row]))
             
-            # Match expectations for this date
-            obs_dt = pd.to_datetime(row["observation_date"]).tz_localize("UTC")
-            expected_row = expectations[expectations["date"] == obs_dt]
-            expected_beta = expected_row["expected_target_beta"].iloc[0] if not expected_row.empty else 0.90
-            price_close = expected_row["close"].iloc[0] if not expected_row.empty and "close" in expected_row.columns else row.get("qqq_close", 0.0)
-            if price_close == 0.0:
-                # Fallback to qqq index if close not in expectations
-                price_close = qqq.loc[qqq.index == obs_dt, "Close"].iloc[0] if obs_dt in qqq.index else 0.0
+            # Match expectations for this date using robust string matching
+            obs_dt_str = pd.to_datetime(row["observation_date"]).strftime("%Y-%m-%d")
+            expected_beta = expectations_lookup.get(obs_dt_str, 0.90)
+            
+            # Robust price close lookup
+            obs_dt_utc = pd.to_datetime(row["observation_date"], utc=True)
+            price_close = qqq.loc[qqq.index == obs_dt_utc, "Close"].iloc[0] if obs_dt_utc in qqq.index else row.get("qqq_close", 0.0)
 
             execution_rows.append(
                 {
