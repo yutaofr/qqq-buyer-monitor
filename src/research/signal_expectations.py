@@ -11,7 +11,7 @@ from src.research.data_contracts import validate_signal_expectation_frame
 _BETA_FLOOR = 0.50
 _BETA_DEFENSE = 0.70
 _BETA_REDUCED = 0.80
-_BETA_MID_CYCLE = 0.90
+_BETA_MID_CYCLE = 1.00
 _BETA_NEUTRAL = 1.00
 _BETA_MAX = 1.20
 _DRAWDOWN_WINDOW = 252
@@ -202,10 +202,13 @@ def _expected_target_beta(
     rolling_drawdown: float,
 ) -> float:
     """
-    Independent v10-style target-beta expectation surface.
-    Adjusted to be price-sensitive instead of constant.
+    Macro-cycle driven target-beta expectations.
+    Focuses on large-scale regime shifts:
+    - Default: 1.0
+    - BUST/CRISIS: 0.5
+    - CAPITULATION/RECOVERY: 1.2
     """
-    cycle_regime, cycle_ceiling = _expected_cycle_state(
+    cycle_regime, _ = _expected_cycle_state(
         credit_spread=credit_spread,
         credit_accel=credit_accel,
         liquidity_roc=liquidity_roc,
@@ -220,58 +223,17 @@ def _expected_target_beta(
         erp=erp,
     )
 
-    # 1. Base Beta Determination
-    if cycle_regime == "CAPITULATION":
-        base_beta = _BETA_MAX
-    elif structural_regime == "CRISIS" or rolling_drawdown >= 0.30 or cycle_regime == "BUST":
-        base_beta = _BETA_FLOOR
-    elif credit_spread is None:
-        base_beta = _BETA_REDUCED
-    elif rolling_drawdown >= 0.25:
-        base_beta = _BETA_DEFENSE if cycle_regime == "RECOVERY" else _BETA_FLOOR
-    elif structural_regime == "TRANSITION_STRESS":
-        base_beta = _BETA_DEFENSE if cycle_regime == "RECOVERY" else _BETA_FLOOR
-    else:
-        # Normal or Stressed (Rich Tightening / Mid / Recovery)
-        credit_warn = credit_spread >= _CREDIT_SPREAD_STRESS
-        credit_danger = credit_spread >= _CREDIT_SPREAD_CRISIS
-        accel_danger = credit_accel > _CREDIT_ACCEL_STRESS
-        liq_danger = liquidity_roc <= _LIQUIDITY_STRESS
-        stress_overlay = funding_stress and (credit_warn or accel_danger or liq_danger)
-        stress_count = sum((credit_danger, accel_danger, liq_danger))
+    # 1. Bear Market / Crisis Detection (The "Exit" Gate)
+    if cycle_regime == "BUST" or structural_regime == "CRISIS" or rolling_drawdown >= 0.25:
+        return _BETA_FLOOR
 
-        if structural_regime == "RICH_TIGHTENING" or rolling_drawdown >= 0.20 or credit_warn:
-            base_beta = min(_BETA_REDUCED, cycle_ceiling)
-        elif stress_count >= 2 or stress_overlay:
-            base_beta = _BETA_DEFENSE if cycle_regime == "RECOVERY" else _BETA_FLOOR
-        elif stress_count == 1:
-            base_beta = min(_BETA_REDUCED, cycle_ceiling)
-        elif cycle_regime == "RECOVERY":
-            base_beta = _BETA_NEUTRAL
-        else:
-            base_beta = cycle_ceiling
+    # 2. Recovery / Early Bull Detection (The "Alpha" Gate)
+    if cycle_regime in ("CAPITULATION", "RECOVERY"):
+        return _BETA_MAX
 
-    # 2. Price-Based Dynamic Adjustment (The "Left-Side" Correction)
-    # Aggressive adjustment to reflect valuation/momentum expectations
-    price_adjustment = 0.0
-    
-    # Overextension penalty: Start tapering above MA200
-    # -0.10 beta for every 10% deviation above MA200
-    if price_vs_ma200 > 0.0:
-        price_adjustment -= price_vs_ma200 * 1.0 # 10% above -> -0.10 beta
-        
-    # Dip-buying bonus: Linear increase during drawdown
-    # +0.10 beta for every 5% drawdown
-    if rolling_drawdown > 0.02:
-        price_adjustment += (rolling_drawdown - 0.02) * 2.0 # 7% DD -> +0.10 beta
-
-    # Max adjustment cap to keep it realistic
-    price_adjustment = max(-0.30, min(0.30, price_adjustment))
-
-    final_beta = base_beta + price_adjustment
-    
-    # Hard constraints enforcement: Ensure we stay within [0.5, 1.2]
-    return float(max(_BETA_FLOOR, min(_BETA_MAX, final_beta)))
+    # 3. Neutral / Steady State
+    # We no longer penalize overextension or reward small pullbacks.
+    return _BETA_NEUTRAL
 
 
 def _expected_deployment_state(
