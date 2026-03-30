@@ -217,11 +217,25 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     else:
         print_signal(result, use_color=not args.no_color)
 
+    # ── Web Export Logic ──────────────────────────────────────────────────────
+    if getattr(args, "export_web", False) or os.environ.get("EXPORT_WEB") == "1":
+        from src.output.web_exporter import export_web_snapshot
+        logger.info("Exporting v11 web snapshot...")
+        export_web_snapshot(result)
+
+    # ── Discord Notification Logic ────────────────────────────────────────────
+    if getattr(args, "notify_discord", False):
+        from src.output.discord_notifier import send_discord_signal
+        webhook_url = getattr(args, "discord_webhook", None) or os.environ.get("ALERT_WEBHOOK_URL")
+        if webhook_url:
+            logger.info("Sending v11 Discord notification...")
+            send_discord_signal(result, webhook_url)
+        else:
+            logger.warning("Discord notification requested but ALERT_WEBHOOK_URL is missing.")
+
     if not args.no_save:
         save_signal(result)
-        from src.output.web_exporter import export_web_snapshot
-        export_web_snapshot(result)
-        logger.info("v11 signal saved to DB and exported to web.")
+        logger.info("v11 signal saved to DB.")
 
 
 def _history(args: argparse.Namespace) -> None:
