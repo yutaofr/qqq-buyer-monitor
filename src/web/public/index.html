@@ -2,126 +2,266 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>QQQ 晴雨表 - Probabilistic Target-Beta 仪表盘</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .state-active { background-color: #09090b; color: #f8fafc; }
-        .state-frozen { background-color: #09090b; color: #f8fafc; }
-        .state-locked { background-color: #09090b; color: #f8fafc; }
-        .state-active .glass { background: rgba(15, 23, 42, 0.4); border-color: rgba(16, 185, 129, 0.2); } 
-        .state-frozen .glass { background: rgba(15, 23, 42, 0.4); border-color: rgba(139, 92, 246, 0.2); }
-        .state-locked .glass { background: rgba(15, 23, 42, 0.4); border-color: rgba(239, 68, 68, 0.2); }
-        .state-stale { background-color: #09090b; color: #94a3b8; filter: grayscale(1); }
-        .glass { backdrop-filter: blur(30px); border: 1.5px solid rgba(255, 255, 255, 0.05); }
-        .text-ghost { opacity: 0.1; filter: blur(0.5px); }
-        #insights-panel { max-height: 0; overflow: hidden; opacity: 0; transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
-        #insights-panel.open { max-height: 2500px; margin-top: 1.5rem; opacity: 1; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@500;800&display=swap');
+        
+        :root {
+            --emerald: #10b981;
+            --blue: #3b82f6;
+            --red: #ef4444;
+            --purple: #a855f7;
+            --bg: #020617;
+        }
+
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: var(--bg); 
+            color: #f8fafc; 
+            -webkit-font-smoothing: antialiased;
+        }
+        
+        .state-active { background: radial-gradient(circle at top right, rgba(16, 185, 129, 0.15), var(--bg) 60%); }
+        .state-locked { background: radial-gradient(circle at top right, rgba(239, 68, 68, 0.15), var(--bg) 60%); }
+        .state-frozen { background: radial-gradient(circle at top right, rgba(168, 85, 247, 0.15), var(--bg) 60%); }
+        .state-stale { filter: grayscale(1); opacity: 0.6; }
+
+        .glass { 
+            background: rgba(15, 23, 42, 0.85); 
+            backdrop-filter: blur(60px) saturate(200%); 
+            border: 1px solid rgba(255, 255, 255, 0.12); 
+            box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 1);
+        }
+
+        .factor-card { 
+            background: rgba(255, 255, 255, 0.05); 
+            border: 1px solid rgba(255, 255, 255, 0.08); 
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .factor-card:hover { 
+            background: rgba(255, 255, 255, 0.08); 
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .text-ghost { opacity: 0.2; transition: all 0.8s; filter: blur(0.5px); }
+        .node-active { 
+            color: var(--emerald); 
+            opacity: 1 !important; 
+            font-weight: 900; 
+            text-shadow: 0 0 30px rgba(16, 185, 129, 0.8); 
+            border-color: rgba(16, 185, 129, 0.5) !important;
+            background: rgba(16, 185, 129, 0.15) !important;
+            filter: none !important;
+            transform: scale(1.1);
+        }
+
+        #insights-panel { max-height: 0; overflow: hidden; opacity: 0; transition: all 1s cubic-bezier(0.4, 0, 0.2, 1); }
+        #insights-panel.open { max-height: 4000px; opacity: 1; margin-top: 2rem; }
+
+        .tree-line { width: 2px; background: rgba(255, 255, 255, 0.05); height: 35px; transition: all 1s; }
+        .tree-line.active { background: linear-gradient(to bottom, var(--emerald), transparent); opacity: 0.6; }
+        
+        .overclock { 
+            background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444, #10b981); 
+            animation: flow 3s linear infinite; 
+            background-size: 300% 100%; 
+        }
+        @keyframes flow { 0% { background-position: 100% 0; } 100% { background-position: 0% 0; } }
+
+        .btn-action {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s;
+        }
+        .btn-action:hover {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
     </style>
 </head>
-<body id="body" class="state-stale min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700">
-    <div class="max-w-[390px] w-full glass rounded-[3rem] p-6 shadow-2xl transition-all duration-700">
-        <div class="flex justify-between items-center mb-6">
-            <h1 class="text-2xl font-black tracking-tighter text-white">晴雨表</h1>
-            <div id="indicator" class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+<body id="body" class="min-h-screen flex items-center justify-center p-4 transition-all duration-1000">
+    <div class="max-w-[460px] w-full glass rounded-[4rem] p-10 relative">
+        <!-- Status Indicator -->
+        <div class="absolute top-12 right-12 flex items-center space-x-4">
+            <span id="market-label" class="text-[9px] font-black tracking-[0.3em] opacity-40 uppercase">--</span>
+            <div id="indicator" class="w-3.5 h-3.5 rounded-full bg-red-500 shadow-xl"></div>
         </div>
 
-        <div id="content" class="space-y-6 text-center">
-            <div>
-                <p class="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40 text-slate-400">当前制度 (Regime)</p>
-                <p id="regime" class="text-3xl font-black tracking-tight text-white">--</p>
+        <!-- Header -->
+        <div class="mb-14">
+            <h1 class="text-4xl font-black tracking-tighter text-white">晴雨表</h1>
+            <p class="text-[11px] tracking-[0.5em] font-black text-slate-500 uppercase mt-1">v11.0 Bayesian Monitor</p>
+        </div>
+
+        <!-- Hero: Regime -->
+        <div class="space-y-10 text-center mb-12">
+            <div class="space-y-3">
+                <p class="text-[11px] font-black uppercase tracking-[0.4em] text-slate-500 opacity-70">主导制度 (Regime)</p>
+                <p id="regime" class="text-5xl font-black tracking-tighter text-white">--</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-5 px-2">
+                <div class="factor-card p-6 rounded-[2.5rem]">
+                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 text-left">信息熵 (Entropy)</p>
+                    <p id="entropy" class="text-3xl font-black text-emerald-400 text-left tabular-nums">--</p>
+                </div>
+                <div class="factor-card p-6 rounded-[2.5rem]">
+                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 text-left">执行状态</p>
+                    <p id="deploy" class="text-2xl font-black text-blue-400 text-left truncate">--</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Advisory Beta -->
+        <div class="factor-card p-10 rounded-[3.5rem] border-t-2 border-emerald-500/30 mb-10">
+            <div class="flex justify-between items-end mb-8">
+                <div>
+                    <p class="text-[11px] font-black uppercase tracking-widest text-emerald-400 mb-2">Beta 建议 (Advisory)</p>
+                    <p id="exposure" class="text-7xl font-black tracking-tighter text-white">--</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Confidence</p>
+                    <p id="fidelity" class="text-[11px] font-black text-white uppercase">BAYESIAN</p>
+                </div>
             </div>
             
-            <div class="factor-card p-5 rounded-[2.5rem] bg-white/[0.03] border border-white/[0.05]">
-                <p class="text-[9px] font-black uppercase tracking-[0.2em] opacity-50 text-emerald-400">Beta 建议 (Advisory)</p>
-                <p id="exposure" class="text-5xl font-black tracking-tighter text-white">--</p>
+            <div class="w-full h-4 bg-white/5 rounded-full overflow-hidden mb-6 p-0.5 border border-white/5">
+                <div id="exposure-bar" class="h-full rounded-full transition-all duration-2000 ease-out" style="width: 0%"></div>
             </div>
 
-            <div class="grid grid-cols-2 gap-3 text-left">
-                <div class="p-3 rounded-2xl bg-white/[0.02] border border-white/[0.03]">
-                    <p class="text-[8px] font-bold opacity-30 uppercase">信息熵</p>
-                    <p id="entropy" class="text-lg font-black text-emerald-400">--</p>
-                </div>
-                <div class="p-3 rounded-2xl bg-white/[0.02] border border-white/[0.03]">
-                    <p class="text-[8px] font-bold opacity-30 uppercase">执行状态</p>
-                    <p id="deploy" class="text-lg font-black text-blue-400">--</p>
-                </div>
+            <div class="flex justify-between text-[11px] font-black tracking-widest text-slate-500">
+                <div class="flex flex-col"><span>上限</span><span id="beta-ceiling" class="text-slate-200">--</span></div>
+                <div class="flex flex-col text-right"><span>原始</span><span id="raw-beta" class="text-emerald-500">--</span></div>
             </div>
         </div>
 
-        <div class="flex flex-row gap-3 mt-8">
-            <button onclick="toggleInsights()" class="flex-1 py-3 rounded-2xl bg-white/[0.03] border border-white/[0.05] text-[9px] font-bold uppercase tracking-[0.3em] opacity-30 hover:opacity-100 transition-opacity">
-                决策详情 (Audit)
-            </button>
-            <a href="https://github.com/yutaofr/qqq-buyer-monitor/wiki/V11-%22Entropy%22-%E6%A6%82%E7%8E%87%E5%86%B3%E7%AD%96%E5%A4%96%E9%AA%A8%E9%AA%BC%E7%94%A8%E6%88%B7%E6%89%8B%E5%86%8C" 
-               target="_blank" 
-               class="flex-1 flex items-center justify-center py-3 rounded-2xl bg-white/[0.03] border border-white/[0.05] text-[9px] font-bold uppercase tracking-[0.3em] opacity-30 hover:opacity-100 transition-opacity text-white no-underline">
-                运行手册 (Wiki)
-            </a>
+        <!-- Actions -->
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <button onclick="toggleInsights()" class="btn-action py-5 rounded-3xl text-[11px] font-black uppercase tracking-[0.4em] text-white">决策审计</button>
+            <a href="https://github.com/yutaofr/qqq-buyer-monitor/wiki/V11-%22Entropy%22-%E6%A6%82%E7%8E%87%E5%86%B3%E7%AD%96%E5%A4%96%E9%AA%A8%E9%AA%BC%E7%94%A8%E6%88%B7%E6%89%8B%E5%86%8C" target="_blank" class="btn-action flex items-center justify-center py-5 rounded-3xl text-[11px] font-black uppercase tracking-[0.4em] text-white no-underline">运行手册</a>
         </div>
 
-        <div id="insights-panel" class="space-y-6">
-            <div class="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.05] space-y-4">
+        <!-- Insights Panel -->
+        <div id="insights-panel">
+            <div class="space-y-16 py-10 border-t border-white/10 text-center">
+                <div class="space-y-6">
+                    <p class="text-[11px] font-black uppercase tracking-[0.3em] opacity-40">后验概率分布</p>
+                    <div id="prob-container" class="space-y-5 px-6"></div>
+                </div>
+
                 <div class="flex flex-col items-center">
-                    <p class="text-[8px] opacity-30 uppercase font-bold mb-2 tracking-widest">Macro Tree</p>
-                    <div class="flex flex-wrap justify-center gap-2">
-                        <span class="text-[8px] px-1.5 py-0.5 text-ghost">末端 (LATE_CYCLE)</span>
-                        <span class="text-[8px] px-1.5 py-0.5 text-ghost">中期平稳 (MID_CYCLE)</span>
-                        <span class="text-[8px] px-1.5 py-0.5 text-ghost">休克 (BUST)</span>
+                    <p class="text-[11px] font-black uppercase tracking-[0.3em] opacity-40 mb-10">联动决策树</p>
+                    <div class="w-full max-w-xs space-y-4">
+                        <div class="flex flex-wrap justify-center gap-2">
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl">CRISIS</span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl">STRESS</span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl">NEUTRAL</span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl">EUPHORIC</span>
+                        </div>
+                        <div class="tree-line active mx-auto"></div>
+                        <div class="flex flex-wrap justify-center gap-2">
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl">BUST</span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl">CAPITULATION</span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl">MID_CYCLE</span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl">LATE_CYCLE</span>
+                        </div>
+                        <div class="tree-line active mx-auto"></div>
+                        <div class="flex justify-center gap-4">
+                            <span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl">CASH</span>
+                            <span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl">QQQ</span>
+                            <span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl">QLD</span>
+                        </div>
                     </div>
                 </div>
-            </div>
-            <div class="text-[9px] opacity-20 font-mono break-all" id="debug-path"></div>
-        </div>
 
-        <div class="mt-8 pt-6 border-t border-white/[0.05] space-y-2 text-[9px] tracking-wider opacity-30 text-slate-400 uppercase font-bold">
-            <div class="flex justify-between"><span>数据源</span><span id="data-source" class="text-red-500 font-black">WAITING...</span></div>
-            <div class="flex justify-between"><span>计算时间</span><span id="calc-at">--</span></div>
+                <div class="factor-card rounded-[2.5rem] overflow-hidden text-left">
+                    <table class="w-full text-[11px] border-collapse">
+                        <tbody id="trace-body"></tbody>
+                    </table>
+                </div>
+
+                <div class="pt-10 border-t border-white/5 space-y-4 text-[10px] font-black text-slate-600 uppercase tracking-[0.2em] text-left">
+                    <div class="flex justify-between"><span>Source</span><span id="data-source" class="text-emerald-500">INIT...</span></div>
+                    <div class="flex justify-between"><span>UTC Time</span><span id="calc-at" class="text-slate-400">--</span></div>
+                    <p class="opacity-30 normal-case font-mono text-[9px] break-all" id="debug-path">--</p>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
         const PROD_BLOB_URL = 'https://rtmr1b9ayzxiugfu.public.blob.vercel-storage.com/status.json'; 
-
         function toggleInsights() { document.getElementById('insights-panel').classList.toggle('open'); }
 
         async function updateDashboard() {
             const body = document.getElementById('body');
             const sourceLabel = document.getElementById('data-source');
             try {
-                // FORCE CLOUD ONLY - NO FALLBACK TO STALE LOCAL
                 const res = await fetch(PROD_BLOB_URL + '?t=' + Date.now(), { 
-                    method: 'GET',
-                    mode: 'cors',
-                    cache: 'no-store'
+                    method: 'GET', mode: 'cors', cache: 'no-store',
+                    headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
                 });
-                
-                if (!res.ok) throw new Error("Fetch Error: " + res.status);
+                if (!res.ok) throw new Error(res.status);
                 const data = await res.json();
                 
                 body.classList.remove('state-stale');
-                body.className = data.signal.lock_active ? 'state-locked min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700' : 'state-active min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700';
                 sourceLabel.textContent = "CLOUD_SYNCED";
                 sourceLabel.className = "text-emerald-500 font-black";
+
+                const isLocked = data.signal.lock_active;
+                const mkt = data.meta.market_state;
+                document.getElementById('market-label').textContent = mkt;
+                
+                body.className = isLocked ? 'state-locked min-h-screen flex items-center justify-center p-4' : 
+                                (mkt === 'ACTIVE' ? 'state-active min-h-screen flex items-center justify-center p-4' : 'state-frozen min-h-screen flex items-center justify-center p-4');
+                document.getElementById('indicator').className = `w-3.5 h-3.5 rounded-full ${isLocked ? 'bg-red-500 shadow-[0_0_20px_#ef4444]' : (mkt === 'ACTIVE' ? 'bg-emerald-400 shadow-[0_0_20px_#10b981]' : 'bg-purple-500 shadow-[0_0_20px_#a855f7]')}`;
 
                 document.getElementById('regime').textContent = data.signal.regime;
                 document.getElementById('exposure').textContent = data.signal.target_beta.toFixed(2) + 'x';
                 document.getElementById('entropy').textContent = data.signal.v11_entropy.toFixed(3);
                 document.getElementById('deploy').textContent = data.signal.deploy_rhythm;
-                document.getElementById('calc-at').textContent = data.meta.calculated_at_utc;
+                document.getElementById('calc-at').textContent = data.meta.calculated_at_utc.replace('T',' ').replace('Z','');
+                document.getElementById('beta-ceiling').textContent = data.signal.beta_ceiling.toFixed(2) + 'x';
+                document.getElementById('raw-beta').textContent = data.signal.raw_target_beta.toFixed(2) + 'x';
                 document.getElementById('debug-path').textContent = data.signal.decision_path;
 
-                const labels = document.querySelectorAll('.text-ghost');
-                labels.forEach(l => {
-                    if (data.signal.regime.toUpperCase().includes(l.textContent.toUpperCase())) {
-                        l.className = 'text-[8px] px-1.5 py-0.5 rounded bg-emerald-400/20 text-emerald-400 font-bold opacity-100';
-                    }
+                const bar = document.getElementById('exposure-bar');
+                const beta = data.signal.target_beta;
+                bar.style.width = Math.min(100, beta * 83.33) + '%';
+                bar.className = beta > 1.0 ? 'h-full overclock' : 'h-full bg-emerald-500';
+
+                const fullReg = data.signal.regime.toUpperCase();
+                const cycReg = data.signal.cycle_regime.toUpperCase();
+                const bucket = (data.signal.reference_path.qld_pct > 0 ? "QLD" : (data.signal.reference_path.qqq_pct > 0.1 ? "QQQ" : "CASH"));
+                
+                document.querySelectorAll('.tag').forEach(t => {
+                    const txt = t.textContent.toUpperCase();
+                    if (fullReg.includes(txt) || txt.includes(fullReg) || cycReg.includes(txt) || txt.includes(cycReg) || txt === bucket) {
+                        t.className = 'tag node-active text-[10px] px-3 py-2 border border-emerald-500/50 rounded-2xl transition-all duration-700';
+                    } else { t.className = 'tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl'; }
+                });
+
+                const probContainer = document.getElementById('prob-container');
+                probContainer.innerHTML = '';
+                Object.entries(data.signal.v11_probabilities).sort((a,b) => b[1] - a[1]).forEach(([name, val]) => {
+                    const pct = (val * 100).toFixed(1) + '%';
+                    probContainer.innerHTML += `<div class="space-y-2"><div class="flex justify-between text-[10px] font-black tracking-widest opacity-50 uppercase"><span>${name}</span><span class="text-white">${pct}</span></div><div class="w-full h-2 bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5"><div class="prob-bar" style="width: ${pct}"></div></div></div>`;
+                });
+
+                const traceBody = document.getElementById('trace-body');
+                traceBody.innerHTML = '';
+                (data.evidence.node_traces || []).forEach(t => {
+                    traceBody.innerHTML += `<tr class="border-b border-white/5 hover:bg-white/[0.03] transition-colors"><td class="px-6 py-6"><div class="font-black text-white/90 mb-1 text-xs">${t.node}</div><div class="text-[9px] font-mono text-slate-500">${t.formula}</div></td><td class="px-6 py-6 text-right font-black text-white text-sm tabular-nums">${t.result}</td></tr>`;
                 });
 
             } catch (e) {
-                console.error(e);
                 sourceLabel.textContent = "SYNC_ERROR";
-                document.getElementById('regime').textContent = "ERROR: " + e.message;
+                sourceLabel.className = "text-red-500 font-black animate-pulse";
+                document.getElementById('regime').textContent = "OFFLINE";
+                body.className = 'state-stale min-h-screen flex items-center justify-center p-4';
             }
         }
         updateDashboard();
