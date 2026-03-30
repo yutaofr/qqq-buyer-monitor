@@ -11,11 +11,16 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from datetime import date
 from typing import TYPE_CHECKING
 
 import pandas as pd
+
+from src.models.deployment import AllocationState, DeploymentState
+from src.models.signal import SignalResult
+from src.store.cloud_manager import CloudPersistenceBridge
 
 if TYPE_CHECKING:
     from src.models import SignalDetail, SignalResult, Tier1Result, Tier2Result
@@ -238,6 +243,15 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     from src.collector.price import fetch_price_data
     from src.collector.vix import fetch_vix_term_structure
     from src.engine.v11.conductor import V11Conductor
+
+    # ── Cloud Readiness (v11.18) ──────────────────────────────────────────────
+    cloud = CloudPersistenceBridge()
+    sync_files = [
+        "data/signals.db", 
+        "data/v11_poc_phase1_results.csv",
+        "data/v11_full_evidence_history.csv"
+    ]
+    cloud.pull_state(sync_files)
     from src.output.cli import print_signal
     from src.output.report import to_json
     from src.store.db import save_signal
