@@ -36,8 +36,17 @@ jobs:
           EXPORT_WEB: "1"
           GITHUB_ACTIONS: "true"
         run: |
-          # Atomic execution with zero local state dependency
-          python -m src.main --engine v11 --export-web --no-save
+          # Persistent execution: Updates local CSV and exports to cloud
+          python -m src.main --engine v11 --export-web
+
+      - name: Commit & Push updated feature library
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "data: automated update of V11 feature library [skip ci]"
+          file_pattern: 'data/v11_feature_library.csv'
+          commit_user_name: "GitHub Action [Bot]"
+          commit_user_email: "actions@github.com"
+          commit_author: "GitHub Action [Bot] <actions@github.com>"
 
       - name: Notify on Failure
         if: failure()
