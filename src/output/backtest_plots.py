@@ -286,3 +286,132 @@ def save_deployment_pacing_figure(
     finally:
         plt.close(fig)
     return saved_paths
+
+
+def build_v11_fidelity_figure(daily_ts: pd.DataFrame, summary: Any | None = None):
+    """Build V11 target-beta fidelity figure (Actual vs Expected)."""
+    matplotlib.use("Agg", force=True)
+    import matplotlib.pyplot as plt
+
+    frame = _coerce_frame(daily_ts)
+    raw_beta = frame["raw_target_beta"].astype(float)
+    advised_beta = frame["target_beta"].astype(float)
+    expected_beta = frame["expected_target_beta"].astype(float)
+
+    fig, (ax_price, ax_beta) = plt.subplots(
+        2,
+        1,
+        figsize=(14, 10),
+        sharex=True,
+        constrained_layout=True,
+        gridspec_kw={"height_ratios": [2.5, 1.5], "hspace": 0.08},
+    )
+    fig.patch.set_facecolor("#ffffff")
+    for axis in (ax_price, ax_beta):
+        axis.set_facecolor("#ffffff")
+        axis.grid(True, axis="y", color="#d9dee7", linewidth=0.8, alpha=0.85)
+        axis.tick_params(colors="#2b3440")
+        for spine in axis.spines.values():
+            spine.set_color("#c5ccd6")
+
+    ax_price.plot(frame.index, frame["close"], label="QQQ Close", color="#0b5fff", linewidth=2.0)
+    ax_price.set_ylabel("QQQ Price ($)", fontsize=12, color="#2b3440")
+    ax_price.yaxis.set_major_formatter(mtick.StrMethodFormatter("${x:,.0f}"))
+    ax_price.legend(loc="upper left", frameon=False, fontsize=10)
+
+    ax_beta.step(frame.index, expected_beta, label="Expected Beta", color="#4c7a3f", linewidth=1.6, linestyle="--", where="post")
+    ax_beta.step(frame.index, raw_beta, label="V11 Raw Beta", color="#8f99ab", linewidth=1.2, alpha=0.7, where="post")
+    ax_beta.step(frame.index, advised_beta, label="V11 Advised Beta", color="#f28c28", linewidth=2.0, where="post")
+
+    ax_beta.set_ylabel("Target Beta", fontsize=12, color="#2b3440")
+    ax_beta.set_ylim(0.4, 1.3)
+    ax_beta.yaxis.set_major_locator(mtick.MultipleLocator(0.1))
+    ax_beta.legend(loc="upper left", frameon=False, fontsize=10, ncols=3)
+
+    mae = (advised_beta - expected_beta).abs().mean()
+    accuracy = summary.get("top1_accuracy", 0.0) if summary else 0.0
+    ax_price.set_title(
+        f"V11 Bayesian-Core Target Beta Fidelity\nMAE vs Expectations: {mae:.4f} | Regime Accuracy: {accuracy:.2%}",
+        fontsize=14, pad=12, color="#18212b"
+    )
+    ax_beta.set_xlabel("Date", fontsize=12, color="#2b3440")
+    ax_price.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    return fig
+
+
+def save_v11_fidelity_figure(
+    daily_ts: pd.DataFrame,
+    summary: Any | None,
+    output_paths: Sequence[str | Path],
+) -> list[Path]:
+    matplotlib.use("Agg", force=True)
+    import matplotlib.pyplot as plt
+    fig = build_v11_fidelity_figure(daily_ts, summary=summary)
+    saved_paths: list[Path] = []
+    try:
+        for output_path in output_paths:
+            path = Path(output_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(path, dpi=300, bbox_inches="tight", facecolor=fig.get_facecolor())
+            saved_paths.append(path)
+    finally:
+        plt.close(fig)
+    return saved_paths
+
+
+def build_v11_probabilistic_audit_figure(daily_ts: pd.DataFrame, summary: Any | None = None):
+    """Build V11 posterior probability distribution and entropy figure."""
+    matplotlib.use("Agg", force=True)
+    import matplotlib.pyplot as plt
+
+    frame = _coerce_frame(daily_ts)
+    regimes = ["MID_CYCLE", "BUST", "CAPITULATION", "RECOVERY", "LATE_CYCLE"]
+    colors = {"MID_CYCLE": "#3498db", "BUST": "#e74c3c", "CAPITULATION": "#2ecc71", "RECOVERY": "#f1c40f", "LATE_CYCLE": "#9b59b6"}
+    
+    fig, (ax_prob, ax_entropy) = plt.subplots(
+        2, 1, figsize=(14, 10), sharex=True, constrained_layout=True,
+        gridspec_kw={"height_ratios": [3, 1], "hspace": 0.05}
+    )
+    
+    bottom = pd.Series(0.0, index=frame.index)
+    for r in regimes:
+        col = f"prob_{r}"
+        if col in frame.columns:
+            ax_prob.fill_between(frame.index, bottom, bottom + frame[col], label=r, color=colors.get(r, "#95a5a6"), alpha=0.8)
+            bottom += frame[col]
+            
+    ax_prob.set_ylabel("Posterior Probability", fontsize=12)
+    ax_prob.set_ylim(0, 1.0)
+    ax_prob.legend(loc="upper left", bbox_to_anchor=(1, 1), frameon=False)
+    
+    if "entropy" in frame.columns:
+        ax_entropy.plot(frame.index, frame["entropy"], color="#34495e", linewidth=1.5, label="Information Entropy")
+        ax_entropy.fill_between(frame.index, 0, frame["entropy"], color="#34495e", alpha=0.1)
+        ax_entropy.set_ylabel("Entropy", fontsize=12)
+        ax_entropy.set_ylim(0, 1.1)
+        ax_entropy.legend(loc="upper left", frameon=False)
+
+    ax_prob.set_title("V11 Bayesian Regime Posterior & Information Entropy", fontsize=14, pad=15)
+    ax_entropy.set_xlabel("Date", fontsize=12)
+    ax_prob.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    return fig
+
+
+def save_v11_probabilistic_audit_figure(
+    daily_ts: pd.DataFrame,
+    summary: Any | None,
+    output_paths: Sequence[str | Path],
+) -> list[Path]:
+    matplotlib.use("Agg", force=True)
+    import matplotlib.pyplot as plt
+    fig = build_v11_probabilistic_audit_figure(daily_ts, summary=summary)
+    saved_paths: list[Path] = []
+    try:
+        for output_path in output_paths:
+            path = Path(output_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(path, dpi=300, bbox_inches="tight", facecolor=fig.get_facecolor())
+            saved_paths.append(path)
+    finally:
+        plt.close(fig)
+    return saved_paths

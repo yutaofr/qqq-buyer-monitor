@@ -2359,6 +2359,9 @@ def run_v11_audit(
     from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
     from src.engine.v11.core.calibration_service import CalibrationService
     from src.engine.v11.core.feature_library import FeatureLibraryManager
+    from src.collector.historical_macro_seeder import HistoricalMacroSeeder
+    from src.research.signal_expectations import build_market_expectation_matrix
+    from src.output.backtest_plots import save_v11_fidelity_figure, save_v11_probabilistic_audit_figure
 
     dataset = Path(dataset_path)
     if not dataset.exists():
@@ -2373,6 +2376,18 @@ def run_v11_audit(
     if train.empty or test.empty:
         raise ValueError("v11 audit requires both a training window and an evaluation window")
 
+    # Load price and expectations for fidelity check
+    price_cache = Path("data/qqq_history_cache.csv")
+    if not price_cache.exists():
+        raise FileNotFoundError("Price cache missing. Fidelity audit requires data/qqq_history_cache.csv")
+    qqq = pd.read_csv(price_cache, index_col=0, parse_dates=True)
+    qqq.index = pd.to_datetime(qqq.index, utc=True)
+    
+    macro_dataset = pd.read_csv("data/macro_historical_dump.csv")
+    seeder = HistoricalMacroSeeder(mock_df=macro_dataset)
+    expectations = build_market_expectation_matrix(qqq, macro_seeder=seeder)
+    expectations["date"] = pd.to_datetime(expectations["date"], utc=True)
+
     library = FeatureLibraryManager(storage_path=dataset_path, persist=False)
     library.df = df.copy()
     standardized = library.get_standardized_features()
@@ -2381,7 +2396,6 @@ def run_v11_audit(
     standardized_test = standardized[standardized["observation_date"] >= evaluation_start].copy()
 
     calibrator = CalibrationService()
-    # Explicitly use baseline features only
     baseline_features = [
         "spread_stress_pct",
         "liquidity_stress_pct",
@@ -2403,6 +2417,7 @@ def run_v11_audit(
     )
 
     probability_rows: list[dict[str, Any]] = []
+    regimes = ["MID_CYCLE", "BUST", "CAPITULATION", "RECOVERY", "LATE_CYCLE"]
     for _, row in standardized_test.iterrows():
         packet = calibrator.get_inference_packet(row)
         if packet is None:
@@ -2419,15 +2434,17 @@ def run_v11_audit(
             (posterior.get(name, 0.0) - (1.0 if name == actual_regime else 0.0)) ** 2
             for name in posterior
         )
-        probability_rows.append(
-            {
-                "date": row["observation_date"],
-                "actual_regime": actual_regime,
-                "actual_regime_probability": actual_prob,
-                "predicted_regime": top_regime,
-                "brier": brier,
-            }
-        )
+        
+        entry = {
+            "date": row["observation_date"],
+            "actual_regime": actual_regime,
+            "actual_regime_probability": actual_prob,
+            "predicted_regime": top_regime,
+            "brier": brier,
+        }
+        for r in regimes:
+            entry[f"prob_{r}"] = posterior.get(r, 0.0)
+        probability_rows.append(entry)
 
     probability_df = pd.DataFrame(probability_rows)
     if probability_df.empty:
@@ -2439,17 +2456,31 @@ def run_v11_audit(
             persist_library=False,
         )
         conductor.library.df = train.copy().reset_index(drop=True)
-        stress_window = test[
-            (test["observation_date"] >= "2020-02-01") & (test["observation_date"] <= "2020-04-15")
-        ].copy()
+        # Use full test window for richer visualization
+        stress_window = test.copy()
 
         execution_rows: list[dict[str, Any]] = []
         for _, row in stress_window.iterrows():
             runtime = conductor.daily_run(pd.DataFrame([row]))
+            
+            # Match expectations for this date
+            obs_dt = pd.to_datetime(row["observation_date"]).tz_localize("UTC")
+            expected_row = expectations[expectations["date"] == obs_dt]
+            expected_beta = expected_row["expected_target_beta"].iloc[0] if not expected_row.empty else 0.90
+            price_close = expected_row["close"].iloc[0] if not expected_row.empty and "close" in expected_row.columns else row.get("qqq_close", 0.0)
+            if price_close == 0.0:
+                # Fallback to qqq index if close not in expectations
+                price_close = qqq.loc[qqq.index == obs_dt, "Close"].iloc[0] if obs_dt in qqq.index else 0.0
+
             execution_rows.append(
                 {
                     "date": runtime["date"],
                     "bucket": runtime["signal"].get("target_bucket"),
+                    "target_beta": runtime["target_beta"],
+                    "raw_target_beta": runtime["raw_target_beta"],
+                    "expected_target_beta": expected_beta,
+                    "close": price_close,
+                    "entropy": runtime["entropy"],
                     "action_required": runtime["signal"].get("action_required", False),
                     "lock_active": runtime["signal"].get("lock_active", False),
                     "resurrection": runtime["resurrection_active"],
@@ -2458,6 +2489,9 @@ def run_v11_audit(
             )
 
     execution_df = pd.DataFrame(execution_rows)
+    # Join probability data for the audit plot
+    full_audit_df = pd.merge(execution_df, probability_df, on="date", how="left")
+    
     left_escape_pass = bool(
         not execution_df.empty
         and execution_df.loc[execution_df["date"] == pd.Timestamp("2020-03-09"), "bucket"].ne("QLD").any()
@@ -2499,6 +2533,23 @@ def run_v11_audit(
         f"resurrection={'PASS' if summary['resurrection_pass'] else 'FAIL'} | "
         f"lock_days={summary['lock_days']}"
     )
+
+    # Save artifacts
+    save_dir = Path("artifacts/v11_acceptance")
+    save_dir.mkdir(parents=True, exist_ok=True)
+    
+    save_v11_fidelity_figure(
+        execution_df, 
+        summary, 
+        [save_dir / "v11_target_beta_fidelity.png"]
+    )
+    save_v11_probabilistic_audit_figure(
+        full_audit_df, 
+        summary, 
+        [save_dir / "v11_probabilistic_audit.png"]
+    )
+    
+    print(f"V11 Visualizations saved to {save_dir}")
     return summary
 
 
