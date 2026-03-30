@@ -250,27 +250,24 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     else:
         print_signal(result, use_color=not args.no_color)
 
-    # ── Web Export Logic ──────────────────────────────────────────────────────
+    # ── Export & Notify (Atomic) ──────────────────────────────────────────────
     if getattr(args, "export_web", False) or os.environ.get("EXPORT_WEB") == "1":
-        from src.output.web_exporter import export_web_snapshot
-        logger.info("Exporting v11 web snapshot...")
+        from src.output.web_exporter import export_feature_library_to_blob, export_web_snapshot
+        logger.info("Exporting v11 web snapshot and syncing feature library to cloud...")
         export_web_snapshot(result)
+        # Persistent cloud sync for V11 memory parity across CI runs
+        export_feature_library_to_blob()
 
-    # ── Discord Notification Logic ────────────────────────────────────────────
     if getattr(args, "notify_discord", False):
         from src.output.discord_notifier import send_discord_signal
         webhook_url = getattr(args, "discord_webhook", None) or os.environ.get("ALERT_WEBHOOK_URL")
         if webhook_url:
             logger.info("Sending v11 Discord notification...")
             send_discord_signal(result, webhook_url)
-        else:
-            logger.warning("Discord notification requested but ALERT_WEBHOOK_URL is missing.")
 
     if not args.no_save:
         save_signal(result)
-        from src.output.web_exporter import export_web_snapshot
-        export_web_snapshot(result)
-        logger.info("v11 signal saved to DB and exported to web.")
+        logger.info("v11 signal successfully persisted to local DB.")
 
 
 def _history(args: argparse.Namespace) -> None:
@@ -899,45 +896,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
             except Exception as exc:
                 logger.warning("Narrative interpreter failed: %s", exc)
 
-    # ── Web Export Logic ──────────────────────────────────────────────────────
-    if getattr(args, "export_web", False) or os.environ.get("EXPORT_WEB") == "1":
-        from src.output.web_exporter import export_feature_library_to_blob, export_web_snapshot
-        logger.info("Exporting web snapshot...")
-        export_web_snapshot(result)
-        
-        # Persistent cloud sync for V11 memory parity
-        if args.engine == "v11":
-            export_feature_library_to_blob()
-
-    # ── Discord Notification Logic ────────────────────────────────────────────
-    if getattr(args, "notify_discord", False):
-        from src.output.discord_notifier import send_discord_signal
-        webhook_url = getattr(args, "discord_webhook", None) or os.environ.get("ALERT_WEBHOOK_URL")
-        if webhook_url:
-            logger.info("Sending Discord notification...")
-            send_discord_signal(result, webhook_url)
-        else:
-            logger.warning("Discord notification requested but ALERT_WEBHOOK_URL is missing.")
-
-    # Persist
-    if not args.no_save:
-        save_signal(result)
-        save_runtime_inputs(
-            record_date=market_data.date,
-            available_new_cash=available_new_cash,
-            rolling_drawdown=rolling_drawdown,
-        )
-        if any(v is not None for v in (market_data.credit_spread, market_data.forward_pe, market_data.real_yield)):
-            save_macro_state(
-                record_date=market_data.date,
-                credit_spread=market_data.credit_spread,
-                trailing_pe=market_data.trailing_pe,
-                forward_pe=market_data.forward_pe,
-                real_yield=market_data.real_yield,
-                fcf_yield=market_data.fcf_yield,
-                earnings_revisions_breadth=market_data.earnings_revisions_breadth,
-            )
-        logger.info("Signal and macro states saved to DB.")
+    # Signal and macro persistence is now handled inside run_v11_pipeline
+    # to avoid duplication and ensure cloud-sync parity.
+    pass
 
 
 def main(argv: list[str] | None = None) -> None:
