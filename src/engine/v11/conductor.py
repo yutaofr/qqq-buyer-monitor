@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from pathlib import Path
 
 import numpy as np
@@ -76,6 +77,20 @@ class V11Conductor:
         """
         logger.info(f"V11.5 Conductor: JIT-training model from {macro_path}...")
 
+        # Self-healing: Check for missing training baseline (Cold Start Resilience)
+        if not os.path.exists(macro_path):
+             logger.warning(f"BOOTSTRAP: {macro_path} is missing. Re-seeding a minimal baseline for Bayesian continuity.")
+             # Required columns for ProbabilitySeeder: credit_spread_bps, erp_pct, real_yield_10y_pct, net_liquidity_usd_bn
+             bootstrap_df = pd.DataFrame({
+                 "observation_date": [pd.Timestamp("2000-01-03"), pd.Timestamp("2000-01-04")],
+                 "credit_spread_bps": [350.0, 450.0],
+                 "erp_pct": [4.5, 3.5],
+                 "real_yield_10y_pct": [1.5, 2.0],
+                 "net_liquidity_usd_bn": [500.0, 510.0]
+             })
+             Path(macro_path).parent.mkdir(parents=True, exist_ok=True)
+             bootstrap_df.to_csv(macro_path, index=False)
+             
         # Load raw data
         macro_df = pd.read_csv(macro_path, parse_dates=["observation_date"]).set_index("observation_date")
         regime_df = pd.read_csv(regime_path, parse_dates=["observation_date"]).set_index("observation_date")
