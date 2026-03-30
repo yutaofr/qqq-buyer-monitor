@@ -418,19 +418,21 @@
                     }
                 }
 
-                safeUpdate('candidate', data.signal.candidate_id);
-                safeUpdate('decision-path', data.signal.decision_path);
-                safeUpdate('contract-desc', data.signal.contract_desc);
-                safeUpdate('fidelity', data.signal.fidelity);
                 safeUpdate('calc-at', data.meta.calculated_at_utc.replace('T', ' ').replace('Z', ''));
                 safeUpdate('expires-at', expiresAt.toLocaleString('zh-CN', { hour12: false }));
 
+                // --- RESTORED BLOCK ---
+                safeUpdate('candidate', data.signal.candidate_id);
+                safeUpdate('decision-path', data.signal.decision_path);
+                // ----------------------
+
                 if (data.evidence) {
                     const ev = data.evidence;
-                    const regime = data.signal.regime;
+                    const currentRegimeStr = data.signal.regime;
+                    const currentCycleStr = data.signal.cycle_regime;
                     
-                    safeUpdate('tree-t0', regime);
-                    safeUpdate('tree-cycle', data.signal.cycle_regime);
+                    safeUpdate('tree-t0', currentRegimeStr);
+                    safeUpdate('tree-cycle', currentCycleStr);
                     safeUpdate('tree-risk', isV11 ? `V11 Bayesian Sizing → ${data.signal.target_beta.toFixed(2)}x` : `${ev.risk_state} → ${data.signal.candidate_id}`);
                     safeUpdate('tree-deploy', isV11 ? `${data.signal.deploy_rhythm} · Lock=${isLocked}` : `${data.signal.deploy_rhythm} · QQQ only`);
 
@@ -443,17 +445,17 @@
                         
                         tags.forEach(t => {
                             const tagText = t.textContent.toUpperCase();
-                            // Fuzzy match: if tag text is inside the label (e.g., "BUST" in "休克 (BUST)")
+                            // Robust fuzzy match: either tag contains label or vice versa
                             const isMatch = label.includes(tagText) || tagText.includes(label);
                             t.className = isMatch ? 
-                                'text-[8px] font-bold text-emerald-400 opacity-100 px-1.5 py-0.5 rounded bg-emerald-400/10 border border-emerald-400/20 transition-all' : 
+                                'text-[8px] font-bold text-emerald-400 opacity-100 px-1.5 py-0.5 rounded bg-emerald-400/10 border border-emerald-400/20 transition-all scale-110' : 
                                 'text-[8px] font-medium text-ghost px-1.5 py-0.5';
                             t.style.filter = isMatch ? 'none' : 'blur(0.5px)';
                         });
                     };
 
-                    updateGhostTags('tree-t0', data.signal.regime);
-                    updateGhostTags('tree-cycle', data.signal.cycle_regime);
+                    updateGhostTags('tree-t0', currentRegimeStr);
+                    updateGhostTags('tree-cycle', currentCycleStr);
 
                     const tableBody = document.getElementById('evidence-table-body');
                     if (tableBody) {
