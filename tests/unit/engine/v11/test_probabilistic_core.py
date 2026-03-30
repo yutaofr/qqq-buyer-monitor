@@ -52,3 +52,21 @@ def test_entropy_beta_haircut():
     high_entropy = 1.0
     assert controller.apply_haircut(1.2, high_entropy) == 1.0
     assert controller.apply_haircut(0.6, high_entropy) == 1.0
+
+
+def test_classifier_posteriors_can_be_reweighted_by_runtime_priors():
+    """运行时先验必须能稳定地重加权分类器输出，而不是被训练期先验锁死。"""
+    engine = BayesianInferenceEngine({}, {"MID_CYCLE": 0.5, "BUST": 0.5})
+
+    classifier_posteriors = {"MID_CYCLE": 0.60, "BUST": 0.40}
+    training_priors = {"MID_CYCLE": 0.80, "BUST": 0.20}
+    runtime_priors = {"MID_CYCLE": 0.30, "BUST": 0.70}
+
+    adjusted = engine.reweight_probabilities(
+        classifier_posteriors=classifier_posteriors,
+        training_priors=training_priors,
+        runtime_priors=runtime_priors,
+    )
+
+    assert sum(adjusted.values()) == pytest.approx(1.0)
+    assert adjusted["BUST"] > adjusted["MID_CYCLE"]

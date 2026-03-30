@@ -108,6 +108,40 @@ def _runtime_result() -> SignalResult:
     return result
 
 
+def _v11_runtime_result() -> SignalResult:
+    result = _runtime_result()
+    result.engine_version = "v11"
+    result.cycle_regime = "LATE_CYCLE"
+    result.tier0_regime = None
+    result.deployment_state = DeploymentState.DEPLOY_BASE
+    result.target_beta = 0.91
+    result.raw_target_beta = 0.96
+    result.v11_probabilities = {
+        "MID_CYCLE": 0.82,
+        "LATE_CYCLE": 0.15,
+        "BUST": 0.02,
+        "RECOVERY": 0.01,
+        "CAPITULATION": 0.0,
+    }
+    result.v11_entropy = 0.17
+    result.v11_execution = {
+        "lock_active": False,
+        "target_bucket": "QQQ",
+        "stable_regime": "LATE_CYCLE",
+        "raw_regime": "MID_CYCLE",
+        "deployment_state": "DEPLOY_BASE",
+        "deployment_readiness": 0.64,
+        "priors": {
+            "MID_CYCLE": 0.57,
+            "LATE_CYCLE": 0.16,
+            "BUST": 0.14,
+            "RECOVERY": 0.12,
+            "CAPITULATION": 0.01,
+        },
+    }
+    return result
+
+
 def test_friday_close_leap_to_monday(cursor):
     """
     Scenario: Friday, March 27, 2026, 16:01:00 EST (Just after close).
@@ -252,3 +286,27 @@ def test_web_index_narrative_uses_v9_target_beta_contract():
     assert "v8.2" not in html
     assert "Beta 建议" in html
     # The linear path is v10 legacy, v11 uses Bayesian Probabilities shown in prob-container
+
+
+def test_export_web_snapshot_uses_v11_stable_and_raw_regime_contract(tmp_path, monkeypatch):
+    result = _v11_runtime_result()
+    output_path = tmp_path / "status.json"
+
+    monkeypatch.setattr(MarketCursor, "get_market_state", lambda self, now: "FROZEN")
+    monkeypatch.setattr(
+        MarketCursor,
+        "get_expires_at_utc",
+        lambda self, now, jitter_hours=4: datetime(2026, 3, 30, 17, 30, tzinfo=UTC),
+    )
+
+    ok = export_web_snapshot(result, output_path=output_path)
+
+    assert ok is True
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["meta"]["version"] == "v11"
+    assert payload["signal"]["regime"] == "末端 (LATE_CYCLE)"
+    assert payload["signal"]["stable_regime"] == "末端 (LATE_CYCLE)"
+    assert payload["signal"]["raw_regime"] == "中期平稳 (MID_CYCLE)"
+    assert payload["signal"]["deployment_state"] == "常规入场"
+    assert payload["signal"]["deployment_readiness"] == 0.64
+    assert payload["signal"]["priors"]["MID_CYCLE"] == 0.57

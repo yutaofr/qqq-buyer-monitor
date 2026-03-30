@@ -1,5 +1,9 @@
 # v11.5 Universal Factor Registry & Optimal Horizons
 
+> **Research note:** this file is the broad factor-discovery archive.  
+> It is **not** the current production seeder contract.  
+> The production baseline is recorded in `docs/v11_bayesian_production_baseline_2026-03-30.md`.
+
 **Auditor:** Senior Architect (Gemini CLI)  
 **Date:** 2026-03-30  
 **Scope:** Exhaustive Audit of All Known Dataset Columns

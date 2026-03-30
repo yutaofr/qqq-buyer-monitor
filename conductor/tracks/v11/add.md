@@ -1,8 +1,9 @@
 # ADD: QQQ Probabilistic Monitor (v11.0)
 
-> 状态: Accepted Implementation Design
+> 状态: Archived implementation snapshot
 > 关联 SRD: `conductor/tracks/v11/spec.md`
 > 日期: 2026-03-30
+> 当前生产基线: `docs/v11_bayesian_production_baseline_2026-03-30.md`
 
 ## 1. High-Level Design
 

@@ -1,0 +1,65 @@
+name: V11 Runtime Base
+
+on:
+  workflow_call:
+    inputs:
+      job_name:
+        required: true
+        type: string
+      command:
+        required: true
+        type: string
+      timeout_minutes:
+        required: false
+        default: 30
+        type: number
+    secrets:
+      ALERT_WEBHOOK_URL:
+        required: false
+      FRED_API_KEY:
+        required: false
+      VERCEL_BLOB_READ_WRITE_TOKEN:
+        required: false
+
+jobs:
+  run:
+    name: ${{ inputs.job_name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Execute V11 Runtime
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          GITHUB_ACTIONS: "true"
+          VERCEL_BLOB_READ_WRITE_TOKEN: ${{ secrets.VERCEL_BLOB_READ_WRITE_TOKEN }}
+        run: ${{ inputs.command }}
+
+      - name: Notify on Failure
+        if: failure()
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: |
+          if [ -z "${ALERT_WEBHOOK_URL}" ]; then
+            echo "ALERT_WEBHOOK_URL is not configured; skipping failure notification."
+            exit 0
+          fi
+          curl -sS -X POST -H "Content-Type: application/json" \
+            -d "{\"content\": \"🚨 **QQQ-Monitor Runtime Failure**\n**Workflow:** ${{ github.workflow }}\n**Run ID:** ${{ github.run_id }}\n**Ref:** ${{ github.ref_name }}\"}" \
+            "${ALERT_WEBHOOK_URL}"

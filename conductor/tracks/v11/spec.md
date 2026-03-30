@@ -1,10 +1,10 @@
 # SRD: QQQ Probabilistic Monitor (v11.0)
 
 > 版本: v11.0
-> 状态: Accepted Production Baseline
+> 状态: Archived design snapshot
 > 日期: 2026-03-30
-> 适用范围: `src/engine/v11/`、`src/main.py --engine v11`、`src/backtest.py --mode v11`
-> 规范优先级: 本文件与 `conductor/tracks/v11/add.md` 为 v11 唯一正式基线
+> 说明: 本文档保留历史设计脉络，但不再代表当前生产基线。
+> 当前生产基线: `docs/v11_bayesian_production_baseline_2026-03-30.md`
 
 ## 1. Purpose
 

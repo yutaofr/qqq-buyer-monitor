@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, date, datetime, time
 from typing import TYPE_CHECKING
 
 import requests
@@ -71,14 +72,37 @@ def _format_pct(value: float | None) -> str:
     return "n/a" if value is None else f"{value * 100:.1f}%"
 
 
+def _discord_timestamp(value: object) -> str:
+    """Return an RFC3339 timestamp that Discord accepts for embeds."""
+    if isinstance(value, datetime):
+        dt = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+        return dt.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+    if isinstance(value, date):
+        dt = datetime.combine(value, time(16, 17), tzinfo=UTC)
+        return dt.isoformat().replace("+00:00", "Z")
+
+    try:
+        text = str(value)
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    except Exception:
+        return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
 def _build_v11_decision_path(result: SignalResult) -> str:
     execution = result.v11_execution
     lock_status = "🔒 **LOCKED**" if execution.get("lock_active") else "🔓 **ACTIVE**"
     deploy_state = _get_deployment_state_str(result)
     deploy_emoji = _get_deployment_emoji(deploy_state)
+    stable_regime = _get_v11_stable_regime(result)
+    raw_regime = _get_v11_raw_regime(result)
 
     return (
-        f"🔘 **Posterior Regime:** `{result.tier0_regime or 'n/a'}`\n"
+        f"🔘 **Stable Regime:** `{stable_regime}`\n"
+        f"↳ **Raw Posterior Top-1:** `{raw_regime}`\n"
         f"↳ **Entropy Penalty:** `{result.v11_entropy:.3f}`\n"
         f"↳ **Beta Advisory:** `{_format_beta(result.raw_target_beta)}` → **`{_format_beta(result.target_beta)}`**\n"
         f"↳ **Execution Guard:** `{execution.get('target_bucket', 'n/a')}` ({lock_status})\n"
@@ -127,13 +151,42 @@ def _get_deployment_state_str(result: SignalResult) -> str:
     return "n/a"
 
 
+def _get_v11_stable_regime(result: SignalResult) -> str:
+    if result.cycle_regime:
+        return str(result.cycle_regime)
+
+    stable_regime = result.v11_execution.get("stable_regime")
+    if stable_regime:
+        return str(stable_regime)
+
+    if result.v11_probabilities:
+        return max(result.v11_probabilities, key=result.v11_probabilities.get)
+
+    return "n/a"
+
+
+def _get_v11_raw_regime(result: SignalResult) -> str:
+    raw_regime = result.v11_execution.get("raw_regime")
+    if raw_regime:
+        return str(raw_regime)
+
+    if result.v11_probabilities:
+        return max(result.v11_probabilities, key=result.v11_probabilities.get)
+
+    return _get_v11_stable_regime(result)
+
+
 def build_discord_payload(result: SignalResult) -> dict:
     """Build a Discord payload that matches the v10/v11 decision contract."""
     is_v11 = result.engine_version == "v11"
 
-    macro_regime = result.tier0_regime or "NEUTRAL"
-    color = REGIME_COLORS.get(macro_regime, COLOR_DEFAULT)
-    macro_emoji = _get_regime_emoji(macro_regime)
+    if is_v11:
+        display_regime = _get_v11_stable_regime(result)
+    else:
+        display_regime = result.tier0_regime or "NEUTRAL"
+
+    color = REGIME_COLORS.get(display_regime, COLOR_DEFAULT)
+    macro_emoji = _get_regime_emoji(display_regime)
 
     execution = result.v11_execution if is_v11 else {}
     lock_active = execution.get("lock_active", False)
@@ -147,7 +200,7 @@ def build_discord_payload(result: SignalResult) -> dict:
     if is_v11:
         summary_header = (
             f"### 🎯 Target Beta: `{_format_beta(result.target_beta)}`\n"
-            f"**Bayesian Regime:** {macro_emoji} `{macro_regime}`\n"
+            f"**Bayesian Regime:** {macro_emoji} `{display_regime}`\n"
             f"**Incremental Pacing:** {deploy_emoji} `{deploy_state}`\n"
             f"**Entropy:** `{result.v11_entropy:.3f}` | **Lock:** `{'🔒 LOCKED' if lock_active else '🔓 ACTIVE'}`"
         )
@@ -156,7 +209,7 @@ def build_discord_payload(result: SignalResult) -> dict:
         cycle_emoji = _get_regime_emoji(cycle_regime)
         summary_header = (
             f"### 🎯 Target Beta: `{_format_beta(result.target_beta)}`\n"
-            f"**Macro Regime:** {macro_emoji} `{macro_regime}`\n"
+            f"**Macro Regime:** {macro_emoji} `{display_regime}`\n"
             f"**Tactical Cycle:** {cycle_emoji} `{cycle_regime}`\n"
             f"**Incremental Pacing:** {deploy_emoji} `{deploy_state}`"
         )
@@ -225,20 +278,7 @@ def build_discord_payload(result: SignalResult) -> dict:
         },
     ])
 
-    # Format date to string if it's a timestamp object
-    try:
-        if hasattr(result.date, "isoformat"):
-            # If it's a datetime/timestamp object, use its isoformat
-            iso_timestamp = result.date.isoformat()
-            if "Z" not in iso_timestamp and "+" not in iso_timestamp:
-                iso_timestamp += "Z"
-        else:
-            # Fallback for string dates
-            date_str = str(result.date)[:10]
-            iso_timestamp = f"{date_str}T16:17:00Z"
-    except Exception:
-        import datetime
-        iso_timestamp = datetime.datetime.now().isoformat() + "Z"
+    iso_timestamp = _discord_timestamp(result.date)
 
     # Sanitize fields: Discord rejects empty strings or nulls in field values
     for field in fields:
