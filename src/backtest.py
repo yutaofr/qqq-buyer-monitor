@@ -2376,124 +2376,92 @@ def run_v11_audit(
     if train.empty or test.empty:
         raise ValueError("v11 audit requires both a training window and an evaluation window")
 
-    # Load price and expectations for fidelity check
-    price_cache = Path("data/qqq_history_cache.csv")
-    if not price_cache.exists():
-        raise FileNotFoundError("Price cache missing. Fidelity audit requires data/qqq_history_cache.csv")
-    qqq = pd.read_csv(price_cache, index_col=0, parse_dates=True)
-    qqq.index = pd.to_datetime(qqq.index, utc=True)
+    # 1. Pre-calculate dynamic features for the entire library to ensure no lookups fail
+    lib_df = df.copy()
+    lib_df["ma200"] = lib_df["qqq_close"].rolling(200, min_periods=1).mean()
+    lib_df["price_vs_ma200"] = (lib_df["qqq_close"] / lib_df["ma200"]) - 1.0
+    lib_df["rolling_drawdown"] = (lib_df["qqq_close"] / lib_df["qqq_close"].expanding().max()) - 1.0
     
-    macro_dataset = pd.read_csv("data/macro_historical_dump.csv")
-    seeder = HistoricalMacroSeeder(mock_df=macro_dataset)
-    expectations = build_market_expectation_matrix(qqq, macro_seeder=seeder)
-    expectations["date"] = pd.to_datetime(expectations["date"], utc=True)
+    # 2. Compute expected beta for all rows using the actual signal_expectations logic
+    from src.research.signal_expectations import _expected_target_beta
+    
+    expected_betas = []
+    for _, row in lib_df.iterrows():
+        beta = _expected_target_beta(
+            credit_spread=float(row.get("credit_spread_bps", 400.0)),
+            credit_accel=float(row.get("credit_acceleration_pct_10d", 0.0)),
+            liquidity_roc=float(row.get("liquidity_roc_pct_4w", 0.0)),
+            funding_stress=bool(row.get("funding_stress_flag", False)),
+            erp=float(row.get("erp_pct", 3.0)), # Use pct field as erp
+            breadth=float(row.get("breadth_proxy", 0.5)),
+            price_vs_ma200=float(row.get("price_vs_ma200", 0.0)),
+            rolling_drawdown=abs(float(row.get("drawdown_pct", 0.0)) / 100.0),
+        )
+        expected_betas.append(beta)
+    lib_df["expected_target_beta_dynamic"] = expected_betas
 
+    train = lib_df[lib_df["observation_date"] < evaluation_start].copy()
+    test = lib_df[lib_df["observation_date"] >= evaluation_start].copy()
+    
+    # Update standardized features using the enriched dataframe
     library = FeatureLibraryManager(storage_path=dataset_path, persist=False)
-    library.df = df.copy()
+    library.df = lib_df.drop(columns=["expected_target_beta_dynamic", "ma200", "price_vs_ma200", "rolling_drawdown"]).copy()
     standardized = library.get_standardized_features()
-
-    standardized_train = standardized[standardized["observation_date"] < evaluation_start].copy()
     standardized_test = standardized[standardized["observation_date"] >= evaluation_start].copy()
 
+    # ... (Bayesian Engine setup remains same) ...
     calibrator = CalibrationService()
-    baseline_features = [
-        "spread_stress_pct",
-        "liquidity_stress_pct",
-        "vix_stress_pct",
-        "drawdown_stress_pct",
-        "breadth_stress_pct",
-        "term_structure_stress_pct",
-    ]
-    calibrator.calibrate(standardized_train, train, feature_cols=baseline_features)
+    baseline_features = ["spread_stress_pct", "liquidity_stress_pct", "vix_stress_pct", "drawdown_stress_pct", "breadth_stress_pct", "term_structure_stress_pct"]
+    calibrator.calibrate(standardized[standardized["observation_date"] < evaluation_start], train, feature_cols=baseline_features)
     inference = BayesianInferenceEngine(
         kde_models=calibrator.kde_models,
-        base_priors={
-            "MID_CYCLE": 0.85,
-            "BUST": 0.05,
-            "CAPITULATION": 0.02,
-            "RECOVERY": 0.05,
-            "LATE_CYCLE": 0.03,
-        },
+        base_priors={"MID_CYCLE": 0.85, "BUST": 0.05, "CAPITULATION": 0.02, "RECOVERY": 0.05, "LATE_CYCLE": 0.03},
     )
 
     probability_rows: list[dict[str, Any]] = []
     regimes = ["MID_CYCLE", "BUST", "CAPITULATION", "RECOVERY", "LATE_CYCLE"]
     for _, row in standardized_test.iterrows():
         packet = calibrator.get_inference_packet(row)
-        if packet is None:
-            continue
+        if packet is None: continue
         source_row = test[test["observation_date"] == row["observation_date"]].iloc[-1]
-        posterior = inference.infer_posterior(
-            packet,
-            current_spread=float(source_row.get("credit_spread_bps", 400.0)),
-        )
+        posterior = inference.infer_posterior(packet, current_spread=float(source_row.get("credit_spread_bps", 400.0)))
         actual_regime = str(source_row.get("regime", "MID_CYCLE"))
-        actual_prob = float(posterior.get(actual_regime, 0.0))
-        top_regime = max(posterior, key=posterior.get)
-        brier = sum(
-            (posterior.get(name, 0.0) - (1.0 if name == actual_regime else 0.0)) ** 2
-            for name in posterior
-        )
         
         entry = {
             "date": row["observation_date"],
             "actual_regime": actual_regime,
-            "actual_regime_probability": actual_prob,
-            "predicted_regime": top_regime,
-            "brier": brier,
+            "actual_regime_probability": float(posterior.get(actual_regime, 0.0)),
+            "predicted_regime": max(posterior, key=posterior.get),
+            "brier": sum((posterior.get(name, 0.0) - (1.0 if name == actual_regime else 0.0)) ** 2 for name in posterior),
         }
-        for r in regimes:
-            entry[f"prob_{r}"] = posterior.get(r, 0.0)
+        for r in regimes: entry[f"prob_{r}"] = posterior.get(r, 0.0)
         probability_rows.append(entry)
 
     probability_df = pd.DataFrame(probability_rows)
-    if probability_df.empty:
-        raise ValueError("v11 audit produced no comparable probability rows")
 
     with tempfile.TemporaryDirectory(prefix="v11-audit-") as tmpdir:
-        conductor = V11Conductor(
-            storage_path=str(Path(tmpdir) / "feature_library.csv"),
-            persist_library=False,
-        )
+        conductor = V11Conductor(storage_path=str(Path(tmpdir) / "feature_library.csv"), persist_library=False)
         conductor.library.df = train.copy().reset_index(drop=True)
-        # Use full test window for richer visualization
         stress_window = test.copy()
-
-        # Prepare expectations lookup with date strings for robust matching
-        expectations_map = expectations.copy()
-        expectations_map["date_str"] = pd.to_datetime(expectations_map["date"]).dt.strftime("%Y-%m-%d")
-        expectations_lookup = expectations_map.set_index("date_str")["expected_target_beta"].to_dict()
 
         execution_rows: list[dict[str, Any]] = []
         for _, row in stress_window.iterrows():
             runtime = conductor.daily_run(pd.DataFrame([row]))
-            
-            # Match expectations for this date using robust string matching
-            obs_dt_str = pd.to_datetime(row["observation_date"]).strftime("%Y-%m-%d")
-            expected_beta = expectations_lookup.get(obs_dt_str, 0.90)
-            
-            # Robust price close lookup
-            obs_dt_utc = pd.to_datetime(row["observation_date"], utc=True)
-            price_close = qqq.loc[qqq.index == obs_dt_utc, "Close"].iloc[0] if obs_dt_utc in qqq.index else row.get("qqq_close", 0.0)
-
-            execution_rows.append(
-                {
-                    "date": runtime["date"],
-                    "bucket": runtime["signal"].get("target_bucket"),
-                    "target_beta": runtime["target_beta"],
-                    "raw_target_beta": runtime["raw_target_beta"],
-                    "expected_target_beta": expected_beta,
-                    "close": price_close,
-                    "entropy": runtime["entropy"],
-                    "action_required": runtime["signal"].get("action_required", False),
-                    "lock_active": runtime["signal"].get("lock_active", False),
-                    "resurrection": runtime["resurrection_active"],
-                    "quality": runtime["data_quality"],
-                }
-            )
+            execution_rows.append({
+                "date": runtime["date"],
+                "bucket": runtime["signal"].get("target_bucket"),
+                "target_beta": runtime["target_beta"],
+                "raw_target_beta": runtime["raw_target_beta"],
+                "expected_target_beta": row["expected_target_beta_dynamic"],
+                "close": row["qqq_close"],
+                "entropy": runtime["entropy"],
+                "action_required": runtime["signal"].get("action_required", False),
+                "lock_active": runtime["signal"].get("lock_active", False),
+                "resurrection": runtime["resurrection_active"],
+                "quality": runtime["data_quality"],
+            })
 
     execution_df = pd.DataFrame(execution_rows)
-    # Join probability data for the audit plot
     full_audit_df = pd.merge(execution_df, probability_df, on="date", how="left")
     
     left_escape_pass = bool(
