@@ -77,11 +77,12 @@ jobs:
           # Run the engine with the notify-discord flag. 
           # --no-save is critical to avoid polluting historical data with 17:17 snapshots 
           # if the hourly cron also captures a valid EOD/Intraday state.
-          python -m src.main --notify-discord --no-save
+          python -m src.main --engine v11 --notify-discord --no-save
 
-      - name: Notify on Failure
+        - name: Notify on Failure
         if: failure()
         run: |
           curl -X POST -H "Content-Type: application/json" \
-               -d "{\"content\": \"🚨 **Discord Signal Push Failed** \n**Run ID:** ${{ github.run_id }} \nCheck logs for v8.2 pipeline errors.\"}" \
+               -d "{\"content\": \"🚨 **Discord Signal Push Failed (v11)** \n**Run ID:** ${{ github.run_id }} \n**Check logs for v11 Bayesian pipeline errors.**\"}" \
                ${{ secrets.ALERT_WEBHOOK_URL }}
+
