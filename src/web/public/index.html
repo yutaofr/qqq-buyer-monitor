@@ -63,11 +63,12 @@
         <!-- Main State Section -->
         <div class="space-y-8 sm:space-y-10 text-center mb-10 sm:mb-12">
             <div class="space-y-3">
-                <p class="text-[11px] font-black uppercase opacity-50 text-slate-500 tracking-wider">主导制度 (Regime)</p>
+                <p class="text-[11px] font-black uppercase opacity-50 text-slate-500 tracking-wider">稳定制度 (Stable Regime)</p>
                 <div class="flex items-center justify-center space-x-4">
                     <div id="regime-lumiere" class="lumiere bg-slate-500"></div>
                     <p id="regime" class="text-4xl sm:text-5xl font-black tracking-tighter text-white break-words transition-colors duration-1000">--</p>
                 </div>
+                <p id="regime-audit" class="text-[11px] font-bold text-slate-400 tracking-tight">--</p>
             </div>
             
             <div class="grid grid-cols-2 gap-4 sm:gap-5">
@@ -78,6 +79,7 @@
                 <div class="factor-card p-5 sm:p-6 rounded-[1.8rem] sm:rounded-[2.5rem] flex flex-col items-start bg-white/[0.03]">
                     <p class="text-[10px] font-black text-slate-500 uppercase mb-2">入场节奏</p>
                     <p id="deploy" class="text-xl sm:text-2xl font-black transition-colors duration-1000">--</p>
+                    <p id="deploy-readiness" class="text-[11px] font-bold text-slate-400 mt-2">--</p>
                 </div>
             </div>
         </div>
@@ -115,6 +117,11 @@
                 <div class="space-y-6">
                     <p class="text-[11px] font-black uppercase opacity-40 tracking-widest">后验概率分布 (Posterior)</p>
                     <div id="prob-container" class="space-y-4 px-4 sm:px-6"></div>
+                </div>
+
+                <div class="space-y-6">
+                    <p class="text-[11px] font-black uppercase opacity-40 tracking-widest">运行时先验 (Runtime Prior)</p>
+                    <div id="prior-container" class="space-y-4 px-4 sm:px-6"></div>
                 </div>
                 
                 <div class="flex flex-col items-center">
@@ -170,8 +177,31 @@
             'MID_CYCLE': 'text-blue-400', 'LATE_CYCLE': 'text-yellow-400', 'BUST': 'text-red-400', 'CAPITULATION': 'text-emerald-400', 'RECOVERY': 'text-emerald-400'
         };
         const DEPLOY_COLORS = {
-            '极速': 'text-emerald-400', '常规': 'text-blue-400', '减速': 'text-yellow-400', '停买': 'text-red-400', '停止': 'text-red-400'
+            'FAST': 'text-emerald-400', 'BASE': 'text-blue-400', 'SLOW': 'text-yellow-400', 'PAUSE': 'text-red-400', 'RECOVER': 'text-emerald-300'
         };
+
+        function extractRegimeKey(value) {
+            const upper = String(value || '').toUpperCase();
+            for (const key of Object.keys(MAPPING)) {
+                if (upper.includes(key)) return key;
+            }
+            return '--';
+        }
+
+        function renderDistribution(containerId, distribution, fallbackText) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            const entries = Object.entries(distribution || {}).sort((a, b) => b[1] - a[1]);
+            if (!entries.length) {
+                container.innerHTML = `<p class="text-[11px] font-bold text-slate-500">${fallbackText}</p>`;
+                return;
+            }
+            entries.forEach(([name, val]) => {
+                const pct = (val * 100).toFixed(1) + '%';
+                const cnName = MAPPING[name] || name;
+                container.innerHTML += `<div class="space-y-1.5"><div class="flex justify-between text-[10px] font-black opacity-50 uppercase tracking-tighter"><span>${cnName}</span><span class="text-white">${pct}</span></div><div class="w-full h-2 bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5"><div class="prob-bar" style="width: ${pct}"></div></div></div>`;
+            });
+        }
 
         function toggleInsights() { document.getElementById('insights-panel').classList.toggle('open'); }
         async function updateDashboard() {
@@ -194,19 +224,14 @@
                 body.className = isLocked ? 'state-locked min-h-screen flex items-center justify-center p-3 sm:p-4' : (mkt === 'ACTIVE' ? 'state-active min-h-screen flex items-center justify-center p-3 sm:p-4' : 'state-frozen min-h-screen flex items-center justify-center p-3 sm:p-4');
                 document.getElementById('indicator').className = `w-2.5 h-2.5 rounded-full ${isLocked ? 'bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.8)]' : (mkt === 'ACTIVE' ? 'bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.8)]' : 'bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.8)]')}`;
                 
-                const rawRegime = (data.signal.regime || '--').toUpperCase();
-                let displayRegime = rawRegime;
-                let activeRegimeKey = 'MID_CYCLE';
-                for (const [k, v] of Object.entries(SIMPLE_MAPPING)) {
-                    if (rawRegime.includes(k)) { 
-                        displayRegime = v; 
-                        activeRegimeKey = k;
-                        break; 
-                    }
-                }
+                const stableRegimeKey = extractRegimeKey(data.signal.stable_regime || data.signal.regime);
+                const rawRegimeKey = extractRegimeKey(data.signal.raw_regime || data.signal.regime);
+                const displayRegime = SIMPLE_MAPPING[stableRegimeKey] || stableRegimeKey;
+                const activeRegimeKey = stableRegimeKey !== '--' ? stableRegimeKey : 'MID_CYCLE';
                 const rText = document.getElementById('regime');
                 rText.textContent = displayRegime;
                 rText.className = `text-4xl sm:text-5xl font-black tracking-tighter break-words ${REGIME_TEXT_COLORS[activeRegimeKey] || 'text-white'}`;
+                document.getElementById('regime-audit').textContent = rawRegimeKey === stableRegimeKey ? `当日后验 Top-1 与稳定态一致: ${SIMPLE_MAPPING[rawRegimeKey] || rawRegimeKey}` : `稳定态: ${SIMPLE_MAPPING[stableRegimeKey] || stableRegimeKey} | 当日后验 Top-1: ${SIMPLE_MAPPING[rawRegimeKey] || rawRegimeKey}`;
                 
                 const lumiere = document.getElementById('regime-lumiere');
                 lumiere.className = `lumiere ${REGIME_COLORS[activeRegimeKey] || 'bg-slate-500'}`;
@@ -214,10 +239,12 @@
                 document.getElementById('exposure').textContent = data.signal.target_beta.toFixed(2) + 'x';
                 document.getElementById('entropy').textContent = data.signal.v11_entropy.toFixed(3);
                 
-                const dRhythm = (data.signal.deploy_rhythm || '--').replace('入场', '').trim();
+                const deployStateKey = data.signal.deployment_state_key || 'BASE';
+                const dRhythm = (data.signal.deployment_state || data.signal.deploy_rhythm || '--').replace('入场', '').trim();
                 const dText = document.getElementById('deploy');
                 dText.textContent = dRhythm;
-                dText.className = `text-xl sm:text-2xl font-black ${DEPLOY_COLORS[dRhythm] || 'text-blue-400'}`;
+                dText.className = `text-xl sm:text-2xl font-black ${DEPLOY_COLORS[deployStateKey] || 'text-blue-400'}`;
+                document.getElementById('deploy-readiness').textContent = data.signal.deployment_readiness != null ? `Kelly 就绪度 ${(data.signal.deployment_readiness * 100).toFixed(1)}%` : '--';
                 
                 document.getElementById('calc-at').textContent = data.meta.calculated_at_utc.replace('T',' ').replace('Z','');
                 document.getElementById('beta-ceiling').textContent = data.signal.beta_ceiling.toFixed(2) + 'x';
@@ -227,24 +254,17 @@
                 const bar = document.getElementById('exposure-bar'); const beta = data.signal.target_beta;
                 bar.style.width = Math.min(100, beta * 83.33) + '%'; bar.className = beta > 1.0 ? 'h-full overclock' : 'h-full bg-emerald-500';
                 
-                const fullReg = data.signal.regime.toUpperCase(); 
-                const cycReg = (data.signal.cycle_regime || "").toUpperCase();
                 const bucket = (data.signal.reference_path.qld_pct > 0 ? "QLD" : (data.signal.reference_path.qqq_pct > 0.1 ? "QQQ" : "CASH"));
                 
                 document.querySelectorAll('.tag').forEach(t => {
                     const key = t.getAttribute('data-key');
-                    // v11.5 Parity: Check against Bayesian Posteriors or identified regime
-                    if (fullReg.includes(key) || cycReg.includes(key) || key === bucket || (data.signal.v11_probabilities && data.signal.v11_probabilities[key] > 0.4)) {
+                    if (key === stableRegimeKey || key === rawRegimeKey || key === bucket || (data.signal.v11_probabilities && data.signal.v11_probabilities[key] > 0.4)) {
                         t.className = 'tag node-active text-[10px] px-3 py-2 border border-emerald-500/50 rounded-2xl transition-all duration-1000';
                     } else { t.className = 'tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl'; }
                 });
 
-                const probContainer = document.getElementById('prob-container'); probContainer.innerHTML = '';
-                Object.entries(data.signal.v11_probabilities).sort((a,b) => b[1] - a[1]).forEach(([name, val]) => {
-                    const pct = (val * 100).toFixed(1) + '%';
-                    const cnName = MAPPING[name] || name;
-                    probContainer.innerHTML += `<div class="space-y-1.5"><div class="flex justify-between text-[10px] font-black opacity-50 uppercase tracking-tighter"><span>${cnName}</span><span class="text-white">${pct}</span></div><div class="w-full h-2 bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5"><div class="prob-bar" style="width: ${pct}"></div></div></div>`;
-                });
+                renderDistribution('prob-container', data.signal.v11_probabilities, '暂无后验分布');
+                renderDistribution('prior-container', data.signal.priors, '当前未透传运行时先验');
             } catch (e) { console.error(e); sourceLabel.textContent = "SYNC_ERROR"; body.className = 'state-stale min-h-screen flex items-center justify-center p-3 sm:p-4'; }
         }
         updateDashboard(); setInterval(updateDashboard, 60000);

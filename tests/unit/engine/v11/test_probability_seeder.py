@@ -18,24 +18,26 @@ def sample_macro_df():
     return df
 
 def test_seeder_factor_generation(sample_macro_df):
-    """验证 Seeder 能够正确生成 6 大核心因子向量"""
+    """验证 Seeder 只生成当前生产允许的低噪声核心因子。"""
     seeder = ProbabilitySeeder()
     # 注入数据并生成特征
     features_df = seeder.generate_features(sample_macro_df)
 
     expected_cols = [
-        "erp_21d_mom", "real_yield_10d_mom",
-        "spread_21d", "liquidity_252d",
-        "credit_accel_21d", "liq_mom_4w",
-        "real_yield_structural_z"
+        "spread_21d",
+        "liquidity_252d",
+        "real_yield_structural_z",
+        "erp_absolute",
+        "spread_absolute",
+        "yield_absolute",
     ]
 
+    assert list(features_df.columns) == expected_cols
     for col in expected_cols:
         assert col in features_df.columns
-        # 验证是否为 Z-score 标准化（均值接近 0）
-        assert abs(features_df[col].mean()) < 1.5
         # 验证无 NaN
         assert not features_df[col].isna().any()
+        assert features_df[col].between(-8.0, 8.0).all()
 
 def test_seeder_timezone_alignment():
     """验证 Seeder 强制执行 tz-naive 对齐以防回测偏差"""
@@ -65,3 +67,13 @@ def test_seeder_look_ahead_prevention(sample_macro_df):
         half_features.loc[limit_date],
         check_names=False
     )
+
+
+def test_seeder_is_deterministic(sample_macro_df):
+    """同一份输入重复执行时，特征种子必须严格一致。"""
+    seeder = ProbabilitySeeder()
+
+    first = seeder.generate_features(sample_macro_df)
+    second = seeder.generate_features(sample_macro_df)
+
+    pd.testing.assert_frame_equal(first, second)

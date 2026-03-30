@@ -15,73 +15,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  notify:
+  check-window:
     runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    permissions:
+      contents: read
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install Dependencies
-        run: |
-          pip install .
-          pip install pytz requests
-
       - name: Check Target Time Window
         id: check
         shell: python
         run: |
           import os
-          import pytz
           from datetime import datetime
+          from zoneinfo import ZoneInfo
 
-          # Timezones
-          paris_tz = pytz.timezone('Europe/Paris')
-          beijing_tz = pytz.timezone('Asia/Shanghai')
-          
-          now_paris = datetime.now(paris_tz)
-          now_beijing = datetime.now(beijing_tz)
-          
+          now_paris = datetime.now(ZoneInfo("Europe/Paris"))
+          now_beijing = datetime.now(ZoneInfo("Asia/Shanghai"))
+
           is_dispatch = os.environ.get('EVENT_NAME') == 'workflow_dispatch'
-          
+
           # Target 1: 17:17 Paris (allowing window 17:10-17:35)
           is_paris_target = (now_paris.hour == 17 and 10 <= now_paris.minute <= 35)
-          
+
           # Target 2: 14:47 Beijing (allowing window 14:40-15:00)
           is_beijing_target = (now_beijing.hour == 14 and 40 <= now_beijing.minute <= 59)
-          
+
           should_run = "true" if (is_paris_target or is_beijing_target or is_dispatch) else "false"
-          
+
           print(f"Current Paris Time: {now_paris.strftime('%H:%M:%S')}")
           print(f"Current Beijing Time: {now_beijing.strftime('%H:%M:%S')}")
           print(f"Event Name: {os.environ.get('EVENT_NAME')}")
           print(f"Should Run: {should_run}")
-          
+
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f"should_run={should_run}\n")
         env:
           EVENT_NAME: ${{ github.event_name }}
 
-      - name: Execute Signal & Notify Discord
-        if: steps.check.outputs.should_run == 'true'
-        env:
-          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
-          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
-          VERCEL_BLOB_READ_WRITE_TOKEN: ${{ secrets.VERCEL_BLOB_READ_WRITE_TOKEN }}
-          GITHUB_ACTIONS: "true"
-        run: |
-          # V11 Bayesian Pipeline: Must export-web during notification to keep Dashboard in sync with Discord
-          python -m src.main --engine v11 --notify-discord --export-web
-
-      - name: Notify on Failure
-        if: failure()
-        run: |
-          curl -X POST -H "Content-Type: application/json" \
-               -d "{\"content\": \"🚨 **Discord Signal Push Failed (v11)** \n**Run ID:** ${{ github.run_id }} \n**Check logs for v11 Bayesian pipeline errors.**\"}" \
-               ${{ secrets.ALERT_WEBHOOK_URL }}
-
+  notify:
+    needs: check-window
+    if: needs.check-window.outputs.should_run == 'true'
+    uses: ./.github/workflows/v11-runtime.yml
+    with:
+      job_name: Discord Daily Signal
+      command: python -m src.main --engine v11 --notify-discord --export-web
+      timeout_minutes: 30
+    secrets: inherit

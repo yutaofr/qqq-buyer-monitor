@@ -2350,20 +2350,19 @@ def run_backtest(
 
 
 def _v11_inference_task(
-    row_data: tuple[pd.Series, pd.Series, Any, list[str]],
+    row_data: tuple[pd.Series, pd.Series, Any, list[str], list[str]],
 ) -> dict[str, Any]:
     """Independent worker task for v11.5 Bayesian inference."""
-    std_row, source_row, gnb_model, classes = row_data
+    std_row, source_row, gnb_model, classes, feature_cols = row_data
 
     # Vectorized evidence from Seeder
-    feature_cols = [c for c in std_row.index if c not in ["observation_date", "regime"]]
-    evidence = std_row[feature_cols].values.reshape(1, -1)
+    evidence = pd.DataFrame([std_row[feature_cols].to_dict()], columns=feature_cols)
 
     # Probabilistic Inference
     probs_array = gnb_model.predict_proba(evidence)[0]
     posterior = dict(zip(classes, probs_array, strict=True))
 
-    actual_regime = str(source_row.get("regime", "MID_CYCLE"))
+    actual_regime = str(std_row.get("regime", source_row.get("regime", "MID_CYCLE")))
     predicted_regime = max(posterior, key=posterior.get)
 
     # Brier Score calculation
@@ -2388,9 +2387,10 @@ def run_v11_audit(
     """Run the unified v11.5 probabilistic audit with causal isolation."""
     from sklearn.naive_bayes import GaussianNB
 
-    from src.engine.v11.conductor import V11Conductor
     from src.engine.v11.core.entropy_controller import EntropyController
+    from src.engine.v11.core.position_sizer import PositionSizingResult
     from src.engine.v11.probability_seeder import ProbabilitySeeder
+    from src.engine.v11.signal.behavioral_guard import BehavioralGuard
     from src.engine.v11.signal.inertial_beta_mapper import InertialBetaMapper
     from src.output.backtest_plots import (
         save_v11_fidelity_figure,
@@ -2399,10 +2399,10 @@ def run_v11_audit(
 
     macro_df = pd.read_csv(dataset_path, parse_dates=["observation_date"]).set_index("observation_date")
     regime_df = pd.read_csv("data/v11_poc_phase1_results.csv", parse_dates=["observation_date"]).set_index("observation_date")
-    
+
     # Load Sovereign Constants (AC-0)
     audit_path = Path("src/engine/v11/resources/regime_audit.json")
-    with open(audit_path, "r", encoding="utf-8") as f:
+    with open(audit_path, encoding="utf-8") as f:
         audit_data = json.load(f)
     base_betas = audit_data["base_betas"]
     entropy_threshold = audit_data["risk_thresholds"]["entropy_max"]
@@ -2430,7 +2430,7 @@ def run_v11_audit(
     logger.info(f"v11.5 Audit: Training on {len(train)} days (pre-{evaluation_start}), testing on {len(test)} days.")
 
     # 4. GNB Training (Epic 2)
-    feature_cols = [c for c in train.columns if c not in ["observation_date", "regime"]]
+    feature_cols = [c for c in train.columns if c not in ["observation_date", "regime", "qqq_close"]]
     gnb = GaussianNB()
     gnb.fit(train[feature_cols], train["regime"])
 
@@ -2440,7 +2440,7 @@ def run_v11_audit(
     tasks = []
     for _, row in test.iterrows():
         source_row = source_df_map[source_df_map["observation_date"] == row["observation_date"]].iloc[0]
-        tasks.append((row, source_row, gnb, list(gnb.classes_)))
+        tasks.append((row, source_row, gnb, list(gnb.classes_), feature_cols))
 
     import concurrent.futures
     with concurrent.futures.ProcessPoolExecutor() as executor:
@@ -2453,7 +2453,8 @@ def run_v11_audit(
     # 7. Sequential Execution Loop (Epic 3 & 4 Alignment)
     entropy_ctrl = EntropyController(threshold=entropy_threshold)
     beta_mapper = InertialBetaMapper()
- 
+    behavior_guard = BehavioralGuard()
+
     execution_rows = []
     for _, prob_row in probability_df.iterrows():
         dt = prob_row["date"]
@@ -2463,15 +2464,38 @@ def run_v11_audit(
         # Bayesian -> Entropy -> Odds-Ratio CUSUM
         # 3. Entropy Haircut (Epic 3)
         # Calculate raw expectation from the current posterior distribution
-        raw_beta = sum(posteriors.get(regime, 1.0) * base_betas.get(regime, 1.0) 
+        raw_beta = sum(posteriors.get(regime, 1.0) * base_betas.get(regime, 1.0)
                        for regime in posteriors)
-                                   
+
         norm_h = entropy_ctrl.calculate_normalized_entropy(posteriors)
         protected_beta = entropy_ctrl.apply_haircut(raw_beta, norm_h)
-        
+
         # 4. Odds-Ratio CUSUM (v11.10)
         final_beta = beta_mapper.calculate_inertial_beta(protected_beta, norm_h)
- 
+        if final_beta > 1.0:
+            qld = (final_beta - 1.0) * 100_000.0
+            qqq = 100_000.0
+            cash = 0.0
+        else:
+            qld = 0.0
+            qqq = 100_000.0 * final_beta
+            cash = 100_000.0 - qqq
+        invested = qqq + qld
+        sizing = PositionSizingResult(
+            target_beta=round(float(final_beta), 6),
+            raw_target_beta=round(float(raw_beta), 6),
+            entropy=round(float(norm_h), 6),
+            uncertainty_penalty=round(max(0.0, float(raw_beta) - float(final_beta)), 6),
+            reference_capital=100_000.0,
+            current_nav=100_000.0,
+            risk_budget_dollars=round(100_000.0 * float(final_beta), 6),
+            qqq_dollars=round(qqq, 6),
+            qld_notional_dollars=round(qld, 6),
+            cash_dollars=round(cash, 6),
+            qld_share=round(qld / invested, 6) if invested > 0 else 0.0,
+        )
+        execution = behavior_guard.apply(sizing)
+
         execution_rows.append({
             "date": dt,
             "target_beta": final_beta,
@@ -2479,7 +2503,8 @@ def run_v11_audit(
             "entropy": norm_h,
             "predicted_regime": prob_row["predicted_regime"],
             "actual_regime": source_row["regime"],
-            "lock_active": False,
+            "lock_active": execution.lock_active,
+            "target_bucket": execution.target_bucket,
             "close": source_row["qqq_close"]
         })
 
@@ -2548,8 +2573,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--v11-dataset-path",
-        default="data/v11_feature_library.csv",
-        help="Labeled v11 feature-library dataset for probabilistic audits.",
+        default="data/macro_historical_dump.csv",
+        help="Macro dataset path used by the v11 probabilistic audit.",
     )
     args = parser.parse_args(argv)
 

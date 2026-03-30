@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial.distance import mahalanobis
 
+
 class MahalanobisGuard:
     """
     v11.7 Mahalanobis Guard
@@ -40,16 +41,16 @@ class MahalanobisGuard:
 
         try:
             d_m = mahalanobis(current_vector, self.mean, self.inv_cov)
-            
+
             # Global Mean is ~2.3. 2022 is ~3.6. 2020 is ~7.2.
             # We want the multiplier to be ~1.0 at d_m=2.3
             # And start decaying smoothly after that.
-            # No hard IF. 
+            # No hard IF.
             # Multiplier = 1 / (1 + max(0, d_m - 2.0)^p)
             # Using exponential decay for 'probabilistic discomfort'.
             excess_distance = max(0.0, d_m - 2.3)
             multiplier = np.exp(-0.15 * excess_distance)
-            
+
             return float(np.clip(multiplier, 0.5, 1.0))
         except Exception:
             return 1.0

@@ -25,13 +25,23 @@ class ExecutionDecision:
 
 
 class BehavioralGuard:
-    """Apply deadband, cooldown, and forced safety buckets after continuous sizing."""
+    """Apply execution stability after continuous sizing without hard-coded deadbands."""
 
-    def __init__(self, *, initial_bucket: str = "QQQ", settlement_days: int = 1):
+    _BUCKET_ORDER = {"CASH": 0, "QQQ": 1, "QLD": 2}
+    _BOUNDARIES = (0.5, 1.0)
+
+    def __init__(
+        self,
+        *,
+        initial_bucket: str = "QQQ",
+        settlement_days: int = 1,
+        evidence: float = 0.0,
+    ):
         self.current_bucket = initial_bucket
         self.settlement_days = settlement_days
         self.cooldown_days_remaining = 0
         self.last_target_beta: float | None = None
+        self.evidence = float(evidence)
 
     def apply(
         self,
@@ -47,6 +57,7 @@ class BehavioralGuard:
             self.current_bucket = "QLD"
             self.cooldown_days_remaining = 30
             self.last_target_beta = sizing.target_beta
+            self.evidence = 0.0
             return self._decision(
                 previous_bucket,
                 sizing,
@@ -58,6 +69,7 @@ class BehavioralGuard:
             remaining = self.cooldown_days_remaining
             self.cooldown_days_remaining -= 1
             self.last_target_beta = sizing.target_beta
+            self.evidence = 0.0
             return ExecutionDecision(
                 target_bucket=self.current_bucket,
                 target_exposure=self.current_bucket,
@@ -77,6 +89,7 @@ class BehavioralGuard:
             if self.current_bucket != previous_bucket:
                 self.cooldown_days_remaining = self.settlement_days
             self.last_target_beta = sizing.target_beta
+            self.evidence = 0.0
             return self._decision(
                 previous_bucket,
                 sizing,
@@ -85,9 +98,27 @@ class BehavioralGuard:
             )
 
         desired_bucket = self._bucket_from_beta(sizing.target_beta)
-        self.current_bucket = desired_bucket
-        if self.current_bucket != previous_bucket:
+        if desired_bucket != previous_bucket:
+            self.evidence += self._switch_margin(previous_bucket, desired_bucket, sizing.target_beta)
+            barrier = self._entropy_barrier(sizing.entropy)
+            if self.evidence < barrier:
+                self.current_bucket = previous_bucket
+                self.last_target_beta = sizing.target_beta
+                return self._decision(
+                    previous_bucket,
+                    sizing,
+                    reason=(
+                        f"EVIDENCE_HOLD: candidate={desired_bucket} "
+                        f"evidence={self.evidence:.3f}/{barrier:.3f}"
+                    ),
+                    lock_active=False,
+                )
+            self.current_bucket = desired_bucket
             self.cooldown_days_remaining = self.settlement_days
+            self.evidence = 0.0
+        else:
+            self.current_bucket = desired_bucket
+            self.evidence = 0.0
         self.last_target_beta = sizing.target_beta
         return self._decision(
             previous_bucket,
@@ -100,38 +131,41 @@ class BehavioralGuard:
         if bucket != self.current_bucket and settlement_lock:
             self.cooldown_days_remaining = self.settlement_days
         self.current_bucket = bucket
+        self.evidence = 0.0
 
     def _bucket_from_beta(self, target_beta: float) -> str:
-        if self.current_bucket == "QLD":
-            if target_beta < 0.95:
-                return "QQQ"
+        if target_beta > 1.0:
             return "QLD"
-
-        if self.current_bucket == "QQQ":
-            if target_beta < 0.45:
-                return "CASH"
-            if target_beta > 1.05:
-                return "QLD"
+        if target_beta >= 0.5:
             return "QQQ"
-
-        if self.current_bucket == "CASH":
-            if target_beta > 1.05:
-                return "QLD"
-            if target_beta > 0.55:
-                return "QQQ"
-            return "CASH"
-
-        return "QQQ"
+        return "CASH"
 
     @staticmethod
     def _reason_for_transition(previous: str, current: str, target_beta: float) -> str:
         if previous == current:
-            return "DEADBAND_HOLD"
+            return "BUCKET_HOLD"
         if current == "CASH":
             return f"DEFENSIVE_EXIT: target_beta {target_beta:.2f}"
         if current == "QQQ":
             return f"DELEVERAGE: target_beta {target_beta:.2f}"
         return f"RISK_REENGAGE: target_beta {target_beta:.2f}"
+
+    @classmethod
+    def _switch_margin(cls, current_bucket: str, desired_bucket: str, target_beta: float) -> float:
+        current_idx = cls._BUCKET_ORDER.get(current_bucket, 1)
+        desired_idx = cls._BUCKET_ORDER.get(desired_bucket, 1)
+        if current_idx == desired_idx:
+            return 0.0
+
+        lower = min(current_idx, desired_idx)
+        upper = max(current_idx, desired_idx)
+        crossed_boundaries = cls._BOUNDARIES[lower:upper]
+        return float(sum(abs(float(target_beta) - boundary) for boundary in crossed_boundaries))
+
+    @staticmethod
+    def _entropy_barrier(entropy: float) -> float:
+        h = min(0.999, max(0.0, float(entropy)))
+        return (h / max(1e-6, 1.0 - h)) / 3.0
 
     def _decision(
         self,

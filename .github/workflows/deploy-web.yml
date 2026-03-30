@@ -13,36 +13,9 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install Dependencies
-        run: |
-          pip install .
-          pip install pandas_market_calendars pytz requests
-
-      - name: Run Engine & Export Snapshot
-        env:
-          VERCEL_BLOB_READ_WRITE_TOKEN: ${{ secrets.VERCEL_BLOB_READ_WRITE_TOKEN }}
-          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
-          EXPORT_WEB: "1"
-          GITHUB_ACTIONS: "true"
-        run: |
-          # Persistent cloud execution: Updates Vercel Blob directly
-          python -m src.main --engine v11 --export-web
-
-      - name: Notify on Failure
-        if: failure()
-        run: |
-          # INDUSTRIAL WEBHOOK: Correct payload for Discord/Slack compatibility
-          curl -X POST -H "Content-Type: application/json" \
-               -d "{\"content\": \"🚨 **QQQ-Monitor Critical Failure** \n**Run ID:** ${{ github.run_id }} \n**Branch:** ${{ github.ref_name }} \n**Status:** Pipeline Halted. Check Vercel Blob integrity immediately.\"}" \
-               ${{ secrets.ALERT_WEBHOOK_URL }}
+    uses: ./.github/workflows/v11-runtime.yml
+    with:
+      job_name: Deploy Web Dashboard Snapshot
+      command: python -m src.main --engine v11 --export-web
+      timeout_minutes: 30
+    secrets: inherit

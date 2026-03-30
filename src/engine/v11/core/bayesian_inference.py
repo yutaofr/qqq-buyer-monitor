@@ -57,3 +57,52 @@ class BayesianInferenceEngine:
             return dict(zip(self.regimes, self.base_priors.values(), strict=True))
 
         return posteriors
+
+    def reweight_probabilities(
+        self,
+        *,
+        classifier_posteriors: dict[str, float],
+        training_priors: dict[str, float],
+        runtime_priors: dict[str, float] | None = None,
+    ) -> dict[str, float]:
+        """
+        Reweights a classifier posterior onto runtime priors.
+
+        If the classifier was trained with prior p_train(y), then:
+        p(y | x; runtime) ∝ p(y | x; train) * p_runtime(y) / p_train(y)
+        """
+        runtime = self._normalize(runtime_priors or self.base_priors)
+        posterior = self._normalize(classifier_posteriors)
+        train = self._normalize(training_priors)
+        if not posterior:
+            return runtime
+
+        regimes = sorted(set(runtime) | set(posterior) | set(train))
+        eps = 1e-12
+        adjusted = {}
+        for regime in regimes:
+            model_prob = posterior.get(regime, 0.0)
+            runtime_prob = runtime.get(regime, 0.0)
+            train_prob = max(train.get(regime, 0.0), eps)
+            adjusted[regime] = model_prob * runtime_prob / train_prob
+
+        normalized = self._normalize(adjusted)
+        return normalized or runtime
+
+    @staticmethod
+    def _normalize(weights: dict[str, float] | None) -> dict[str, float]:
+        if not weights:
+            return {}
+
+        sanitized = {}
+        for key, value in weights.items():
+            numeric = float(value)
+            if np.isnan(numeric) or np.isinf(numeric):
+                numeric = 0.0
+            sanitized[str(key)] = max(0.0, numeric)
+
+        total = float(sum(sanitized.values()))
+        if total <= 0:
+            n = max(1, len(sanitized))
+            return {key: 1.0 / n for key in sanitized}
+        return {key: value / total for key, value in sanitized.items()}

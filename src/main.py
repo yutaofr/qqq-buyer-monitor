@@ -14,6 +14,7 @@ import logging
 import os
 import sys
 from datetime import date
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pandas as pd
@@ -75,7 +76,7 @@ def _build_neutral_v11_surface() -> tuple[Tier1Result, Tier2Result]:
 
 
 def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalResult:
-    from src.models import AllocationState, Signal, SignalResult, TargetAllocationState
+    from src.models import Signal, SignalResult, TargetAllocationState
 
     tier1, tier2 = _build_neutral_v11_surface()
 
@@ -112,74 +113,27 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
         key=lambda item: item[1],
         reverse=True,
     )
+    stable_regime = runtime_result.get("stable_regime", ordered_probs[0][0])
     explanation = (
         f"v11.5 Unified Probabilistic Runtime：target_beta={runtime_result['target_beta']:.2f}x | "
         f"entropy={runtime_result.get('entropy', 0.0):.3f} | "
         f"execution={runtime_result['signal'].get('target_bucket', 'n/a')} | "
+        f"stable_regime={stable_regime} | "
         f"top_regime={ordered_probs[0][0]} ({ordered_probs[0][1]:.1%})"
     )
-
-    top_regime = ordered_probs[0][0]
-
-    # Bridge v11 Bayesian output back to v10 deployment pacing logic (v8.2 compatibility)
-    from src.engine.deployment_controller import decide_deployment_state
-    from src.engine.feature_pipeline import build_feature_snapshot
-    from src.engine.risk_controller import RiskDecision
-    from src.models.risk import RiskState
-
-    # Map v11 top regime to discrete v10 states for the deployment controller
-    regime_to_risk = {
-        "MID_CYCLE": RiskState.RISK_NEUTRAL,
-        "BUST": RiskState.RISK_EXIT,
-        "CAPITULATION": RiskState.RISK_DEFENSE,
-        "RECOVERY": RiskState.RISK_REDUCED,
-        "LATE_CYCLE": RiskState.RISK_REDUCED,
+    deployment = runtime_result.get("deployment", {})
+    deployment_state = DeploymentState(str(deployment.get("deployment_state", "DEPLOY_BASE")))
+    deployment_reason = {
+        "rule": "v11_deployment_surface",
+        "state": deployment_state.value,
+        "reason": deployment.get("reason", "PACE_HOLD"),
+        "scores": deployment.get("scores", {}),
+        "readiness_score": float(deployment.get("readiness_score", runtime_result.get("deployment_readiness", 0.0))),
+        "value_score": float(deployment.get("value_score", runtime_result.get("erp_percentile", 0.5))),
     }
-    regime_to_tier0 = {
-        "MID_CYCLE": "NEUTRAL",
-        "BUST": "CRISIS",
-        "CAPITULATION": "TRANSITION_STRESS",
-        "RECOVERY": "NEUTRAL",
-        "LATE_CYCLE": "RICH_TIGHTENING",
-    }
-
-    # Reconstruct a lightweight snapshot for v10 deployment logic
-    fv = runtime_result.get("feature_values", {})
-    snap = build_feature_snapshot(
-        market_date=runtime_result["date"],
-        raw_values={
-            "credit_spread": fv.get("credit_spread"),
-            "credit_acceleration": fv.get("credit_acceleration", 0.0),
-            "net_liquidity": fv.get("net_liquidity"),
-            "liquidity_roc": fv.get("liquidity_roc", 0.0),
-            "funding_stress": fv.get("funding_stress", False),
-            "vix": fv.get("vix", 20.0),
-            "tactical_stress_score": fv.get("tactical_stress_score", 0),
-            "rolling_drawdown": fv.get("rolling_drawdown", 0.0),
-            "five_day_return": fv.get("five_day_return", 0.0),
-            "twenty_day_return": fv.get("twenty_day_return", 0.0),
-            "capitulation_score": fv.get("capitulation_score", 0),
-        },
-        raw_quality={},
-    )
-    risk_dec = RiskDecision(
-        risk_state=regime_to_risk.get(top_regime, RiskState.RISK_NEUTRAL),
-        target_exposure_ceiling=1.2,
-        target_cash_floor=0.0,
-        qld_share_ceiling=1.0,
-        reasons=(),
-        tier0_applied=True,
-    )
-    deploy_dec = decide_deployment_state(
-        snap,
-        risk_dec,
-        tier0_regime=regime_to_tier0.get(top_regime, "NEUTRAL"),
-    )
-
-    primary_reason = deploy_dec.reasons[0] if deploy_dec.reasons else {}
 
     return SignalResult(
-        date=runtime_result["date"],
+        date=pd.Timestamp(runtime_result["date"]).date(),
         price=float(price),
         signal=signal_map.get(bucket, Signal.WATCH),
         final_score=int(round(float(runtime_result["target_beta"]) * 100)),
@@ -201,39 +155,152 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
             },
             {"step": "behavior_guard", "decision": runtime_result["signal"]},
             {
-                "step": "deployment_controller",
+                "step": "deployment_surface",
                 "decision": {
-                    "mode": deploy_dec.deployment_state.value,
-                    "readiness": float(runtime_result.get("deployment_readiness", 0.0)),
+                    "mode": deployment_state.value,
+                    "readiness": float(deployment.get("readiness_score", runtime_result.get("deployment_readiness", 0.0))),
                     "sharpe": float(runtime_result.get("cdr_sharpe", 0.0)),
-                    "value_rank": float(runtime_result.get("erp_percentile", 0.0)),
+                    "value_rank": float(deployment.get("value_score", runtime_result.get("erp_percentile", 0.0))),
+                    "state_scores": deployment.get("scores", {}),
                 },
-                "reasons": deploy_dec.reasons,
+                "reasons": [deployment_reason],
             },
         ],
         target_allocation=target_allocation,
         raw_target_beta=float(runtime_result["raw_target_beta"]),
         target_beta=float(runtime_result["target_beta"]),
-        deployment_state=deploy_dec.deployment_state,
-        deployment_reasons=list(deploy_dec.reasons),
+        deployment_state=deployment_state,
+        deployment_reasons=[deployment_reason],
+        cycle_regime=str(stable_regime),
         engine_version="v11",
         v11_probabilities={k: float(v) for k, v in runtime_result["probabilities"].items()},
         v11_entropy=float(runtime_result.get("entropy", 0.0)),
         v11_execution={
-            **dict(runtime_result["signal"]),
-            "deployment_readiness": float(runtime_result.get("deployment_readiness", 0.0)),
+            **dict(runtime_result.get("v11_execution", runtime_result["signal"])),
+            "deployment_readiness": float(deployment.get("readiness_score", runtime_result.get("deployment_readiness", 0.0))),
             "cdr_sharpe": float(runtime_result.get("cdr_sharpe", 0.0)),
-            "erp_percentile": float(runtime_result.get("erp_percentile", 0.5)),
-            "lock_active": bool(runtime_result["v11_execution"].get("lock_active", False)) if "v11_execution" in runtime_result else False,
+            "erp_percentile": float(deployment.get("value_score", runtime_result.get("erp_percentile", 0.5))),
+            "stable_regime": str(stable_regime),
+            "raw_regime": str(runtime_result.get("raw_regime", stable_regime)),
+            "deployment_state": deployment_state.value,
+            "priors": dict(runtime_result.get("priors", {})),
         },
         v11_quality_audit=quality_audit,
         feature_values=dict(runtime_result.get("feature_values", {})),
     )
 
 
+def _pct_points_to_decimal(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return float(value) / 100.0
+
+
+def _build_v11_live_macro_row(
+    *,
+    observation_date: pd.Timestamp,
+    credit_spread: float,
+    net_liquidity: float | None,
+    liquidity_roc: float,
+    vix: float,
+    vix3m: float | None,
+    price: float,
+    drawdown_pct: float,
+    breadth_proxy: float,
+    fear_greed: float,
+    erp_pct_points: float | None,
+    real_yield_pct_points: float | None,
+    reference_capital: float,
+    current_nav: float,
+) -> pd.DataFrame:
+    observation_ts = pd.Timestamp(observation_date).normalize()
+    return pd.DataFrame(
+        [
+            {
+                "observation_date": observation_ts,
+                "credit_spread_bps": float(credit_spread),
+                "net_liquidity_usd_bn": float(net_liquidity) if net_liquidity is not None else None,
+                "liquidity_roc_pct_4w": float(liquidity_roc or 0.0),
+                "vix": float(vix),
+                "vix3m": None if vix3m is None else float(vix3m),
+                "qqq_close": float(price),
+                "drawdown_pct": float(drawdown_pct),
+                "breadth_proxy": float(breadth_proxy),
+                "fear_greed": float(fear_greed),
+                "erp_pct": _pct_points_to_decimal(erp_pct_points),
+                "real_yield_10y_pct": _pct_points_to_decimal(real_yield_pct_points),
+                "reference_capital": float(reference_capital),
+                "current_nav": float(current_nav),
+            }
+        ]
+    )
+
+
+def _upsert_v11_macro_feedback(raw_row: pd.DataFrame, macro_csv_path: str) -> None:
+    """Persist the current v11 macro row without corrupting the canonical CSV schema."""
+    path = Path(macro_csv_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    row = raw_row.iloc[-1].to_dict()
+    observation_date = pd.Timestamp(row["observation_date"]).date().isoformat()
+
+    if path.exists():
+        existing = pd.read_csv(path)
+        columns = list(existing.columns)
+        if "observation_date" in existing.columns:
+            valid_obs = pd.to_datetime(existing["observation_date"], errors="coerce").notna()
+            existing = existing.loc[valid_obs].copy()
+        if "effective_date" in existing.columns:
+            valid_effective = existing["effective_date"].isna() | pd.to_datetime(
+                existing["effective_date"], errors="coerce"
+            ).notna()
+            existing = existing.loc[valid_effective].copy()
+        if "observation_date" in existing.columns:
+            existing = existing[existing["observation_date"].astype(str) != observation_date]
+    else:
+        existing = pd.DataFrame()
+        columns = list(raw_row.columns)
+
+    payload = {column: pd.NA for column in columns}
+    for column in columns:
+        if column in row:
+            payload[column] = row[column]
+
+    payload["observation_date"] = observation_date
+    if "effective_date" in payload:
+        payload["effective_date"] = observation_date
+    if "liquidity_roc_pct_4w" in payload:
+        payload["liquidity_roc_pct_4w"] = float(row.get("liquidity_roc_pct_4w", 0.0) or 0.0)
+    if "source_credit_spread" in payload:
+        payload["source_credit_spread"] = "live_runtime"
+    if "source_forward_pe" in payload:
+        payload["source_forward_pe"] = "live_runtime"
+    if "source_erp" in payload:
+        payload["source_erp"] = "live_runtime"
+    if "source_real_yield" in payload:
+        payload["source_real_yield"] = "live_runtime"
+    if "source_net_liquidity" in payload:
+        payload["source_net_liquidity"] = "live_runtime"
+    if "source_funding_stress" in payload:
+        payload["source_funding_stress"] = "live_runtime"
+    if "build_version" in payload:
+        payload["build_version"] = "v11_live_feedback"
+
+    updated = pd.concat([existing, pd.DataFrame([payload], columns=columns)], ignore_index=True)
+    updated.to_csv(path, index=False)
+
+
+def _v11_runtime_sync_files() -> list[str]:
+    """Mutable runtime state that must round-trip through cloud storage in CI."""
+    return [
+        "data/signals.db",
+        "data/macro_historical_dump.csv",
+        "data/v11_prior_state.json",
+    ]
+
+
 def run_v11_pipeline(args: argparse.Namespace) -> None:
     """Execute the v11 probabilistic runtime pipeline."""
-    import os
 
     from src.collector.breadth import fetch_breadth
     from src.collector.fear_greed import fetch_fear_greed
@@ -246,12 +313,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 
     # ── Cloud Readiness (v11.18) ──────────────────────────────────────────────
     cloud = CloudPersistenceBridge()
-    sync_files = [
-        "data/signals.db", 
-        "data/v11_poc_phase1_results.csv",
-        "data/v11_full_evidence_history.csv",
-        "data/macro_historical_dump.csv"
-    ]
+    sync_files = _v11_runtime_sync_files()
     cloud.pull_state(sync_files)
     from src.output.cli import print_signal
     from src.output.report import to_json
@@ -280,14 +342,14 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         forward_pe = None
 
     try:
-        real_yield = fetch_real_yield()
+        real_yield_pct_points = fetch_real_yield()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Real Yield fetch failed for v11: %s", exc)
-        real_yield = None
+        real_yield_pct_points = None
 
-    erp = None
-    if forward_pe and real_yield:
-        erp = (100.0 / forward_pe) - real_yield
+    erp_pct_points = None
+    if forward_pe and real_yield_pct_points is not None:
+        erp_pct_points = (100.0 / forward_pe) - float(real_yield_pct_points)
 
     try:
         breadth = fetch_breadth()
@@ -311,25 +373,21 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     current_nav = float(os.environ.get("V11_CURRENT_NAV", str(reference_capital)))
     drawdown_pct = float(price_data["price"] / price_data["high_52w"] - 1.0) if price_data["high_52w"] else 0.0
 
-    raw_row = pd.DataFrame(
-        [
-            {
-                "observation_date": pd.Timestamp(price_data["date"]),
-                "credit_spread_bps": float(credit_spread),
-                "net_liquidity_usd_bn": float(net_liq) if net_liq is not None else None,
-                "liquidity_roc_pct_4w": float(liquidity_roc or 0.0),
-                "vix": float(vix_term["vix"]),
-                "vix3m": None if vix_term.get("vix3m") is None else float(vix_term["vix3m"]),
-                "qqq_close": float(price_data["price"]),
-                "drawdown_pct": drawdown_pct,
-                "breadth_proxy": float(breadth.get("pct_above_50d", 0.50)),
-                "fear_greed": float(fg),
-                "erp_pct": float(erp) if erp is not None else None,
-                "real_yield_10y_pct": float(real_yield) if real_yield is not None else None,
-                "reference_capital": reference_capital,
-                "current_nav": current_nav,
-            }
-        ]
+    raw_row = _build_v11_live_macro_row(
+        observation_date=pd.Timestamp(price_data["date"]),
+        credit_spread=float(credit_spread),
+        net_liquidity=None if net_liq is None else float(net_liq),
+        liquidity_roc=float(liquidity_roc or 0.0),
+        vix=float(vix_term["vix"]),
+        vix3m=None if vix_term.get("vix3m") is None else float(vix_term["vix3m"]),
+        price=float(price_data["price"]),
+        drawdown_pct=drawdown_pct,
+        breadth_proxy=float(breadth.get("pct_above_50d", 0.50)),
+        fear_greed=float(fg),
+        erp_pct_points=None if erp_pct_points is None else float(erp_pct_points),
+        real_yield_pct_points=None if real_yield_pct_points is None else float(real_yield_pct_points),
+        reference_capital=reference_capital,
+        current_nav=current_nav,
     )
 
     runtime = V11Conductor().daily_run(raw_row)
@@ -363,30 +421,19 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
             available_new_cash=0.0,
             rolling_drawdown=drawdown_pct,
         )
-        if erp is not None:
+        if erp_pct_points is not None:
             save_macro_state(
                 record_date=pd.Timestamp(price_data["date"]).date(),
                 credit_spread=float(credit_spread),
-                forward_pe=float(erp), # Mapping current ERP to forward_pe for DB compatibility
-                real_yield=float(real_yield) if real_yield else 0.0,
+                forward_pe=float(erp_pct_points), # Mapping current ERP to forward_pe for DB compatibility
+                real_yield=float(real_yield_pct_points) if real_yield_pct_points is not None else 0.0,
             )
 
         # ── Daily CSV Feedback Loop (Memory Persistence) ─────────────────────
         macro_csv_path = "data/macro_historical_dump.csv"
-        # Only append the Sovereign Macro Suite (Date + 4 Factors) to build memory (AC-0/AC-3)
-        v11_macro_cols = [
-            "observation_date",
-            "erp_pct",
-            "real_yield_10y_pct",
-            "credit_spread_bps",
-            "net_liquidity_usd_bn"
-        ]
         try:
-            # We append without header if file exists, else create with header
-            header = not os.path.exists(macro_csv_path)
-            # Ensure we only write the 5 columns the V11 engine expects
-            raw_row[v11_macro_cols].to_csv(macro_csv_path, mode="a", index=False, header=header)
-            logger.info("Successfully APPENDED Sovereign Macro Suite to %s.", macro_csv_path)
+            _upsert_v11_macro_feedback(raw_row, macro_csv_path)
+            logger.info("Successfully UPSERTED Sovereign Macro Suite into %s.", macro_csv_path)
         except Exception as e:
             logger.error("Failed to update macro CSV feedback loop: %s", e)
 
@@ -402,7 +449,6 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 
 def _history(args: argparse.Namespace) -> None:
     """Print the last N historical signal records."""
-    from src.models import AllocationState
     from src.output.cli import _allocation_label
     from src.store.db import load_history
 
@@ -688,7 +734,6 @@ def run_pipeline(args: argparse.Namespace) -> None:
     result.data_quality = build_data_quality(market_data, feature_meta=data_quality_meta)
 
     # ── v9.0 target-beta-first pipeline ───────────────────────────────────────
-    import os
 
     from src.engine.allocation_search import select_candidate_with_floor_fallback_v8
     from src.engine.candidate_registry import load_registry, select_runtime_candidates

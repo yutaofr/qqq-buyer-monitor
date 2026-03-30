@@ -29,9 +29,9 @@ class EntropyController:
         return h / max_h if max_h > 0 else 0.0
 
     def apply_haircut(
-        self, 
-        base_beta: float, 
-        norm_entropy: float, 
+        self,
+        base_beta: float,
+        norm_entropy: float,
         structural_z: float = 0.0,
         outlier_multiplier: float = 1.0
     ) -> float:
@@ -42,9 +42,9 @@ class EntropyController:
         # 1. Non-Threshold Valuation Penalty (v11.6)
         valuation_penalty = 1.0
         if structural_z > 0:
-            decay = 1.0 - np.exp(-0.2 * structural_z) 
+            decay = 1.0 - np.exp(-0.2 * structural_z)
             valuation_penalty = 1.0 - (decay * 0.25)
-        
+
         # 2. Adaptive Outlier Scaling (v11.7)
         # Outlier multiplier is derived from Mahalanobis Distance (D_M).
         target_beta = base_beta * valuation_penalty * outlier_multiplier

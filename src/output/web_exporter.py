@@ -4,17 +4,14 @@ from __future__ import annotations
 import json
 import logging
 import os
-import time as time_module
 from datetime import UTC, datetime, time, timedelta
 from datetime import date as date_cls
 from pathlib import Path
 
 import pandas as pd
 import pytz
-import requests
 
 from src.models import SignalResult
-from src.models.deployment import DeploymentState
 from src.store.cloud_manager import CloudPersistenceBridge
 
 try:
@@ -46,7 +43,48 @@ def _get_deployment_state_str(result: SignalResult) -> str:
     return result.deployment_action.get("deploy_mode", "BASE")
 
 
+def _get_v11_stable_regime_key(result: SignalResult) -> str:
+    if result.cycle_regime:
+        return str(result.cycle_regime)
+
+    stable_regime = result.v11_execution.get("stable_regime")
+    if stable_regime:
+        return str(stable_regime)
+
+    if result.v11_probabilities:
+        return max(result.v11_probabilities.items(), key=lambda item: item[1])[0]
+
+    return "MID_CYCLE"
+
+
+def _get_v11_raw_regime_key(result: SignalResult) -> str:
+    raw_regime = result.v11_execution.get("raw_regime")
+    if raw_regime:
+        return str(raw_regime)
+
+    if result.v11_probabilities:
+        return max(result.v11_probabilities.items(), key=lambda item: item[1])[0]
+
+    return _get_v11_stable_regime_key(result)
+
+
+def _build_v11_decision_path(result: SignalResult) -> str:
+    deploy_mode = _get_deployment_state_str(result)
+    stable_regime = _get_v11_stable_regime_key(result)
+    raw_regime = _get_v11_raw_regime_key(result)
+    readiness = float(result.v11_execution.get("deployment_readiness", 0.0))
+    return (
+        f"Stable({stable_regime}) -> "
+        f"PosteriorTop1({raw_regime}) -> "
+        f"Advisory({_format_beta(result.raw_target_beta)}->{_format_beta(result.target_beta)}) -> "
+        f"Deployment({deploy_mode}:{readiness:.1%})"
+    )
+
+
 def _build_decision_path(result: SignalResult) -> str:
+    if result.engine_version == "v11":
+        return _build_v11_decision_path(result)
+
     raw_beta = result.raw_target_beta if result.raw_target_beta is not None else result.target_beta
     risk_state = result.risk_state.value if result.risk_state else "n/a"
     deploy_mode = _get_deployment_state_str(result)
@@ -479,16 +517,18 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         is_v11 = result.engine_version == "v11"
 
         # v11 unified regime vs v10 dual regime
-        if is_v11 and result.v11_probabilities:
-            # Pick top posterior for V11
-            regime_key = max(result.v11_probabilities.items(), key=lambda x: x[1])[0]
+        if is_v11:
+            regime_key = _get_v11_stable_regime_key(result)
+            raw_regime_key = _get_v11_raw_regime_key(result)
         else:
             regime_key = str(result.tier0_regime) if result.tier0_regime else "NEUTRAL"
+            raw_regime_key = regime_key
 
         deploy_key = _get_deployment_state_str(result)
 
         # Accessing with [] to raise KeyError if missing - system should failure rather than mask
         regime_info = REGIME_MAP.get(regime_key, {"label": regime_key, "desc": "Unknown regime"})
+        raw_regime_info = REGIME_MAP.get(raw_regime_key, {"label": raw_regime_key, "desc": "Unknown regime"})
         deploy_info = DEPLOY_MAP.get(deploy_key, {"label": deploy_key, "desc": "Unknown deployment"})
 
         # Final Validation of core target beta (AC-3 Data Truthfulness)
@@ -521,6 +561,8 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
             "signal": {
                 "regime": regime_info["label"],
                 "regime_desc": regime_info["desc"],
+                "stable_regime": regime_info["label"],
+                "raw_regime": raw_regime_info["label"],
                 "contract": "target_beta_signal",
                 "contract_desc": contract_desc,
                 "cycle_regime": (
@@ -537,18 +579,25 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "decision_path": _build_decision_path(result),
                 "exposure_band": _discretize_allocation(result.target_beta),
                 "exposure_desc": "目标 Beta 对应的存量风险带，用于帮助理解风险区间。",
-                "deploy_rhythm": (
-                    f"{result.v11_execution.get('deployment_readiness', 0.0):.1%} 就绪度"
-                    if is_v11 else deploy_info["label"]
+                "deploy_rhythm": deploy_info["label"],
+                "deployment_state": deploy_info["label"],
+                "deployment_state_key": deploy_key,
+                "deployment_readiness": (
+                    float(result.v11_execution.get("deployment_readiness", 0.0)) if is_v11 else None
                 ),
                 "deploy_desc": (
-                    "基于 Bayesian Kelly 期望的连续入场系数 [0, 1]。"
+                    "离散节奏状态，决定新增资金是快速、常规、减速还是暂停。"
                     if is_v11 else deploy_info["desc"]
+                ),
+                "readiness_desc": (
+                    "Bayesian Kelly 就绪度，衡量新增资金进场质量，不等于部署状态。"
+                    if is_v11 else None
                 ),
                 "reference_path": reference_path,
                 "reference_desc": "参考路径仅用于说明一种实现目标 beta 的仓位组合，不是系统强制配比。",
                 "fidelity": "高 (Bayesian)" if is_v11 else "高 (可靠)",
                 "v11_probabilities": result.v11_probabilities if is_v11 else {},
+                "priors": result.v11_execution.get("priors", {}) if is_v11 else {},
                 "v11_entropy": result.v11_entropy if is_v11 else 0.0,
                 "lock_active": result.v11_execution.get("lock_active", False) if is_v11 else False,
             },
@@ -620,12 +669,10 @@ def export_feature_library_to_blob(library_path: str | Path = "data/v11_feature_
     try:
         with open(lib_path, "rb") as f:
             content = f.read()
-        
+
         # Filename is 'v11_feature_library.csv'. CloudManager handles namespace prefixing.
         return cloud.push_payload(content, "v11_feature_library.csv", is_binary=True)
     except Exception as e:
         logger.error("Feature library cloud sync failed: %s", e)
         return False
-
-
 

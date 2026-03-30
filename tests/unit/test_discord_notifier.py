@@ -80,7 +80,12 @@ def _runtime_result() -> SignalResult:
     }
     result.v11_probabilities = {"MID_CYCLE": 0.8, "BUST": 0.2}
     result.v11_entropy = 0.3
-    result.v11_execution = {"target_bucket": "QQQ", "lock_active": False}
+    result.v11_execution = {
+        "target_bucket": "QQQ",
+        "lock_active": False,
+        "stable_regime": "LATE_CYCLE",
+        "raw_regime": "MID_CYCLE",
+    }
     result.engine_version = "v11"
     result.logic_trace = build_runtime_logic_trace(result)
     result.explanation = build_v8_explanation(result)
@@ -112,6 +117,7 @@ def test_discord_notification_uses_v11_contract(monkeypatch):
     assert "🎯 Target Beta" in embed["description"]
 
     # Check summary header
+    assert "**Bayesian Regime:** 🧯 `LATE_CYCLE`" in embed["description"]
     assert "**Incremental Pacing:** 🏠 `DEPLOY_BASE`" in embed["description"]
 
     field_names = [field["name"] for field in embed["fields"]]
@@ -124,7 +130,8 @@ def test_discord_notification_uses_v11_contract(monkeypatch):
     audit_value = next(field["value"] for field in embed["fields"] if field["name"] == "🛡️ Execution Audit")
 
     # Check decision path
-    assert "Posterior Regime:** `RICH_TIGHTENING`" in decision_value
+    assert "Stable Regime:** `LATE_CYCLE`" in decision_value
+    assert "Raw Posterior Top-1:** `MID_CYCLE`" in decision_value
     assert "Entropy Penalty:** `0.300`" in decision_value
     assert "Beta Advisory:** `0.80x` → **`0.50x`**" in decision_value
     assert "Execution Guard:** `QQQ` (🔓 **ACTIVE**)" in decision_value
@@ -135,6 +142,7 @@ def test_discord_notification_uses_v11_contract(monkeypatch):
 
     assert "non-binding" in reference_value
     assert "QQQ=30.0%" in reference_value
+    assert embed["timestamp"] == "2026-03-27T16:17:00Z"
 
 
 def test_discord_notification_uses_v10_contract(monkeypatch):

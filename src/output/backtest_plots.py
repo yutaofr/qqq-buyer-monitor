@@ -401,7 +401,9 @@ def build_v11_probabilistic_audit_figure(daily_ts: pd.DataFrame, summary: Any | 
 
     ax_prob.set_ylabel("Posterior Probability", fontsize=12)
     ax_prob.set_ylim(0, 1.0)
-    ax_prob.legend(loc="upper left", bbox_to_anchor=(1, 1), frameon=False)
+    handles, labels = ax_prob.get_legend_handles_labels()
+    if handles:
+        ax_prob.legend(loc="upper left", bbox_to_anchor=(1, 1), frameon=False)
 
     if "entropy" in frame.columns:
         ax_entropy.plot(frame.index, frame["entropy"], color="#34495e", linewidth=1.5, label="Information Entropy")
