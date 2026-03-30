@@ -354,13 +354,17 @@
                     res = await fetch(`simulations/${simName}.json?t=` + Date.now());
                     usedSource = "SIMULATION";
                 } else {
-                    // --- STRATEGIC CLOUD PRIORITY ---
+                    // --- ABSOLUTE CLOUD PRIORITY (BYPASS LOCAL STATIC) ---
                     try {
-                        // We use cache: 'reload' to force browser to revalidate with Vercel Blob Edge
+                        // We use a timestamp and no-store to kill Vercel Edge Cache
                         res = await fetch(PROD_BLOB_URL + '?t=' + Date.now(), { 
                             method: 'GET',
-                            cache: 'reload',
-                            headers: { 'pragma': 'no-cache', 'cache-control': 'no-cache' }
+                            cache: 'no-store',
+                            headers: { 
+                                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                                'Pragma': 'no-cache',
+                                'Expires': '0'
+                            }
                         });
                         if (res.ok) {
                             usedSource = "CLOUD";
@@ -368,9 +372,10 @@
                             throw new Error("Cloud status " + res.status);
                         }
                     } catch (cloudErr) {
-                        console.warn("Vercel Blob fetch failed, falling back to local storage...", cloudErr);
+                        console.warn("Cloud source unavailable, falling back to local fallback...", cloudErr);
+                        // Only here do we try local, but we append a unique timestamp to kill cache
                         res = await fetch(LOCAL_JSON + '?t=' + Date.now());
-                        usedSource = "LOCAL_STALE";
+                        usedSource = "LOCAL_STALE_FALLBACK";
                     }
                 }
 
