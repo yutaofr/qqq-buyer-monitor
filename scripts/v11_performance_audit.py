@@ -32,7 +32,8 @@ def run_v11_full_system_audit():
         if i < 252: continue # Warmup for seeder
         
         # Run conductor
-        historical_snapshot = macro.loc[:d].iloc[-260:]
+        # Use a 5-year structural window for percentile rank stability
+        historical_snapshot = macro.loc[:d].iloc[-1260:]
         try:
             res = conductor.daily_run(historical_snapshot)
         except Exception:
