@@ -13,12 +13,14 @@ import pandas as pd
 import pytz
 import requests
 
+from src.models import SignalResult
+from src.models.deployment import DeploymentState
+from src.store.cloud_manager import CloudPersistenceBridge
+
 try:
     import pandas_market_calendars as mcal
 except ModuleNotFoundError:  # pragma: no cover - exercised via fallback tests
     mcal = None
-
-from src.models import SignalResult
 
 logger = logging.getLogger("qqq_monitor.web_exporter")
 
@@ -579,60 +581,13 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         with open(local_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
 
-        # 2. Production Upload Gating (ADD v3.0 Hardened)
-        blob_token = os.environ.get("VERCEL_BLOB_READ_WRITE_TOKEN")
-        is_ci = os.environ.get("GITHUB_ACTIONS") == "true"
-
-        if is_ci:
-            if not blob_token:
-                # FAIL FAST: In CI, missing credentials is a fatal error that must trigger OOB alerts.
-                raise ValueError("CRITICAL FAILURE: VERCEL_BLOB_READ_WRITE_TOKEN is missing in CI environment. Pipeline halted to prevent stale state.")
-
-            logger.info("CI Environment detected. Initiating production upload to Vercel Edge...")
-            blob_url = "https://blob.vercel-storage.com/status.json"
-
-            # VERCEL PROPRIETARY PROTOCOL (Final Surgical Alignment)
-            headers = {
-                "authorization": f"Bearer {blob_token}",
-                "x-api-version": "7",
-                "content-type": "application/json; charset=utf-8",
-                # MANDATORY: Prevent Vercel from appending random hashes to keep the URL stable
-                "x-add-random-suffix": "false",
-                # PROPRIETARY CACHE: Vercel REST API specific header for edge TTL
-                "x-cache-control-max-age": "3600",
-                # VISIBILITY: Explicitly declare the object as publicly accessible
-                "x-access": "public"
-            }
-
-            # PHYSICAL ENCODING: Force UTF-8 bytes to prevent payload length/encoding mismatches
-            payload_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-            max_retries = 3
-            backoff_factor = 2
-
-            for attempt in range(max_retries):
-                try:
-                    start_io = time_module.time()
-                    resp = requests.put(blob_url, data=payload_bytes, headers=headers, timeout=15)
-
-                    if resp.status_code == 200:
-                        duration = time_module.time() - start_io
-                        logger.info("Production snapshot successfully pushed to Vercel Edge (IO: %.2fs).", duration)
-                        break
-
-                    logger.error("Vercel Blob Rejection (%d, attempt %d/%d): %s", resp.status_code, attempt+1, max_retries, resp.text)
-                    if resp.status_code not in [500, 502, 503, 504]:
-                        resp.raise_for_status() # Non-transient error, fail fast
-
-                except (requests.exceptions.RequestException, Exception) as e:
-                    if attempt == max_retries - 1:
-                        logger.error("Vercel Blob Upload reached MAX_RETRIES. Final error: %s", e)
-                        raise
-
-                    wait_time = backoff_factor ** (attempt + 1)
-                    logger.warning("Vercel Blob transient error. Retrying in %ds... (Error: %s)", wait_time, e)
-                    time_module.sleep(wait_time)
+        # 2. Production Upload Gating (v11.18 Cloud Bridge)
+        cloud = CloudPersistenceBridge()
+        if cloud.is_ci:
+            logger.info("Initiating namespaced production upload via Cloud Bridge...")
+            # Filename is 'status.json'. CloudManager handles namespace prefixing.
+            cloud.push_payload(payload, "status.json")
         else:
-            # Local mode: Graceful skip according to ADD v3.0 Staging Gates policy.
             logger.info("Local mode detected: Skipping cloud upload to protect production integrity.")
 
         return True
@@ -647,59 +602,30 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
 
 def export_feature_library_to_blob(library_path: str | Path = "data/v11_feature_library.csv") -> bool:
     """
-    Persist the V11 feature library to Vercel Blob storage.
-    Ensures long-term memory parity across CI runs without repo pollution.
+    Persist the V11 feature library to Vercel Blob storage using Cloud Bridge.
+    Ensures namespaced isolation across CI runs.
     """
+    cloud = CloudPersistenceBridge()
+    if not cloud.is_ci or not cloud.token:
+        # Local mode: Graceful skip according to ADD v3.0 Staging Gates policy.
+        logger.info("Skipping feature library cloud upload (Non-CI or missing token).")
+        return False
+
+    lib_path = Path(library_path)
+    if not lib_path.exists():
+        logger.error("Feature library file not found: %s", library_path)
+        return False
+
+    logger.info("Syncing V11 Feature Library to Cloud via Bridge...")
     try:
-        blob_token = os.environ.get("VERCEL_BLOB_READ_WRITE_TOKEN")
-        is_ci = os.environ.get("GITHUB_ACTIONS") == "true"
-
-        if not is_ci or not blob_token:
-            logger.info("Skipping feature library cloud upload (Non-CI or missing token).")
-            return False
-
-        lib_path = Path(library_path)
-        if not lib_path.exists():
-            logger.error("Feature library file not found: %s", library_path)
-            return False
-
-        logger.info("Syncing V11 Feature Library to Vercel Edge...")
-        blob_url = "https://blob.vercel-storage.com/v11_feature_library.csv"
-
         with open(lib_path, "rb") as f:
             content = f.read()
-
-        headers = {
-            "authorization": f"Bearer {blob_token}",
-            "x-api-version": "7",
-            "content-type": "text/csv; charset=utf-8",
-            "x-add-random-suffix": "false",
-            "x-access": "public"
-        }
-
-        max_retries = 3
-        backoff_factor = 2
-        for attempt in range(max_retries):
-            try:
-                resp = requests.put(blob_url, data=content, headers=headers, timeout=30)
-                if resp.status_code == 200:
-                    logger.info("V11 Feature Library successfully persisted to cloud.")
-                    return True
-
-                logger.error("Vercel Blob Sync Failed (%d, attempt %d/%d): %s",
-                             resp.status_code, attempt+1, max_retries, resp.text)
-                if resp.status_code not in [500, 502, 503, 504]:
-                    break # Non-transient error
-            except Exception as e:
-                logger.warning("Transient error during library sync (attempt %d/%d): %s",
-                               attempt+1, max_retries, e)
-
-            if attempt < max_retries - 1:
-                time_module.sleep(backoff_factor ** (attempt + 1))
-
-        return False
-
+        
+        # Filename is 'v11_feature_library.csv'. CloudManager handles namespace prefixing.
+        return cloud.push_payload(content, "v11_feature_library.csv", is_binary=True)
     except Exception as e:
-        logger.error("Critical failure during Vercel Blob library sync: %s", e)
+        logger.error("Feature library cloud sync failed: %s", e)
         return False
+
+
 

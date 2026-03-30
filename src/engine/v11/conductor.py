@@ -52,6 +52,7 @@ class V11Conductor:
         self.entropy_ctrl = EntropyController(threshold=self.entropy_threshold)
         self.beta_mapper = InertialBetaMapper()
         self.outlier_guard = MahalanobisGuard()
+        self.execution_guard = ExecutionGuard()
 
         # Initial Model Training & Seeder Priming (Epic 1)
         if initial_model is not None:
@@ -143,10 +144,17 @@ class V11Conductor:
             outlier_multiplier=outlier_multiplier
         )
 
-        # 4. Odds-Ratio CUSUM (v11.10)
-        # Turnover is now a function of the Information-Odds Barrier (H / (1-H)).
-        # Shift only occurs if the cumulative evidence exceeds the uncertainty-odds.
+        # 4. Behavioral Guard: Settled Inertia vs Probabilities (CUSUM)
+        # AC-0: Turnover control.
+        self.execution_guard.tick()
+        old_beta = self.beta_mapper.current_beta
         final_beta = self.beta_mapper.calculate_inertial_beta(protected_beta, norm_h)
+        
+        # Trigger settlement lock on substantial change (v11.0 safeguard)
+        lock_active = self.execution_guard.cooldown_days_remaining > 0
+        if abs(final_beta - old_beta) > 0.01 and not lock_active:
+             self.execution_guard.trigger(3) 
+             lock_active = True
         
         # 5. Bayesian Kelly Entry (v11.14 -> v11.15)
         # Goal: Optimize for Risk-Adjusted Expectation.
@@ -191,7 +199,8 @@ class V11Conductor:
             "date": features.index[-1],
             "signal": {
                 "target_bucket": bucket,
-                "reason": reason
+                "reason": reason,
+                "lock_active": lock_active
             },
             "probabilities": posteriors,
             "entropy": norm_h,
