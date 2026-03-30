@@ -4,10 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QQQ 晴雨表 - Probabilistic Target-Beta 仪表盘</title>
-    <script>
-        window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
-    </script>
-    <script defer src="/_vercel/insights/script.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .state-active { background-color: #09090b; color: #f8fafc; }
@@ -16,238 +12,113 @@
         .state-active .glass { background: rgba(15, 23, 42, 0.4); border-color: rgba(16, 185, 129, 0.2); } 
         .state-frozen .glass { background: rgba(15, 23, 42, 0.4); border-color: rgba(139, 92, 246, 0.2); }
         .state-locked .glass { background: rgba(15, 23, 42, 0.4); border-color: rgba(239, 68, 68, 0.2); }
-        .state-active .accent-bar { border-left-color: #10b981; }
-        .state-frozen .accent-bar { border-left-color: #8b5cf6; }
-        .state-locked .accent-bar { border-left-color: #ef4444; }
-        .state-stale { background-color: #09090b; color: #94a3b8; filter: grayscale(1); pointer-events: none; }
-        .pulse { animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .7; } }
-        .glass { backdrop-filter: blur(30px); border: 1.5px solid rgba(255, 255, 255, 0.05); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8); }
-        .factor-card { background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.05); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3); }
+        .state-stale { background-color: #09090b; color: #94a3b8; filter: grayscale(1); }
+        .glass { backdrop-filter: blur(30px); border: 1.5px solid rgba(255, 255, 255, 0.05); }
         .text-ghost { opacity: 0.1; filter: blur(0.5px); }
-        #insights-panel { max-height: 0; overflow: hidden; opacity: 0; pointer-events: none; transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
-        #insights-panel.open { max-height: 2500px; margin-top: 1.5rem; opacity: 1; pointer-events: auto; }
-        .prob-bar { transition: width 1s ease-out; }
+        #insights-panel { max-height: 0; overflow: hidden; opacity: 0; transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
+        #insights-panel.open { max-height: 2500px; margin-top: 1.5rem; opacity: 1; }
     </style>
 </head>
 <body id="body" class="state-stale min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700">
     <div class="max-w-[390px] w-full glass rounded-[3rem] p-6 shadow-2xl transition-all duration-700">
-        <!-- Header -->
-        <div class="flex justify-between items-center mb-6 px-1">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-2xl font-black tracking-tighter text-white">晴雨表</h1>
+            <div id="indicator" class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+        </div>
+
+        <div id="content" class="space-y-6 text-center">
             <div>
-                <h1 class="text-2xl font-black tracking-tighter text-white">晴雨表</h1>
-                <p id="version" class="text-[9px] tracking-[0.2em] opacity-40 text-slate-400 uppercase">v11.0 Probabilistic Monitor</p>
+                <p class="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40 text-slate-400">当前制度 (Regime)</p>
+                <p id="regime" class="text-3xl font-black tracking-tight text-white">--</p>
             </div>
-            <div id="indicator" class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.8)]"></div>
-        </div>
-
-        <!-- Main Logic -->
-        <div id="content" class="space-y-6">
-            <div class="grid grid-cols-2 gap-3 px-2">
-                <div class="space-y-0.5">
-                    <p class="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40 text-slate-400">当前主导制度 (Regime)</p>
-                    <p id="regime" class="text-lg font-black tracking-tight text-white line-clamp-1">--</p>
-                </div>
-                <div class="space-y-0.5 border-l border-white/5 pl-3 text-right">
-                    <p class="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40 text-slate-400">信息熵 (Entropy)</p>
-                    <p id="entropy" class="text-lg font-black tracking-tight text-emerald-400">--</p>
-                </div>
-            </div>
-            <div class="px-2">
-                <p id="regime-desc" class="text-[10px] leading-tight opacity-50 italic font-medium text-slate-400"></p>
+            
+            <div class="factor-card p-5 rounded-[2.5rem] bg-white/[0.03] border border-white/[0.05]">
+                <p class="text-[9px] font-black uppercase tracking-[0.2em] opacity-50 text-emerald-400">Beta 建议 (Advisory)</p>
+                <p id="exposure" class="text-5xl font-black tracking-tighter text-white">--</p>
             </div>
 
-            <!-- Core Signals -->
-            <div class="space-y-3">
-                <div class="factor-card p-5 rounded-[2.5rem] border-l-4 border-emerald-500/30 space-y-4 accent-bar transition-all">
-                    <div class="flex justify-between items-end">
-                        <p class="text-[9px] font-black uppercase tracking-[0.2em] opacity-50 text-emerald-400">连续 Beta 建议 (Advisory)</p>
-                        <p id="exposure" class="text-4xl font-black tracking-tighter text-white">--</p>
-                    </div>
-                    <div class="w-full h-1.5 bg-white/5 rounded-full overflow-hidden relative">
-                        <div id="exposure-bar" class="h-full bg-emerald-400 opacity-60 transition-all duration-1000" style="width: 0%"></div>
-                    </div>
-                    <div class="flex justify-between items-center text-[9px] font-bold uppercase tracking-wider">
-                        <div class="flex flex-col space-y-0.5"><span class="opacity-30">上限</span><span id="beta-ceiling">--</span></div>
-                        <div class="flex flex-col space-y-0.5 text-right"><span class="opacity-30">原始建议</span><span id="raw-beta">--</span></div>
-                    </div>
+            <div class="grid grid-cols-2 gap-3 text-left">
+                <div class="p-3 rounded-2xl bg-white/[0.02] border border-white/[0.03]">
+                    <p class="text-[8px] font-bold opacity-30 uppercase">信息熵</p>
+                    <p id="entropy" class="text-lg font-black text-emerald-400">--</p>
                 </div>
-
-                <div id="lock-card" class="factor-card p-5 rounded-[2rem] border-l-4 border-blue-500/30 space-y-1.5 accent-bar transition-all">
-                    <p class="text-[10px] font-black uppercase tracking-[0.2em] opacity-70 text-blue-400">执行状态 (Execution)</p>
-                    <div class="flex items-center space-x-2">
-                        <p id="deploy" class="text-3xl font-black tracking-tighter text-white">--</p>
-                        <div id="lock-icon" class="hidden">
-                            <svg class="w-5 h-5 text-red-500 animate-pulse" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"></path></svg>
-                        </div>
-                    </div>
-                    <p id="deploy-desc" class="text-[10px] leading-relaxed opacity-60 text-slate-300"></p>
+                <div class="p-3 rounded-2xl bg-white/[0.02] border border-white/[0.03]">
+                    <p class="text-[8px] font-bold opacity-30 uppercase">执行状态</p>
+                    <p id="deploy" class="text-lg font-black text-blue-400">--</p>
                 </div>
             </div>
         </div>
 
-        <!-- Secondary Actions -->
-        <div class="flex flex-row gap-3 mt-8">
-            <button onclick="toggleInsights()" class="flex-1 flex items-center justify-center space-x-2 py-3.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.05] transition-all group">
-                <span class="text-[9px] font-bold uppercase tracking-[0.3em] opacity-30 group-hover:opacity-70 transition-opacity">决策链路 (Audit)</span>
-            </button>
-            <a href="https://github.com/yutaofr/qqq-buyer-monitor/wiki/V11-%22Entropy%22-%E6%A6%82%E7%8E%87%E5%86%B3%E7%AD%96%E5%A4%96%E9%AA%A8%E9%AA%BC%E7%94%A8%E6%88%B7%E6%89%8B%E5%86%8C" target="_blank" class="flex-1 flex items-center justify-center space-x-2 py-3.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.05] transition-all group text-white">
-                <span class="text-[9px] font-bold uppercase tracking-[0.3em] opacity-30 group-hover:opacity-70 transition-opacity">运行手册 (Wiki)</span>
-            </a>
-        </div>
+        <button onclick="toggleInsights()" class="w-full mt-8 py-3 rounded-2xl bg-white/[0.03] border border-white/[0.05] text-[9px] font-bold uppercase tracking-[0.3em] opacity-30">
+            决策详情 (Audit)
+        </button>
 
-        <!-- Insights Panel -->
-        <div id="insights-panel">
-            <div class="p-1 space-y-10">
-                <div class="space-y-4 factor-card p-5 rounded-[2rem] border-emerald-500/10">
-                    <p class="text-[9px] font-black uppercase tracking-[0.2em] opacity-30">贝叶斯决策路径</p>
-                    <p id="decision-path" class="text-[10px] leading-relaxed opacity-60">--</p>
-                </div>
-
-                <!-- Tree Visualizers -->
-                <div class="space-y-12">
-                    <div class="flex flex-col items-center">
-                        <p class="text-[9px] font-bold opacity-30 uppercase tracking-[0.2em] mb-2">Tier-0 Macro Regime</p>
-                        <p id="tree-t0" class="text-xl font-black tracking-tight text-white mb-2">--</p>
-                        <div class="flex flex-wrap justify-center gap-2">
-                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">危机 (CRISIS)</span>
-                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">压力 (STRESS)</span>
-                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">边际收紧 (RICH)</span>
-                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">中性 (NEUTRAL)</span>
-                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">狂热 (EUPHORIC)</span>
-                        </div>
+        <div id="insights-panel" class="space-y-6">
+            <div class="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.05] space-y-4">
+                <div class="flex flex-col items-center">
+                    <p class="text-[8px] opacity-30 uppercase font-bold mb-2 tracking-widest">Macro Tree</p>
+                    <div class="flex flex-wrap justify-center gap-2">
+                        <span class="text-[8px] px-1.5 py-0.5 text-ghost">末端 (LATE_CYCLE)</span>
+                        <span class="text-[8px] px-1.5 py-0.5 text-ghost">中期平稳 (MID_CYCLE)</span>
+                        <span class="text-[8px] px-1.5 py-0.5 text-ghost">休克 (BUST)</span>
                     </div>
-                    <div class="flex flex-col items-center">
-                        <p class="text-[9px] font-bold opacity-30 uppercase tracking-[0.2em] mb-2">Tier-1 Cycle Stage</p>
-                        <p id="tree-cycle" class="text-xl font-black tracking-tight text-white mb-2">--</p>
-                        <div class="flex flex-wrap justify-center gap-2">
-                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">休克 (BUST)</span>
-                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">投降 (CAPITULATION)</span>
-                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">修复 (RECOVERY)</span>
-                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">中性 (MID_CYCLE)</span>
-                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">末端 (LATE_CYCLE)</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Evidence Table -->
-                <div class="factor-card overflow-x-auto rounded-2xl border border-white/10">
-                    <table class="w-full min-w-[400px] text-left text-[11px]">
-                        <tbody id="evidence-table-body"></tbody>
-                    </table>
                 </div>
             </div>
+            <div class="text-[9px] opacity-20 font-mono break-all" id="debug-path"></div>
         </div>
 
-        <!-- Meta Footer -->
-        <div class="mt-8 pt-6 border-t border-white/[0.05] space-y-2 px-1 text-[9px] tracking-wider opacity-30 text-slate-400 uppercase font-bold">
-            <div class="flex justify-between"><span>数据源 (Source)</span><span id="data-source" class="text-emerald-500">INIT...</span></div>
-            <div class="flex justify-between"><span>数据置信度</span><span id="fidelity" class="text-white">高 (BAYESIAN)</span></div>
-            <div class="flex justify-between"><span>计算时间 (UTC)</span><span id="calc-at" class="text-slate-200">--:--</span></div>
-            <div class="flex justify-between"><span>下次预计更新</span><span id="expires-at" class="text-white">--:--</span></div>
-        </div>
-
-        <div id="stale-msg" class="hidden mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-center">
-            <p class="text-[10px] font-black text-red-400 tracking-widest">物理链路中断 - 信号失效</p>
+        <div class="mt-8 pt-6 border-t border-white/[0.05] space-y-2 text-[9px] tracking-wider opacity-30 text-slate-400 uppercase font-bold">
+            <div class="flex justify-between"><span>数据源</span><span id="data-source" class="text-red-500 font-black">WAITING...</span></div>
+            <div class="flex justify-between"><span>计算时间</span><span id="calc-at">--</span></div>
         </div>
     </div>
 
     <script>
         const PROD_BLOB_URL = 'https://rtmr1b9ayzxiugfu.public.blob.vercel-storage.com/status.json'; 
-        const LOCAL_JSON = './status.json';
 
-        function toggleInsights() {
-            document.getElementById('insights-panel').classList.toggle('open');
-        }
+        function toggleInsights() { document.getElementById('insights-panel').classList.toggle('open'); }
 
         async function updateDashboard() {
             const body = document.getElementById('body');
             const sourceLabel = document.getElementById('data-source');
-            const staleMsg = document.getElementById('stale-msg');
-
             try {
-                let res;
-                let usedSource = "LOCAL";
-                const urlParams = new URLSearchParams(window.location.search);
-                const simName = urlParams.get('sim');
-
-                if (simName) {
-                    res = await fetch(`simulations/${simName}.json?t=` + Date.now());
-                    usedSource = "SIMULATION";
-                } else {
-                    try {
-                        // FORCE CLOUD CACHE BUSTER
-                        res = await fetch(PROD_BLOB_URL + '?t=' + Date.now(), { 
-                            method: 'GET',
-                            cache: 'no-store',
-                            headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
-                        });
-                        if (res.ok) usedSource = "CLOUD";
-                        else throw new Error();
-                    } catch (e) {
-                        res = await fetch(LOCAL_JSON + '?t=' + Date.now());
-                        usedSource = "LOCAL_STALE";
-                    }
-                }
-
-                const data = await res.json();
-                body.classList.remove('state-stale');
-                staleMsg.classList.add('hidden');
-                sourceLabel.textContent = usedSource;
-                sourceLabel.className = usedSource === "CLOUD" ? "text-emerald-500" : "text-orange-500";
-
-                const safeUpdate = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val ?? '--'; };
-                const isLocked = data.signal.lock_active;
+                // FORCE CLOUD ONLY - NO FALLBACK TO STALE LOCAL
+                const res = await fetch(PROD_BLOB_URL + '?t=' + Date.now(), { 
+                    method: 'GET',
+                    mode: 'cors',
+                    cache: 'no-store'
+                });
                 
-                body.className = isLocked ? 'state-locked min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700' :
-                                 (data.meta.market_state === 'ACTIVE' ? 'state-active min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700' : 'state-frozen min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700');
+                if (!res.ok) throw new Error("Fetch Error: " + res.status);
+                const data = await res.json();
+                
+                body.classList.remove('state-stale');
+                body.className = data.signal.lock_active ? 'state-locked min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700' : 'state-active min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700';
+                sourceLabel.textContent = "CLOUD_SYNCED";
+                sourceLabel.className = "text-emerald-500 font-black";
 
-                safeUpdate('regime', data.signal.regime);
-                safeUpdate('entropy', data.signal.v11_entropy?.toFixed(3));
-                safeUpdate('regime-desc', data.signal.regime_desc);
-                safeUpdate('exposure', data.signal.target_beta.toFixed(2) + 'x');
-                safeUpdate('beta-ceiling', data.signal.beta_ceiling.toFixed(2) + 'x');
-                safeUpdate('raw-beta', data.signal.raw_target_beta.toFixed(2) + 'x');
-                safeUpdate('deploy', data.signal.deploy_rhythm);
-                safeUpdate('deploy-desc', isLocked ? "行为守卫已锁定" : data.signal.deploy_desc);
-                safeUpdate('decision-path', data.signal.decision_path);
-                safeUpdate('calc-at', data.meta.calculated_at_utc.replace('T', ' ').replace('Z', ''));
-                safeUpdate('expires-at', new Date(data.meta.expires_at_utc).toLocaleString('zh-CN', { hour12: false }));
-                safeUpdate('tree-t0', data.signal.regime);
-                safeUpdate('tree-cycle', data.signal.cycle_regime);
+                document.getElementById('regime').textContent = data.signal.regime;
+                document.getElementById('exposure').textContent = data.signal.target_beta.toFixed(2) + 'x';
+                document.getElementById('entropy').textContent = data.signal.v11_entropy.toFixed(3);
+                document.getElementById('deploy').textContent = data.signal.deploy_rhythm;
+                document.getElementById('calc-at').textContent = data.meta.calculated_at_utc;
+                document.getElementById('debug-path').textContent = data.signal.decision_path;
 
-                document.getElementById('exposure-bar').style.width = Math.min(100, data.signal.target_beta * 80) + '%';
-
-                const updateGhostTags = (id, label = "") => {
-                    const el = document.getElementById(id);
-                    if (!el) return;
-                    const tags = el.parentElement.querySelectorAll('span');
-                    const lbl = label.toUpperCase();
-                    tags.forEach(t => {
-                        const isMatch = lbl.includes(t.textContent.toUpperCase()) || t.textContent.toUpperCase().includes(lbl);
-                        t.className = isMatch ? 'text-[8px] font-bold text-emerald-400 opacity-100 px-1.5 py-0.5 rounded bg-emerald-400/10 border border-emerald-400/20' : 'text-[8px] font-medium text-ghost px-1.5 py-0.5';
-                    });
-                };
-                updateGhostTags('tree-t0', data.signal.regime);
-                updateGhostTags('tree-cycle', data.signal.cycle_regime);
-
-                const tableBody = document.getElementById('evidence-table-body');
-                tableBody.innerHTML = '';
-                (data.evidence.node_traces || []).forEach(trace => {
-                    const row = document.createElement('tr');
-                    row.className = "border-b border-white/5";
-                    row.innerHTML = `<td class="px-4 py-3 opacity-70">${trace.node}</td><td class="px-4 py-3 font-mono text-emerald-400">${trace.formula}</td><td class="px-4 py-3 text-right font-black">${trace.result}</td>`;
-                    tableBody.appendChild(row);
+                const labels = document.querySelectorAll('.text-ghost');
+                labels.forEach(l => {
+                    if (data.signal.regime.toUpperCase().includes(l.textContent.toUpperCase())) {
+                        l.className = 'text-[8px] px-1.5 py-0.5 rounded bg-emerald-400/20 text-emerald-400 font-bold opacity-100';
+                    }
                 });
 
             } catch (e) {
                 console.error(e);
-                body.className = 'state-stale min-h-screen flex items-center justify-center p-4 font-sans';
-                staleMsg.classList.remove('hidden');
+                sourceLabel.textContent = "SYNC_ERROR";
+                document.getElementById('regime').textContent = "ERROR: " + e.message;
             }
         }
         updateDashboard();
-        setInterval(updateDashboard, 300000);
+        setInterval(updateDashboard, 60000);
     </script>
 </body>
 </html>
