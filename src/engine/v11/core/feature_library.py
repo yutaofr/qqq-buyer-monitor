@@ -13,6 +13,11 @@ import requests
 from src.engine.v11.core.adaptive_memory import ExogenousMemoryOperator
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 class FeatureLibraryManager:
     def __init__(self, storage_path: str = "data/v11_feature_library.csv", *, persist: bool = True):
         self.storage_path = Path(storage_path)
@@ -29,38 +34,47 @@ class FeatureLibraryManager:
             local_df = pd.read_csv(self.storage_path)
             local_df["observation_date"] = pd.to_datetime(local_df["observation_date"])
 
-        # Cloud Sync (Read-only pull from edge to ensure memory parity)
-        # We only attempt cloud pull in CI or if explicitly configured
+        # Cloud Sync (List then Get to handle Vercel's Edge URL mapping)
         is_ci = os.environ.get("GITHUB_ACTIONS") == "true"
         blob_token = os.environ.get("VERCEL_BLOB_READ_WRITE_TOKEN")
         
         if is_ci and blob_token:
             try:
-                # Use the authenticated store URL
-                blob_url = "https://blob.vercel-storage.com/v11_feature_library.csv"
+                # 1. List blobs to find the correct edge URL for the feature library
+                list_url = "https://blob.vercel-storage.com/?limit=1&prefix=v11_feature_library.csv"
                 headers = {
                     "authorization": f"Bearer {blob_token}",
                     "x-api-version": "7"
                 }
-                resp = requests.get(blob_url, headers=headers, timeout=15)
+                list_resp = requests.get(list_url, headers=headers, timeout=10)
                 
-                if resp.status_code == 200:
-                    cloud_df = pd.read_csv(io.BytesIO(resp.content))
-                    cloud_df["observation_date"] = pd.to_datetime(cloud_df["observation_date"])
-                    
-                    # Merge and deduplicate
-                    if local_df.empty:
-                        local_df = cloud_df
+                if list_resp.status_code == 200:
+                    blobs = list_resp.json().get("blobs", [])
+                    if blobs:
+                        download_url = blobs[0]["url"]
+                        logger.info("Syncing V11 Library from cloud edge: %s", download_url)
+                        
+                        # 2. Download from the actual Edge URL
+                        resp = requests.get(download_url, timeout=15)
+                        if resp.status_code == 200:
+                            cloud_df = pd.read_csv(io.BytesIO(resp.content))
+                            cloud_df["observation_date"] = pd.to_datetime(cloud_df["observation_date"])
+                            
+                            # Merge and deduplicate, prioritizing cloud data
+                            if local_df.empty:
+                                local_df = cloud_df
+                            else:
+                                local_df = pd.concat([local_df, cloud_df]).drop_duplicates(subset=["observation_date"], keep="last")
+                            
+                            logger.info("V11 Feature Library synced from cloud (Total rows: %d)", len(local_df))
+                        else:
+                            logger.warning("V11 Cloud download failed (%d)", resp.status_code)
                     else:
-                        # Prioritize cloud data for overlapping dates
-                        local_df = pd.concat([local_df, cloud_df]).drop_duplicates(subset=["observation_date"], keep="last")
-                    
-                    print(f"DEBUG: V11 Feature Library synced from cloud (Total rows: {len(local_df)})")
+                        logger.info("No V11 Feature Library found in cloud (First run?)")
                 else:
-                    print(f"WARNING: V11 Cloud pull failed ({resp.status_code}): {resp.text}")
+                    logger.warning("V11 Cloud list failed (%d): %s", list_resp.status_code, list_resp.text)
             except Exception as e:
-                # Silent fallback to local data
-                print(f"WARNING: V11 Cloud Sync exception: {e}")
+                logger.warning("V11 Cloud Sync exception: %s", e)
 
         if not local_df.empty:
             return local_df.sort_values("observation_date").reset_index(drop=True)
