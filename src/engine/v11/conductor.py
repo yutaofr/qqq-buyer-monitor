@@ -101,6 +101,23 @@ class V11Conductor:
         if final_signal.get("target_bucket") and final_signal["target_bucket"] != execution_signal["target_bucket"]:
             self.execution_guard.sync_to_bucket(final_signal["target_bucket"])
 
+        # 8. 采集展示特征 (UI mapping)
+        feature_values = {
+            "credit_spread": float(latest_row.get("credit_spread_bps", 0.0)),
+            "erp": float(latest_row.get("erp", 0.0)) if latest_row.get("erp") is not None else None,
+            "net_liquidity": float(latest_row.get("net_liquidity", 0.0)) if latest_row.get("net_liquidity") is not None else None,
+            "liquidity_roc": float(latest_row.get("liquidity_roc_pct_4w", 0.0)),
+            "vix": float(latest_row.get("vix", 0.0)),
+            "fear_greed": int(latest_row.get("fear_greed", 50)),
+        }
+        
+        # 计算战术压力得分 (基于标准化动量的绝对值总和作为 UI 代理)
+        momentum_cols = [c for k, c in latest_std.items() if "momentum" in str(k)]
+        if momentum_cols:
+            feature_values["tactical_stress_score"] = int(sum(abs(v) for v in momentum_cols) * 10)
+        else:
+            feature_values["tactical_stress_score"] = 0
+
         return {
             "date": latest_row["observation_date"],
             "signal": final_signal,
@@ -115,5 +132,6 @@ class V11Conductor:
             },
             "data_quality": quality_score,
             "quality_audit": self.pipeline.last_audit,
-            "resurrection_active": is_resurrected
+            "resurrection_active": is_resurrected,
+            "feature_values": feature_values,
         }
