@@ -150,18 +150,27 @@ def _build_web_node_traces(result: SignalResult) -> list[dict]:
                 }
             )
         elif step == "deployment_controller":
-            formula = (
-                f"mode={evidence.get('deploy_mode', 'n/a')} | "
-                f"path={evidence.get('path') or 'qqq_only_new_cash'}"
-            )
+            if isinstance(decision, dict):
+                # v11.16 Kelly Entry
+                readiness = decision.get("readiness", 0.0)
+                sharpe = decision.get("sharpe", 0.0)
+                val_rank = decision.get("value_rank", 0.0)
+                formula = f"CDR={readiness:.1%} | E[Sharpe]={sharpe:.2f} | ERP_Rank={val_rank:.1%}"
+                res_str = f"{readiness:.1%} Readiness"
+            else:
+                formula = (
+                    f"mode={evidence.get('deploy_mode', 'n/a')} | "
+                    f"path={evidence.get('path') or 'qqq_only_new_cash'}"
+                )
+                res_str = str(decision)
             node_traces.append(
                 {
                     "step": step,
-                    "node": "Deployment 新现金节奏",
+                    "node": "Deployment 概率入场",
                     "type": "TACTICAL",
                     "formula": formula,
-                    "explanation": reason,
-                    "result": decision,
+                    "explanation": "基于贝叶斯期望 Sharpe 与结构性估值百分位（CDR）决定新增资金节奏。",
+                    "result": res_str,
                 }
             )
         # v11 specific steps
@@ -428,9 +437,9 @@ REGIME_MAP = {
     "EUPHORIC": {"label": "过度狂热 (EUPHORIC)", "desc": "市场情绪过热，定价脱离物理现实，获利离场。"},
     # V11 Bayesian Posteriors
     "MID_CYCLE": {"label": "中期平稳 (MID_CYCLE)", "desc": "周期中性平稳期，穿越波动的基准轨道。"},
-    "BUST": {"label": "休克 (BUST)", "desc": "信贷断裂引发流动性休克，强制避险。"},
-    "CAPITULATION": {"label": "投降 (CAPITULATION)", "desc": "绝望式抛售触及极值，高赔率反弹窗口。"},
-    "RECOVERY": {"label": "修复 (RECOVERY)", "desc": "最差阶段已过，动能开始共振回归。"},
+    "BUST": {"label": "休克 (BUST)", "desc": "信贷断裂引发流动性休克，强制避险 (P_Bust 超过信息阈值)。"},
+    "CAPITULATION": {"label": "投降 (CAPITULATION)", "desc": "绝望式抛售触及极值，高赔率反弹窗口 (P_Cap 激增)。"},
+    "RECOVERY": {"label": "修复 (RECOVERY)", "desc": "最差阶段已过，动能开始共振回归 (P_Rec 获得确认)。"},
     "LATE_CYCLE": {"label": "末端 (LATE_CYCLE)", "desc": "周期动能衰减，结构性风险增加，审慎缩减。"},
 }
 
@@ -526,8 +535,14 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "decision_path": _build_decision_path(result),
                 "exposure_band": _discretize_allocation(result.target_beta),
                 "exposure_desc": "目标 Beta 对应的存量风险带，用于帮助理解风险区间。",
-                "deploy_rhythm": deploy_info["label"],
-                "deploy_desc": deploy_info["desc"],
+                "deploy_rhythm": (
+                    f"{result.v11_execution.get('deployment_readiness', 0.0):.1%} 就绪度"
+                    if is_v11 else deploy_info["label"]
+                ),
+                "deploy_desc": (
+                    "基于 Bayesian Kelly 期望的连续入场系数 [0, 1]。"
+                    if is_v11 else deploy_info["desc"]
+                ),
                 "reference_path": reference_path,
                 "reference_desc": "参考路径仅用于说明一种实现目标 beta 的仓位组合，不是系统强制配比。",
                 "fidelity": "高 (Bayesian)" if is_v11 else "高 (可靠)",
