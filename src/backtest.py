@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import json
 import logging
 import os
 from dataclasses import dataclass, field
@@ -2396,14 +2397,19 @@ def run_v11_audit(
         save_v11_probabilistic_audit_figure,
     )
 
-    # 1. Load v11.5 Ground Truth and Price History
     macro_df = pd.read_csv(dataset_path, parse_dates=["observation_date"]).set_index("observation_date")
     regime_df = pd.read_csv("data/v11_poc_phase1_results.csv", parse_dates=["observation_date"]).set_index("observation_date")
+    
+    # Load Sovereign Constants (AC-0)
+    audit_path = Path("src/engine/v11/resources/regime_audit.json")
+    with open(audit_path, "r", encoding="utf-8") as f:
+        audit_data = json.load(f)
+    base_betas = audit_data["base_betas"]
+    entropy_threshold = audit_data["risk_thresholds"]["entropy_max"]
 
     # Load Price Cache for Plotting (Normalize index to match macro_df)
-    price_df = pd.read_csv("data/qqq_history_cache.csv")
-    price_df["Date"] = pd.to_datetime(price_df["Date"], utc=True).dt.tz_localize(None).dt.normalize()
-    price_df = price_df.set_index("Date")
+    price_df = _load_price_history("data/qqq_history_cache.csv")
+    price_df.index = pd.to_datetime(price_df.index, utc=True).tz_localize(None).normalize()
 
     macro_df.index = pd.to_datetime(macro_df.index).tz_localize(None).normalize()
     macro_df["qqq_close"] = price_df["Close"]
@@ -2445,7 +2451,7 @@ def run_v11_audit(
     probability_df = probability_df.sort_values("date")
 
     # 7. Sequential Execution Loop (Epic 3 & 4 Alignment)
-    entropy_ctrl = EntropyController(threshold=V11Conductor.ENTROPY_THRESHOLD)
+    entropy_ctrl = EntropyController(threshold=entropy_threshold)
     beta_mapper = InertialBetaMapper()
  
     execution_rows = []
@@ -2457,7 +2463,7 @@ def run_v11_audit(
         # Bayesian -> Entropy -> Odds-Ratio CUSUM
         # 3. Entropy Haircut (Epic 3)
         # Calculate raw expectation from the current posterior distribution
-        raw_beta = sum(posteriors.get(regime, 1.0) * V11Conductor.BASE_BETAS.get(regime, 1.0) 
+        raw_beta = sum(posteriors.get(regime, 1.0) * base_betas.get(regime, 1.0) 
                        for regime in posteriors)
                                    
         norm_h = entropy_ctrl.calculate_normalized_entropy(posteriors)

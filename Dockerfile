@@ -2,9 +2,10 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# System deps for scipy/numpy compilation
+# System deps for scipy/numpy compilation and data fetching
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml .
