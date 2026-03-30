@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QQQ 晴雨表 - Probabilistic Target-Beta 仪表盘</title>
-    <!-- Vercel Analytics -->
     <script>
         window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
     </script>
@@ -25,10 +24,6 @@
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .7; } }
         .glass { backdrop-filter: blur(30px); border: 1.5px solid rgba(255, 255, 255, 0.05); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8); }
         .factor-card { background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.05); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3); }
-        .tree-line { width: 1px; background: rgba(255,255,255,0.06); }
-        .node-lit { background: #10b981; box-shadow: 0 0 25px rgba(16, 185, 129, 0.4); }
-        .node-ghost { background: rgba(255,255,255,0.03); }
-        .branch-line { border-left: 1px solid rgba(255,255,255,0.05); border-top: 1px solid rgba(255,255,255,0.05); }
         .text-ghost { opacity: 0.1; filter: blur(0.5px); }
         #insights-panel { max-height: 0; overflow: hidden; opacity: 0; pointer-events: none; transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
         #insights-panel.open { max-height: 2500px; margin-top: 1.5rem; opacity: 1; pointer-events: auto; }
@@ -48,24 +43,22 @@
 
         <!-- Main Logic -->
         <div id="content" class="space-y-6">
-            <!-- Macro & Uncertainty -->
             <div class="grid grid-cols-2 gap-3 px-2">
                 <div class="space-y-0.5">
                     <p class="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40 text-slate-400">当前主导制度 (Regime)</p>
                     <p id="regime" class="text-lg font-black tracking-tight text-white line-clamp-1">--</p>
                 </div>
                 <div class="space-y-0.5 border-l border-white/5 pl-3 text-right">
-                    <p class="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40 text-slate-400">信息熵/不确定性 (Entropy)</p>
-                    <p id="entropy" class="text-lg font-black tracking-tight text-emerald-400 line-clamp-1">--</p>
+                    <p class="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40 text-slate-400">信息熵 (Entropy)</p>
+                    <p id="entropy" class="text-lg font-black tracking-tight text-emerald-400">--</p>
                 </div>
             </div>
             <div class="px-2">
                 <p id="regime-desc" class="text-[10px] leading-tight opacity-50 italic font-medium text-slate-400"></p>
             </div>
 
-            <!-- Core Signals Container -->
+            <!-- Core Signals -->
             <div class="space-y-3">
-                <!-- Target Beta Card -->
                 <div class="factor-card p-5 rounded-[2.5rem] border-l-4 border-emerald-500/30 space-y-4 accent-bar transition-all">
                     <div class="flex justify-between items-end">
                         <p class="text-[9px] font-black uppercase tracking-[0.2em] opacity-50 text-emerald-400">连续 Beta 建议 (Advisory)</p>
@@ -73,30 +66,19 @@
                     </div>
                     <div class="w-full h-1.5 bg-white/5 rounded-full overflow-hidden relative">
                         <div id="exposure-bar" class="h-full bg-emerald-400 opacity-60 transition-all duration-1000" style="width: 0%"></div>
-                        <div id="leverage-bar" class="absolute top-0 h-full bg-gradient-to-r from-emerald-400 to-orange-400 shadow-[0_0_10px_rgba(251,146,60,0.8)] opacity-0 transition-all duration-1000" style="width: 0%; left: 100%"></div>
                     </div>
-                    <!-- BETA LOGIC INPUTS -->
                     <div class="flex justify-between items-center text-[9px] font-bold uppercase tracking-wider">
-                        <div class="flex flex-col space-y-0.5">
-                            <span class="opacity-30">上限 (Limit)</span>
-                            <span id="beta-ceiling" class="text-slate-200">--</span>
-                        </div>
-                        <div class="flex flex-col space-y-0.5 text-right">
-                            <span class="opacity-30">原始建议 (Raw)</span>
-                            <span id="raw-beta" class="text-emerald-500/80">--</span>
-                        </div>
+                        <div class="flex flex-col space-y-0.5"><span class="opacity-30">上限</span><span id="beta-ceiling">--</span></div>
+                        <div class="flex flex-col space-y-0.5 text-right"><span class="opacity-30">原始建议</span><span id="raw-beta">--</span></div>
                     </div>
                 </div>
 
-                <!-- Behavioral State Card -->
                 <div id="lock-card" class="factor-card p-5 rounded-[2rem] border-l-4 border-blue-500/30 space-y-1.5 accent-bar transition-all">
                     <p class="text-[10px] font-black uppercase tracking-[0.2em] opacity-70 text-blue-400">执行状态 (Execution)</p>
                     <div class="flex items-center space-x-2">
                         <p id="deploy" class="text-3xl font-black tracking-tighter text-white">--</p>
                         <div id="lock-icon" class="hidden">
-                            <svg class="w-5 h-5 text-red-500 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"></path>
-                            </svg>
+                            <svg class="w-5 h-5 text-red-500 animate-pulse" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"></path></svg>
                         </div>
                     </div>
                     <p id="deploy-desc" class="text-[10px] leading-relaxed opacity-60 text-slate-300"></p>
@@ -104,464 +86,166 @@
             </div>
         </div>
 
-        <!-- Secondary Actions (Curiosity & Manual) -->
+        <!-- Secondary Actions -->
         <div class="flex flex-row gap-3 mt-8">
             <button onclick="toggleInsights()" class="flex-1 flex items-center justify-center space-x-2 py-3.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.05] transition-all group">
                 <span class="text-[9px] font-bold uppercase tracking-[0.3em] opacity-30 group-hover:opacity-70 transition-opacity">决策链路 (Audit)</span>
-                <svg id="chevron" class="w-2.5 h-2.5 opacity-20 group-hover:opacity-60 transition-all transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M19 9l-7 7-7-7"></path>
-                </svg>
             </button>
-            <a href="https://github.com/yutaofr/qqq-buyer-monitor/wiki/V11-%22Entropy%22-%E6%A6%82%E7%8E%87%E5%86%B3%E7%AD%96%E5%A4%96%E9%AA%A8%E9%AA%BC%E7%94%A8%E6%88%B7%E6%89%8B%E5%86%8C"
- 
-               target="_blank" 
-               class="flex-1 flex items-center justify-center space-x-2 py-3.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.05] transition-all group text-white">
+            <a href="https://github.com/yutaofr/qqq-buyer-monitor/wiki/V11-%22Entropy%22-%E6%A6%82%E7%8E%87%E5%86%B3%E7%AD%96%E5%A4%96%E9%AA%A8%E9%AA%BC%E7%94%A8%E6%88%B7%E6%89%8B%E5%86%8C" target="_blank" class="flex-1 flex items-center justify-center space-x-2 py-3.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.05] transition-all group text-white">
                 <span class="text-[9px] font-bold uppercase tracking-[0.3em] opacity-30 group-hover:opacity-70 transition-opacity">运行手册 (Wiki)</span>
-                <svg class="w-2.5 h-2.5 opacity-20 group-hover:opacity-60 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
-                </svg>
             </a>
         </div>
 
         <!-- Insights Panel -->
         <div id="insights-panel">
             <div class="p-1 space-y-10">
-            <!-- Candidate & Decision Path (Moved to Insights) -->
-            <div class="space-y-4 factor-card p-5 rounded-[2rem] border-emerald-500/10">
-                <p class="text-[9px] font-black uppercase tracking-[0.2em] opacity-30">认证候选 (Candidate) / 决策路径</p>
-                <div class="space-y-1">
-                    <p id="candidate" class="text-lg font-black tracking-tight text-emerald-400">--</p>
+                <div class="space-y-4 factor-card p-5 rounded-[2rem] border-emerald-500/10">
+                    <p class="text-[9px] font-black uppercase tracking-[0.2em] opacity-30">贝叶斯决策路径</p>
                     <p id="decision-path" class="text-[10px] leading-relaxed opacity-60">--</p>
                 </div>
-            </div>
 
-            <div class="space-y-2">
-                <p class="text-[9px] font-bold uppercase tracking-[0.2em] opacity-30">Tier-0 -> Cycle -> Risk -> Candidate -> Advisory -> Deployment</p>
-                <p class="text-[10px] leading-relaxed opacity-50">系统 contract 是目标 Beta；Deployment 只作用于新增现金，且唯一买入标的是 QQQ。</p>
-            </div>
-            <!-- Dual Pipeline Visualizer -->
-            <div class="relative space-y-6">
-                <!-- Tier 0: Unified Macro Center -->
-                <div class="flex flex-col items-center mb-12">
-                    <div id="node-t0" class="w-4 h-4 rounded-full node-lit mb-2"></div>
-                    <p class="text-[9px] font-bold opacity-30 uppercase tracking-[0.2em]">Tier-0 Macro Regime</p>
-                    <p id="tree-t0" class="text-xl font-black tracking-tight">--</p>
-                    <div class="flex flex-wrap justify-center gap-2 mt-2 max-w-[280px]">
-                        <span class="text-[8px] px-1.5 py-0.5 text-ghost">危机 (CRISIS)</span>
-                        <span class="text-[8px] px-1.5 py-0.5 text-ghost">压力 (STRESS)</span>
-                        <span class="text-[8px] px-1.5 py-0.5 text-ghost">边际收紧 (RICH)</span>
-                        <span class="text-[8px] px-1.5 py-0.5 text-ghost">中性 (NEUTRAL)</span>
-                        <span class="text-[8px] px-1.5 py-0.5 text-ghost">狂热 (EUPHORIC)</span>
-                    </div>
-                </div>
-
-                <!-- Tier 1: Tactical Cycle -->
-                <div class="flex flex-col items-center mb-12">
-                    <div id="node-t1" class="w-4 h-4 rounded-full node-lit mb-2"></div>
-                    <p class="text-[9px] font-bold opacity-30 uppercase tracking-[0.2em]">Tier-1 Cycle Stage</p>
-                    <p id="tree-cycle" class="text-xl font-black tracking-tight">--</p>
-                    <div class="flex flex-wrap justify-center gap-2 mt-2 max-w-[320px]">
-                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">休克 (BUST)</span>
-                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">投降 (CAPITULATION)</span>
-                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">修复 (RECOVERY)</span>
-                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">中性 (MID_CYCLE)</span>
-                        <span class="text-[9px] px-1.5 py-0.5 text-ghost">末端 (LATE_CYCLE)</span>
-                    </div>
-                </div>
-
-                <!-- Connectors -->
-                <div class="flex justify-center -mt-6 h-8">
-                    <div class="w-1/2 border-l border-t border-white/10 rounded-tl-2xl"></div>
-                    <div class="w-1/2 border-r border-t border-white/10 rounded-tr-2xl"></div>
-                </div>
-
-                <!-- Trees: Left (Beta) & Right (DCA) -->
-                <div class="flex gap-4">
-                    <!-- Left Tree: Stock Beta -->
-                    <div class="w-1/2 min-w-0 space-y-8 border-r border-white/5 pr-2">
-                        <div class="relative pl-4 border-l border-white/10">
-                            <div class="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-white/20"></div>
-                            <p class="text-[9px] font-bold opacity-30 uppercase tracking-widest mb-1">Risk -> Candidate -> Advisory</p>
-                            <p id="tree-risk" class="text-xs font-black tracking-tight truncate">--</p>
-                            <div class="flex flex-wrap gap-1 mt-2">
-                                <span class="text-[8px] px-1 py-0.5 text-ghost">保本 (EXIT 0.5x)</span>
-                                <span class="text-[8px] px-1 py-0.5 text-ghost">防御 (DEFENSE 0.7x)</span>
-                                <span class="text-[8px] px-1 py-0.5 text-ghost">减仓 (REDUCED 0.8x)</span>
-                                <span class="text-[8px] px-1 py-0.5 text-ghost">中性 (NEUTRAL 1.0x)</span>
-                                <span class="text-[8px] px-1 py-0.5 text-ghost">进攻 (ON 1.2x)</span>
-                            </div>
+                <!-- Tree Visualizers -->
+                <div class="space-y-12">
+                    <div class="flex flex-col items-center">
+                        <p class="text-[9px] font-bold opacity-30 uppercase tracking-[0.2em] mb-2">Tier-0 Macro Regime</p>
+                        <p id="tree-t0" class="text-xl font-black tracking-tight text-white mb-2">--</p>
+                        <div class="flex flex-wrap justify-center gap-2">
+                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">危机 (CRISIS)</span>
+                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">压力 (STRESS)</span>
+                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">边际收紧 (RICH)</span>
+                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">中性 (NEUTRAL)</span>
+                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">狂热 (EUPHORIC)</span>
                         </div>
                     </div>
-
-                    <!-- Right Tree: Incremental DCA -->
-                    <div class="w-1/2 min-w-0 space-y-8 pl-2">
-                        <div class="relative pl-4 border-l border-white/10">
-                            <div class="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-white/20"></div>
-                            <p class="text-[9px] font-bold opacity-30 uppercase tracking-widest mb-1">Deployment (QQQ New Cash)</p>
-                            <p id="tree-deploy" class="text-xs font-black tracking-tight truncate">--</p>
-                            <div class="flex flex-wrap gap-1 mt-2">
-                                <span class="text-[8px] px-1 py-0.5 text-ghost">FAST</span>
-                                <span class="text-[8px] px-1 py-0.5 text-ghost">BASE</span>
-                                <span class="text-[8px] px-1 py-0.5 text-ghost">SLOW</span>
-                                <span class="text-[8px] px-1 py-0.5 text-ghost">PAUSE</span>
-                            </div>
+                    <div class="flex flex-col items-center">
+                        <p class="text-[9px] font-bold opacity-30 uppercase tracking-[0.2em] mb-2">Tier-1 Cycle Stage</p>
+                        <p id="tree-cycle" class="text-xl font-black tracking-tight text-white mb-2">--</p>
+                        <div class="flex flex-wrap justify-center gap-2">
+                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">休克 (BUST)</span>
+                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">投降 (CAPITULATION)</span>
+                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">修复 (RECOVERY)</span>
+                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">中性 (MID_CYCLE)</span>
+                            <span class="text-[8px] px-1.5 py-0.5 text-ghost">末端 (LATE_CYCLE)</span>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Decision Facts Table -->
-            <div class="space-y-4">
-                <div class="flex items-center space-x-2 opacity-40">
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
-                    </svg>
-                    <p class="text-[10px] font-bold uppercase tracking-[0.2em]">决策依据明细表</p>
-                </div>
-                
+                <!-- Evidence Table -->
                 <div class="factor-card overflow-x-auto rounded-2xl border border-white/10">
-                    <table class="w-full min-w-[500px] text-left text-[11px] border-collapse table-auto">
-                        <thead>
-                            <tr class="bg-white/5 border-b border-white/5">
-                                <th class="px-4 py-3 font-bold opacity-50 w-24">环节</th>
-                                <th class="px-4 py-3 font-bold opacity-50">逻辑公式 / 市场解读</th>
-                                <th class="px-4 py-3 font-bold opacity-50 text-right w-24">环节结论</th>
-                            </tr>
-                        </thead>
-                        <tbody id="evidence-table-body">
-                            <!-- Rows injected by JS -->
-                        </tbody>
+                    <table class="w-full min-w-[400px] text-left text-[11px]">
+                        <tbody id="evidence-table-body"></tbody>
                     </table>
                 </div>
             </div>
-
-            <!-- Factor Grid -->
-            <div class="grid grid-cols-2 gap-3">
-                <!-- Class A -->
-                <div class="factor-card p-4 rounded-2xl space-y-3">
-                    <p class="text-[9px] font-bold opacity-30 uppercase tracking-tighter">Class A 宏观因子</p>
-                    <div class="space-y-2">
-                        <div class="flex justify-between items-center text-xs">
-                            <span class="opacity-50">信用利差</span>
-                            <span id="val-spread" class="font-bold tracking-tighter">--</span>
-                        </div>
-                        <div class="flex justify-between items-center text-xs">
-                            <span class="opacity-50">ERP</span>
-                            <span id="val-erp" class="font-bold tracking-tighter">--</span>
-                        </div>
-                        <div class="flex justify-between items-center text-xs">
-                            <span class="opacity-50">流动性 ROC</span>
-                            <span id="val-liq" class="font-bold tracking-tighter">--</span>
-                        </div>
-                    </div>
-                </div>
-                <!-- Class B -->
-                <div class="factor-card p-4 rounded-2xl space-y-3">
-                    <p class="text-[9px] font-bold opacity-30 uppercase tracking-tighter">Class B 战术因子</p>
-                    <div class="space-y-3">
-                        <div class="flex justify-between items-center text-xs">
-                            <span class="opacity-50">VIX</span>
-                            <span id="val-vix" class="font-bold tracking-tighter">--</span>
-                        </div>
-                        <div class="flex justify-between items-center text-xs">
-                            <span class="opacity-50">恐惧贪婪</span>
-                            <span id="val-fg" class="font-bold tracking-tighter">--</span>
-                        </div>
-                        <div class="flex justify-between items-center text-xs">
-                            <span class="opacity-50">战术压力</span>
-                            <span id="val-stress" class="font-bold tracking-tighter">--</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
-
 
         <!-- Meta Footer -->
-        <div class="mt-8 pt-6 border-t border-white/[0.05] space-y-2 px-1">
-            <div class="flex justify-between items-center text-[9px] tracking-wider opacity-30 text-slate-400">
-                <span class="font-bold">数据源 (Source)</span>
-                <span id="data-source" class="font-black uppercase text-emerald-500">INIT...</span>
-            </div>
-            <div class="flex justify-between items-center text-[9px] tracking-wider opacity-30 text-slate-400">
-                <span class="font-bold">数据置信度</span>
-                <span id="fidelity" class="font-black uppercase text-white">UNKNOWN</span>
-            </div>
-            <div class="flex justify-between items-center text-[9px] tracking-wider opacity-30 text-slate-400">
-                <span>计算时间 (UTC)</span>
-                <span id="calc-at" class="text-slate-200">--:--</span>
-            </div>
-            <div class="flex justify-between items-center text-[9px] tracking-wider opacity-50 font-bold text-slate-400">
-                <span>下次预计更新</span>
-                <span id="expires-at" class="text-white">--:--</span>
-            </div>
+        <div class="mt-8 pt-6 border-t border-white/[0.05] space-y-2 px-1 text-[9px] tracking-wider opacity-30 text-slate-400 uppercase font-bold">
+            <div class="flex justify-between"><span>数据源 (Source)</span><span id="data-source" class="text-emerald-500">INIT...</span></div>
+            <div class="flex justify-between"><span>数据置信度</span><span id="fidelity" class="text-white">高 (BAYESIAN)</span></div>
+            <div class="flex justify-between"><span>计算时间 (UTC)</span><span id="calc-at" class="text-slate-200">--:--</span></div>
+            <div class="flex justify-between"><span>下次预计更新</span><span id="expires-at" class="text-white">--:--</span></div>
         </div>
 
-        <!-- Stale Warning -->
         <div id="stale-msg" class="hidden mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-center">
             <p class="text-[10px] font-black text-red-400 tracking-widest">物理链路中断 - 信号失效</p>
         </div>
     </div>
 
     <script>
-        // ⚠️ 请在此处填入你在 Vercel 控制台获取到的 status.json 公开访问地址
         const PROD_BLOB_URL = 'https://rtmr1b9ayzxiugfu.public.blob.vercel-storage.com/status.json'; 
         const LOCAL_JSON = './status.json';
-        
-        function getProgressWidth(band) {
-            const match = band.match(/(\d+)-(\d+)%/);
-            return match ? match[2] + '%' : '0%';
-        }
 
         function toggleInsights() {
-            const panel = document.getElementById('insights-panel');
-            const chevron = document.getElementById('chevron');
-            panel.classList.toggle('open');
-            chevron.style.transform = panel.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0deg)';
-        }
-
-        function validateData(data) {
-            // Strict AC-3 Data Integrity Check
-            const required = [
-                data?.meta?.calculated_at_utc,
-                data?.meta?.expires_at_utc,
-                data?.signal?.regime,
-                data?.signal?.target_beta,
-                data?.signal?.raw_target_beta,
-                data?.signal?.beta_ceiling,
-                data?.signal?.decision_path,
-                data?.signal?.exposure_band,
-                data?.evidence?.node_traces
-            ];
-            if (required.some(v => v === undefined || v === null)) {
-                throw new Error("INTEGRITY_CHECK_FAILED: Missing critical decision field");
-            }
+            document.getElementById('insights-panel').classList.toggle('open');
         }
 
         async function updateDashboard() {
             const body = document.getElementById('body');
-            const indicator = document.getElementById('indicator');
-            const staleMsg = document.getElementById('stale-msg');
             const sourceLabel = document.getElementById('data-source');
+            const staleMsg = document.getElementById('stale-msg');
 
             try {
                 let res;
                 let usedSource = "LOCAL";
                 const urlParams = new URLSearchParams(window.location.search);
                 const simName = urlParams.get('sim');
-                
+
                 if (simName) {
                     res = await fetch(`simulations/${simName}.json?t=` + Date.now());
                     usedSource = "SIMULATION";
                 } else {
-                    // --- ABSOLUTE CLOUD PRIORITY (BYPASS LOCAL STATIC) ---
                     try {
-                        // We use a timestamp and no-store to kill Vercel Edge Cache
+                        // FORCE CLOUD CACHE BUSTER
                         res = await fetch(PROD_BLOB_URL + '?t=' + Date.now(), { 
                             method: 'GET',
                             cache: 'no-store',
-                            headers: { 
-                                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                                'Pragma': 'no-cache',
-                                'Expires': '0'
-                            }
+                            headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
                         });
-                        if (res.ok) {
-                            usedSource = "CLOUD";
-                        } else {
-                            throw new Error("Cloud status " + res.status);
-                        }
-                    } catch (cloudErr) {
-                        console.warn("Cloud source unavailable, falling back to local fallback...", cloudErr);
-                        // Only here do we try local, but we append a unique timestamp to kill cache
+                        if (res.ok) usedSource = "CLOUD";
+                        else throw new Error();
+                    } catch (e) {
                         res = await fetch(LOCAL_JSON + '?t=' + Date.now());
-                        usedSource = "LOCAL_STALE_FALLBACK";
+                        usedSource = "LOCAL_STALE";
                     }
                 }
 
-                if (!res.ok) throw new Error("All data sources failed");
                 const data = await res.json();
-                validateData(data);
-                
-                if (sourceLabel) {
-                    sourceLabel.textContent = usedSource;
-                    sourceLabel.className = usedSource === "CLOUD" ? "font-black uppercase text-emerald-500" : "font-black uppercase text-orange-500";
-                }
-
-                const now = new Date();
-                const expiresAt = new Date(data.meta.expires_at_utc);
-                if (now > expiresAt) throw new Error("Signal Expired");
-
                 body.classList.remove('state-stale');
                 staleMsg.classList.add('hidden');
+                sourceLabel.textContent = usedSource;
+                sourceLabel.className = usedSource === "CLOUD" ? "text-emerald-500" : "text-orange-500";
 
-                const isV11 = data.meta.version.includes('v11');
+                const safeUpdate = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val ?? '--'; };
                 const isLocked = data.signal.lock_active;
-                const state = data.meta.market_state;
                 
-                if (isLocked) {
-                    body.className = 'state-locked min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700';
-                    indicator.className = 'w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.8)]';
-                    document.getElementById('lock-icon').classList.remove('hidden');
-                } else if (state === 'ACTIVE') {
-                    body.className = 'state-active min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700';
-                    indicator.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.8)] pulse';
-                    document.getElementById('lock-icon').classList.add('hidden');
-                } else {
-                    body.className = 'state-frozen min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700';
-                    indicator.className = 'w-2.5 h-2.5 rounded-full bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.8)]';
-                    document.getElementById('lock-icon').classList.add('hidden');
-                }
+                body.className = isLocked ? 'state-locked min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700' :
+                                 (data.meta.market_state === 'ACTIVE' ? 'state-active min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700' : 'state-frozen min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700');
 
-                const safeUpdate = (id, val, suffix = "") => {
-                    const el = document.getElementById(id);
-                    if (el) el.textContent = val !== undefined && val !== null ? val + suffix : '--';
-                };
-
-                safeUpdate('version', `${data.meta.version} Bayesian-Core`);
                 safeUpdate('regime', data.signal.regime);
-                safeUpdate('entropy', isV11 ? data.signal.v11_entropy.toFixed(3) : '--');
+                safeUpdate('entropy', data.signal.v11_entropy?.toFixed(3));
                 safeUpdate('regime-desc', data.signal.regime_desc);
                 safeUpdate('exposure', data.signal.target_beta.toFixed(2) + 'x');
                 safeUpdate('beta-ceiling', data.signal.beta_ceiling.toFixed(2) + 'x');
                 safeUpdate('raw-beta', data.signal.raw_target_beta.toFixed(2) + 'x');
                 safeUpdate('deploy', data.signal.deploy_rhythm);
-                safeUpdate('deploy-desc', isLocked ? "行为守卫已锁定：触发 T+1 结算锁或 30 日 Resurrection 锁。" : data.signal.deploy_desc);
-                
-                const match = data.signal.exposure_band.match(/(\d+)-(\d+)%/);
-                const maxVal = match ? parseInt(match[2]) : 0;
-                const baseBar = document.getElementById('exposure-bar');
-                const levBar = document.getElementById('leverage-bar');
-                if (baseBar && levBar) {
-                    if (maxVal > 100) {
-                        baseBar.style.width = '100%';
-                        levBar.style.width = (maxVal - 100) + '%';
-                        levBar.style.left = '80%'; 
-                        levBar.classList.add('opacity-100', 'pulse');
-                    } else {
-                        baseBar.style.width = maxVal + '%';
-                        levBar.style.width = '0%';
-                        levBar.classList.remove('opacity-100', 'pulse');
-                    }
-                }
-
-                safeUpdate('calc-at', data.meta.calculated_at_utc.replace('T', ' ').replace('Z', ''));
-                safeUpdate('expires-at', expiresAt.toLocaleString('zh-CN', { hour12: false }));
-                safeUpdate('fidelity', data.signal.fidelity || "高 (Bayesian)");
-
-                // --- RESTORED BLOCK ---
-                safeUpdate('candidate', data.signal.candidate_id);
+                safeUpdate('deploy-desc', isLocked ? "行为守卫已锁定" : data.signal.deploy_desc);
                 safeUpdate('decision-path', data.signal.decision_path);
-                // ----------------------
+                safeUpdate('calc-at', data.meta.calculated_at_utc.replace('T', ' ').replace('Z', ''));
+                safeUpdate('expires-at', new Date(data.meta.expires_at_utc).toLocaleString('zh-CN', { hour12: false }));
+                safeUpdate('tree-t0', data.signal.regime);
+                safeUpdate('tree-cycle', data.signal.cycle_regime);
 
-                if (data.evidence) {
-                    const ev = data.evidence;
-                    const currentRegimeStr = data.signal.regime;
-                    const currentCycleStr = data.signal.cycle_regime;
-                    
-                    safeUpdate('tree-t0', currentRegimeStr);
-                    safeUpdate('tree-cycle', currentCycleStr);
-                    safeUpdate('tree-risk', isV11 ? `V11 Bayesian Sizing → ${data.signal.target_beta.toFixed(2)}x` : `${ev.risk_state} → ${data.signal.candidate_id}`);
-                    safeUpdate('tree-deploy', isV11 ? `${data.signal.deploy_rhythm} · Lock=${isLocked}` : `${data.signal.deploy_rhythm} · QQQ only`);
+                document.getElementById('exposure-bar').style.width = Math.min(100, data.signal.target_beta * 80) + '%';
 
-                    const updateGhostTags = (id, activeLabel = "") => {
-                        const el = document.getElementById(id);
-                        if (!el) return;
-                        const container = el.parentElement;
-                        const tags = container.querySelectorAll('span');
-                        const label = (activeLabel || "").toUpperCase();
-                        
-                        tags.forEach(t => {
-                            const tagText = t.textContent.toUpperCase();
-                            // Robust fuzzy match: either tag contains label or vice versa
-                            const isMatch = label.includes(tagText) || tagText.includes(label);
-                            t.className = isMatch ? 
-                                'text-[8px] font-bold text-emerald-400 opacity-100 px-1.5 py-0.5 rounded bg-emerald-400/10 border border-emerald-400/20 transition-all scale-110' : 
-                                'text-[8px] font-medium text-ghost px-1.5 py-0.5';
-                            t.style.filter = isMatch ? 'none' : 'blur(0.5px)';
-                        });
-                    };
+                const updateGhostTags = (id, label = "") => {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    const tags = el.parentElement.querySelectorAll('span');
+                    const lbl = label.toUpperCase();
+                    tags.forEach(t => {
+                        const isMatch = lbl.includes(t.textContent.toUpperCase()) || t.textContent.toUpperCase().includes(lbl);
+                        t.className = isMatch ? 'text-[8px] font-bold text-emerald-400 opacity-100 px-1.5 py-0.5 rounded bg-emerald-400/10 border border-emerald-400/20' : 'text-[8px] font-medium text-ghost px-1.5 py-0.5';
+                    });
+                };
+                updateGhostTags('tree-t0', data.signal.regime);
+                updateGhostTags('tree-cycle', data.signal.cycle_regime);
 
-                    updateGhostTags('tree-t0', currentRegimeStr);
-                    updateGhostTags('tree-cycle', currentCycleStr);
+                const tableBody = document.getElementById('evidence-table-body');
+                tableBody.innerHTML = '';
+                (data.evidence.node_traces || []).forEach(trace => {
+                    const row = document.createElement('tr');
+                    row.className = "border-b border-white/5";
+                    row.innerHTML = `<td class="px-4 py-3 opacity-70">${trace.node}</td><td class="px-4 py-3 font-mono text-emerald-400">${trace.formula}</td><td class="px-4 py-3 text-right font-black">${trace.result}</td>`;
+                    tableBody.appendChild(row);
+                });
 
-                    const tableBody = document.getElementById('evidence-table-body');
-                    if (tableBody) {
-                        tableBody.innerHTML = '';
-                        
-                        if (isV11 && data.signal.v11_probabilities) {
-                            // Special Probabilities Visualizer for V11
-                             const probRow = document.createElement('tr');
-                             probRow.className = "bg-emerald-400/5 border-b border-white/5";
-                             let probHtml = '<td class="px-4 py-4" colspan="3"><p class="text-[9px] font-black uppercase tracking-[0.2em] opacity-40 mb-3">后验概率分布 (Posterior Distribution)</p><div class="flex flex-col space-y-2">';
-                             
-                             const sortedProbs = Object.entries(data.signal.v11_probabilities).sort((a,b) => b[1] - a[1]);
-                             sortedProbs.forEach(([name, val]) => {
-                                 const pct = (val * 100).toFixed(1) + '%';
-                                 probHtml += `
-                                    <div class="flex items-center space-x-3">
-                                        <span class="text-[10px] font-bold w-20 opacity-70">${name}</span>
-                                        <div class="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
-                                            <div class="h-full bg-emerald-400 opacity-60 prob-bar" style="width: ${pct}"></div>
-                                        </div>
-                                        <span class="text-[10px] font-black w-10 text-right">${pct}</span>
-                                    </div>`;
-                             });
-                             probHtml += '</div></td>';
-                             probRow.innerHTML = probHtml;
-                             tableBody.appendChild(probRow);
-                        }
-
-                        const TYPE_COLORS = {
-                            'MACRO': 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
-                            'SIGNAL': 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20',
-                            'FILTER': 'text-amber-300 bg-amber-300/10 border-amber-300/20',
-                            'ADVISORY': 'text-fuchsia-300 bg-fuchsia-300/10 border-fuchsia-300/20',
-                            'TACTICAL': 'text-blue-400 bg-blue-400/10 border-blue-400/20',
-                            'REFERENCE': 'text-slate-300 bg-slate-300/10 border-slate-300/20'
-                        };
-                        (ev.node_traces || []).forEach(trace => {
-                            const row = document.createElement('tr');
-                            const rawType = trace.trace_type || trace.type || 'SIGNAL';
-                            const typeKey = rawType.toUpperCase();
-                            const typeClass = TYPE_COLORS[typeKey] || 'text-white/40 bg-white/5 border-white/10';
-                            const isHighlight = typeKey === 'ADVISORY' || typeKey === 'REFERENCE';
-                            row.className = `border-b border-white/5 hover:bg-white/[0.02] transition-colors ${isHighlight ? 'bg-white/[0.02]' : ''}`;
-                            row.innerHTML = `
-                                <td class="px-4 py-4 align-top">
-                                    <div class="font-bold text-white/70 mb-1">${trace.node}</div>
-                                    <span class="text-[8px] px-1.5 py-0.5 rounded-full border ${typeClass} font-black uppercase tracking-tighter">${rawType}</span>
-                                </td>
-                                <td class="px-4 py-4 space-y-2">
-                                    <div class="font-mono text-[9px] ${isHighlight ? 'text-slate-200 bg-slate-200/5 border-slate-200/10' : 'text-emerald-400 bg-emerald-400/5 border-emerald-400/10'} px-2 py-1 rounded inline-block border">${trace.formula}</div>
-                                    <div class="text-[10px] leading-relaxed opacity-60 italic">${trace.explanation}</div>
-                                </td>
-                                <td class="px-4 py-4 align-top text-right">
-                                    <span class="text-[10px] font-black tracking-tight text-white px-2 py-1 rounded bg-white/5 border border-white/10 ${isHighlight ? 'border-slate-400/30 text-slate-100' : ''}">${trace.result}</span>
-                                </td>
-                            `;
-                            tableBody.appendChild(row);
-                        });
-                    }
-
-                    const f = ev.factors || {};
-                    safeUpdate('val-spread', f.macro?.credit_spread, ' bps');
-                    safeUpdate('val-erp', f.macro?.erp ? f.macro.erp.toFixed(2) : '--', '%');
-                    safeUpdate('val-liq', f.macro?.liquidity_roc ? (f.macro.liquidity_roc > 0 ? '+' : '') + f.macro.liquidity_roc.toFixed(2) : '--', '%');
-                    safeUpdate('val-vix', f.tactical?.vix ? f.tactical.vix.toFixed(1) : '--');
-                    safeUpdate('val-fg', f.tactical?.fear_greed);
-                    safeUpdate('val-stress', f.tactical?.tactical_stress, ' pts');
-                }
             } catch (e) {
-                console.error("Dashboard Error:", e);
+                console.error(e);
                 body.className = 'state-stale min-h-screen flex items-center justify-center p-4 font-sans';
-                indicator.className = 'w-3 h-3 rounded-full bg-red-600';
                 staleMsg.classList.remove('hidden');
-                staleMsg.querySelector('p').textContent = e.message.includes('INTEGRITY') ? "数据损坏 - 拒绝显示报告" : "物理链路中断 - 信号失效";
-                document.getElementById('regime').textContent = "数据获取失败";
             }
         }
-
         updateDashboard();
         setInterval(updateDashboard, 300000);
     </script>
