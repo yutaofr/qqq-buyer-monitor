@@ -47,6 +47,22 @@ def _get_regime_emoji(regime: str | None) -> str:
     return "⚖️"
 
 
+def _get_deployment_emoji(state: str | None) -> str:
+    if not state:
+        return "❓"
+    if "FAST" in state:
+        return "🚀"
+    if "BASE" in state:
+        return "🏠"
+    if "SLOW" in state:
+        return "🐢"
+    if "PAUSE" in state:
+        return "⏸️"
+    if "RECOVER" in state:
+        return "🩹"
+    return "🔘"
+
+
 def _format_beta(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.2f}x"
 
@@ -58,12 +74,15 @@ def _format_pct(value: float | None) -> str:
 def _build_v11_decision_path(result: SignalResult) -> str:
     execution = result.v11_execution
     lock_status = "🔒 **LOCKED**" if execution.get("lock_active") else "🔓 **ACTIVE**"
+    deploy_state = result.deployment_state.value if result.deployment_state else "n/a"
+    deploy_emoji = _get_deployment_emoji(deploy_state)
     
     return (
         f"🔘 **Posterior Regime:** `{result.tier0_regime or 'n/a'}`\n"
         f"↳ **Entropy Penalty:** `{result.v11_entropy:.3f}`\n"
         f"↳ **Beta Advisory:** `{_format_beta(result.raw_target_beta)}` → **`{_format_beta(result.target_beta)}`**\n"
         f"↳ **Execution Guard:** `{execution.get('target_bucket', 'n/a')}` ({lock_status})\n"
+        f"↳ **增量资金入场节奏:** {deploy_emoji} `{deploy_state}`\n"
         f"↳ **Lock Reason:** `{execution.get('reason', 'n/a')}`"
     )
 
@@ -75,13 +94,14 @@ def _build_decision_path(result: SignalResult) -> str:
     raw_beta = result.raw_target_beta if result.raw_target_beta is not None else result.target_beta
     risk_state = result.risk_state.value if result.risk_state else "n/a"
     deploy_state = result.deployment_state.value if result.deployment_state else "n/a"
+    deploy_emoji = _get_deployment_emoji(deploy_state)
     return (
         f"🔘 **Tier-0 (Macro):** `{result.tier0_regime or 'n/a'}`\n"
         f"↳ **Cycle (Tactical):** `{result.cycle_regime or 'n/a'}`\n"
         f"↳ **Risk Gate:** `{risk_state} (beta<={_format_beta(result.target_exposure_ceiling)})`\n"
         f"↳ **Candidate Selection:** `{result.selected_candidate_id or 'n/a'}`\n"
         f"↳ **Beta Advisory:** `{_format_beta(raw_beta)}` → **`{_format_beta(result.target_beta)}`**\n"
-        f"↳ **Deployment:** `{deploy_state}`"
+        f"↳ **增量资金入场节奏:** {deploy_emoji} `{deploy_state}`"
     )
 
 
@@ -108,11 +128,15 @@ def build_discord_payload(result: SignalResult) -> dict:
     if lock_active:
         color = COLOR_LOCKED
 
+    deploy_state = result.deployment_state.value if result.deployment_state else "n/a"
+    deploy_emoji = _get_deployment_emoji(deploy_state)
+
     # MOBILE OPTIMIZED SUMMARY
     if is_v11:
         summary_header = (
             f"### 🎯 Target Beta: `{_format_beta(result.target_beta)}`\n"
             f"**Bayesian Regime:** {macro_emoji} `{macro_regime}`\n"
+            f"**Incremental Pacing:** {deploy_emoji} `{deploy_state}`\n"
             f"**Entropy:** `{result.v11_entropy:.3f}` | **Lock:** `{'🔒 LOCKED' if lock_active else '🔓 ACTIVE'}`"
         )
     else:
@@ -121,7 +145,8 @@ def build_discord_payload(result: SignalResult) -> dict:
         summary_header = (
             f"### 🎯 Target Beta: `{_format_beta(result.target_beta)}`\n"
             f"**Macro Regime:** {macro_emoji} `{macro_regime}`\n"
-            f"**Tactical Cycle:** {cycle_emoji} `{cycle_regime}`"
+            f"**Tactical Cycle:** {cycle_emoji} `{cycle_regime}`\n"
+            f"**Incremental Pacing:** {deploy_emoji} `{deploy_state}`"
         )
 
     contract_desc = (
@@ -148,18 +173,18 @@ def build_discord_payload(result: SignalResult) -> dict:
             "value": (
                 f"**Bucket:** `{execution.get('target_bucket', 'n/a')}`\n"
                 f"**Action:** `{result.should_adjust}`\n"
+                f"**增量资金节奏:** {deploy_emoji} `{deploy_state}`\n"
                 f"**Lock Reason:** `{execution.get('reason', 'n/a')}`"
             ),
             "inline": False,
         })
     else:
         risk_state = result.risk_state.value if result.risk_state else "n/a"
-        deploy_state = result.deployment_state.value if result.deployment_state else "n/a"
         fields.append({
             "name": "🛡️ Technical Execution Audit",
             "value": (
                 f"**Risk Gate:** `{risk_state}`\n"
-                f"**New Cash Pace:** `{deploy_state}`\n"
+                f"**增量资金节奏:** {deploy_emoji} `{deploy_state}`\n"
                 f"**Candidate:** `{result.selected_candidate_id or 'n/a'}`"
             ),
             "inline": False,
