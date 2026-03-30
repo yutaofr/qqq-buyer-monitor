@@ -266,8 +266,22 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
             send_discord_signal(result, webhook_url)
 
     if not args.no_save:
+        from src.store.db import save_macro_state, save_runtime_inputs, save_signal
         save_signal(result)
-        logger.info("v11 signal successfully persisted to local DB.")
+        # Persistent audit trails for regression testing (AC-3)
+        save_runtime_inputs(
+            record_date=pd.Timestamp(price_data["date"]).date(),
+            available_new_cash=0.0, 
+            rolling_drawdown=drawdown_pct,
+        )
+        if erp is not None:
+            save_macro_state(
+                record_date=pd.Timestamp(price_data["date"]).date(),
+                credit_spread=float(credit_spread),
+                forward_pe=float(erp), # Mapping current ERP to forward_pe for DB compatibility
+                real_yield=float(real_yield) if real_yield else 0.0,
+            )
+        logger.info("v11 signal and runtime states successfully persisted.")
 
 
 def _history(args: argparse.Namespace) -> None:
@@ -895,6 +909,27 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 interpreter.print_decision_tree(result.logic_trace)
             except Exception as exc:
                 logger.warning("Narrative interpreter failed: %s", exc)
+
+    # Persist
+    if not args.no_save:
+        from src.store.db import save_macro_state, save_runtime_inputs, save_signal
+        save_signal(result)
+        save_runtime_inputs(
+            record_date=market_data.date,
+            available_new_cash=available_new_cash,
+            rolling_drawdown=rolling_drawdown,
+        )
+        if any(v is not None for v in (market_data.credit_spread, market_data.forward_pe, market_data.real_yield)):
+            save_macro_state(
+                record_date=market_data.date,
+                credit_spread=market_data.credit_spread,
+                trailing_pe=market_data.trailing_pe,
+                forward_pe=market_data.forward_pe,
+                real_yield=market_data.real_yield,
+                fcf_yield=market_data.fcf_yield,
+                earnings_revisions_breadth=market_data.earnings_revisions_breadth,
+            )
+        logger.info("v10 signal and macro states saved to DB.")
 
     # Signal and macro persistence is now handled inside run_v11_pipeline
     # to avoid duplication and ensure cloud-sync parity.
