@@ -631,7 +631,7 @@ def export_feature_library_to_blob(library_path: str | Path = "data/v11_feature_
     try:
         blob_token = os.environ.get("VERCEL_BLOB_READ_WRITE_TOKEN")
         is_ci = os.environ.get("GITHUB_ACTIONS") == "true"
-        
+
         if not is_ci or not blob_token:
             logger.info("Skipping feature library cloud upload (Non-CI or missing token).")
             return False
@@ -643,7 +643,7 @@ def export_feature_library_to_blob(library_path: str | Path = "data/v11_feature_
 
         logger.info("Syncing V11 Feature Library to Vercel Edge...")
         blob_url = "https://blob.vercel-storage.com/v11_feature_library.csv"
-        
+
         with open(lib_path, "rb") as f:
             content = f.read()
 
@@ -655,14 +655,29 @@ def export_feature_library_to_blob(library_path: str | Path = "data/v11_feature_
             "x-access": "public"
         }
 
-        resp = requests.put(blob_url, data=content, headers=headers, timeout=30)
-        if resp.status_code == 200:
-            logger.info("V11 Feature Library successfully persisted to cloud.")
-            return True
-        
-        logger.error("Vercel Blob Sync Failed (%d): %s", resp.status_code, resp.text)
+        max_retries = 3
+        backoff_factor = 2
+        for attempt in range(max_retries):
+            try:
+                resp = requests.put(blob_url, data=content, headers=headers, timeout=30)
+                if resp.status_code == 200:
+                    logger.info("V11 Feature Library successfully persisted to cloud.")
+                    return True
+
+                logger.error("Vercel Blob Sync Failed (%d, attempt %d/%d): %s", 
+                             resp.status_code, attempt+1, max_retries, resp.text)
+                if resp.status_code not in [500, 502, 503, 504]:
+                    break # Non-transient error
+            except Exception as e:
+                logger.warning("Transient error during library sync (attempt %d/%d): %s", 
+                               attempt+1, max_retries, e)
+
+            if attempt < max_retries - 1:
+                time_module.sleep(backoff_factor ** (attempt + 1))
+
         return False
 
     except Exception as e:
         logger.error("Critical failure during Vercel Blob library sync: %s", e)
         return False
+

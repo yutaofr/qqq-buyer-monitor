@@ -19,7 +19,7 @@ class FeatureLibraryManager:
 
     def _load_library(self) -> pd.DataFrame:
         """
-        加载特征库：优先从 Vercel Blob 同步最新数据，并与本地缓存合并。
+        Load feature library: prioritize Vercel Blob sync and merge with local cache.
         """
         local_df = pd.DataFrame()
         if self.storage_path.exists():
@@ -37,10 +37,13 @@ class FeatureLibraryManager:
         
         if is_ci and blob_token:
             try:
-                # Use standard public URL for reading if possible, or authenticated API
+                # Use the authenticated store URL
                 blob_url = "https://blob.vercel-storage.com/v11_feature_library.csv"
-                headers = {"authorization": f"Bearer {blob_token}"}
-                resp = requests.get(blob_url, headers=headers, timeout=10)
+                headers = {
+                    "authorization": f"Bearer {blob_token}",
+                    "x-api-version": "7"
+                }
+                resp = requests.get(blob_url, headers=headers, timeout=15)
                 
                 if resp.status_code == 200:
                     cloud_df = pd.read_csv(io.BytesIO(resp.content))
@@ -50,12 +53,15 @@ class FeatureLibraryManager:
                     if local_df.empty:
                         local_df = cloud_df
                     else:
-                        local_df = pd.concat([local_df, cloud_df]).drop_duplicates(subset=["observation_date"])
+                        # Prioritize cloud data for overlapping dates
+                        local_df = pd.concat([local_df, cloud_df]).drop_duplicates(subset=["observation_date"], keep="last")
                     
                     print(f"DEBUG: V11 Feature Library synced from cloud (Total rows: {len(local_df)})")
+                else:
+                    print(f"WARNING: V11 Cloud pull failed ({resp.status_code}): {resp.text}")
             except Exception as e:
-                # Silent fallback to local data to prevent pipeline halts
-                print(f"WARNING: V11 Cloud Sync failed, falling back to local: {e}")
+                # Silent fallback to local data
+                print(f"WARNING: V11 Cloud Sync exception: {e}")
 
         if not local_df.empty:
             return local_df.sort_values("observation_date").reset_index(drop=True)
