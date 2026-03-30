@@ -249,7 +249,8 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     sync_files = [
         "data/signals.db", 
         "data/v11_poc_phase1_results.csv",
-        "data/v11_full_evidence_history.csv"
+        "data/v11_full_evidence_history.csv",
+        "data/macro_historical_dump.csv"
     ]
     cloud.pull_state(sync_files)
     from src.output.cli import print_signal
