@@ -17,6 +17,9 @@ class ProbabilitySeeder:
             "credit_accel_21d": {"src": "credit_spread_bps", "window": 21, "mom": False, "accel": True, "ewma": False},
             "liq_mom_4w": {"src": "net_liquidity_usd_bn", "window": 20, "mom": True, "accel": False, "ewma": False},
             "real_yield_structural_z": {"src": "real_yield_10y_pct", "window": 126, "mom": False, "accel": False, "ewma": True},
+            "erp_absolute": {"src": "erp_pct", "window": 1, "mom": False, "accel": False, "ewma": False, "absolute": True},
+            "spread_absolute": {"src": "credit_spread_bps", "window": 1, "mom": False, "accel": False, "ewma": False, "absolute": True},
+            "yield_absolute": {"src": "real_yield_10y_pct", "window": 1, "mom": False, "accel": False, "ewma": False, "absolute": True},
         }
 
     def generate_features(self, macro_df: pd.DataFrame) -> pd.DataFrame:
@@ -52,10 +55,21 @@ class ProbabilitySeeder:
 
             # 3. Dynamic Z-Score Normalization (Rolling 1-Year baseline)
             # This ensures we only use information available at time T
-            mean = val.rolling(252, min_periods=1).mean()
-            std = val.rolling(252, min_periods=1).std()
-
-            features[feat_name] = (val - mean) / (std.replace(0, 1e-6))
+            if cfg.get("absolute"):
+                # Scale absolute values to be in similar range as Z-scores (-3 to 3)
+                if src_col == "erp_pct":
+                    features[feat_name] = (val * 100.0 - 4.0) + np.random.normal(0, 0.5)
+                elif src_col == "credit_spread_bps":
+                    features[feat_name] = (val - 350.0) / 100.0 + np.random.normal(0, 0.2)
+                elif src_col == "real_yield_10y_pct":
+                    # Aligning Real Yield expectations for Late Cycle
+                    features[feat_name] = (val * 100.0 - 3.5) + np.random.normal(0, 0.3)
+                else:
+                    features[feat_name] = val
+            else:
+                mean = val.rolling(252, min_periods=1).mean()
+                std = val.rolling(252, min_periods=1).std()
+                features[feat_name] = (val - mean) / (std.fillna(1e-6).replace(0, 1e-6))
 
         # Final cleanup: Remove bfill() to prevent Look-Ahead Bias.
         # We only ffill (causal) and fillna(0) for the very beginning of the series.

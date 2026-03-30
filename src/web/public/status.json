@@ -1,7 +1,7 @@
 {
   "meta": {
     "version": "v11",
-    "calculated_at_utc": "2026-03-30T18:34:16Z",
+    "calculated_at_utc": "2026-03-30T18:55:04Z",
     "expires_at_utc": "2026-03-30T23:00:00Z",
     "market_state": "ACTIVE"
   },
@@ -12,14 +12,14 @@
     "contract_desc": "系统输出为概率优先的连续目标 Beta；后验概率决定方向，信息熵惩罚（Entropy Penalty）控制缩放，行为守卫（Behavioral Guard）负责离散化执行。",
     "cycle_regime": "中期平稳 (MID_CYCLE)",
     "target_beta": 1.0,
-    "raw_target_beta": 1.0,
+    "raw_target_beta": 1.0088470226727524,
     "beta_ceiling": 1.2,
     "qld_ceiling": null,
     "candidate_id": "v11_probabilistic",
-    "decision_path": "Tier-0(n/a) -> Cycle(n/a) -> Risk(n/a) -> Candidate(n/a) -> Advisory(1.00x->1.00x) -> Deployment(BASE)",
+    "decision_path": "Tier-0(n/a) -> Cycle(n/a) -> Risk(n/a) -> Candidate(n/a) -> Advisory(1.01x->1.00x) -> Deployment(BASE)",
     "exposure_band": "90-100% (满仓)",
     "exposure_desc": "目标 Beta 对应的存量风险带，用于帮助理解风险区间。",
-    "deploy_rhythm": "100.0% 就绪度",
+    "deploy_rhythm": "33.5% 就绪度",
     "deploy_desc": "基于 Bayesian Kelly 期望的连续入场系数 [0, 1]。",
     "reference_path": {
       "qqq_pct": 1.0,
@@ -29,10 +29,13 @@
     "reference_desc": "参考路径仅用于说明一种实现目标 beta 的仓位组合，不是系统强制配比。",
     "fidelity": "高 (Bayesian)",
     "v11_probabilities": {
-      "LATE_CYCLE": 0.0,
-      "MID_CYCLE": 1.0
+      "BUST": 0.025811238040839613,
+      "CAPITULATION": 3.935446429482438e-46,
+      "LATE_CYCLE": 0.09957039214153868,
+      "MID_CYCLE": 0.4579511686028242,
+      "RECOVERY": 0.41666720121479767
     },
-    "v11_entropy": 0.0,
+    "v11_entropy": 0.6502415311432083,
     "lock_active": false
   },
   "evidence": {
@@ -52,7 +55,7 @@
         "liquidity_roc": null
       },
       "tactical": {
-        "vix": 30.6299991607666,
+        "vix": 30.549999237060547,
         "fear_greed": null,
         "rolling_drawdown": null,
         "tactical_stress": 0
@@ -79,7 +82,7 @@
         "step": "position_sizer",
         "node": "Probabilistic Sizing 仓位建议",
         "type": "ADVISORY",
-        "formula": "raw_beta=1.00x",
+        "formula": "raw_beta=1.01x",
         "explanation": "基于后验分布与信息熵惩罚（Entropy Penalty）生成目标 Beta。",
         "result": "1.00x"
       },
@@ -95,9 +98,9 @@
         "step": "deployment_controller",
         "node": "Deployment 概率入场",
         "type": "TACTICAL",
-        "formula": "CDR=100.0% | E[Sharpe]=1.00 | ERP_Rank=100.0%",
+        "formula": "CDR=33.5% | E[Sharpe]=0.96 | ERP_Rank=100.0%",
         "explanation": "基于贝叶斯期望 Sharpe 与结构性估值百分位（CDR）决定新增资金节奏。",
-        "result": "100.0% Readiness"
+        "result": "33.5% Readiness"
       }
     ]
   }

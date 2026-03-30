@@ -1,5 +1,6 @@
 
 from pathlib import Path
+import requests
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -21,6 +22,7 @@ def test_export_feature_library_to_blob_retry_logic(mock_env):
         m1 = MagicMock()
         m1.status_code = 503
         m1.text = "Service Unavailable"
+        m1.raise_for_status.side_effect = requests.exceptions.HTTPError("503 Service Unavailable")
 
         m2 = MagicMock()
         m2.status_code = 200
