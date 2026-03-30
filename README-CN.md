@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Audit: 27yr Passed](https://img.shields.io/badge/审计-27年全通过-green.svg)](docs/WIKI_V11.md)
 
-**QQQ Entropy** 是一款面向个人投资者的概率决策“外骨骼”。它通过对过去 25 年以上市场记忆的贝叶斯推断，自动导航 `QQQ` (纳指100)、`QLD` (2倍做多纳指) 与 `现金` 之间的权重切换。
+**QQQ Entropy** 是一款面向个人投资者的概率决策“外骨骼”。它通过对过去 25 年以上市场记忆的贝叶斯推断，自动导航 `QQQ` (纳指100)、`QLD` (2倍做多纳指) 与 `现金` 之间的权重切换。系统对外只推荐 **组合级目标 beta**，它将旧版的 **Risk Controller**（负责 Beta 约束）与 **Deployment Controller**（负责 **新增现金** 入场节奏）收敛为统一的概率决策引擎。
 
 > “外骨骼不替你走路，但它能让你在风暴中站稳。”
 

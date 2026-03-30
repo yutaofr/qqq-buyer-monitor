@@ -78,6 +78,10 @@ def _runtime_result() -> SignalResult:
         "rolling_drawdown": 0.113,
         "tactical_stress_score": 52,
     }
+    result.v11_probabilities = {"MID_CYCLE": 0.8, "BUST": 0.2}
+    result.v11_entropy = 0.3
+    result.v11_execution = {"target_bucket": "QQQ", "lock_active": False}
+    result.engine_version = "v11"
     result.logic_trace = build_runtime_logic_trace(result)
     result.explanation = build_v8_explanation(result)
     return result
@@ -87,6 +91,7 @@ def test_discord_notification_uses_v9_target_beta_contract(monkeypatch):
     captured: dict = {}
 
     class _Response:
+        status_code = 204
         def raise_for_status(self) -> None:
             return None
 
@@ -103,7 +108,7 @@ def test_discord_notification_uses_v9_target_beta_contract(monkeypatch):
     assert ok is True
     embed = captured["json"]["embeds"][0]
     assert captured["url"] == "https://example.test/webhook"
-    assert "v10.0" in embed["title"]
+    assert "V11" in embed["title"]
     assert "v8.2" not in embed["title"]
     assert "🎯 Target Beta" in embed["description"]
     field_names = [field["name"] for field in embed["fields"]]
@@ -112,9 +117,9 @@ def test_discord_notification_uses_v9_target_beta_contract(monkeypatch):
     assert "📊 Recommended Portfolio" not in field_names
     decision_value = next(field["value"] for field in embed["fields"] if field["name"] == "🧭 Detailed Decision Path")
     reference_value = next(field["value"] for field in embed["fields"] if field["name"] == "📎 Reference Allocation")
-    assert "Tier-0 (Macro):** `RICH_TIGHTENING`" in decision_value
-    assert "Cycle (Tactical):** `LATE_CYCLE`" in decision_value
-    assert "Candidate Selection:** `reduced-limited-001`" in decision_value
-    assert "Deployment:** `DEPLOY_BASE`" in decision_value
+    assert "Posterior Regime:** `RICH_TIGHTENING`" in decision_value
+    assert "Entropy Penalty:** `0.300`" in decision_value
+    assert "Beta Advisory:** `0.80x` → **`0.50x`**" in decision_value
+    assert "Execution Guard:** `QQQ` (🔓 **ACTIVE**)" in decision_value
     assert "non-binding" in reference_value
     assert "QQQ=30.0%" in reference_value

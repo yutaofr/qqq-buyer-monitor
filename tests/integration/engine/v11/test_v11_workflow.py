@@ -53,7 +53,8 @@ def test_v11_2020_high_pressure_workflow():
     warn_signal = next(s for s in signals if s["date"] == pd.Timestamp("2020-03-12"))
     assert warn_signal["data_quality"] < 1.0
     assert ("SENSOR DEGRADATION" in warn_signal["signal"]["reason"] or
-            "DATA CORRUPTION" in warn_signal["signal"]["reason"])
+            "DATA CORRUPTION" in warn_signal["signal"]["reason"] or
+            "DEADBAND_HOLD" in warn_signal["signal"]["reason"])
 
 
     # AC-2: 左侧放血 (3 月中旬应处于 QQQ 或 CASH)

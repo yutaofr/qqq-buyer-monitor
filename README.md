@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Audit: 27yr Passed](https://img.shields.io/badge/Audit-27yr_Passed-green.svg)](docs/WIKI_V11.md)
 
-**QQQ Entropy** is a probabilistic decision exoskeleton for personal investors. It utilizes Bayesian inference across 25+ years of market memory to navigate regime shifts between `QQQ`, `QLD`, and `Cash`.
+**QQQ Entropy** is a probabilistic decision exoskeleton for personal investors. It utilizes Bayesian inference across 25+ years of market memory to navigate regime shifts between `QQQ`, `QLD`, and `Cash`. It unifies the legacy **Risk Controller** (beta caps) and **Deployment Controller** (cash staging) into a single, cohesive engine.
 
 > "The exoskeleton doesn't walk for you, but it keeps you upright in the storm."
 
