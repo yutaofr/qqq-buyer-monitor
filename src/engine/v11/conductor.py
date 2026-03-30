@@ -146,11 +146,14 @@ class V11Conductor:
         # Shift only occurs if the cumulative evidence exceeds the uncertainty-odds.
         final_beta = self.beta_mapper.calculate_inertial_beta(protected_beta, norm_h)
         
-        # 5. Continuous Deployment Readiness (v11.11)
-        # Entry signal is now a continuous probability multiplier [0, 1].
-        # Logic: Valuation Advantage (ERP_Z) * Information Certainty (1-H).
-        erp_z = float(features.iloc[-1].get("erp_21d_mom", 0.0)) # 21d ERP momentum as proxy for valuation change
-        deployment_readiness = norm.cdf(erp_z) * (1.0 - norm_h)
+        # 5. Value-Driven Continuous Deployment Readiness (v11.11 -> v11.12)
+        # Entry signal is now driven by Absolute Valuation Level (ERP Percentile).
+        # "Low Price = Low Risk" (Howard Marks logic).
+        erp_series = raw_t0_data.get('erp_pct', features.get('erp_pct', pd.Series([0.0])))
+        # Calculate the percentile of the current ERP within the available snapshot window (structural value).
+        erp_percentile = erp_series.rank(pct=True).iloc[-1]
+        
+        deployment_readiness = erp_percentile * (1.0 - norm_h)
         
         # 6. UI/Main Alignment Data
         latest_raw = raw_t0_data.iloc[-1]
