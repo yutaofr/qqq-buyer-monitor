@@ -7,6 +7,7 @@ import logging
 
 import numpy as np
 import pandas as pd
+from scipy.stats import norm
 from sklearn.naive_bayes import GaussianNB
 
 from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
@@ -145,7 +146,13 @@ class V11Conductor:
         # Shift only occurs if the cumulative evidence exceeds the uncertainty-odds.
         final_beta = self.beta_mapper.calculate_inertial_beta(protected_beta, norm_h)
         
-        # 5. UI/Main Alignment Data
+        # 5. Continuous Deployment Readiness (v11.11)
+        # Entry signal is now a continuous probability multiplier [0, 1].
+        # Logic: Valuation Advantage (ERP_Z) * Information Certainty (1-H).
+        erp_z = float(features.iloc[-1].get("erp_21d_mom", 0.0)) # 21d ERP momentum as proxy for valuation change
+        deployment_readiness = norm.cdf(erp_z) * (1.0 - norm_h)
+        
+        # 6. UI/Main Alignment Data
         latest_raw = raw_t0_data.iloc[-1]
         feature_values = {
             "credit_spread": float(latest_raw.get("credit_spread_bps", 0.0)),
@@ -181,6 +188,7 @@ class V11Conductor:
             "entropy": norm_h,
             "target_beta": final_beta,
             "raw_target_beta": raw_beta_expectation,
+            "deployment_readiness": deployment_readiness,
             "target_allocation": self._calculate_dollars(final_beta),
             "feature_values": feature_values,
             "data_quality": quality,
