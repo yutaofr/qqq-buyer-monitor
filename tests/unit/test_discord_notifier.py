@@ -110,29 +110,29 @@ def test_discord_notification_uses_v11_contract(monkeypatch):
     assert captured["url"] == "https://example.test/webhook"
     assert "V11" in embed["title"]
     assert "🎯 Target Beta" in embed["description"]
-    
+
     # Check summary header
     assert "**Incremental Pacing:** 🏠 `DEPLOY_BASE`" in embed["description"]
-    
+
     field_names = [field["name"] for field in embed["fields"]]
     assert "🧭 Detailed Decision Path" in field_names
     assert "📎 Reference Allocation" in field_names
     assert "🛡️ Execution Audit" in field_names
-    
+
     decision_value = next(field["value"] for field in embed["fields"] if field["name"] == "🧭 Detailed Decision Path")
     reference_value = next(field["value"] for field in embed["fields"] if field["name"] == "📎 Reference Allocation")
     audit_value = next(field["value"] for field in embed["fields"] if field["name"] == "🛡️ Execution Audit")
-    
+
     # Check decision path
     assert "Posterior Regime:** `RICH_TIGHTENING`" in decision_value
     assert "Entropy Penalty:** `0.300`" in decision_value
     assert "Beta Advisory:** `0.80x` → **`0.50x`**" in decision_value
     assert "Execution Guard:** `QQQ` (🔓 **ACTIVE**)" in decision_value
     assert "增量资金入场节奏:** 🏠 `DEPLOY_BASE`" in decision_value
-    
+
     # Check execution audit
     assert "增量资金节奏:** 🏠 `DEPLOY_BASE`" in audit_value
-    
+
     assert "non-binding" in reference_value
     assert "QQQ=30.0%" in reference_value
 
@@ -162,17 +162,17 @@ def test_discord_notification_uses_v10_contract(monkeypatch):
     assert ok is True
     embed = captured["json"]["embeds"][0]
     assert "V10" in embed["title"]
-    
+
     # Check summary header
     assert "**Incremental Pacing:** 🚀 `DEPLOY_FAST`" in embed["description"]
-    
+
     field_names = [field["name"] for field in embed["fields"]]
     assert "🛡️ Technical Execution Audit" in field_names
     assert "🧭 Detailed Decision Path" in field_names
-    
+
     audit_value = next(field["value"] for field in embed["fields"] if field["name"] == "🛡️ Technical Execution Audit")
     decision_value = next(field["value"] for field in embed["fields"] if field["name"] == "🧭 Detailed Decision Path")
-    
+
     assert "增量资金节奏:** 🚀 `DEPLOY_FAST`" in audit_value
     assert "增量资金入场节奏:** 🚀 `DEPLOY_FAST`" in decision_value
 

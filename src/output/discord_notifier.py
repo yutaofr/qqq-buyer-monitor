@@ -76,7 +76,7 @@ def _build_v11_decision_path(result: SignalResult) -> str:
     lock_status = "🔒 **LOCKED**" if execution.get("lock_active") else "🔓 **ACTIVE**"
     deploy_state = _get_deployment_state_str(result)
     deploy_emoji = _get_deployment_emoji(deploy_state)
-    
+
     return (
         f"🔘 **Posterior Regime:** `{result.tier0_regime or 'n/a'}`\n"
         f"↳ **Entropy Penalty:** `{result.v11_entropy:.3f}`\n"
@@ -90,7 +90,7 @@ def _build_v11_decision_path(result: SignalResult) -> str:
 def _build_decision_path(result: SignalResult) -> str:
     if result.engine_version == "v11":
         return _build_v11_decision_path(result)
-        
+
     raw_beta = result.raw_target_beta if result.raw_target_beta is not None else result.target_beta
     risk_state = result.risk_state.value if result.risk_state else "n/a"
     deploy_state = _get_deployment_state_str(result)
@@ -118,23 +118,23 @@ def _build_reference_path(result: SignalResult) -> str:
 def _get_deployment_state_str(result: SignalResult) -> str:
     if result.deployment_state:
         return result.deployment_state.value
-    
+
     # Fallback to deployment_action dict (common in some runtime paths)
     mode = result.deployment_action.get("deploy_mode")
     if mode:
         return f"DEPLOY_{mode}"
-    
+
     return "n/a"
 
 
 def build_discord_payload(result: SignalResult) -> dict:
     """Build a Discord payload that matches the v10/v11 decision contract."""
     is_v11 = result.engine_version == "v11"
-    
+
     macro_regime = result.tier0_regime or "NEUTRAL"
     color = REGIME_COLORS.get(macro_regime, COLOR_DEFAULT)
     macro_emoji = _get_regime_emoji(macro_regime)
-    
+
     execution = result.v11_execution if is_v11 else {}
     lock_active = execution.get("lock_active", False)
     if lock_active:
@@ -168,7 +168,7 @@ def build_discord_payload(result: SignalResult) -> dict:
     description = f"{summary_header}\n\n{contract_desc}\n\n**Briefing:** {result.explanation}"
 
     title = f"QQQ {result.engine_version.upper()} | Runtime Decision - {result.date}"
-    
+
     fields = []
     if is_v11:
         # Probabilities Distribution
@@ -179,7 +179,7 @@ def build_discord_payload(result: SignalResult) -> dict:
             "value": prob_str,
             "inline": False,
         })
-        
+
         fields.append({
             "name": "🛡️ Execution Audit",
             "value": (

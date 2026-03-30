@@ -27,8 +27,10 @@ class CalibrationService:
             return
 
         if feature_cols is None:
-            feature_cols = sorted(c for c in standardized_df.columns if c.endswith("_pct"))
-        
+            # Include both Level (_pct) and Momentum (_momentum)
+            # This follows Howard Marks' advice: "Not just level, but direction/derivative"
+            feature_cols = sorted(c for c in standardized_df.columns if c.endswith("_pct") or c.endswith("_momentum"))
+
         self.feature_cols = feature_cols
 
         # 1. 对齐数据
