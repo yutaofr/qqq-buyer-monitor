@@ -52,8 +52,8 @@ class ProbabilitySeeder:
 
             # 3. Dynamic Z-Score Normalization (Rolling 1-Year baseline)
             # This ensures we only use information available at time T
-            mean = val.rolling(252, min_periods=21).mean()
-            std = val.rolling(252, min_periods=21).std()
+            mean = val.rolling(252, min_periods=1).mean()
+            std = val.rolling(252, min_periods=1).std()
 
             features[feat_name] = (val - mean) / (std.replace(0, 1e-6))
 

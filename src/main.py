@@ -373,12 +373,20 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 
         # ── Daily CSV Feedback Loop (Memory Persistence) ─────────────────────
         macro_csv_path = "data/macro_historical_dump.csv"
-        # Always append aligned row to CSV to build long-term memory
+        # Only append the Sovereign Macro Suite (Date + 4 Factors) to build memory (AC-0/AC-3)
+        v11_macro_cols = [
+            "observation_date",
+            "erp_pct",
+            "real_yield_10y_pct",
+            "credit_spread_bps",
+            "net_liquidity_usd_bn"
+        ]
         try:
             # We append without header if file exists, else create with header
             header = not os.path.exists(macro_csv_path)
-            raw_row.to_csv(macro_csv_path, mode="a", index=False, header=header)
-            logger.info("Successfully APPENDED new day to %s.", macro_csv_path)
+            # Ensure we only write the 5 columns the V11 engine expects
+            raw_row[v11_macro_cols].to_csv(macro_csv_path, mode="a", index=False, header=header)
+            logger.info("Successfully APPENDED Sovereign Macro Suite to %s.", macro_csv_path)
         except Exception as e:
             logger.error("Failed to update macro CSV feedback loop: %s", e)
 
