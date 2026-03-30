@@ -113,6 +113,63 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
 
     top_regime = ordered_probs[0][0]
 
+    # Bridge v11 Bayesian output back to v10 deployment pacing logic (v8.2 compatibility)
+    from src.engine.deployment_controller import decide_deployment_state
+    from src.engine.feature_pipeline import FeatureSnapshot
+    from src.engine.risk_controller import RiskDecision
+    from src.models.risk import RiskState
+
+    # Map v11 top regime to discrete v10 states for the deployment controller
+    regime_to_risk = {
+        "MID_CYCLE": RiskState.RISK_NEUTRAL,
+        "BUST": RiskState.RISK_EXIT,
+        "CAPITULATION": RiskState.RISK_DEFENSE,
+        "RECOVERY": RiskState.RISK_REDUCED,
+        "LATE_CYCLE": RiskState.RISK_REDUCED,
+    }
+    regime_to_tier0 = {
+        "MID_CYCLE": "NEUTRAL",
+        "BUST": "CRISIS",
+        "CAPITULATION": "TRANSITION_STRESS",
+        "RECOVERY": "NEUTRAL",
+        "LATE_CYCLE": "RICH_TIGHTENING",
+    }
+
+    # Reconstruct a lightweight snapshot for v10 deployment logic
+    fv = runtime_result.get("feature_values", {})
+    snap = FeatureSnapshot(
+        market_date=runtime_result["date"],
+        values={
+            "credit_spread": fv.get("credit_spread"),
+            "credit_acceleration": fv.get("credit_acceleration", 0.0),
+            "net_liquidity": fv.get("net_liquidity"),
+            "liquidity_roc": fv.get("liquidity_roc", 0.0),
+            "funding_stress": fv.get("funding_stress", False),
+            "vix": fv.get("vix", 20.0),
+            "tactical_stress_score": fv.get("tactical_stress_score", 0),
+            "rolling_drawdown": fv.get("rolling_drawdown", 0.0),
+            "five_day_return": fv.get("five_day_return", 0.0),
+            "twenty_day_return": fv.get("twenty_day_return", 0.0),
+            "capitulation_score": fv.get("capitulation_score", 0),
+        },
+        quality={},
+    )
+    risk_dec = RiskDecision(
+        risk_state=regime_to_risk.get(top_regime, RiskState.RISK_NEUTRAL),
+        target_exposure_ceiling=1.2,
+        target_cash_floor=0.0,
+        qld_share_ceiling=1.0,
+        reasons=(),
+        tier0_applied=True,
+    )
+    deploy_dec = decide_deployment_state(
+        snap,
+        risk_dec,
+        tier0_regime=regime_to_tier0.get(top_regime, "NEUTRAL"),
+    )
+
+    primary_reason = deploy_dec.reasons[0] if deploy_dec.reasons else {}
+
     return SignalResult(
         date=runtime_result["date"],
         price=float(price),
@@ -135,10 +192,22 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
                 },
             },
             {"step": "behavior_guard", "decision": runtime_result["signal"]},
+            {
+                "step": "deployment_controller",
+                "decision": deploy_dec.deployment_state.value,
+                "reasons": deploy_dec.reasons,
+            },
         ],
         target_allocation=target_allocation,
         raw_target_beta=float(runtime_result["raw_target_beta"]),
         target_beta=float(runtime_result["target_beta"]),
+        deployment_state=deploy_dec.deployment_state,
+        deployment_reasons=list(deploy_dec.reasons),
+        deployment_action={
+            "deploy_mode": deploy_dec.deployment_state.value.replace("DEPLOY_", ""),
+            "reason": primary_reason.get("rule", "controller_decision"),
+            "path": primary_reason.get("path"),
+        },
         should_adjust=bool(runtime_result["signal"].get("action_required", False)),
         rebalance_action=dict(runtime_result["signal"]),
         tier0_regime=top_regime,

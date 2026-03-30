@@ -37,17 +37,24 @@ def _format_pct_points(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.2f}%"
 
 
+def _get_deployment_state_str(result: SignalResult) -> str:
+    """Extract raw mode string (FAST/BASE/SLOW/PAUSE) for mapping."""
+    if result.deployment_state:
+        return result.deployment_state.value.replace("DEPLOY_", "")
+    return result.deployment_action.get("deploy_mode", "BASE")
+
+
 def _build_decision_path(result: SignalResult) -> str:
     raw_beta = result.raw_target_beta if result.raw_target_beta is not None else result.target_beta
     risk_state = result.risk_state.value if result.risk_state else "n/a"
-    deploy_state = result.deployment_state.value if result.deployment_state else "n/a"
+    deploy_mode = _get_deployment_state_str(result)
     return (
         f"Tier-0({result.tier0_regime or 'n/a'}) -> "
         f"Cycle({result.cycle_regime or 'n/a'}) -> "
         f"Risk({risk_state}) -> "
         f"Candidate({result.selected_candidate_id or 'n/a'}) -> "
         f"Advisory({_format_beta(raw_beta)}->{_format_beta(result.target_beta)}) -> "
-        f"Deployment({deploy_state})"
+        f"Deployment({deploy_mode})"
     )
 
 
@@ -467,7 +474,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         else:
             regime_key = str(result.tier0_regime) if result.tier0_regime else "NEUTRAL"
             
-        deploy_key = result.deployment_action.get("deploy_mode", "BASE")
+        deploy_key = _get_deployment_state_str(result)
 
         # Accessing with [] to raise KeyError if missing - system should failure rather than mask
         regime_info = REGIME_MAP.get(regime_key, {"label": regime_key, "desc": "Unknown regime"})

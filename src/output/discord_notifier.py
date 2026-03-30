@@ -74,7 +74,7 @@ def _format_pct(value: float | None) -> str:
 def _build_v11_decision_path(result: SignalResult) -> str:
     execution = result.v11_execution
     lock_status = "🔒 **LOCKED**" if execution.get("lock_active") else "🔓 **ACTIVE**"
-    deploy_state = result.deployment_state.value if result.deployment_state else "n/a"
+    deploy_state = _get_deployment_state_str(result)
     deploy_emoji = _get_deployment_emoji(deploy_state)
     
     return (
@@ -93,7 +93,7 @@ def _build_decision_path(result: SignalResult) -> str:
         
     raw_beta = result.raw_target_beta if result.raw_target_beta is not None else result.target_beta
     risk_state = result.risk_state.value if result.risk_state else "n/a"
-    deploy_state = result.deployment_state.value if result.deployment_state else "n/a"
+    deploy_state = _get_deployment_state_str(result)
     deploy_emoji = _get_deployment_emoji(deploy_state)
     return (
         f"🔘 **Tier-0 (Macro):** `{result.tier0_regime or 'n/a'}`\n"
@@ -115,6 +115,18 @@ def _build_reference_path(result: SignalResult) -> str:
     )
 
 
+def _get_deployment_state_str(result: SignalResult) -> str:
+    if result.deployment_state:
+        return result.deployment_state.value
+    
+    # Fallback to deployment_action dict (common in some runtime paths)
+    mode = result.deployment_action.get("deploy_mode")
+    if mode:
+        return f"DEPLOY_{mode}"
+    
+    return "n/a"
+
+
 def build_discord_payload(result: SignalResult) -> dict:
     """Build a Discord payload that matches the v10/v11 decision contract."""
     is_v11 = result.engine_version == "v11"
@@ -128,7 +140,7 @@ def build_discord_payload(result: SignalResult) -> dict:
     if lock_active:
         color = COLOR_LOCKED
 
-    deploy_state = result.deployment_state.value if result.deployment_state else "n/a"
+    deploy_state = _get_deployment_state_str(result)
     deploy_emoji = _get_deployment_emoji(deploy_state)
 
     # MOBILE OPTIMIZED SUMMARY

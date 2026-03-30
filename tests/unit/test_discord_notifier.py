@@ -175,3 +175,30 @@ def test_discord_notification_uses_v10_contract(monkeypatch):
     
     assert "增量资金节奏:** 🚀 `DEPLOY_FAST`" in audit_value
     assert "增量资金入场节奏:** 🚀 `DEPLOY_FAST`" in decision_value
+
+
+def test_discord_notification_pacing_fallback(monkeypatch):
+    captured: dict = {}
+
+    class _Response:
+        status_code = 204
+        def raise_for_status(self) -> None:
+            return None
+
+    def fake_post(url, json, timeout):  # noqa: ANN001
+        captured["url"] = url
+        captured["json"] = json
+        captured["timeout"] = timeout
+        return _Response()
+
+    monkeypatch.setattr("src.output.discord_notifier.requests.post", fake_post)
+
+    result = _runtime_result()
+    result.deployment_state = None
+    result.deployment_action = {"deploy_mode": "SLOW"}
+
+    ok = send_discord_signal(result, "https://example.test/webhook")
+
+    assert ok is True
+    embed = captured["json"]["embeds"][0]
+    assert "**Incremental Pacing:** 🐢 `DEPLOY_SLOW`" in embed["description"]
