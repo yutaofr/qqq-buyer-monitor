@@ -1,9 +1,6 @@
-"""v11.5 Conductor: The Unified Probabilistic Orchestrator.
-Coordinates JIT-model training, multi-horizon feature seeding, and entropy-controlled execution.
-"""
-from __future__ import annotations
-
+import json
 import logging
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -31,23 +28,28 @@ class ExecutionGuard:
             self.cooldown_days_remaining -= 1
 
 class V11Conductor:
-    # Architect-Approved Optimal Constants
-    ENTROPY_THRESHOLD = 0.65
+    """The Sovereign Orchestrator. No hard-coded logic constants allowed. (AC-0)"""
 
-    # Standard v11.5 Base Betas
-    BASE_BETAS = {
-        "BUST": 0.5,
-        "CAPITULATION": 1.05,
-        "RECOVERY": 1.1,
-        "LATE_CYCLE": 0.8,
-        "MID_CYCLE": 1.0
-    }
-
-    def __init__(self, macro_data_path: str = "data/macro_historical_dump.csv",
+    def __init__(self,
+                 macro_data_path: str = "data/macro_historical_dump.csv",
                  regime_data_path: str = "data/v11_poc_phase1_results.csv",
+                 audit_path: str = "src/engine/v11/resources/regime_audit.json",
                  initial_model: GaussianNB | None = None):
+        # 0. Load Sovereign Calibration (Audit Archive)
+        self.audit_path = Path(audit_path)
+        if not self.audit_path.exists():
+            raise FileNotFoundError(f"CRITICAL: Audit archive missing at {audit_path}")
+        
+        with open(self.audit_path, "r", encoding="utf-8") as f:
+            self.audit_data = json.load(f)
+            
+        self.base_betas = self.audit_data["base_betas"]
+        self.regime_sharpes = self.audit_data["regime_sharpes"]
+        self.entropy_threshold = self.audit_data["risk_thresholds"]["entropy_max"]
+
+        # v11.5 Internal Controllers
         self.seeder = ProbabilitySeeder()
-        self.entropy_ctrl = EntropyController(threshold=self.ENTROPY_THRESHOLD)
+        self.entropy_ctrl = EntropyController(threshold=self.entropy_threshold)
         self.beta_mapper = InertialBetaMapper()
         self.outlier_guard = MahalanobisGuard()
 
@@ -122,10 +124,10 @@ class V11Conductor:
         probs_array = probs[0]
         posteriors = {str(k): float(v) for k, v in zip(self.gnb.classes_, probs_array, strict=True)}
 
-        # 3. Entropy Haircut (Epic 3)
-        # Calculate raw expectation from the current posterior distribution
-        raw_beta_expectation = sum(posteriors.get(regime, 1.0) * self.BASE_BETAS.get(regime, 1.0) 
-                                   for regime in posteriors)
+        # 3. Probabilistic Exposure Mapping (v11.5)
+        # AC-0: No constants. Base betas are audit-derived.
+        raw_beta_expectation = sum(posteriors.get(regime, 0.0) * self.base_betas.get(regime, 1.0) 
+                                   for regime in self.base_betas.keys())
         
         norm_h = self.entropy_ctrl.calculate_normalized_entropy(posteriors)
         
@@ -153,15 +155,8 @@ class V11Conductor:
         erp_percentile = erp_series.rank(pct=True).iloc[-1]
         
         # Bayesian Expected Sharpe (Win-Rate * Odds)
-        # Coefficients derived from the 25-year structural audit.
-        regime_sharpes = {
-            "RECOVERY": 1.2,
-            "MID_CYCLE": 1.0,
-            "BUST": -0.8,
-            "CAPITULATION": 1.5,
-            "LATE_CYCLE": 0.2
-        }
-        e_sharpe = sum(posteriors.get(r, 0.0) * s for r, s in regime_sharpes.items())
+        # Parameters derived from self.audit_data (Structural Consistency).
+        e_sharpe = sum(posteriors.get(r, 0.0) * s for r, s in self.regime_sharpes.items())
         
         # CDR = Information Clarity * Positive Expectation * Structural Value
         deployment_readiness = (1.0 - norm_h) * max(0.0, e_sharpe) * erp_percentile
