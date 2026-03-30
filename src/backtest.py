@@ -2390,7 +2390,7 @@ def run_v11_audit(
     from src.engine.v11.conductor import V11Conductor
     from src.engine.v11.core.entropy_controller import EntropyController
     from src.engine.v11.probability_seeder import ProbabilitySeeder
-    from src.engine.v11.signal.hysteresis_beta_mapper import HysteresisBetaMapper
+    from src.engine.v11.signal.inertial_beta_mapper import InertialBetaMapper
     from src.output.backtest_plots import (
         save_v11_fidelity_figure,
         save_v11_probabilistic_audit_figure,
@@ -2446,20 +2446,26 @@ def run_v11_audit(
 
     # 7. Sequential Execution Loop (Epic 3 & 4 Alignment)
     entropy_ctrl = EntropyController(threshold=V11Conductor.ENTROPY_THRESHOLD)
-    beta_mapper = HysteresisBetaMapper(V11Conductor.BASE_BETAS, delta_threshold=V11Conductor.DELTA_THRESHOLD)
-
+    beta_mapper = InertialBetaMapper()
+ 
     execution_rows = []
     for _, prob_row in probability_df.iterrows():
         dt = prob_row["date"]
         source_row = test[test["observation_date"] == dt].iloc[0]
         posteriors = prob_row["posterior"]
 
-        # Bayesian -> Entropy -> Hysteresis
-        raw_beta = beta_mapper.calculate_expectation(posteriors)
+        # Bayesian -> Entropy -> Odds-Ratio CUSUM
+        # 3. Entropy Haircut (Epic 3)
+        # Calculate raw expectation from the current posterior distribution
+        raw_beta = sum(posteriors.get(regime, 1.0) * V11Conductor.BASE_BETAS.get(regime, 1.0) 
+                       for regime in posteriors)
+                                   
         norm_h = entropy_ctrl.calculate_normalized_entropy(posteriors)
         protected_beta = entropy_ctrl.apply_haircut(raw_beta, norm_h)
-        final_beta = beta_mapper.apply_hysteresis(protected_beta)
-
+        
+        # 4. Odds-Ratio CUSUM (v11.10)
+        final_beta = beta_mapper.calculate_inertial_beta(protected_beta, norm_h)
+ 
         execution_rows.append({
             "date": dt,
             "target_beta": final_beta,
@@ -2467,10 +2473,9 @@ def run_v11_audit(
             "entropy": norm_h,
             "predicted_regime": prob_row["predicted_regime"],
             "actual_regime": source_row["regime"],
-            "lock_active": (beta_mapper.cooldown_remaining > 0),
+            "lock_active": False,
             "close": source_row["qqq_close"]
         })
-        beta_mapper.tick_cooldown()
 
     execution_df = pd.DataFrame(execution_rows)
     full_audit_df = pd.merge(execution_df, probability_df.drop(columns=["posterior"]), on="date", how="left")

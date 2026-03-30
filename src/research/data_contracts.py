@@ -1,4 +1,4 @@
-"""Canonical data contract for v7.0 Class A historical macro research inputs."""
+"""Canonical data contract for v11.10 Class A historical macro research inputs."""
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -15,7 +15,6 @@ REQUIRED_HISTORICAL_MACRO_COLUMNS: tuple[str, ...] = (
     "forward_pe",
     "erp_pct",
     "real_yield_10y_pct",
-    "nfci_raw",
     "net_liquidity_usd_bn",
     "liquidity_roc_pct_4w",
     "funding_stress_flag",
@@ -23,7 +22,6 @@ REQUIRED_HISTORICAL_MACRO_COLUMNS: tuple[str, ...] = (
     "source_forward_pe",
     "source_erp",
     "source_real_yield",
-    "source_nfci",
     "source_net_liquidity",
     "source_funding_stress",
     "build_version",
