@@ -144,6 +144,7 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
         v11_entropy=float(runtime_result.get("entropy", 0.0)),
         v11_execution=dict(runtime_result["signal"]),
         v11_quality_audit=quality_audit,
+        feature_values=dict(runtime_result.get("feature_values", {})),
     )
 
 
@@ -152,8 +153,10 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     import os
 
     from src.collector.breadth import fetch_breadth
+    from src.collector.fear_greed import fetch_fear_greed
+    from src.collector.fundamentals import fetch_forward_pe
     from src.collector.macro import fetch_credit_spread
-    from src.collector.macro_v3 import fetch_net_liquidity
+    from src.collector.macro_v3 import fetch_net_liquidity, fetch_real_yield
     from src.collector.price import fetch_price_data
     from src.collector.vix import fetch_vix_term_structure
     from src.engine.v11.conductor import V11Conductor
@@ -171,6 +174,29 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         vix_term = {"vix": 20.0, "vix3m": None}
 
     try:
+        fg = fetch_fear_greed()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Fear & Greed fetch failed for v11: %s", exc)
+        fg = 50
+
+    try:
+        pe_dict = fetch_forward_pe()
+        forward_pe = pe_dict.get("forward_pe")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Forward PE fetch failed for v11: %s", exc)
+        forward_pe = None
+
+    try:
+        real_yield = fetch_real_yield()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Real Yield fetch failed for v11: %s", exc)
+        real_yield = None
+
+    erp = None
+    if forward_pe and real_yield:
+        erp = (100.0 / forward_pe) - real_yield
+
+    try:
         breadth = fetch_breadth()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Breadth fetch failed for v11: %s", exc)
@@ -183,10 +209,10 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         credit_spread = 400.0
 
     try:
-        _, liquidity_roc = fetch_net_liquidity()
+        net_liq, liquidity_roc = fetch_net_liquidity()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Net-liquidity fetch failed for v11: %s", exc)
-        liquidity_roc = 0.0
+        net_liq, liquidity_roc = None, 0.0
 
     reference_capital = float(os.environ.get("V11_REFERENCE_CAPITAL", "100000"))
     current_nav = float(os.environ.get("V11_CURRENT_NAV", str(reference_capital)))
@@ -197,12 +223,15 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
             {
                 "observation_date": pd.Timestamp(price_data["date"]),
                 "credit_spread_bps": float(credit_spread),
+                "net_liquidity": float(net_liq) if net_liq is not None else None,
                 "liquidity_roc_pct_4w": float(liquidity_roc or 0.0),
                 "vix": float(vix_term["vix"]),
                 "vix3m": None if vix_term.get("vix3m") is None else float(vix_term["vix3m"]),
                 "qqq_close": float(price_data["price"]),
                 "drawdown_pct": drawdown_pct,
                 "breadth_proxy": float(breadth.get("pct_above_50d", 0.50)),
+                "fear_greed": float(fg),
+                "erp": float(erp) if erp is not None else None,
                 "reference_capital": reference_capital,
                 "current_nav": current_nav,
             }
@@ -235,7 +264,9 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 
     if not args.no_save:
         save_signal(result)
-        logger.info("v11 signal saved to DB.")
+        from src.output.web_exporter import export_web_snapshot
+        export_web_snapshot(result)
+        logger.info("v11 signal saved to DB and exported to web.")
 
 
 def _history(args: argparse.Namespace) -> None:
