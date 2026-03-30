@@ -18,8 +18,8 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
-from src.models.deployment import AllocationState, DeploymentState
-from src.models.signal import SignalResult
+from src.models import AllocationState, SignalResult
+from src.models.deployment import DeploymentState
 from src.store.cloud_manager import CloudPersistenceBridge
 
 if TYPE_CHECKING:
