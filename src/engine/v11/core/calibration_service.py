@@ -22,6 +22,10 @@ class CalibrationService:
         """
         根据标定标签训练 KDE 模型。
         """
+        if "regime" not in labeled_df.columns:
+            self.is_fitted = False
+            return
+
         feature_cols = sorted(c for c in standardized_df.columns if c.endswith("_pct"))
         self.feature_cols = feature_cols
 
