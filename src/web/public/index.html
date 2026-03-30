@@ -350,7 +350,11 @@
                     if (!res.ok) throw new Error("Local fetch failed");
                 } catch (e) {
                     console.warn("Local status.json unavailable, attempting cloud fetch...");
-                    res = await fetch(PROD_BLOB_URL + '?t=' + Date.now(), { cache: 'no-store' });
+                    res = await fetch(PROD_BLOB_URL + '?t=' + Date.now(), { 
+                        method: 'GET',
+                        cache: 'no-store',
+                        headers: { 'pragma': 'no-cache', 'cache-control': 'no-cache' }
+                    });
                 }
 
                 if (!res.ok) throw new Error("No data source available");
@@ -430,17 +434,17 @@
                     safeUpdate('tree-risk', isV11 ? `V11 Bayesian Sizing → ${data.signal.target_beta.toFixed(2)}x` : `${ev.risk_state} → ${data.signal.candidate_id}`);
                     safeUpdate('tree-deploy', isV11 ? `${data.signal.deploy_rhythm} · Lock=${isLocked}` : `${data.signal.deploy_rhythm} · QQQ only`);
 
-                    const updateGhostTags = (id, activeKey, activeLabel = "") => {
+                    const updateGhostTags = (id, activeLabel = "") => {
                         const el = document.getElementById(id);
                         if (!el) return;
                         const container = el.parentElement;
                         const tags = container.querySelectorAll('span');
-                        const key = (activeKey || "").toUpperCase();
                         const label = (activeLabel || "").toUpperCase();
+                        
                         tags.forEach(t => {
                             const tagText = t.textContent.toUpperCase();
-                            const isMatch = (key.includes(tagText) || tagText.includes(key)) || 
-                                           (label && (label.includes(tagText) || tagText.includes(label)));
+                            // Fuzzy match: if tag text is inside the label (e.g., "BUST" in "休克 (BUST)")
+                            const isMatch = label.includes(tagText) || tagText.includes(label);
                             t.className = isMatch ? 
                                 'text-[8px] font-bold text-emerald-400 opacity-100 px-1.5 py-0.5 rounded bg-emerald-400/10 border border-emerald-400/20 transition-all' : 
                                 'text-[8px] font-medium text-ghost px-1.5 py-0.5';
@@ -448,7 +452,7 @@
                         });
                     };
 
-                    updateGhostTags('tree-t0', regime);
+                    updateGhostTags('tree-t0', data.signal.regime);
                     updateGhostTags('tree-cycle', data.signal.cycle_regime);
 
                     const tableBody = document.getElementById('evidence-table-body');
