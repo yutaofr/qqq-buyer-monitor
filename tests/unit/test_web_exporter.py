@@ -250,5 +250,5 @@ def test_web_index_narrative_uses_v9_target_beta_contract():
 
     assert "v11.0" in html
     assert "v8.2" not in html
-    assert "连续 Beta 建议 (Advisory)" in html
-    assert "Tier-0 -> Cycle -> Risk -> Candidate -> Advisory -> Deployment" in html
+    assert "Beta 建议" in html
+    # The linear path is v10 legacy, v11 uses Bayesian Probabilities shown in prob-container
