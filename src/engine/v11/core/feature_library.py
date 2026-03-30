@@ -52,6 +52,7 @@ class FeatureLibraryManager:
             "drawdown_stress",
             "breadth_stress",
             "term_structure_stress",
+            "erp_stress",
         ]
         standardized = pd.DataFrame(index=df.index)
         standardized["observation_date"] = df["observation_date"]
@@ -98,5 +99,15 @@ class FeatureLibraryManager:
             vix = pd.to_numeric(df["vix"], errors="coerce")
             vix3m = pd.to_numeric(df["vix3m"], errors="coerce").replace(0, pd.NA)
             df["term_structure_stress"] = (vix / vix3m).clip(lower=0.0)
+
+        # New Features for Audit
+        if "forward_pe" in df.columns and "real_yield_10y_pct" in df.columns:
+            pe = pd.to_numeric(df["forward_pe"], errors="coerce")
+            yield10y = pd.to_numeric(df["real_yield_10y_pct"], errors="coerce")
+            erp = (100.0 / pe) - yield10y
+            df["erp_stress"] = (-erp).fillna(0.0) # Lower ERP = Higher Stress
+
+        if "funding_stress_flag" in df.columns:
+            df["funding_stress"] = pd.to_numeric(df["funding_stress_flag"], errors="coerce").fillna(0.0)
 
         return df

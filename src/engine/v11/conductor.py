@@ -108,7 +108,8 @@ class V11Conductor:
             "net_liquidity": float(latest_row.get("net_liquidity", 0.0)) if latest_row.get("net_liquidity") is not None else None,
             "liquidity_roc": float(latest_row.get("liquidity_roc_pct_4w", 0.0)),
             "vix": float(latest_row.get("vix", 0.0)),
-            "fear_greed": int(latest_row.get("fear_greed", 50)),
+            "fear_greed": int(latest_row.get("fear_greed", 50)) if pd.notnull(latest_row.get("fear_greed")) else 50,
+            "funding_stress": float(latest_row.get("funding_stress_flag", 0.0)),
         }
         
         # 计算战术压力得分 (基于标准化动量的绝对值总和作为 UI 代理)
