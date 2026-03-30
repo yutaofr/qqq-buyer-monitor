@@ -55,7 +55,10 @@ def _build_runtime_traces(result: SignalResult) -> list[dict]:
     from src.output.cli import build_runtime_logic_trace
 
     traces = result.logic_trace
-    if not traces or traces[0].get("step") != "tier0_regime":
+    if result.engine_version == "v11":
+        return traces
+        
+    if not traces or (len(traces) > 0 and traces[0].get("step") != "tier0_regime"):
         traces = build_runtime_logic_trace(result)
     return traces
 
@@ -152,6 +155,56 @@ def _build_web_node_traces(result: SignalResult) -> list[dict]:
                     "formula": formula,
                     "explanation": reason,
                     "result": decision,
+                }
+            )
+        # v11 specific steps
+        elif step == "degradation":
+            formula = f"quality={decision.get('quality_score', 0.0):.2f}"
+            node_traces.append(
+                {
+                    "step": step,
+                    "node": "Data Degradation 数据降级",
+                    "type": "FILTER",
+                    "formula": formula,
+                    "explanation": "物理常识校验与清洗，质量分低于 0.5 时强制 CASH。",
+                    "result": f"{decision.get('quality_score', 0.0):.2f}",
+                }
+            )
+        elif step == "posterior":
+            top_regime = max(decision.items(), key=lambda x: x[1])[0] if decision else "n/a"
+            formula = "Bayesian Posterior Distribution"
+            node_traces.append(
+                {
+                    "step": step,
+                    "node": "Bayesian Inference 贝叶斯推断",
+                    "type": "MACRO",
+                    "formula": formula,
+                    "explanation": "根据宏观与战术特征输出五态后验概率分布。",
+                    "result": top_regime,
+                }
+            )
+        elif step == "position_sizer":
+            formula = f"raw_beta={decision.get('raw_target_beta', 0.0):.2f}x"
+            node_traces.append(
+                {
+                    "step": step,
+                    "node": "Probabilistic Sizing 仓位建议",
+                    "type": "ADVISORY",
+                    "formula": formula,
+                    "explanation": "基于后验分布与信息熵惩罚（Entropy Penalty）生成目标 Beta。",
+                    "result": f"{decision.get('target_beta', 0.0):.2f}x",
+                }
+            )
+        elif step == "behavior_guard":
+            formula = f"bucket={decision.get('target_bucket', 'n/a')}"
+            node_traces.append(
+                {
+                    "step": step,
+                    "node": "Behavioral Guard 行为守卫",
+                    "type": "SIGNAL",
+                    "formula": formula,
+                    "explanation": "施加执行级约束，包括死区滞后、结算锁与单日变动上限。",
+                    "result": decision.get("target_bucket", "n/a"),
                 }
             )
         elif step == "reference_path":
@@ -365,7 +418,13 @@ REGIME_MAP = {
     "TRANSITION_STRESS": {"label": "压力过渡 (STRESS)", "desc": "市场波动加剧，信贷条件收紧，建议审慎缩减敞口。"},
     "RICH_TIGHTENING": {"label": "流动性边际收紧 (RICH_TIGHTENING)", "desc": "估值性价比极低，政策环境收紧，禁止增加杠杆。"},
     "NEUTRAL": {"label": "中性平衡 (NEUTRAL)", "desc": "估值与流动性处于动态平衡，维持基准配置。"},
-    "EUPHORIC": {"label": "过度狂热 (EUPHORIC)", "desc": "市场情绪过热，定价脱离物理现实，获利离场。"}
+    "EUPHORIC": {"label": "过度狂热 (EUPHORIC)", "desc": "市场情绪过热，定价脱离物理现实，获利离场。"},
+    # V11 Bayesian Posteriors
+    "MID_CYCLE": {"label": "中期平稳 (MID_CYCLE)", "desc": "周期中性平稳期，穿越波动的基准轨道。"},
+    "BUST": {"label": "休克 (BUST)", "desc": "信贷断裂引发流动性休克，强制避险。"},
+    "CAPITULATION": {"label": "投降 (CAPITULATION)", "desc": "绝望式抛售触及极值，高赔率反弹窗口。"},
+    "RECOVERY": {"label": "修复 (RECOVERY)", "desc": "最差阶段已过，动能开始共振回归。"},
+    "LATE_CYCLE": {"label": "末端 (LATE_CYCLE)", "desc": "周期动能衰减，结构性风险增加，审慎缩减。"},
 }
 
 CYCLE_REGIME_MAP = {
@@ -387,7 +446,7 @@ DEPLOY_MAP = {
 
 def export_web_snapshot(result: SignalResult, output_path: str | Path | None = None) -> bool:
     """
-    Export a web snapshot aligned with the v10 cycle-aware runtime contract.
+    Export a web snapshot aligned with the v10/v11 cycle-aware runtime contract.
     """
     try:
         now_utc = datetime.now(UTC)
@@ -399,12 +458,20 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         from src.output.report import summarize_data_quality
 
         # Resolve mappings with MUST-HAVE integrity (Fail-Closed)
-        regime_key = str(result.tier0_regime)
-        deploy_key = result.deployment_action["deploy_mode"]
+        is_v11 = result.engine_version == "v11"
+        
+        # v11 unified regime vs v10 dual regime
+        if is_v11 and result.v11_probabilities:
+            # Pick top posterior for V11
+            regime_key = max(result.v11_probabilities.items(), key=lambda x: x[1])[0]
+        else:
+            regime_key = str(result.tier0_regime) if result.tier0_regime else "NEUTRAL"
+            
+        deploy_key = result.deployment_action.get("deploy_mode", "BASE")
 
         # Accessing with [] to raise KeyError if missing - system should failure rather than mask
-        regime_info = REGIME_MAP[regime_key]
-        deploy_info = DEPLOY_MAP[deploy_key]
+        regime_info = REGIME_MAP.get(regime_key, {"label": regime_key, "desc": "Unknown regime"})
+        deploy_info = DEPLOY_MAP.get(deploy_key, {"label": deploy_key, "desc": "Unknown deployment"})
 
         # Final Validation of core target beta (AC-3 Data Truthfulness)
         if result.target_beta is None:
@@ -415,9 +482,20 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
             "qld_pct": result.target_allocation.target_qld_pct,
             "cash_pct": result.target_allocation.target_cash_pct,
         }
+        
+        # V11 specific descriptive contract
+        contract_desc = (
+            "系统输出为概率优先的连续目标 Beta；"
+            "后验概率决定方向，信息熵惩罚（Entropy Penalty）控制缩放，"
+            "行为守卫（Behavioral Guard）负责离散化执行。"
+        ) if is_v11 else (
+            "系统输出 contract 是 target_beta 信号；用户自行决定资产配置比例，"
+            "风险带和参考路径只用于帮助理解实现区间。"
+        )
+
         payload = {
             "meta": {
-                "version": "v10.0",
+                "version": result.engine_version if is_v11 else "v10.0",
                 "calculated_at_utc": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "expires_at_utc": expires_at_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "market_state": market_state,
@@ -426,21 +504,18 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "regime": regime_info["label"],
                 "regime_desc": regime_info["desc"],
                 "contract": "target_beta_signal",
-                "contract_desc": (
-                    "系统输出 contract 是 target_beta 信号；用户自行决定资产配置比例，"
-                    "风险带和参考路径只用于帮助理解实现区间。"
-                ),
+                "contract_desc": contract_desc,
                 "cycle_regime": (
                     CYCLE_REGIME_MAP.get(str(result.cycle_regime), {"label": str(result.cycle_regime)})["label"]
-                    if result.cycle_regime else "NEUTRAL"
+                    if result.cycle_regime else (regime_info["label"] if is_v11 else "NEUTRAL")
                 ),
                 "target_beta": result.target_beta,
                 "raw_target_beta": (
                     result.raw_target_beta if result.raw_target_beta is not None else result.target_beta
                 ),
-                "beta_ceiling": result.target_exposure_ceiling,
+                "beta_ceiling": result.target_exposure_ceiling if result.target_exposure_ceiling is not None else 1.2,
                 "qld_ceiling": result.qld_share_ceiling,
-                "candidate_id": result.selected_candidate_id,
+                "candidate_id": result.selected_candidate_id or ("v11_probabilistic" if is_v11 else "n/a"),
                 "decision_path": _build_decision_path(result),
                 "exposure_band": _discretize_allocation(result.target_beta),
                 "exposure_desc": "目标 Beta 对应的存量风险带，用于帮助理解风险区间。",
@@ -448,10 +523,13 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "deploy_desc": deploy_info["desc"],
                 "reference_path": reference_path,
                 "reference_desc": "参考路径仅用于说明一种实现目标 beta 的仓位组合，不是系统强制配比。",
-                "fidelity": "高 (可靠)",
+                "fidelity": "高 (Bayesian)" if is_v11 else "高 (可靠)",
+                "v11_probabilities": result.v11_probabilities if is_v11 else {},
+                "v11_entropy": result.v11_entropy if is_v11 else 0.0,
+                "lock_active": result.v11_execution.get("lock_active", False) if is_v11 else False,
             },
             "evidence": {
-                "risk_state": result.risk_state.value if result.risk_state else None,
+                "risk_state": result.risk_state.value if result.risk_state else ("V11_CONTINUOUS" if is_v11 else None),
                 "risk_reasons": result.risk_reasons,
                 "deploy_reasons": result.deployment_reasons,
                 "data_quality_summary": summarize_data_quality(result.data_quality),
