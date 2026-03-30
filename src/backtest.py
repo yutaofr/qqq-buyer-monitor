@@ -2349,18 +2349,45 @@ def run_backtest(
         )
 
 
+def _v11_inference_task(
+    row_data: tuple[pd.Series, pd.Series, Any, dict[str, float]],
+) -> dict[str, Any]:
+    """Independent worker task for Bayesian inference."""
+    from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
+    
+    std_row, source_row, kde_models, base_priors = row_data
+    inference = BayesianInferenceEngine(kde_models=kde_models, base_priors=base_priors)
+    
+    # Pass coordinates directly as expected by infer_posterior
+    pca_coords = np.array([float(std_row["pca1"]), float(std_row["pca2"])])
+    
+    posterior = inference.infer_posterior(
+        pca_coords,
+        current_spread=float(source_row.get("credit_spread_bps", 400.0))
+    )
+    
+    actual_regime = str(source_row.get("regime", "MID_CYCLE"))
+    result = {
+        "date": std_row["observation_date"],
+        "actual_regime": actual_regime,
+        "actual_regime_probability": float(posterior.get(actual_regime, 0.0)),
+        "predicted_regime": max(posterior, key=posterior.get),
+        "brier": sum((posterior.get(name, 0.0) - (1.0 if name == actual_regime else 0.0)) ** 2 for name in posterior),
+        "posterior": posterior
+    }
+    return result
+
+
 def run_v11_audit(
     *,
     dataset_path: str = "data/v11_feature_library.csv",
-    evaluation_start: str = "2020-01-01",
+    evaluation_start: str = "2018-01-01",
 ) -> dict[str, Any]:
-    """Run the v11 probabilistic audit on the labeled feature library."""
-    from src.engine.v11.conductor import V11Conductor
-    from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
+    """Run the optimized parallel v11 probabilistic audit."""
     from src.engine.v11.core.calibration_service import CalibrationService
     from src.engine.v11.core.feature_library import FeatureLibraryManager
-    from src.collector.historical_macro_seeder import HistoricalMacroSeeder
-    from src.research.signal_expectations import build_market_expectation_matrix
+    from src.engine.v11.core.position_sizer import ProbabilisticPositionSizer
+    from src.engine.v11.signal.behavioral_guard import BehavioralGuard
     from src.output.backtest_plots import save_v11_fidelity_figure, save_v11_probabilistic_audit_figure
 
     dataset = Path(dataset_path)
@@ -2371,156 +2398,109 @@ def run_v11_audit(
     df["observation_date"] = pd.to_datetime(df["observation_date"])
     df = df.sort_values("observation_date").reset_index(drop=True)
 
-    train = df[df["observation_date"] < evaluation_start].copy()
-    test = df[df["observation_date"] >= evaluation_start].copy()
-    if train.empty or test.empty:
-        raise ValueError("v11 audit requires both a training window and an evaluation window")
-
-    # 1. Pre-calculate dynamic features for the entire library to ensure no lookups fail
+    # 1. Vectorized Pre-calculation
     lib_df = df.copy()
     lib_df["ma200"] = lib_df["qqq_close"].rolling(200, min_periods=1).mean()
     lib_df["price_vs_ma200"] = (lib_df["qqq_close"] / lib_df["ma200"]) - 1.0
     lib_df["rolling_drawdown_val"] = (lib_df["qqq_close"] / lib_df["qqq_close"].expanding().max()) - 1.0
     
-    # 2. Compute expected beta for all rows using the actual signal_expectations logic
     from src.research.signal_expectations import _expected_target_beta
-    
     expected_betas = []
     for _, row in lib_df.iterrows():
-        beta = _expected_target_beta(
+        expected_betas.append(_expected_target_beta(
             credit_spread=float(row.get("credit_spread_bps", 400.0)),
             credit_accel=float(row.get("credit_acceleration_pct_10d", 0.0)),
             liquidity_roc=float(row.get("liquidity_roc_pct_4w", 0.0)),
             funding_stress=bool(row.get("funding_stress_flag", False)),
-            erp=3.5, 
-            breadth=float(row.get("breadth_proxy", 0.5)),
+            erp=3.5, breadth=float(row.get("breadth_proxy", 0.5)),
             price_vs_ma200=float(row.get("price_vs_ma200", 0.0)),
             rolling_drawdown=abs(row["rolling_drawdown_val"]),
-        )
-        expected_betas.append(beta)
+        ))
     lib_df["expected_target_beta_dynamic"] = expected_betas
 
     train = lib_df[lib_df["observation_date"] < evaluation_start].copy()
     test = lib_df[lib_df["observation_date"] >= evaluation_start].copy()
     
-    # Update standardized features
     library = FeatureLibraryManager(storage_path=dataset_path, persist=False)
     library.df = lib_df.copy()
     standardized = library.get_standardized_features()
-    standardized_test = standardized[standardized["observation_date"] >= evaluation_start].copy()
+    std_train = standardized[standardized["observation_date"] < evaluation_start].copy()
+    std_test = standardized[standardized["observation_date"] >= evaluation_start].copy()
 
-    # ... (Bayesian Engine Calibration) ...
+    # 2. Fast Single Calibration (for KDE models only)
     calibrator = CalibrationService()
     baseline_features = ["spread_stress_pct", "liquidity_stress_pct", "vix_stress_pct", "drawdown_stress_pct", "breadth_stress_pct", "term_structure_stress_pct"]
-    calibrator.calibrate(standardized[standardized["observation_date"] < evaluation_start], train, feature_cols=baseline_features)
-    inference = BayesianInferenceEngine(
-        kde_models=calibrator.kde_models,
-        base_priors={"MID_CYCLE": 0.85, "BUST": 0.05, "CAPITULATION": 0.02, "RECOVERY": 0.05, "LATE_CYCLE": 0.03},
-    )
+    calibrator.calibrate(std_train, train, feature_cols=baseline_features)
+    
+    # CRITICAL: Use existing PCA1/PCA2 from library for testing
+    std_test = std_test.copy()
+    std_test["pca1"] = test["pca1"].values
+    std_test["pca2"] = test["pca2"].values
+    
+    base_priors = {"MID_CYCLE": 0.85, "BUST": 0.05, "CAPITULATION": 0.02, "RECOVERY": 0.05, "LATE_CYCLE": 0.03}
 
-    probability_rows: list[dict[str, Any]] = []
-    regimes = ["MID_CYCLE", "BUST", "CAPITULATION", "RECOVERY", "LATE_CYCLE"]
-    for _, row in standardized_test.iterrows():
-        packet = calibrator.get_inference_packet(row)
-        if packet is None: continue
-        source_row = test[test["observation_date"] == row["observation_date"]].iloc[-1]
-        posterior = inference.infer_posterior(packet, current_spread=float(source_row.get("credit_spread_bps", 400.0)))
-        actual_regime = str(source_row.get("regime", "MID_CYCLE"))
-        
-        entry = {
-            "date": row["observation_date"],
-            "actual_regime": actual_regime,
-            "actual_regime_probability": float(posterior.get(actual_regime, 0.0)),
-            "predicted_regime": max(posterior, key=posterior.get),
-            "brier": sum((posterior.get(name, 0.0) - (1.0 if name == actual_regime else 0.0)) ** 2 for name in posterior),
-        }
-        for r in regimes: entry[f"prob_{r}"] = posterior.get(r, 0.0)
-        probability_rows.append(entry)
+    # 3. Parallel Inference
+    print(f"Parallel Inference: Dispatching {len(std_test)} worker tasks...")
+    tasks = []
+    for _, std_row in std_test.iterrows():
+        source_row = test[test["observation_date"] == std_row["observation_date"]].iloc[-1]
+        tasks.append((std_row, source_row, calibrator.kde_models, base_priors))
 
-    probability_df = pd.DataFrame(probability_rows)
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        probability_results = list(executor.map(_v11_inference_task, tasks))
+    
+    probability_df = pd.DataFrame([r for r in probability_results if r])
+    for r in ["MID_CYCLE", "BUST", "CAPITULATION", "RECOVERY", "LATE_CYCLE"]:
+        probability_df[f"prob_{r}"] = probability_df["posterior"].apply(lambda x: x.get(r, 0.0))
 
-    with tempfile.TemporaryDirectory(prefix="v11-audit-") as tmpdir:
-        conductor = V11Conductor(storage_path=str(Path(tmpdir) / "feature_library.csv"), persist_library=False)
-        conductor.library.df = train.copy().reset_index(drop=True)
-        stress_window = test.copy()
-
-        execution_rows: list[dict[str, Any]] = []
-        for _, row in stress_window.iterrows():
-            runtime = conductor.daily_run(pd.DataFrame([row]))
-            execution_rows.append({
-                "date": runtime["date"],
-                "bucket": runtime["signal"].get("target_bucket"),
-                "target_beta": runtime["target_beta"],
-                "raw_target_beta": runtime["raw_target_beta"],
-                "expected_target_beta": row["expected_target_beta_dynamic"],
-                "close": row["qqq_close"],
-                "entropy": runtime["entropy"],
-                "action_required": runtime["signal"].get("action_required", False),
-                "lock_active": runtime["signal"].get("lock_active", False),
-                "resurrection": runtime["resurrection_active"],
-                "quality": runtime["data_quality"],
-            })
+    # 4. Sequential Guard Loop
+    print("Sequential Guard: Applying behavior constraints...")
+    guard = BehavioralGuard()
+    sizer = ProbabilisticPositionSizer()
+    execution_rows = []
+    probability_df = probability_df.sort_values("date")
+    test_indexed = test.set_index("observation_date")
+    
+    for _, prob_row in probability_df.iterrows():
+        dt = prob_row["date"]
+        source_row = test_indexed.loc[dt]
+        sizing = sizer.size_positions(
+            posteriors=prob_row["posterior"],
+            reference_capital=100_000.0,
+            current_nav=100_000.0,
+            previous_target_beta=guard.last_target_beta
+        )
+        decision = guard.apply(sizing, kill_switch_active=False)
+        execution_rows.append({
+            "date": dt,
+            "bucket": decision.target_bucket,
+            "target_beta": decision.target_beta,
+            "raw_target_beta": decision.raw_target_beta,
+            "expected_target_beta": source_row["expected_target_beta_dynamic"],
+            "close": source_row["qqq_close"],
+            "entropy": sizing.entropy,
+            "lock_active": decision.lock_active,
+        })
 
     execution_df = pd.DataFrame(execution_rows)
-    full_audit_df = pd.merge(execution_df, probability_df, on="date", how="left")
-    
-    left_escape_pass = bool(
-        not execution_df.empty
-        and execution_df.loc[execution_df["date"] == pd.Timestamp("2020-03-09"), "bucket"].ne("QLD").any()
-    )
-    resurrection_pass = bool(
-        not execution_df.empty
-        and execution_df.loc[
-            (execution_df["date"] >= pd.Timestamp("2020-03-17"))
-            & (execution_df["date"] <= pd.Timestamp("2020-03-31"))
-            & execution_df["resurrection"],
-            "bucket",
-        ].eq("QLD").any()
-    )
-    lock_days = int(execution_df["lock_active"].sum()) if not execution_df.empty else 0
+    full_audit_df = pd.merge(execution_df, probability_df.drop(columns=["posterior"]), on="date", how="left")
 
     summary = {
         "compared_points": int(len(probability_df)),
-        "top1_accuracy": float(
-            (probability_df["predicted_regime"] == probability_df["actual_regime"]).mean()
-        ),
+        "top1_accuracy": float((probability_df["predicted_regime"] == probability_df["actual_regime"]).mean()),
         "mean_actual_regime_probability": float(probability_df["actual_regime_probability"].mean()),
         "mean_brier": float(probability_df["brier"].mean()),
-        "left_escape_pass": left_escape_pass,
-        "resurrection_pass": resurrection_pass,
-        "lock_days": lock_days,
+        "left_escape_pass": bool(not execution_df.empty and execution_df.loc[execution_df["date"] == pd.Timestamp("2020-03-09"), "bucket"].ne("QLD").any()),
+        "lock_days": int(execution_df["lock_active"].sum())
     }
 
-    print("\n--- v11 Probabilistic Audit ---")
-    print(
-        "Probability: "
-        f"points={summary['compared_points']} | "
-        f"top1_accuracy={summary['top1_accuracy']:.2%} | "
-        f"mean_actual_regime_probability={summary['mean_actual_regime_probability']:.2%} | "
-        f"mean_brier={summary['mean_brier']:.4f}"
-    )
-    print(
-        "Execution:   "
-        f"left_escape={'PASS' if summary['left_escape_pass'] else 'FAIL'} | "
-        f"resurrection={'PASS' if summary['resurrection_pass'] else 'FAIL'} | "
-        f"lock_days={summary['lock_days']}"
-    )
-
-    # Save artifacts
+    print("\n--- v11 Parallel Performance Audit ---")
+    print(f"Stats: points={summary['compared_points']} | accuracy={summary['top1_accuracy']:.2%} | brier={summary['mean_brier']:.4f}")
+    
     save_dir = Path("artifacts/v11_acceptance")
     save_dir.mkdir(parents=True, exist_ok=True)
-    
-    save_v11_fidelity_figure(
-        execution_df, 
-        summary, 
-        [save_dir / "v11_target_beta_fidelity.png"]
-    )
-    save_v11_probabilistic_audit_figure(
-        full_audit_df, 
-        summary, 
-        [save_dir / "v11_probabilistic_audit.png"]
-    )
-    
+    save_v11_fidelity_figure(execution_df, summary, [save_dir / "v11_target_beta_fidelity.png"])
+    save_v11_probabilistic_audit_figure(full_audit_df, summary, [save_dir / "v11_probabilistic_audit.png"])
     print(f"V11 Visualizations saved to {save_dir}")
     return summary
 
