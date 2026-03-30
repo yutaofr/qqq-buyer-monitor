@@ -115,7 +115,7 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
 
     # Bridge v11 Bayesian output back to v10 deployment pacing logic (v8.2 compatibility)
     from src.engine.deployment_controller import decide_deployment_state
-    from src.engine.feature_pipeline import FeatureSnapshot
+    from src.engine.feature_pipeline import build_feature_snapshot
     from src.engine.risk_controller import RiskDecision
     from src.models.risk import RiskState
 
@@ -137,9 +137,9 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
 
     # Reconstruct a lightweight snapshot for v10 deployment logic
     fv = runtime_result.get("feature_values", {})
-    snap = FeatureSnapshot(
+    snap = build_feature_snapshot(
         market_date=runtime_result["date"],
-        values={
+        raw_values={
             "credit_spread": fv.get("credit_spread"),
             "credit_acceleration": fv.get("credit_acceleration", 0.0),
             "net_liquidity": fv.get("net_liquidity"),
@@ -152,7 +152,7 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
             "twenty_day_return": fv.get("twenty_day_return", 0.0),
             "capitulation_score": fv.get("capitulation_score", 0),
         },
-        quality={},
+        raw_quality={},
     )
     risk_dec = RiskDecision(
         risk_state=regime_to_risk.get(top_regime, RiskState.RISK_NEUTRAL),
