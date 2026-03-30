@@ -24,109 +24,230 @@
         .prob-bar { height: 8px; border-radius: 6px; background: var(--emerald); transition: width 1.8s cubic-bezier(0.34, 1.56, 0.64, 1); }
         .overclock { background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444, #10b981); animation: flow 3s linear infinite; background-size: 300% 100%; }
         @keyframes flow { 0% { background-position: 100% 0; } 100% { background-position: 0% 0; } }
+
+        /* Lumiere Point Animation */
+        .lumiere { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; position: relative; }
+        .lumiere::after { content: ''; position: absolute; top: -5px; left: -5px; right: -5px; bottom: -5px; border-radius: 50%; background: inherit; filter: blur(10px); opacity: 0.6; animation: breathe 3s ease-in-out infinite; }
+        @keyframes breathe { 0%, 100% { opacity: 0.4; transform: scale(1); } 50% { opacity: 0.8; transform: scale(1.6); } }
+        
+        /* Interactive feedback */
+        button:active, a:active { transform: scale(0.96); opacity: 0.8; }
+        
+        /* Mobile Optimizations */
+        @media (max-width: 480px) {
+            .glass { padding: 1.5rem !important; border-radius: 2.5rem !important; }
+            h1 { font-size: 2rem !important; }
+            #regime { font-size: 2.5rem !important; }
+            #exposure { font-size: 4.5rem !important; }
+            .factor-card { padding: 1rem !important; border-radius: 1.5rem !important; }
+            .main-card { padding: 1.5rem !important; border-radius: 2rem !important; }
+            .tag { font-size: 10px !important; padding: 0.4rem 0.6rem !important; }
+        }
     </style>
 </head>
-<body id="body" class="min-h-screen flex items-center justify-center p-4">
-    <div class="max-w-[460px] w-full glass rounded-[4rem] p-10 relative">
-        <div class="absolute top-12 right-12 flex items-center space-x-4">
-            <span id="market-label" class="text-[9px] font-black opacity-40 uppercase">--</span>
-            <div id="indicator" class="w-3.5 h-3.5 rounded-full bg-red-500"></div>
+<body id="body" class="min-h-screen flex items-center justify-center p-3 sm:p-4">
+    <div class="max-w-[460px] w-full glass rounded-[3.5rem] sm:rounded-[4rem] p-8 sm:p-10 relative overflow-hidden">
+        <!-- Top Status Bar -->
+        <div class="absolute top-8 sm:top-12 left-0 right-0 px-8 sm:px-12 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <div id="indicator" class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.5)]"></div>
+                <span id="market-label" class="text-[10px] sm:text-[11px] font-black opacity-60 uppercase tracking-widest">--</span>
+            </div>
+            <p class="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase">v11.0 Bayesian</p>
         </div>
-        <div class="mb-14">
-            <h1 class="text-4xl font-black tracking-tighter text-white">晴雨表</h1>
-            <p class="text-[11px] font-black text-slate-500 uppercase mt-1">v11.0 Bayesian Monitor</p>
+
+        <div class="mt-12 sm:mt-14 mb-8 sm:mb-12">
+            <h1 class="text-3xl sm:text-4xl font-black tracking-tighter text-white">晴雨表</h1>
         </div>
-        <div class="space-y-10 text-center mb-12">
+
+        <!-- Main State Section -->
+        <div class="space-y-8 sm:space-y-10 text-center mb-10 sm:mb-12">
             <div class="space-y-3">
-                <p class="text-[11px] font-black uppercase opacity-70 text-slate-500">主导制度 (Regime)</p>
-                <p id="regime" class="text-5xl font-black tracking-tighter text-white">--</p>
+                <p class="text-[11px] font-black uppercase opacity-50 text-slate-500 tracking-wider">主导制度 (Regime)</p>
+                <div class="flex items-center justify-center space-x-4">
+                    <div id="regime-lumiere" class="lumiere bg-slate-500"></div>
+                    <p id="regime" class="text-4xl sm:text-5xl font-black tracking-tighter text-white break-words transition-colors duration-1000">--</p>
+                </div>
             </div>
-            <div class="grid grid-cols-2 gap-5 px-2">
-                <div class="factor-card p-6 rounded-[2.5rem]"><p class="text-[10px] font-black text-slate-500 uppercase mb-2 text-left text-xs">信息熵</p><p id="entropy" class="text-3xl font-black text-emerald-400 text-left">--</p></div>
-                <div class="factor-card p-6 rounded-[2.5rem]"><p class="text-[10px] font-black text-slate-500 uppercase mb-2 text-left text-xs">执行状态</p><p id="deploy" class="text-2xl font-black text-blue-400 text-left">--</p></div>
+            
+            <div class="grid grid-cols-2 gap-4 sm:gap-5">
+                <div class="factor-card p-5 sm:p-6 rounded-[1.8rem] sm:rounded-[2.5rem] flex flex-col items-start bg-white/[0.03]">
+                    <p class="text-[10px] font-black text-slate-500 uppercase mb-2">信息熵</p>
+                    <p id="entropy" class="text-2xl sm:text-3xl font-black text-emerald-400/90">--</p>
+                </div>
+                <div class="factor-card p-5 sm:p-6 rounded-[1.8rem] sm:rounded-[2.5rem] flex flex-col items-start bg-white/[0.03]">
+                    <p class="text-[10px] font-black text-slate-500 uppercase mb-2">入场节奏</p>
+                    <p id="deploy" class="text-xl sm:text-2xl font-black transition-colors duration-1000">--</p>
+                </div>
             </div>
         </div>
-        <div class="factor-card p-10 rounded-[3.5rem] border-t-2 border-emerald-500/30 mb-10">
-            <div class="flex justify-between items-end mb-8">
-                <div><p class="text-[11px] font-black uppercase text-emerald-400 mb-2">Beta 建议</p><p id="exposure" class="text-7xl font-black text-white">--</p></div>
-                <div class="text-right"><p class="text-[10px] font-bold text-slate-500">Confidence</p><p class="text-[11px] font-black text-white uppercase">BAYESIAN</p></div>
+
+        <!-- Beta Recommendation Card -->
+        <div class="factor-card p-8 sm:p-10 rounded-[2.5rem] sm:rounded-[3.5rem] border-t border-white/10 mb-8 sm:mb-10 bg-gradient-to-br from-white/[0.05] to-transparent">
+            <div class="flex justify-between items-end mb-6 sm:mb-8">
+                <div>
+                    <p class="text-[11px] font-black uppercase text-emerald-400/80 mb-2">Beta 建议</p>
+                    <p id="exposure" class="text-6xl sm:text-7xl font-black text-white leading-none">--</p>
+                </div>
+                <div class="text-right pb-1">
+                    <p class="text-[10px] font-bold text-slate-500 uppercase mb-1">Confidence</p>
+                    <p class="text-[10px] sm:text-[11px] font-black text-white bg-emerald-500/20 px-2 py-0.5 rounded text-center">BAYESIAN</p>
+                </div>
             </div>
-            <div class="w-full h-4 bg-white/5 rounded-full overflow-hidden mb-6 p-0.5"><div id="exposure-bar" class="h-full rounded-full transition-all duration-2000" style="width: 0%"></div></div>
-            <div class="flex justify-between text-[11px] font-black text-slate-500">
-                <div class="flex flex-col"><span>上限</span><span id="beta-ceiling" class="text-slate-200">--</span></div>
-                <div class="flex flex-col text-right"><span>原始</span><span id="raw-beta" class="text-emerald-500">--</span></div>
+            <div class="w-full h-3 sm:h-4 bg-white/5 rounded-full overflow-hidden mb-5 sm:mb-6 p-0.5 border border-white/5">
+                <div id="exposure-bar" class="h-full rounded-full transition-all duration-2000 ease-out" style="width: 0%"></div>
+            </div>
+            <div class="flex justify-between text-[10px] sm:text-[11px] font-black text-slate-500">
+                <div class="flex flex-col"><span>上限 Ceiling</span><span id="beta-ceiling" class="text-slate-200">--</span></div>
+                <div class="flex flex-col text-right"><span>原始 Raw</span><span id="raw-beta" class="text-emerald-500/80">--</span></div>
             </div>
         </div>
-        <div class="grid grid-cols-2 gap-4 mb-6">
-            <button onclick="toggleInsights()" class="bg-white/5 py-5 rounded-3xl text-[11px] font-black uppercase text-white">决策审计</button>
-            <a href="https://github.com/yutaofr/qqq-buyer-monitor/wiki/V11-%22Entropy%22-%E6%A6%82%E7%8E%87%E5%86%B3%E7%AD%96%E5%A4%96%E9%AA%A8%E9%AA%BC%E7%94%A8%E6%88%B7%E6%89%8B%E5%86%8C" target="_blank" class="bg-white/5 flex items-center justify-center py-5 rounded-3xl text-[11px] font-black uppercase text-white no-underline">运行手册</a>
+
+        <!-- Actions -->
+        <div class="grid grid-cols-2 gap-3 sm:gap-4 mb-4">
+            <button onclick="toggleInsights()" class="bg-white/5 py-4 sm:py-5 rounded-2xl sm:rounded-3xl text-[11px] font-black uppercase text-white hover:bg-white/10 transition-all active:scale-95">决策审计</button>
+            <a href="https://github.com/yutaofr/qqq-buyer-monitor/wiki/V11-%22Entropy%22-%E6%A6%82%E7%8E%87%E5%86%B3%E7%AD%96%E5%A4%96%E9%AA%A8%E9%AA%BC%E7%94%A8%E6%88%B7%E6%89%8B%E5%86%8C" target="_blank" class="bg-white/5 flex items-center justify-center py-4 sm:py-5 rounded-2xl sm:rounded-3xl text-[11px] font-black uppercase text-white no-underline hover:bg-white/10 transition-all active:scale-95">运行手册</a>
         </div>
+
+        <!-- Insights Panel -->
         <div id="insights-panel">
-            <div class="space-y-16 py-10 border-t border-white/10 text-center">
-                <div class="space-y-6"><p class="text-[11px] font-black uppercase opacity-40">后验概率分布</p><div id="prob-container" class="space-y-5 px-6"></div></div>
+            <div class="space-y-12 sm:space-y-16 py-8 sm:py-10 border-t border-white/10 text-center">
+                <div class="space-y-6">
+                    <p class="text-[11px] font-black uppercase opacity-40 tracking-widest">后验概率分布 (Posterior)</p>
+                    <div id="prob-container" class="space-y-4 px-4 sm:px-6"></div>
+                </div>
+                
                 <div class="flex flex-col items-center">
-                    <p class="text-[11px] font-black uppercase opacity-40 mb-10">联动决策树</p>
+                    <p class="text-[11px] font-black uppercase opacity-40 mb-10 tracking-widest">联动决策树 (Logic Tree)</p>
                     <div class="w-full max-w-xs space-y-4">
-                        <div class="flex flex-wrap justify-center gap-2"><span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl">CRISIS</span><span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl">STRESS</span><span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl">NEUTRAL</span><span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl">EUPHORIC</span></div>
+                        <div class="flex flex-wrap justify-center gap-2">
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="CRISIS">危机 <span class="opacity-30">CRS</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="STRESS">压力 <span class="opacity-30">STR</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="NEUTRAL">中性 <span class="opacity-30">NEU</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="EUPHORIC">过热 <span class="opacity-30">EUP</span></span>
+                        </div>
                         <div class="tree-line active mx-auto"></div>
-                        <div class="flex flex-wrap justify-center gap-2"><span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl">BUST</span><span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl">CAPITULATION</span><span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl">MID_CYCLE</span><span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl">LATE_CYCLE</span></div>
+                        <div class="flex flex-wrap justify-center gap-2">
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="BUST">萧条 <span class="opacity-30">BST</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="CAPITULATION">投降 <span class="opacity-30">CAP</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="MID_CYCLE">中期 <span class="opacity-30">MID</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="LATE_CYCLE">后期 <span class="opacity-30">LAT</span></span>
+                        </div>
                         <div class="tree-line active mx-auto"></div>
-                        <div class="flex justify-center gap-4"><span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl">CASH</span><span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl">QQQ</span><span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl">QLD</span></div>
+                        <div class="flex justify-center gap-4">
+                            <span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl" data-key="CASH">现金 <span class="opacity-30">0X</span></span>
+                            <span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl" data-key="QQQ">仓位 <span class="opacity-30">1X</span></span>
+                            <span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl" data-key="QLD">杠杆 <span class="opacity-30">2X</span></span>
+                        </div>
                     </div>
                 </div>
-                <div class="pt-10 border-t border-white/5 text-[10px] font-black text-slate-600 uppercase text-left"><div class="flex justify-between"><span>数据源</span><span id="data-source" class="text-emerald-500">INIT...</span></div><div class="flex justify-between"><span>生成时间 (UTC)</span><span id="calc-at" class="text-slate-400">--</span></div></div>
+                
+                <div class="pt-10 border-t border-white/5 text-[10px] font-black text-slate-600 uppercase text-left">
+                    <div class="flex justify-between"><span>数据源 Data Source</span><span id="data-source" class="text-emerald-500">INIT...</span></div>
+                    <div class="flex justify-between"><span>更新时间 Generated (UTC)</span><span id="calc-at" class="text-slate-400">--</span></div>
+                </div>
             </div>
         </div>
     </div>
+
     <script>
         const PROD_BLOB_URL = 'https://rtmr1b9ayzxiugfu.public.blob.vercel-storage.com/status.json';
         const LOCAL_JSON = './status.json';
+        const MAPPING = {
+            'CRISIS': '危机 (CRISIS)', 'STRESS': '压力 (STRESS)', 'NEUTRAL': '中性 (NEUTRAL)', 'EUPHORIC': '过热 (EUPHORIC)',
+            'BUST': '萧条 (BUST)', 'CAPITULATION': '投降 (CAPITULATION)', 'MID_CYCLE': '中期 (MID_CYCLE)', 'LATE_CYCLE': '后期 (LATE_CYCLE)', 'RECOVERY': '复苏 (RECOVERY)',
+            'CASH': '现金 (CASH)', 'QQQ': '仓位 (QQQ)', 'QLD': '杠杆 (QLD)'
+        };
+        const SIMPLE_MAPPING = {
+            'CRISIS': '危机', 'STRESS': '压力', 'NEUTRAL': '中性', 'EUPHORIC': '过热',
+            'BUST': '萧条', 'CAPITULATION': '投降', 'MID_CYCLE': '中期', 'LATE_CYCLE': '后期', 'RECOVERY': '复苏',
+            'CASH': '现金', 'QQQ': '1x仓位', 'QLD': '2x杠杆'
+        };
+        const REGIME_COLORS = {
+            'MID_CYCLE': 'bg-blue-500', 'LATE_CYCLE': 'bg-yellow-500', 'BUST': 'bg-red-500', 'CAPITULATION': 'bg-emerald-500', 'RECOVERY': 'bg-emerald-500'
+        };
+        const REGIME_TEXT_COLORS = {
+            'MID_CYCLE': 'text-blue-400', 'LATE_CYCLE': 'text-yellow-400', 'BUST': 'text-red-400', 'CAPITULATION': 'text-emerald-400', 'RECOVERY': 'text-emerald-400'
+        };
+        const DEPLOY_COLORS = {
+            '极速': 'text-emerald-400', '常规': 'text-blue-400', '减速': 'text-yellow-400', '停买': 'text-red-400', '停止': 'text-red-400'
+        };
+
         function toggleInsights() { document.getElementById('insights-panel').classList.toggle('open'); }
         async function updateDashboard() {
             const body = document.getElementById('body');
             const sourceLabel = document.getElementById('data-source');
             let data = null;
             try {
-                // 1. TRY CLOUD FIRST
                 try {
                     const res = await fetch(PROD_BLOB_URL + '?t=' + Date.now(), { method: 'GET', mode: 'cors', cache: 'no-store' });
                     if (res.ok) { data = await res.json(); sourceLabel.textContent = "CLOUD_SYNCED"; sourceLabel.className = "text-emerald-500"; }
                 } catch (e) { console.warn("Cloud failed:", e); }
-                // 2. FALLBACK TO LOCAL
                 if (!data) {
                     const res = await fetch(LOCAL_JSON + '?t=' + Date.now(), { cache: 'no-store' });
                     if (res.ok) { data = await res.json(); sourceLabel.textContent = "LOCAL_FALLBACK"; sourceLabel.className = "text-orange-500"; }
                 }
                 if (!data) throw new Error("Offline");
+                
                 body.classList.remove('state-stale');
                 const isLocked = data.signal.lock_active; const mkt = data.meta.market_state;
-                body.className = isLocked ? 'state-locked min-h-screen flex items-center justify-center p-4' : (mkt === 'ACTIVE' ? 'state-active min-h-screen flex items-center justify-center p-4' : 'state-frozen min-h-screen flex items-center justify-center p-4');
-                document.getElementById('indicator').className = `w-3.5 h-3.5 rounded-full ${isLocked ? 'bg-red-500 shadow-[0_0_20px_#ef4444]' : (mkt === 'ACTIVE' ? 'bg-emerald-400 shadow-[0_0_20px_#10b981]' : 'bg-purple-500 shadow-[0_0_20px_#a855f7]')}`;
-                document.getElementById('regime').textContent = data.signal.regime;
+                body.className = isLocked ? 'state-locked min-h-screen flex items-center justify-center p-3 sm:p-4' : (mkt === 'ACTIVE' ? 'state-active min-h-screen flex items-center justify-center p-3 sm:p-4' : 'state-frozen min-h-screen flex items-center justify-center p-3 sm:p-4');
+                document.getElementById('indicator').className = `w-2.5 h-2.5 rounded-full ${isLocked ? 'bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.8)]' : (mkt === 'ACTIVE' ? 'bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.8)]' : 'bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.8)]')}`;
+                
+                const rawRegime = (data.signal.regime || '--').toUpperCase();
+                let displayRegime = rawRegime;
+                let activeRegimeKey = 'MID_CYCLE';
+                for (const [k, v] of Object.entries(SIMPLE_MAPPING)) {
+                    if (rawRegime.includes(k)) { 
+                        displayRegime = v; 
+                        activeRegimeKey = k;
+                        break; 
+                    }
+                }
+                const rText = document.getElementById('regime');
+                rText.textContent = displayRegime;
+                rText.className = `text-4xl sm:text-5xl font-black tracking-tighter break-words ${REGIME_TEXT_COLORS[activeRegimeKey] || 'text-white'}`;
+                
+                const lumiere = document.getElementById('regime-lumiere');
+                lumiere.className = `lumiere ${REGIME_COLORS[activeRegimeKey] || 'bg-slate-500'}`;
+
                 document.getElementById('exposure').textContent = data.signal.target_beta.toFixed(2) + 'x';
                 document.getElementById('entropy').textContent = data.signal.v11_entropy.toFixed(3);
-                document.getElementById('deploy').textContent = data.signal.deploy_rhythm;
+                
+                const dRhythm = (data.signal.deploy_rhythm || '--').replace('入场', '').trim();
+                const dText = document.getElementById('deploy');
+                dText.textContent = dRhythm;
+                dText.className = `text-xl sm:text-2xl font-black ${DEPLOY_COLORS[dRhythm] || 'text-blue-400'}`;
+                
                 document.getElementById('calc-at').textContent = data.meta.calculated_at_utc.replace('T',' ').replace('Z','');
                 document.getElementById('beta-ceiling').textContent = data.signal.beta_ceiling.toFixed(2) + 'x';
                 document.getElementById('raw-beta').textContent = data.signal.raw_target_beta.toFixed(2) + 'x';
+                document.getElementById('market-label').textContent = mkt;
+
                 const bar = document.getElementById('exposure-bar'); const beta = data.signal.target_beta;
                 bar.style.width = Math.min(100, beta * 83.33) + '%'; bar.className = beta > 1.0 ? 'h-full overclock' : 'h-full bg-emerald-500';
+                
                 const fullReg = data.signal.regime.toUpperCase(); const cycReg = data.signal.cycle_regime.toUpperCase();
                 const bucket = (data.signal.reference_path.qld_pct > 0 ? "QLD" : (data.signal.reference_path.qqq_pct > 0.1 ? "QQQ" : "CASH"));
+                
                 document.querySelectorAll('.tag').forEach(t => {
-                    const txt = t.textContent.toUpperCase();
-                    if (fullReg.includes(txt) || txt.includes(fullReg) || cycReg.includes(txt) || txt.includes(cycReg) || txt === bucket) {
+                    const key = t.getAttribute('data-key');
+                    if (fullReg.includes(key) || cycReg.includes(key) || key === bucket) {
                         t.className = 'tag node-active text-[10px] px-3 py-2 border border-emerald-500/50 rounded-2xl transition-all duration-1000';
                     } else { t.className = 'tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl'; }
                 });
+
                 const probContainer = document.getElementById('prob-container'); probContainer.innerHTML = '';
                 Object.entries(data.signal.v11_probabilities).sort((a,b) => b[1] - a[1]).forEach(([name, val]) => {
                     const pct = (val * 100).toFixed(1) + '%';
-                    probContainer.innerHTML += `<div class="space-y-2"><div class="flex justify-between text-[10px] font-black opacity-50 uppercase"><span>${name}</span><span class="text-white">${pct}</span></div><div class="w-full h-2 bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5"><div class="prob-bar" style="width: ${pct}"></div></div></div>`;
+                    const cnName = MAPPING[name] || name;
+                    probContainer.innerHTML += `<div class="space-y-1.5"><div class="flex justify-between text-[10px] font-black opacity-50 uppercase tracking-tighter"><span>${cnName}</span><span class="text-white">${pct}</span></div><div class="w-full h-2 bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5"><div class="prob-bar" style="width: ${pct}"></div></div></div>`;
                 });
-            } catch (e) { sourceLabel.textContent = "SYNC_ERROR"; body.className = 'state-stale min-h-screen flex items-center justify-center p-4'; }
+            } catch (e) { console.error(e); sourceLabel.textContent = "SYNC_ERROR"; body.className = 'state-stale min-h-screen flex items-center justify-center p-3 sm:p-4'; }
         }
         updateDashboard(); setInterval(updateDashboard, 60000);
     </script>
 </body>
+
+
 </html>
