@@ -2381,7 +2381,7 @@ def _v11_inference_task(
 def run_v11_audit(
     *,
     dataset_path: str = "data/v11_feature_library.csv",
-    evaluation_start: str = "2018-01-01",
+    evaluation_start: str = "1999-01-01",
 ) -> dict[str, Any]:
     """Run the optimized parallel v11 probabilistic audit."""
     from src.engine.v11.core.calibration_service import CalibrationService
