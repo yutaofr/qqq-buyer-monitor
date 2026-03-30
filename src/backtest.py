@@ -2403,11 +2403,15 @@ def run_v11_audit(
     lib_df["ma200"] = lib_df["qqq_close"].rolling(200, min_periods=1).mean()
     lib_df["price_vs_ma200"] = (lib_df["qqq_close"] / lib_df["ma200"]) - 1.0
     lib_df["rolling_drawdown_val"] = (lib_df["qqq_close"] / lib_df["qqq_close"].expanding().max()) - 1.0
+    lib_df["five_day_return"] = lib_df["qqq_close"].pct_change(5)
+    lib_df["twenty_day_return"] = lib_df["qqq_close"].pct_change(20)
     
-    from src.research.signal_expectations import _expected_target_beta
+    from src.research.signal_expectations import _expected_target_beta, _expected_deployment_state
     expected_betas = []
+    expected_deployments = []
     for _, row in lib_df.iterrows():
-        expected_betas.append(_expected_target_beta(
+        # Beta Expectations
+        beta = _expected_target_beta(
             credit_spread=float(row.get("credit_spread_bps", 400.0)),
             credit_accel=float(row.get("credit_acceleration_pct_10d", 0.0)),
             liquidity_roc=float(row.get("liquidity_roc_pct_4w", 0.0)),
@@ -2415,8 +2419,25 @@ def run_v11_audit(
             erp=3.5, breadth=float(row.get("breadth_proxy", 0.5)),
             price_vs_ma200=float(row.get("price_vs_ma200", 0.0)),
             rolling_drawdown=abs(row["rolling_drawdown_val"]),
-        ))
+        )
+        expected_betas.append(beta)
+        
+        # Deployment Expectations
+        dep_state = _expected_deployment_state(
+            credit_spread=float(row.get("credit_spread_bps", 400.0)),
+            credit_accel=float(row.get("credit_acceleration_pct_10d", 0.0)),
+            liquidity_roc=float(row.get("liquidity_roc_pct_4w", 0.0)),
+            funding_stress=bool(row.get("funding_stress_flag", False)),
+            rolling_drawdown=abs(row["rolling_drawdown_val"]),
+            five_day_return=float(row.get("five_day_return", 0.0)),
+            twenty_day_return=float(row.get("twenty_day_return", 0.0)),
+            capitulation_score=0,
+            tactical_stress_score=0
+        )
+        expected_deployments.append(dep_state)
+        
     lib_df["expected_target_beta_dynamic"] = expected_betas
+    lib_df["expected_deployment_state_dynamic"] = expected_deployments
 
     train = lib_df[lib_df["observation_date"] < evaluation_start].copy()
     test = lib_df[lib_df["observation_date"] >= evaluation_start].copy()
@@ -2453,8 +2474,12 @@ def run_v11_audit(
     for r in ["MID_CYCLE", "BUST", "CAPITULATION", "RECOVERY", "LATE_CYCLE"]:
         probability_df[f"prob_{r}"] = probability_df["posterior"].apply(lambda x: x.get(r, 0.0))
 
-    # 4. Sequential Guard Loop
-    print("Sequential Guard: Applying behavior constraints...")
+    # 4. Sequential Guard & Deployment Loop
+    print("Sequential Guard & Deployment: Applying behavior constraints...")
+    from src.engine.risk_controller import decide_risk_state
+    from src.engine.deployment_controller import decide_deployment_state
+    from src.engine.feature_pipeline import FeatureSnapshot
+    
     guard = BehavioralGuard()
     sizer = ProbabilisticPositionSizer()
     execution_rows = []
@@ -2464,6 +2489,36 @@ def run_v11_audit(
     for _, prob_row in probability_df.iterrows():
         dt = prob_row["date"]
         source_row = test_indexed.loc[dt]
+        top_regime = prob_row["predicted_regime"]
+        
+        # Build snapshot for legacy controllers
+        from src.engine.feature_pipeline import build_feature_snapshot
+        
+        vals = {
+            "credit_spread": float(source_row.get("credit_spread_bps", 400.0)),
+            "credit_acceleration": float(source_row.get("credit_acceleration_pct_10d", 0.0)),
+            "liquidity_roc": float(source_row.get("liquidity_roc_pct_4w", 0.0)),
+            "funding_stress": bool(source_row.get("funding_stress_flag", False)),
+            "rolling_drawdown": abs(source_row["rolling_drawdown_val"]),
+            "five_day_return": source_row["five_day_return"],
+            "twenty_day_return": source_row["twenty_day_return"],
+            "tactical_stress_score": 0
+        }
+        qual = {k: {"usable": True} for k in vals.keys()}
+        
+        snapshot = build_feature_snapshot(
+            market_date=dt.date(),
+            raw_values=vals,
+            raw_quality=qual
+        )
+        
+        # 1. Risk State
+        risk_decision = decide_risk_state(snapshot, tier0_regime=top_regime)
+        
+        # 2. Deployment State
+        deployment_decision = decide_deployment_state(snapshot, risk_decision, tier0_regime=top_regime)
+        
+        # 3. Position Sizing & Guard
         sizing = sizer.size_positions(
             posteriors=prob_row["posterior"],
             reference_capital=100_000.0,
@@ -2471,12 +2526,26 @@ def run_v11_audit(
             previous_target_beta=guard.last_target_beta
         )
         decision = guard.apply(sizing, kill_switch_active=False)
+        
+        from src.models.deployment import deployment_multiplier_for_state
+        
+        actual_mult = float(deployment_multiplier_for_state(deployment_decision.deployment_state) or 0.0)
+        expected_mult = float(deployment_multiplier_for_state(source_row["expected_deployment_state_dynamic"]) or 0.0)
+        base_unit = 1000.0 # Hypothetical weekly DCA unit
+        
         execution_rows.append({
             "date": dt,
             "bucket": decision.target_bucket,
             "target_beta": decision.target_beta,
             "raw_target_beta": decision.raw_target_beta,
             "expected_target_beta": source_row["expected_target_beta_dynamic"],
+            "deployment_state": deployment_decision.deployment_state.value,
+            "expected_deployment_state": source_row["expected_deployment_state_dynamic"],
+            "deployment_multiplier": actual_mult,
+            "expected_deployment_multiplier": expected_mult,
+            "actual_deployment_cash": actual_mult * base_unit,
+            "expected_deployment_cash": expected_mult * base_unit,
+            "deployment_pacing_error": abs(actual_mult - expected_mult),
             "close": source_row["qqq_close"],
             "entropy": sizing.entropy,
             "lock_active": decision.lock_active,
@@ -2491,16 +2560,25 @@ def run_v11_audit(
         "mean_actual_regime_probability": float(probability_df["actual_regime_probability"].mean()),
         "mean_brier": float(probability_df["brier"].mean()),
         "left_escape_pass": bool(not execution_df.empty and execution_df.loc[execution_df["date"] == pd.Timestamp("2020-03-09"), "bucket"].ne("QLD").any()),
-        "lock_days": int(execution_df["lock_active"].sum())
+        "lock_days": int(execution_df["lock_active"].sum()),
+        "deployment_alignment": float((execution_df["deployment_state"] == execution_df["expected_deployment_state"]).mean())
     }
 
-    print("\n--- v11 Parallel Performance Audit ---")
-    print(f"Stats: points={summary['compared_points']} | accuracy={summary['top1_accuracy']:.2%} | brier={summary['mean_brier']:.4f}")
+    print("\n--- v11 Parallel Performance Audit (Dual Signal) ---")
+    print(f"Regime: points={summary['compared_points']} | accuracy={summary['top1_accuracy']:.2%} | brier={summary['mean_brier']:.4f}")
+    print(f"Pacing: deployment_alignment={summary['deployment_alignment']:.2%}")
+    print(f"Execution: left_escape={'PASS' if summary['left_escape_pass'] else 'FAIL'} | lock_days={summary['lock_days']}")
     
     save_dir = Path("artifacts/v11_acceptance")
     save_dir.mkdir(parents=True, exist_ok=True)
+    
+    from src.output.backtest_plots import save_v11_fidelity_figure, save_v11_probabilistic_audit_figure, save_deployment_pacing_figure
     save_v11_fidelity_figure(execution_df, summary, [save_dir / "v11_target_beta_fidelity.png"])
     save_v11_probabilistic_audit_figure(full_audit_df, summary, [save_dir / "v11_probabilistic_audit.png"])
+    
+    # Generate Deployment Pacing Plot
+    save_deployment_pacing_figure(execution_df, summary, [save_dir / "v11_deployment_pacing_fidelity.png"])
+    
     print(f"V11 Visualizations saved to {save_dir}")
     return summary
 
