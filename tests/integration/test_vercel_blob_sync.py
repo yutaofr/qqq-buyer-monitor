@@ -49,26 +49,32 @@ def test_feature_library_manager_cloud_pull_and_merge(mock_env, tmp_path):
         "val": [10, 20]
     }).to_csv(local_path, index=False)
     
-    # 2. 模拟云端数据 (其中 3-02 是重叠的，3-03 是新增的)
+    # 2. 模拟云端数据
     cloud_content = pd.DataFrame({
         "observation_date": ["2026-03-02", "2026-03-03"],
-        "val": [99, 30] # 3-02 的云端数据较新
+        "val": [99, 30]
     }).to_csv(index=False).encode("utf-8")
     
     with patch("src.engine.v11.core.feature_library.requests.get") as mock_get:
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.content = cloud_content
-        mock_get.return_value = mock_resp
+        # 第一步：模拟 List API 返回边缘 URL
+        m_list = MagicMock()
+        m_list.status_code = 200
+        m_list.json.return_value = {"blobs": [{"url": "https://edge.test/v11_feature_library.csv"}]}
+        
+        # 第二步：模拟从边缘 URL 下载 CSV
+        m_get = MagicMock()
+        m_get.status_code = 200
+        m_get.content = cloud_content
+        
+        mock_get.side_effect = [m_list, m_get]
         
         manager = FeatureLibraryManager(storage_path=str(local_path), persist=False)
         
         # 3. 校验合并结果
-        # 应该有 3 行数据：3-01, 3-02, 3-03
         assert len(manager.df) == 3
-        # 校验去重逻辑 (keep='last' 确保了 3-02 取的是云端值 99)
         val_02 = manager.df[manager.df["observation_date"] == "2026-03-02"]["val"].iloc[0]
         assert val_02 == 99
+        assert mock_get.call_count == 2
 
 def test_feature_library_manager_fallback_on_failure(mock_env, tmp_path):
     """验证自愈逻辑：云端 404 时应无缝使用本地数据。"""
