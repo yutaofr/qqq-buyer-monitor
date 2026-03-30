@@ -201,7 +201,10 @@ def _expected_target_beta(
     price_vs_ma200: float,
     rolling_drawdown: float,
 ) -> float:
-    """Independent v10-style target-beta expectation surface."""
+    """
+    Independent v10-style target-beta expectation surface.
+    Adjusted to be price-sensitive instead of constant.
+    """
     cycle_regime, cycle_ceiling = _expected_cycle_state(
         credit_spread=credit_spread,
         credit_accel=credit_accel,
@@ -217,33 +220,54 @@ def _expected_target_beta(
         erp=erp,
     )
 
+    # 1. Base Beta Determination
     if cycle_regime == "CAPITULATION":
-        return _BETA_MAX
-    if structural_regime == "CRISIS" or rolling_drawdown >= 0.30 or cycle_regime == "BUST":
-        return _BETA_FLOOR
-    if credit_spread is None:
-        return _BETA_REDUCED
-    if rolling_drawdown >= 0.25:
-        return _BETA_DEFENSE if cycle_regime == "RECOVERY" else _BETA_FLOOR
-    if structural_regime == "TRANSITION_STRESS":
-        return _BETA_DEFENSE if cycle_regime == "RECOVERY" else _BETA_FLOOR
+        base_beta = _BETA_MAX
+    elif structural_regime == "CRISIS" or rolling_drawdown >= 0.30 or cycle_regime == "BUST":
+        base_beta = _BETA_FLOOR
+    elif credit_spread is None:
+        base_beta = _BETA_REDUCED
+    elif rolling_drawdown >= 0.25:
+        base_beta = _BETA_DEFENSE if cycle_regime == "RECOVERY" else _BETA_FLOOR
+    elif structural_regime == "TRANSITION_STRESS":
+        base_beta = _BETA_DEFENSE if cycle_regime == "RECOVERY" else _BETA_FLOOR
+    else:
+        # Normal or Stressed (Rich Tightening / Mid / Recovery)
+        credit_warn = credit_spread >= _CREDIT_SPREAD_STRESS
+        credit_danger = credit_spread >= _CREDIT_SPREAD_CRISIS
+        accel_danger = credit_accel > _CREDIT_ACCEL_STRESS
+        liq_danger = liquidity_roc <= _LIQUIDITY_STRESS
+        stress_overlay = funding_stress and (credit_warn or accel_danger or liq_danger)
+        stress_count = sum((credit_danger, accel_danger, liq_danger))
 
-    credit_warn = credit_spread >= _CREDIT_SPREAD_STRESS
-    credit_danger = credit_spread >= _CREDIT_SPREAD_CRISIS
-    accel_danger = credit_accel > _CREDIT_ACCEL_STRESS
-    liq_danger = liquidity_roc <= _LIQUIDITY_STRESS
-    stress_overlay = funding_stress and (credit_warn or accel_danger or liq_danger)
-    stress_count = sum((credit_danger, accel_danger, liq_danger))
+        if structural_regime == "RICH_TIGHTENING" or rolling_drawdown >= 0.20 or credit_warn:
+            base_beta = min(_BETA_REDUCED, cycle_ceiling)
+        elif stress_count >= 2 or stress_overlay:
+            base_beta = _BETA_DEFENSE if cycle_regime == "RECOVERY" else _BETA_FLOOR
+        elif stress_count == 1:
+            base_beta = min(_BETA_REDUCED, cycle_ceiling)
+        elif cycle_regime == "RECOVERY":
+            base_beta = _BETA_NEUTRAL
+        else:
+            base_beta = cycle_ceiling
 
-    if structural_regime == "RICH_TIGHTENING" or rolling_drawdown >= 0.20 or credit_warn:
-        return min(_BETA_REDUCED, cycle_ceiling)
-    if stress_count >= 2 or stress_overlay:
-        return _BETA_DEFENSE if cycle_regime == "RECOVERY" else _BETA_FLOOR
-    if stress_count == 1:
-        return min(_BETA_REDUCED, cycle_ceiling)
-    if cycle_regime == "RECOVERY":
-        return _BETA_NEUTRAL
-    return cycle_ceiling
+    # 2. Price-Based Dynamic Adjustment (The "Left-Side" Correction)
+    # If price is far above MA200 (overextended), reduce beta slightly.
+    # If price is in a pullback (drawdown > 0), increase beta slightly within ceiling.
+    price_adjustment = 0.0
+    
+    # Overextension penalty: -0.05 beta for every 10% above MA200
+    if price_vs_ma200 > 0.10:
+        price_adjustment -= min(0.15, (price_vs_ma200 - 0.10) * 0.5)
+        
+    # Dip-buying bonus: +0.05 beta for every 5% drawdown (capped)
+    if rolling_drawdown > 0.05:
+        price_adjustment += min(0.10, (rolling_drawdown - 0.05) * 1.0)
+
+    final_beta = base_beta + price_adjustment
+    
+    # Hard constraints enforcement
+    return float(max(_BETA_FLOOR, min(_BETA_MAX, final_beta)))
 
 
 def _expected_deployment_state(
