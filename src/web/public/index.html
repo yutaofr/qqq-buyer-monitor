@@ -343,18 +343,24 @@
                 let res;
                 const urlParams = new URLSearchParams(window.location.search);
                 const simName = urlParams.get('sim');
-                const fetchUrl = simName ? `simulations/${simName}.json` : LOCAL_JSON;
-
-                try {
-                    res = await fetch(fetchUrl + '?t=' + Date.now());
-                    if (!res.ok) throw new Error("Local fetch failed");
-                } catch (e) {
-                    console.warn("Local status.json unavailable, attempting cloud fetch...");
-                    res = await fetch(PROD_BLOB_URL + '?t=' + Date.now(), { 
-                        method: 'GET',
-                        cache: 'no-store',
-                        headers: { 'pragma': 'no-cache', 'cache-control': 'no-cache' }
-                    });
+                
+                // 1. Priority: Simulation (for debugging)
+                if (simName) {
+                    res = await fetch(`simulations/${simName}.json?t=` + Date.now());
+                } else {
+                    // 2. Main: Cloud Blob (The absolute source of truth)
+                    try {
+                        res = await fetch(PROD_BLOB_URL + '?t=' + Date.now(), { 
+                            method: 'GET',
+                            cache: 'no-store',
+                            headers: { 'pragma': 'no-cache', 'cache-control': 'no-cache' }
+                        });
+                        if (!res.ok) throw new Error("Cloud fetch failed");
+                    } catch (cloudErr) {
+                        console.warn("Cloud source unavailable, falling back to local...", cloudErr);
+                        // 3. Fallback: Local static file
+                        res = await fetch(LOCAL_JSON + '?t=' + Date.now());
+                    }
                 }
 
                 if (!res.ok) throw new Error("No data source available");
