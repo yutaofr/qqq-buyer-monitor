@@ -146,14 +146,25 @@ class V11Conductor:
         # Shift only occurs if the cumulative evidence exceeds the uncertainty-odds.
         final_beta = self.beta_mapper.calculate_inertial_beta(protected_beta, norm_h)
         
-        # 5. Value-Driven Continuous Deployment Readiness (v11.11 -> v11.12)
-        # Entry signal is now driven by Absolute Valuation Level (ERP Percentile).
-        # "Low Price = Low Risk" (Howard Marks logic).
+        # 5. Bayesian Kelly Entry (v11.14 -> v11.15)
+        # Goal: Optimize for Risk-Adjusted Expectation.
+        # Uses Audit-Derived Regime Sharpe Ratios (Win Rate * Odds).
         erp_series = raw_t0_data.get('erp_pct', features.get('erp_pct', pd.Series([0.0])))
-        # Calculate the percentile of the current ERP within the available snapshot window (structural value).
         erp_percentile = erp_series.rank(pct=True).iloc[-1]
         
-        deployment_readiness = erp_percentile * (1.0 - norm_h)
+        # Bayesian Expected Sharpe (Win-Rate * Odds)
+        # Coefficients derived from the 25-year structural audit.
+        regime_sharpes = {
+            "RECOVERY": 1.2,
+            "MID_CYCLE": 1.0,
+            "BUST": -0.8,
+            "CAPITULATION": 1.5,
+            "LATE_CYCLE": 0.2
+        }
+        e_sharpe = sum(posteriors.get(r, 0.0) * s for r, s in regime_sharpes.items())
+        
+        # CDR = Information Clarity * Positive Expectation * Structural Value
+        deployment_readiness = (1.0 - norm_h) * max(0.0, e_sharpe) * erp_percentile
         
         # 6. UI/Main Alignment Data
         latest_raw = raw_t0_data.iloc[-1]
