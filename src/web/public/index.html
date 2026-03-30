@@ -280,6 +280,10 @@
         <!-- Meta Footer -->
         <div class="mt-8 pt-6 border-t border-white/[0.05] space-y-2 px-1">
             <div class="flex justify-between items-center text-[9px] tracking-wider opacity-30 text-slate-400">
+                <span class="font-bold">数据源 (Source)</span>
+                <span id="data-source" class="font-black uppercase text-emerald-500">INIT...</span>
+            </div>
+            <div class="flex justify-between items-center text-[9px] tracking-wider opacity-30 text-slate-400">
                 <span class="font-bold">数据置信度</span>
                 <span id="fidelity" class="font-black uppercase text-white">UNKNOWN</span>
             </div>
@@ -338,34 +342,46 @@
             const body = document.getElementById('body');
             const indicator = document.getElementById('indicator');
             const staleMsg = document.getElementById('stale-msg');
+            const sourceLabel = document.getElementById('data-source');
 
             try {
                 let res;
+                let usedSource = "LOCAL";
                 const urlParams = new URLSearchParams(window.location.search);
                 const simName = urlParams.get('sim');
                 
-                // 1. Priority: Simulation (for debugging)
                 if (simName) {
                     res = await fetch(`simulations/${simName}.json?t=` + Date.now());
+                    usedSource = "SIMULATION";
                 } else {
-                    // 2. Main: Cloud Blob (The absolute source of truth)
+                    // --- STRATEGIC CLOUD PRIORITY ---
                     try {
+                        // We use cache: 'reload' to force browser to revalidate with Vercel Blob Edge
                         res = await fetch(PROD_BLOB_URL + '?t=' + Date.now(), { 
                             method: 'GET',
-                            cache: 'no-store',
+                            cache: 'reload',
                             headers: { 'pragma': 'no-cache', 'cache-control': 'no-cache' }
                         });
-                        if (!res.ok) throw new Error("Cloud fetch failed");
+                        if (res.ok) {
+                            usedSource = "CLOUD";
+                        } else {
+                            throw new Error("Cloud status " + res.status);
+                        }
                     } catch (cloudErr) {
-                        console.warn("Cloud source unavailable, falling back to local...", cloudErr);
-                        // 3. Fallback: Local static file
+                        console.warn("Vercel Blob fetch failed, falling back to local storage...", cloudErr);
                         res = await fetch(LOCAL_JSON + '?t=' + Date.now());
+                        usedSource = "LOCAL_STALE";
                     }
                 }
 
-                if (!res.ok) throw new Error("No data source available");
+                if (!res.ok) throw new Error("All data sources failed");
                 const data = await res.json();
                 validateData(data);
+                
+                if (sourceLabel) {
+                    sourceLabel.textContent = usedSource;
+                    sourceLabel.className = usedSource === "CLOUD" ? "font-black uppercase text-emerald-500" : "font-black uppercase text-orange-500";
+                }
 
                 const now = new Date();
                 const expiresAt = new Date(data.meta.expires_at_utc);
