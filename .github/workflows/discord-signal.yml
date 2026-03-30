@@ -75,8 +75,8 @@ jobs:
           VERCEL_BLOB_READ_WRITE_TOKEN: ${{ secrets.VERCEL_BLOB_READ_WRITE_TOKEN }}
           GITHUB_ACTIONS: "true"
         run: |
-          # V11 Bayesian Pipeline: Pulls memory from cloud, computes, and pushes updates back
-          python -m src.main --engine v11 --notify-discord
+          # V11 Bayesian Pipeline: Must export-web during notification to keep Dashboard in sync with Discord
+          python -m src.main --engine v11 --notify-discord --export-web
 
       - name: Notify on Failure
         if: failure()
