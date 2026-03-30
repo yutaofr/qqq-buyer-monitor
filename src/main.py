@@ -1,11 +1,11 @@
 """
-QQQ Monitor — main entry point (v9.0 target-beta-first).
+QQQ Monitor main entry point.
 
 Usage:
-    python -m src.main                  # run full pipeline
-    python -m src.main --json           # output JSON report
-    python -m src.main --history 30     # print last 30 records
-    python -m src.main --no-save        # run without writing to DB
+    python -m src.main --engine v10
+    python -m src.main --engine v11
+    python -m src.main --engine v11 --json
+    python -m src.main --history 30
 """
 from __future__ import annotations
 
@@ -13,14 +13,206 @@ import argparse
 import logging
 import sys
 from datetime import date
+from typing import TYPE_CHECKING
 
 import pandas as pd
+
+if TYPE_CHECKING:
+    from src.models import SignalDetail, SignalResult, Tier1Result, Tier2Result
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s – %(message)s",
 )
 logger = logging.getLogger("qqq_monitor")
+
+
+def _neutral_signal_detail(name: str, value: float = 0.0) -> SignalDetail:
+    from src.models import SignalDetail
+
+    return SignalDetail(
+        name=name,
+        value=float(value),
+        points=0,
+        thresholds=(0.0, 0.0),
+        triggered_half=False,
+        triggered_full=False,
+    )
+
+
+def _build_neutral_v11_surface() -> tuple[Tier1Result, Tier2Result]:
+    from src.models import OptionsOverlay, Tier1Result, Tier2Result
+
+    detail = _neutral_signal_detail
+    tier1 = Tier1Result(
+        score=0,
+        drawdown_52w=detail("drawdown_52w"),
+        ma200_deviation=detail("ma200_deviation"),
+        vix=detail("vix"),
+        fear_greed=detail("fear_greed"),
+        breadth=detail("breadth"),
+    )
+    tier2 = Tier2Result(
+        adjustment=0,
+        put_wall=None,
+        call_wall=None,
+        gamma_flip=None,
+        support_confirmed=False,
+        support_broken=False,
+        upside_open=False,
+        gamma_positive=False,
+        gamma_source="v11",
+        put_wall_distance_pct=None,
+        call_wall_distance_pct=None,
+        overlay=OptionsOverlay(),
+    )
+    return tier1, tier2
+
+
+def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalResult:
+    from src.models import AllocationState, Signal, SignalResult, TargetAllocationState
+
+    tier1, tier2 = _build_neutral_v11_surface()
+
+    bucket = runtime_result["signal"].get("target_bucket", "QQQ")
+    signal_map = {
+        "QLD": Signal.TRIGGERED,
+        "QQQ": Signal.WATCH,
+        "CASH": Signal.NO_SIGNAL,
+    }
+    allocation_map = {
+        "QLD": AllocationState.FAST_ACCUMULATE,
+        "QQQ": AllocationState.BASE_DCA,
+        "CASH": AllocationState.RISK_CONTAINMENT,
+    }
+
+    allocation = runtime_result["target_allocation"]
+    nav = max(
+        1.0,
+        float(allocation["qqq_dollars"] + allocation["qld_notional_dollars"] + allocation["cash_dollars"]),
+    )
+    target_allocation = TargetAllocationState(
+        target_cash_pct=float(allocation["cash_dollars"] / nav),
+        target_qqq_pct=float(allocation["qqq_dollars"] / nav),
+        target_qld_pct=float(allocation["qld_notional_dollars"] / nav),
+        target_beta=float(runtime_result["target_beta"]),
+    )
+    quality_audit = runtime_result.get("quality_audit", {})
+    data_quality = quality_audit.get("field_status", {})
+    ordered_probs = sorted(
+        runtime_result["probabilities"].items(),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+    explanation = (
+        f"v11 probabilistic runtime：target_beta={runtime_result['target_beta']:.2f}x | "
+        f"entropy={runtime_result.get('entropy', 0.0):.3f} | "
+        f"execution={runtime_result['signal'].get('target_bucket', 'n/a')} | "
+        f"top_posterior={ordered_probs[0][0]}={ordered_probs[0][1]:.2%}"
+    )
+
+    return SignalResult(
+        date=runtime_result["date"],
+        price=float(price),
+        signal=signal_map.get(bucket, Signal.WATCH),
+        final_score=int(round(float(runtime_result["target_beta"]) * 100)),
+        tier1=tier1,
+        tier2=tier2,
+        explanation=explanation,
+        allocation_state=allocation_map.get(bucket, AllocationState.BASE_DCA),
+        data_quality=data_quality,
+        logic_trace=[
+            {"step": "degradation", "decision": quality_audit},
+            {"step": "posterior", "decision": runtime_result["probabilities"]},
+            {"step": "position_sizer", "decision": runtime_result["target_allocation"]},
+            {"step": "behavior_guard", "decision": runtime_result["signal"]},
+        ],
+        target_allocation=target_allocation,
+        raw_target_beta=float(runtime_result["raw_target_beta"]),
+        target_beta=float(runtime_result["target_beta"]),
+        should_adjust=bool(runtime_result["signal"].get("action_required", False)),
+        rebalance_action=dict(runtime_result["signal"]),
+        engine_version="v11",
+        v11_probabilities={k: float(v) for k, v in runtime_result["probabilities"].items()},
+        v11_entropy=float(runtime_result.get("entropy", 0.0)),
+        v11_execution=dict(runtime_result["signal"]),
+        v11_quality_audit=quality_audit,
+    )
+
+
+def run_v11_pipeline(args: argparse.Namespace) -> None:
+    """Execute the v11 probabilistic runtime pipeline."""
+    import os
+
+    from src.collector.breadth import fetch_breadth
+    from src.collector.macro import fetch_credit_spread
+    from src.collector.macro_v3 import fetch_net_liquidity
+    from src.collector.price import fetch_price_data
+    from src.collector.vix import fetch_vix_term_structure
+    from src.engine.v11.conductor import V11Conductor
+    from src.output.cli import print_signal
+    from src.output.report import to_json
+    from src.store.db import save_signal
+
+    logger.info("Fetching v11 market data…")
+    price_data = fetch_price_data()
+
+    try:
+        vix_term = fetch_vix_term_structure()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("VIX term-structure fetch failed: %s", exc)
+        vix_term = {"vix": 20.0, "vix3m": None}
+
+    try:
+        breadth = fetch_breadth()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Breadth fetch failed for v11: %s", exc)
+        breadth = {"pct_above_50d": 0.50}
+
+    try:
+        credit_spread = fetch_credit_spread()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Credit-spread fetch failed for v11: %s", exc)
+        credit_spread = 400.0
+
+    try:
+        _, liquidity_roc = fetch_net_liquidity()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Net-liquidity fetch failed for v11: %s", exc)
+        liquidity_roc = 0.0
+
+    reference_capital = float(os.environ.get("V11_REFERENCE_CAPITAL", "100000"))
+    current_nav = float(os.environ.get("V11_CURRENT_NAV", str(reference_capital)))
+    drawdown_pct = float(price_data["price"] / price_data["high_52w"] - 1.0) if price_data["high_52w"] else 0.0
+
+    raw_row = pd.DataFrame(
+        [
+            {
+                "observation_date": pd.Timestamp(price_data["date"]),
+                "credit_spread_bps": float(credit_spread),
+                "liquidity_roc_pct_4w": float(liquidity_roc or 0.0),
+                "vix": float(vix_term["vix"]),
+                "vix3m": None if vix_term.get("vix3m") is None else float(vix_term["vix3m"]),
+                "qqq_close": float(price_data["price"]),
+                "drawdown_pct": drawdown_pct,
+                "breadth_proxy": float(breadth.get("pct_above_50d", 0.50)),
+                "reference_capital": reference_capital,
+                "current_nav": current_nav,
+            }
+        ]
+    )
+
+    runtime = V11Conductor().daily_run(raw_row)
+    result = _build_v11_signal_result(runtime, price=float(price_data["price"]))
+
+    if args.json:
+        print(to_json(result))
+    else:
+        print_signal(result, use_color=not args.no_color)
+
+    if not args.no_save:
+        save_signal(result)
+        logger.info("v11 signal saved to DB.")
 
 
 def _history(args: argparse.Namespace) -> None:
@@ -686,8 +878,14 @@ def run_pipeline(args: argparse.Namespace) -> None:
         logger.info("Signal and macro states saved to DB.")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="QQQ Buy-Signal Monitor (v9.0 target-beta-first)")
+    parser.add_argument(
+        "--engine",
+        choices=["v10", "v11"],
+        default="v10",
+        help="Runtime engine to execute (default: v10).",
+    )
     parser.add_argument("--json", action="store_true", help="Output JSON report")
     parser.add_argument("--export-web", action="store_true", help="Export discretized snapshot for Web dashboard")
     parser.add_argument("--notify-discord", action="store_true", help="Send signal to Discord")
@@ -695,10 +893,12 @@ def main() -> None:
     parser.add_argument("--no-save", action="store_true", help="Skip saving to DB")
     parser.add_argument("--no-color", action="store_true", help="Disable ANSI color output")
     parser.add_argument("--history", type=int, metavar="N", help="Print last N signal records and exit")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.history:
         _history(args)
+    elif args.engine == "v11":
+        run_v11_pipeline(args)
     else:
         run_pipeline(args)
 

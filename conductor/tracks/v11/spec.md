@@ -1,96 +1,221 @@
-# SRD: QQQ Cognitive Exoskeleton (v11.0)
+# SRD: QQQ Probabilistic Monitor (v11.0)
 
 > 版本: v11.0
-> 状态: Final
-> 日期: March 2026
-> 适用范围: QQQ Monitor v11.0 架构规范
-> 替换文档: QQQ Buyer Monitor v10.0 (deterministic HSM)
+> 状态: Accepted Production Baseline
+> 日期: 2026-03-30
+> 适用范围: `src/engine/v11/`、`src/main.py --engine v11`、`src/backtest.py --mode v11`
+> 规范优先级: 本文件与 `conductor/tracks/v11/add.md` 为 v11 唯一正式基线
 
-## 1. Purpose and Scope
+## 1. Purpose
 
-本系统要求规范 (System Requirements Document, SRD) 定义了 QQQ Monitor v11.0（代号："Entropy"）的完整技术架构与行为准则。
+v11 是面向 `QQQ / QLD / Cash` 的**概率优先、抗噪、强行为约束**推荐引擎。
 
-v11.0 是一个专为散户交易者设计的**独裁式认知外骨骼 (Dictatorial Cognitive Exoskeleton)**。它基于长期的“霍华德·马克斯式 (Howard Marks)”解剖与多轮物理级 POC 验证，彻底摒弃了 v10.0 的静态阈值和高频调仓幻觉，在 QQQ（1 倍现货）、QLD（2 倍杠杆）与 Cash（现金）的受限边界内，提供抗拒人性弱点与物理摩擦的极端生存能力。
+系统边界锁定如下：
 
-### 1.1 系统核心理念
-1.  **概率防守优先**：通过外生信贷利差驱动记忆衰减，利用 PCA-KDE 模型在左侧实现动态降杠杆。
-2.  **物理断网防御**：承认在极端危机（VIX > 60）中流动性的枯竭，通过引入强制结算冷却与黑洞机制（Blackout），锁定用户的致命操作。
-3.  **期限结构解冻**：右侧猎杀不依赖绝对价格，仅在 VIX 期限结构（Term Structure）发生统计学显著收敛（Z-Score > 3.0）的瞬间，释放杠杆。
+1. 输出推荐，不自动执行交易。
+2. 一等公民 contract 是 `target_beta`，而不是离散状态名本身。
+3. 离散 bucket 只服务于执行摩擦控制与用户行为约束。
+4. 生产范围不包含期权凸性、跨品种保证金模拟或“现金核爆”叙事。
 
----
+## 2. Functional Requirements
 
-## 2. Architecture Principles (架构铁律)
+### FR-1 概率优先
+系统必须先输出 regime posterior，再由 posterior 生成连续目标 beta。
 
-这些原则是强制性约束，任何违反这些原则的代码实现均被视为架构失效。
+### FR-2 抗噪
+系统必须显式处理：
 
-### PRINCIPLE-01: 信号正交性 (Bayesian Orthogonality)
-标定引擎（用于判断宏观环境状态）必须仅依赖信贷与流动性指标（如 Credit Spread OAS, Liquidity ROC）。推理引擎（用于捕捉市场恐慌证据）必须仅依赖价格衍生指标（如 VIX, Drawdown）。严禁两者的交叉反馈，以确保系统能敏锐捕捉“宏观恶化但市场麻木”的背离。
+1. 脏数据与幽灵报价。
+2. 缺失字段代理填补。
+3. 特征历史非平稳。
+4. 后验不确定性升高时的自动缩仓。
 
-### PRINCIPLE-02: 外生记忆驱动 (Exogenous Memory)
-计算任何滚动分位数时，严禁使用固定窗口或受价格/VIX 驱动的半衰期。所有时间衰减率 $\lambda$ 必须由外生信贷指标的变动率（如利差加速度）驱动。系统只能因真实的宏观断裂而“加速遗忘”。
+### FR-3 行为约束
+系统必须在连续 sizing 之后施加执行级约束：
 
-### PRINCIPLE-03: 优雅降级与数据防毒 (Graceful Degradation)
-第三方数据断流是常态。系统必须具备 `DataDegradationPipeline`。所有数据在输入引擎前必须通过物理常识校验和尖刺过滤。若数据质量得分低于阈值，系统必须自动拦截高级指令，强制降级至无杠杆状态或现金状态。
+1. 死区与 bucket 迟滞。
+2. 常规调仓后的 `T+1` 结算锁。
+3. Kill-switch 触发后的 `30` 个交易日 resurrection 锁。
+4. 单日 beta 变化上限。
 
-### PRINCIPLE-04: 迟滞状态机 (Hysteresis Exposure Mapping)
-系统在 QLD、QQQ 和 Cash 之间的切换禁止呈现线性平滑。必须通过引入非对称的“死区 (Deadband)”，过滤 0.49 与 0.51 之间的概率震荡。系统宁可承受微小的趋势确认延迟，也绝不允许连续两天发出反向调仓的“洗盘”指令。
+### FR-4 美元锚定
+风险预算必须锚定到 `reference_capital` 与 `current_nav`，不能只看当前净值百分比。
 
-### PRINCIPLE-05: 物理结算锁与猎杀锁仓 (The Hard Lock)
-系统输出的信号必须强迫用户遵循券商的物理结算规则：
-1.  **结算锁**: 任何常规调仓（如 QLD $\to$ QQQ）后，强制进入 **T+1 信号静默期**，对齐散户券商资金可用性。
-2.  **猎杀锁 (Resurrection Immunity)**: 一旦 Kill-Switch 触发一键满仓 QLD，系统自动进入 **30 个交易日的强制锁仓期**。期间屏蔽一切反向调仓信号（包括 $P(BUST)$ 波动），强制用户扛过底部的宽幅震荡（W 形底），防止在黎明前被洗出场。
+### FR-5 可解释与可审计
+运行结果必须包含：
 
----
+1. posterior 概率分布。
+2. entropy / uncertainty 信息。
+3. 参考配置路径。
+4. data-quality 审计明细。
+5. execution decision 明细。
 
-## 3. Component Architecture (模块规范)
+### FR-6 入口一致性
+以下入口必须对齐到同一套 v11 runtime：
 
-### 3.1 数据降级管道 (`src/engine/v11/signal/data_degradation_pipeline.py`)
-*   **职责**:
-    1.  执行绝对物理阈值校验（如 $9.0 < VIX < 150.0$）。
-    2.  清洗 5 日中位数偏离 >30% 的尖刺错单。
-    3.  **影子代理 (Shadow Proxy)**: 
-        *   若 VIX3M 缺失，使用 `VIX * 0.9` 补全（Backwardation 假设）。
-        *   若 VIX 缺失，使用 `QQQ 20d Realized Volatility * 100` 代理。
-    4.  生成当日数据质量得分（Quality Score）。
-*   **约束**: 如果质量得分 $<0.5$，触发强制黑洞模式（Forced Blackout）。
+1. `python -m src.main --engine v11`
+2. `python -m src.backtest --mode v11`
+3. `src/output/cli.py`
+4. `src/store/db.py`
 
-### 3.2 认知中枢 (`src/engine/v11/core/adaptive_memory.py`)
-*   **职责**: 接收清洗后的数据，生成带半衰期的 EWMA 分位数特征。
-*   **衰减逻辑**: $\lambda_t = \lambda_{base} \times \exp(-\kappa \cdot \max(0, \Delta Spread_t))$，其中基准 $\lambda_{base} = 10$ 年。
-*   **输出**: 高质量、无滞后的宏观标定标签（$BUST$ 等）。
+## 3. Architecture Principles
 
-### 3.3 猎杀解冻算子 (`src/engine/v11/core/kill_switch.py`)
-*   **职责**: 独立于贝叶斯主引擎运行，专门负责在极寒环境中寻找复苏的微秒。
-*   **触发条件**: 双重 Z-Score 校验。计算 $VIX3M - VIX$ 期限利差的 3 日修复动量，必须同时满足：
-    *   短期激变：$Z_{fast\_20d} > 2.0$
-    *   长期尾部：$Z_{slow\_252d} > 3.0$
-    *   恐慌见顶：$VIX_{momentum} < 0$
-*   **输出**: `kill_switch_active` (Bool)，具备最高覆写权。
+### P-1 Posterior Before Policy
+任何离散 bucket 决策都不得绕过 posterior 直接由阈值状态机产出。
 
-### 3.4 独裁映射状态机 (`src/engine/v11/signal/hysteresis_exposure_mapper.py`)
-*   **职责**: 将 $P(BUST)$ 转换为散户绝对执行指令。
-*   **状态跃迁**:
-    *   `QLD` $\to$ `QQQ`: 当 $P(BUST) > 0.40$
-    *   `QQQ` $\to$ `CASH`: 当 $P(BUST) > 0.75$
-    *   `CASH/QQQ` $\to$ `QLD`: 仅当 $P(BUST) < 0.20$ 或 `kill_switch` 被激活。
-*   **制约**: 受结算物理锁（Cooldown Timer）和降级审计（Overrider）的双重拦截。
+### P-2 Exogenous Memory
+分位数记忆衰减必须由外生信用压力驱动，禁止由价格或 VIX 自指驱动。
 
----
+### P-3 Uncertainty Must Cost Capital
+后验 entropy 越高，可分配 beta 必须越低。v11 通过 uncertainty penalty 缩减 raw beta。
 
-## 4. UI/Dashboard 规范 (Behavioral Containment)
+### P-4 Behavior Is Downstream
+行为守卫是执行层，不是推断层。推断先连续，执行后离散。
 
-仪表盘是控制人性的核心刑具，必须按五种绝对隔离的模式展示：
+### P-5 Safety Overrides Are Authoritative
+数据降级覆写与 kill-switch 拥有高于普通 bucket 迁移的优先级。
 
-1.  **[🟢 CRUISE MODE / 巡航模式]**: $P(BUST) < 0.2$。100% QLD。隐藏短期波动率噪音。
-2.  **[🟡 SHIELD DEPLOYED / 装甲模式]**: $P(BUST) > 0.4$。100% QQQ。展示宏观引力恶化警告。
-3.  **[🔴 BLACKOUT / 物理断网]**: $P(BUST) > 0.75$。100% CASH。隐藏买入功能，展示绝对防守立场。
-4.  **[🔒 SETTLEMENT LOCK / 结算冻结]**: T+1 锁定期内。全屏置灰，显示强制冷却倒计时。
-5.  **[🔥 RESURRECTION / 猎杀复苏]**: Kill-Switch 触发。红色闪烁转绿，要求全量回归 QLD。
+## 4. Runtime Architecture
 
----
+生产流水线固定为：
 
-## 5. 验收标准 (Acceptance Criteria)
-1.  **数据鲁棒性**: 在注入至少 5 个随机 `NaN` 和极限尖刺的 2020 年模拟中，系统不得崩溃，必须正确触发优雅降级。
-2.  **左侧逃顶**: 在 2020 年 3 月 9 日之前，状态机必须至少已成功降级至 `QQQ`。
-3.  **右侧猎杀**: Kill-Switch 必须在 2020 年 3 月下旬精准触发，且后续无高频洗盘震荡。
-4.  **纪律强制性**: 所有调仓指令必须在随后触发不少于 1 个交易日的信号静默期。
+`Raw Data -> DataDegradationPipeline -> FeatureLibraryManager -> CalibrationService -> BayesianInferenceEngine -> DynamicZScoreKillSwitch -> ProbabilisticPositionSizer -> BehavioralGuard -> SignalDegradationOverrider -> CLI/DB`
+
+### 4.1 DataDegradationPipeline
+
+职责：
+
+1. VIX / term structure 物理常识校验。
+2. 尖刺清洗。
+3. `vix` / `vix3m` 影子代理。
+4. 输出 `quality_score` 与 `quality_audit`。
+
+约束：
+
+1. `quality_score < 0.5` 时强制 `CASH`。
+2. `0.5 <= quality_score < 0.8` 时禁用 `QLD`。
+3. 降级动作必须显式把 `action_required` 置为 `True`。
+
+### 4.2 FeatureLibraryManager + ExogenousMemoryOperator
+
+职责：
+
+1. 维护 v11 时序特征库。
+2. 计算以下 stress 特征的自适应分位数：
+   `spread_stress`、`liquidity_stress`、`vix_stress`、`drawdown_stress`、`breadth_stress`、`term_structure_stress`
+3. 输出 EWMA percentile 与 momentum 特征。
+
+### 4.3 CalibrationService + BayesianInferenceEngine
+
+职责：
+
+1. 使用 percentile 特征做标准化、PCA、KDE。
+2. 用 sigmoid credit tension 调整 base priors。
+3. 产出五态 posterior：
+   `MID_CYCLE`、`BUST`、`CAPITULATION`、`RECOVERY`、`LATE_CYCLE`
+
+### 4.4 DynamicZScoreKillSwitch
+
+职责：
+
+1. 仅在 blackout 环境中工作。
+2. 当期限结构 3 日修复动量在滚动窗口中出现显著正向断裂，且 VIX 一阶导转负时触发 resurrection。
+
+### 4.5 ProbabilisticPositionSizer
+
+职责：
+
+1. 将 posterior 映射为 `raw_target_beta`。
+2. 使用 normalized entropy 形成 uncertainty penalty。
+3. 施加 `max_daily_beta_shift`。
+4. 输出美元锚定的 `QQQ / QLD / Cash` 参考路径。
+
+### 4.6 BehavioralGuard
+
+职责：
+
+1. 将连续 beta 映射为 bucket。
+2. 管理 `T+1` settlement lock。
+3. 管理 `30d` resurrection lock。
+4. 保持 bucket deadband，避免日频洗盘。
+
+当前 bucket 边界：
+
+1. `QLD -> QQQ` 当 `target_beta < 0.95`
+2. `QQQ -> CASH` 当 `target_beta < 0.45`
+3. `QQQ -> QLD` 当 `target_beta > 1.05`
+4. `CASH -> QQQ` 当 `target_beta > 0.55`
+5. `CASH -> QLD` 当 `target_beta > 1.05`
+
+## 5. Output Contract
+
+v11 runtime 必须输出：
+
+1. `target_beta`
+2. `raw_target_beta`
+3. `probabilities`
+4. `entropy`
+5. `signal.target_bucket`
+6. `signal.action_required`
+7. `signal.lock_active`
+8. `target_allocation`
+9. `data_quality`
+10. `quality_audit`
+
+## 6. Acceptance Criteria
+
+### AC-1 Regression Safety
+
+以下命令必须通过：
+
+1. `pytest tests/unit/engine/v11 -q`
+2. `pytest tests/integration/engine/v11/test_v11_workflow.py -q`
+3. `pytest tests/unit/test_main_v11.py -q`
+4. `pytest tests/unit/test_backtest_v11.py -q`
+
+### AC-2 Probability Audit
+
+`python -m src.backtest --mode v11` 必须输出可复现的概率审计结果，并满足：
+
+1. `top1_accuracy >= 0.50`
+2. `mean_actual_regime_probability >= 0.55`
+3. `mean_brier <= 0.90`
+
+2026-03-30 参考结果：
+
+1. `points=31`
+2. `top1_accuracy=58.06%`
+3. `mean_actual_regime_probability=57.93%`
+4. `mean_brier=0.7982`
+
+### AC-3 Execution Audit
+
+同一审计必须满足：
+
+1. `2020-03-09` 前已离开 `QLD`
+2. `2020-03-17` 至 `2020-03-31` 期间存在 resurrection 命中并返回 `QLD`
+3. `lock_days >= 1`
+
+2026-03-30 参考结果：
+
+1. `left_escape=PASS`
+2. `resurrection=PASS`
+3. `lock_days=12`
+
+### AC-4 Degradation Safety
+
+脏数据注入时：
+
+1. 不得崩溃。
+2. 代理字段必须降低质量分。
+3. 强制降级必须同步 execution state。
+
+## 7. Documentation Policy
+
+以下文件是研究归档，不是生产规范：
+
+1. `docs/roadmap/QQQ_PCE_SRD_v11.0.md`
+2. `docs/roadmap/v11_*report*.md`
+3. `docs/roadmap/v11_design_and_execution_plan.md`
+
+生产实现以本文件、ADD、SOP 和 acceptance report 为准。

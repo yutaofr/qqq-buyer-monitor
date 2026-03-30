@@ -1,71 +1,111 @@
-# v11 生产环境每日运行标准操作程序 (Standard Operating Procedure)
+# v11 生产运行 SOP
 
-## 1. 运行节拍 (Timing)
-*   **执行频率**: 每个交易日一次。
-*   **执行时间**: 16:30 - 17:00 ET (美股收盘后，数据源初步稳定)。
-*   **紧急触发**: 若发生全市场熔断 (Circuit Breaker)，手动触发一次以确认是否进入 BLACKOUT。
+> 版本: 2026-03-30
+> 适用入口: `python -m src.main --engine v11`
 
-## 2. 数据采集口径 (Data Ingestion)
+## 1. 执行时点
 
-| 变量 | 数据源 | T+N 延迟 | 影子代理 (Shadow Proxy) |
-| :--- | :--- | :--- | :--- |
-| **Credit Spread** | FRED (BAMLH0A0HYM2) | T+1 | 上日收盘 +5bps (保守假设) |
-| **VIX / VIX3M** | YFinance (^VIX, ^VIX3M) | T+0 | 实现波动率 (Realized Vol) |
-| **QQQ Price** | YFinance (QQQ) | T+0 | 停止运行 |
-| **Liquidity** | Fed H.4.1 (WALCL) | T+7 | 线性插值 |
+1. 每个美股交易日收盘后运行一次。
+2. 推荐时间窗口：`16:30-17:00 ET`。
 
----
+## 2. 运行命令
 
-## 3. 核心流水线步骤 (The Pipeline)
+```bash
+python -m src.main --engine v11
+python -m src.main --engine v11 --json
+python -m src.main --engine v11 --json --no-save
+```
 
-### STEP 1: 数据清洗与降级审计 (`DataDegradationPipeline`)
-*   **动作**: 运行物理常识校验（VIX < 9 判定为脏数据）。
-*   **产出**: `cleaned_df` 和 `Quality_Score`。
-*   **红线**: 若 `Quality_Score < 0.5`，流水线**立即中断**，信号强制切回 `CASH`。
+## 3. 当日数据口径
 
-### STEP 2: 外生记忆更新 (`ExogenousMemoryOperator`)
-*   **动作**: 根据当日信贷利差恶化率，计算今日记忆半衰期 $\lambda$。
-*   **产出**: `dynamic_lambda_t`。
+最小必需输入：
 
-### STEP 3: 概率推断 (Bayesian Engine)
-*   **动作**: 将 `dynamic_lambda` 注入 EWMA 分位数计算，运行 PCA-KDE 模型。
-*   **产出**: 后验概率向量 $P(Regime)$。
+1. `QQQ price`
+2. `VIX`
+3. `VIX3M`
+4. `credit_spread_bps`
+5. `liquidity_roc_pct_4w`
+6. `breadth_proxy`
 
-### STEP 4: 逆转与解冻判定 (`DualAnchorKillSwitch`)
-*   **动作**: 检查 VIX 期限结构 Z-Score 是否满足 $Z_{slow} > 3.0$。
-*   **产出**: `is_kill_switch_active` (最高优先级)。
+运行时补充字段：
 
-### STEP 5: 独裁信号映射与覆盖 (`HysteresisMapper` + `Overrider`)
-*   **动作 5.1**: `Mapper` 根据迟滞死区输出建议仓位。
-*   **动作 5.2**: `Overrider` 根据 STEP 1 的质量分对建议进行降级（例如 0.7 分则禁止 QLD）。
-*   **产出**: **Final_Signal** (QLD, QQQ, 或 CASH)。
+1. `reference_capital`
+2. `current_nav`
+3. `drawdown_pct`
 
----
+## 4. 每日流水线
 
-## 4. 故障处理预案 (Failsafe Actions)
+### Step 1: 数据清洗与质量审计
 
-### 场景 A：YFinance API 宕机
-*   **现象**: QQQ/VIX 读数为 `NaN`。
-*   **对策**: `DataDegradationPipeline` 自动启用 1 日前向填充。Quality Score 降至 0.7。
-*   **结果**: 系统仍可运行，但 `Overrider` 自动屏蔽 QLD，仅允许输出 QQQ 或 CASH 指令。
+执行 `DataDegradationPipeline`：
 
-### 场景 B：信用利差数据断流 (FRED 延迟)
-*   **现象**: 超过 2 个交易日无更新。
-*   **对策**: `AdaptiveMemoryEngine` 锁定在 0.5 年半衰期（极端保守），强制提升 $P(BUST)$ 的先验。
-*   **结果**: 系统发出黄色 `SHIELD DEPLOYED` 警告，降级至 QQQ。
+1. 清洗幽灵报价与异常期限结构。
+2. 对缺失 `vix / vix3m` 使用代理。
+3. 生成 `quality_score` 和 `quality_audit`。
 
-### 场景 C：结算锁期冲突
-*   **现象**: 用户试图在 T+1 冷却期内二次调仓。
-*   **对策**: Dashboard 显示 `LOCKED` 状态，不显示任何新信号。
+### Step 2: 特征库更新
 
----
+将当日行追加到 `FeatureLibraryManager`，计算自适应 percentile 特征。
 
-## 5. 每日检查清单 (Daily Checklist)
-1.  [ ] 检查 `v11_quality_score` 是否等于 1.0。
-2.  [ ] 确认 `kill_switch` 状态是否与 `VIX3M-VIX` 趋势背离。
-3.  [ ] 验证 `target_exposure` 是否符合迟滞死区逻辑。
-4.  [ ] 存档当日 $P(BUST)$ 的贝叶斯分布截图。
+### Step 3: 概率推断
 
----
-*Last Updated: March 2026*
-*Architect's Note: Operation over Optimization. Survival over Alpha.*
+运行 `CalibrationService` 与 `BayesianInferenceEngine`，得到 posterior。
+
+### Step 4: 逆转审计
+
+运行 `DynamicZScoreKillSwitch`，只在 blackout 条件下判断 resurrection。
+
+### Step 5: 连续 sizing
+
+运行 `ProbabilisticPositionSizer`，得到：
+
+1. `raw_target_beta`
+2. `target_beta`
+3. `risk_budget_dollars`
+4. 参考 `QQQ / QLD / Cash`
+
+### Step 6: 行为守卫
+
+运行 `BehavioralGuard`：
+
+1. bucket 迁移
+2. `T+1` settlement lock
+3. `30d` resurrection lock
+
+### Step 7: 安全覆写
+
+运行 `SignalDegradationOverrider`：
+
+1. `quality < 0.5` 强制 `CASH`
+2. `0.5 <= quality < 0.8` 禁用 `QLD`
+
+### Step 8: 渲染与持久化
+
+1. CLI 展示 posterior、bucket、lock、quality audit
+2. DB 保存 `SignalResult` 的 v11 surface
+
+## 5. 每日检查清单
+
+1. `quality_score` 是否异常下降。
+2. 是否出现 `proxy_fields` 或 `anomalies`。
+3. `lock_active` 是否与当日动作一致。
+4. posterior 是否出现极端单点塌缩。
+5. `target_beta` 是否被 uncertainty penalty 显著压缩。
+
+## 6. 故障处置
+
+### 场景 A: VIX3M 缺失
+
+结果：代理补齐，质量分下降，但系统继续运行。
+
+### 场景 B: VIX 鬼价
+
+结果：标记 anomaly，优先使用代理或前向填充；若关键列仍不可用则强制 `CASH`。
+
+### 场景 C: 调仓后再次反向信号
+
+结果：`BehavioralGuard` 保持结算锁，拒绝同日洗盘。
+
+## 7. 生产口径声明
+
+POC 报告中的期权凸性、双桶现金放大与极端资金曲线不属于当前生产 SOP。

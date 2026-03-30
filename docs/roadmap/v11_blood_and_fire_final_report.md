@@ -1,3 +1,8 @@
+# Archived Research Note
+
+> 归档状态: Historical research only
+> 说明: 本文档涉及凸性与资金放大 POC，不属于当前 v11 生产边界。
+
 # v11 Blood & Fire Audit Report: The Birth of the Apex Predator
 
 ## 1. 审计目的 (Purpose)

@@ -1,3 +1,8 @@
+# Archived Research Note
+
+> 归档状态: Historical research only
+> 说明: 本文档记录的是被撤回的研究结论，保留仅用于追溯架构演进。
+
 # v11 Survival Report: RETRACTED & REOPENED
 
 ## 1. 撤回声明 (Retraction Notice)

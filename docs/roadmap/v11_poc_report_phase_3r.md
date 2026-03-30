@@ -1,3 +1,8 @@
+# Archived Research Note
+
+> 归档状态: Historical research only
+> 说明: 该阶段性 POC 报告保留用于追溯，不代表当前生产结论。
+
 # v11 POC Phase 3R: Forensic Diagnosis & Final Resolution
 
 ## 1. 3R 审计结果 (Revised Audit Results)

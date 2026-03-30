@@ -1,3 +1,8 @@
+# Archived Research Note
+
+> 归档状态: Historical research only
+> 说明: 本文档为跨品种保证金研究，不属于 v11 当前生产实现。
+
 # v11 Clearing House Meat Grinder Report: The Final Reality
 
 ## 1. 审计目的 (Purpose)

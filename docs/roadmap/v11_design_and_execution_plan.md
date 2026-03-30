@@ -1,3 +1,9 @@
+# Archived Research Note
+
+> 归档状态: Historical research only
+> 现行实现计划: `conductor/tracks/v11/plan.md`
+> 说明: 本文档描述的是早期设计阶段方案，现已被执行后的基线计划替代。
+
 # v11.0 Design and Execution Plan: The Cognitive Exoskeleton (Retail Edition)
 
 ## 1. 核心愿景 (Vision)

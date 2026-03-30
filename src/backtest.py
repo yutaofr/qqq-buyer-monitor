@@ -1,9 +1,8 @@
 """
-QQQ backtest methodology.
+QQQ backtest and audit entry point.
 
-v6.3 Institutional Upgrade: Support for Portfolio Net Value Tracking,
-Multi-Asset (QQQ + QLD) TAA Mirroring, and Max Drawdown quantification.
-v6.4 Personal Allocation Upgrade: Candidate scoring and turnover tracking.
+Legacy portfolio backtests remain available, and v11 adds a probability/execution
+acceptance mode via `python -m src.backtest --mode v11`.
 """
 from __future__ import annotations
 
@@ -11,6 +10,7 @@ import argparse
 import concurrent.futures
 import logging
 import os
+import tempfile
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -2349,14 +2349,158 @@ def run_backtest(
         )
 
 
+def run_v11_audit(
+    *,
+    dataset_path: str = "data/v11_feature_library.csv",
+    evaluation_start: str = "2020-01-01",
+) -> dict[str, Any]:
+    """Run the v11 probabilistic audit on the labeled feature library."""
+    from src.engine.v11.conductor import V11Conductor
+    from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
+    from src.engine.v11.core.calibration_service import CalibrationService
+    from src.engine.v11.core.feature_library import FeatureLibraryManager
+
+    dataset = Path(dataset_path)
+    if not dataset.exists():
+        raise FileNotFoundError(f"v11 dataset not found: {dataset_path}")
+
+    df = pd.read_csv(dataset)
+    df["observation_date"] = pd.to_datetime(df["observation_date"])
+    df = df.sort_values("observation_date").reset_index(drop=True)
+
+    train = df[df["observation_date"] < evaluation_start].copy()
+    test = df[df["observation_date"] >= evaluation_start].copy()
+    if train.empty or test.empty:
+        raise ValueError("v11 audit requires both a training window and an evaluation window")
+
+    library = FeatureLibraryManager(storage_path=dataset_path, persist=False)
+    library.df = df.copy()
+    standardized = library.get_standardized_features()
+
+    standardized_train = standardized[standardized["observation_date"] < evaluation_start].copy()
+    standardized_test = standardized[standardized["observation_date"] >= evaluation_start].copy()
+
+    calibrator = CalibrationService()
+    calibrator.calibrate(standardized_train, train)
+    inference = BayesianInferenceEngine(
+        kde_models=calibrator.kde_models,
+        base_priors={
+            "MID_CYCLE": 0.85,
+            "BUST": 0.05,
+            "CAPITULATION": 0.02,
+            "RECOVERY": 0.05,
+            "LATE_CYCLE": 0.03,
+        },
+    )
+
+    probability_rows: list[dict[str, Any]] = []
+    for _, row in standardized_test.iterrows():
+        packet = calibrator.get_inference_packet(row)
+        if packet is None:
+            continue
+        source_row = test[test["observation_date"] == row["observation_date"]].iloc[-1]
+        posterior = inference.infer_posterior(
+            packet,
+            current_spread=float(source_row.get("credit_spread_bps", 400.0)),
+        )
+        actual_regime = str(source_row.get("regime", "MID_CYCLE"))
+        actual_prob = float(posterior.get(actual_regime, 0.0))
+        top_regime = max(posterior, key=posterior.get)
+        brier = sum(
+            (posterior.get(name, 0.0) - (1.0 if name == actual_regime else 0.0)) ** 2
+            for name in posterior
+        )
+        probability_rows.append(
+            {
+                "date": row["observation_date"],
+                "actual_regime": actual_regime,
+                "actual_regime_probability": actual_prob,
+                "predicted_regime": top_regime,
+                "brier": brier,
+            }
+        )
+
+    probability_df = pd.DataFrame(probability_rows)
+    if probability_df.empty:
+        raise ValueError("v11 audit produced no comparable probability rows")
+
+    with tempfile.TemporaryDirectory(prefix="v11-audit-") as tmpdir:
+        conductor = V11Conductor(
+            storage_path=str(Path(tmpdir) / "feature_library.csv"),
+            persist_library=False,
+        )
+        conductor.library.df = train.copy().reset_index(drop=True)
+        stress_window = test[
+            (test["observation_date"] >= "2020-02-01") & (test["observation_date"] <= "2020-04-15")
+        ].copy()
+
+        execution_rows: list[dict[str, Any]] = []
+        for _, row in stress_window.iterrows():
+            runtime = conductor.daily_run(pd.DataFrame([row]))
+            execution_rows.append(
+                {
+                    "date": runtime["date"],
+                    "bucket": runtime["signal"].get("target_bucket"),
+                    "action_required": runtime["signal"].get("action_required", False),
+                    "lock_active": runtime["signal"].get("lock_active", False),
+                    "resurrection": runtime["resurrection_active"],
+                    "quality": runtime["data_quality"],
+                }
+            )
+
+    execution_df = pd.DataFrame(execution_rows)
+    left_escape_pass = bool(
+        not execution_df.empty
+        and execution_df.loc[execution_df["date"] == pd.Timestamp("2020-03-09"), "bucket"].ne("QLD").any()
+    )
+    resurrection_pass = bool(
+        not execution_df.empty
+        and execution_df.loc[
+            (execution_df["date"] >= pd.Timestamp("2020-03-17"))
+            & (execution_df["date"] <= pd.Timestamp("2020-03-31"))
+            & execution_df["resurrection"],
+            "bucket",
+        ].eq("QLD").any()
+    )
+    lock_days = int(execution_df["lock_active"].sum()) if not execution_df.empty else 0
+
+    summary = {
+        "compared_points": int(len(probability_df)),
+        "top1_accuracy": float(
+            (probability_df["predicted_regime"] == probability_df["actual_regime"]).mean()
+        ),
+        "mean_actual_regime_probability": float(probability_df["actual_regime_probability"].mean()),
+        "mean_brier": float(probability_df["brier"].mean()),
+        "left_escape_pass": left_escape_pass,
+        "resurrection_pass": resurrection_pass,
+        "lock_days": lock_days,
+    }
+
+    print("\n--- v11 Probabilistic Audit ---")
+    print(
+        "Probability: "
+        f"points={summary['compared_points']} | "
+        f"top1_accuracy={summary['top1_accuracy']:.2%} | "
+        f"mean_actual_regime_probability={summary['mean_actual_regime_probability']:.2%} | "
+        f"mean_brier={summary['mean_brier']:.4f}"
+    )
+    print(
+        "Execution:   "
+        f"left_escape={'PASS' if summary['left_escape_pass'] else 'FAIL'} | "
+        f"resurrection={'PASS' if summary['resurrection_pass'] else 'FAIL'} | "
+        f"lock_days={summary['lock_days']}"
+    )
+    return summary
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="QQQ signal backtests and expectation-driven audits")
     parser.add_argument(
         "--mode",
-        choices=["portfolio", "beta", "deployment", "pacing", "both", "all"],
+        choices=["portfolio", "beta", "deployment", "pacing", "both", "all", "v11"],
         default="portfolio",
         help="`portfolio` runs the legacy mixed performance backtest. "
-        "`beta`, `deployment`, `pacing`, `both`, or `all` run expectation-driven signal audits.",
+        "`beta`, `deployment`, `pacing`, `both`, `all`, or `v11` run expectation-driven signal audits.",
     )
     parser.add_argument(
         "--expectations",
@@ -2388,7 +2532,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Allow dev-fixture macro datasets for smoke tests. Do not use for acceptance.",
     )
+    parser.add_argument(
+        "--v11-dataset-path",
+        default="data/v11_feature_library.csv",
+        help="Labeled v11 feature-library dataset for probabilistic audits.",
+    )
     args = parser.parse_args(argv)
+
+    if args.mode == "v11":
+        run_v11_audit(dataset_path=args.v11_dataset_path)
+        return 0
 
     if args.mode == "portfolio":
         run_backtest(

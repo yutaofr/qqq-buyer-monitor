@@ -1,3 +1,8 @@
+# Archived Research Note
+
+> 归档状态: Historical research only
+> 说明: 本文档保留为极端流动性研究，不作为当前实现基线。
+
 # v11 Blackout Audit Final Report: The Death of Liquidity Illusion
 
 ## 1. 实验目的 (Purpose)

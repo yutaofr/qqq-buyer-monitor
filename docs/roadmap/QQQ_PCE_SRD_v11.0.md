@@ -1,3 +1,9 @@
+# Archived Research Note
+
+> 归档状态: Historical research only
+> 现行规范: `conductor/tracks/v11/spec.md`
+> 说明: 本文档保留为 v11 概念探索记录，不再作为实现或验收依据。
+
 # SRD: QQQ Probabilistic Cycle Engine (v11.0)
 
 > 版本: v11.0
