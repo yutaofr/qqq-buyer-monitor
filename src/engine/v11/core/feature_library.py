@@ -3,9 +3,12 @@ Maintains the 25-year historical dataset required for consistent EWMA ranking.
 """
 from __future__ import annotations
 
+import io
+import os
 from pathlib import Path
 
 import pandas as pd
+import requests
 
 from src.engine.v11.core.adaptive_memory import ExogenousMemoryOperator
 
@@ -27,10 +30,6 @@ class FeatureLibraryManager:
             local_df["observation_date"] = pd.to_datetime(local_df["observation_date"])
 
         # Cloud Sync (Read-only pull from edge to ensure memory parity)
-        import os
-        import requests
-        import io
-        
         # We only attempt cloud pull in CI or if explicitly configured
         is_ci = os.environ.get("GITHUB_ACTIONS") == "true"
         blob_token = os.environ.get("VERCEL_BLOB_READ_WRITE_TOKEN")
