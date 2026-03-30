@@ -316,7 +316,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
             {
                 "observation_date": pd.Timestamp(price_data["date"]),
                 "credit_spread_bps": float(credit_spread),
-                "net_liquidity": float(net_liq) if net_liq is not None else None,
+                "net_liquidity_usd_bn": float(net_liq) if net_liq is not None else None,
                 "liquidity_roc_pct_4w": float(liquidity_roc or 0.0),
                 "vix": float(vix_term["vix"]),
                 "vix3m": None if vix_term.get("vix3m") is None else float(vix_term["vix3m"]),
@@ -324,7 +324,8 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
                 "drawdown_pct": drawdown_pct,
                 "breadth_proxy": float(breadth.get("pct_above_50d", 0.50)),
                 "fear_greed": float(fg),
-                "erp": float(erp) if erp is not None else None,
+                "erp_pct": float(erp) if erp is not None else None,
+                "real_yield_10y_pct": float(real_yield) if real_yield is not None else None,
                 "reference_capital": reference_capital,
                 "current_nav": current_nav,
             }
@@ -369,6 +370,17 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
                 forward_pe=float(erp), # Mapping current ERP to forward_pe for DB compatibility
                 real_yield=float(real_yield) if real_yield else 0.0,
             )
+
+        # ── Daily CSV Feedback Loop (Memory Persistence) ─────────────────────
+        macro_csv_path = "data/macro_historical_dump.csv"
+        # Always append aligned row to CSV to build long-term memory
+        try:
+            # We append without header if file exists, else create with header
+            header = not os.path.exists(macro_csv_path)
+            raw_row.to_csv(macro_csv_path, mode="a", index=False, header=header)
+            logger.info("Successfully APPENDED new day to %s.", macro_csv_path)
+        except Exception as e:
+            logger.error("Failed to update macro CSV feedback loop: %s", e)
 
         # ── Final Persistence Sync (v11.18) ──────────────────────────────────────
         if cloud.is_ci:

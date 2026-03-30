@@ -70,30 +70,27 @@ class V11Conductor:
             base_priors=self._get_base_priors()
         )
 
-    def _initialize_model(self, macro_path: str, regime_path: str) -> GaussianNB:
-        """
-        JIT-fits the GaussianNB engine on start-up.
-        Ensures production models are always aligned with the latest seed data.
-        """
-        logger.info(f"V11.5 Conductor: JIT-training model from {macro_path}...")
-
-        # Self-healing: Check for missing training baseline (Cold Start Resilience)
-        if not os.path.exists(macro_path):
-             logger.warning(f"BOOTSTRAP: {macro_path} is missing. Re-seeding a minimal baseline for Bayesian continuity.")
-             # Required columns for ProbabilitySeeder: credit_spread_bps, erp_pct, real_yield_10y_pct, net_liquidity_usd_bn
-             bootstrap_df = pd.DataFrame({
-                 "observation_date": [pd.Timestamp("2000-01-03"), pd.Timestamp("2000-01-04")],
-                 "credit_spread_bps": [350.0, 450.0],
-                 "erp_pct": [4.5, 3.5],
-                 "real_yield_10y_pct": [1.5, 2.0],
-                 "net_liquidity_usd_bn": [500.0, 510.0]
-             })
-             Path(macro_path).parent.mkdir(parents=True, exist_ok=True)
-             bootstrap_df.to_csv(macro_path, index=False)
+    def _initialize_model(self, macro_data_path: str, regime_data_path: str) -> GaussianNB:
+        """JIT training of the Bayesian regime inference model."""
+        if not os.path.exists(macro_data_path):
+            logger.warning("BOOTSTRAP: %s is missing. Re-seeding with varianced baseline.", macro_data_path)
+            # v11.18.20 High-Variance Seed to silence sklearn zero-variance warnings
+            seed_df = pd.DataFrame(
+                [
+                    {"observation_date": "2023-01-01", "erp_pct": 0.04, "real_yield_10y_pct": 0.015, "credit_spread_bps": 400.0, "net_liquidity_usd_bn": 5800.0},
+                    {"observation_date": "2023-01-02", "erp_pct": 0.05, "real_yield_10y_pct": 0.016, "credit_spread_bps": 450.0, "net_liquidity_usd_bn": 5750.0},
+                    {"observation_date": "2023-01-03", "erp_pct": 0.03, "real_yield_10y_pct": 0.014, "credit_spread_bps": 380.0, "net_liquidity_usd_bn": 5850.0},
+                    {"observation_date": "2023-01-04", "erp_pct": 0.045, "real_yield_10y_pct": 0.0155, "credit_spread_bps": 420.0, "net_liquidity_usd_bn": 5790.0},
+                ]
+            )
+            seed_df.set_index("observation_date", inplace=True)
+            seed_df.to_csv(macro_data_path)
+            macro_df = seed_df
+        else:
+            macro_df = pd.read_csv(macro_data_path, index_col="observation_date", parse_dates=True)
              
         # Load raw data
-        macro_df = pd.read_csv(macro_path, parse_dates=["observation_date"]).set_index("observation_date")
-        regime_df = pd.read_csv(regime_path, parse_dates=["observation_date"]).set_index("observation_date")
+        regime_df = pd.read_csv(regime_data_path, parse_dates=["observation_date"]).set_index("observation_date")
 
         # Generate features via unified seeder
         features = self.seeder.generate_features(macro_df)
