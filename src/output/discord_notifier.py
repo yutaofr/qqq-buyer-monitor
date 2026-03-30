@@ -188,27 +188,41 @@ def build_discord_payload(result: SignalResult) -> dict:
         },
     ])
 
+    # Format date to string if it's a timestamp object
+    try:
+        if hasattr(result.date, "isoformat"):
+            # If it's a datetime/timestamp object, use its isoformat
+            iso_timestamp = result.date.isoformat()
+            if "Z" not in iso_timestamp and "+" not in iso_timestamp:
+                iso_timestamp += "Z"
+        else:
+            # Fallback for string dates
+            date_str = str(result.date)[:10]
+            iso_timestamp = f"{date_str}T16:17:00Z"
+    except Exception:
+        import datetime
+        iso_timestamp = datetime.datetime.now().isoformat() + "Z"
+
+    # Sanitize fields: Discord rejects empty strings or nulls in field values
+    for field in fields:
+        if not field.get("value"):
+            field["value"] = "n/a"
+        if not field.get("name"):
+            field["name"] = "-"
+
     embed = {
-        "title": title,
-        "description": description,
-        "color": color,
-        "fields": fields,
+        "title": str(title)[:256],
+        "description": str(description)[:4096],
+        "color": int(color),
+        "fields": fields[:25],  # Discord limit: 25 fields
         "footer": {
-            "text": (
+            "text": str(
                 f"{'Bayesian-Core' if is_v11 else 'Target-Beta-First'} | "
                 f"Registry: {result.registry_version or ('v11_static' if is_v11 else 'n/a')} | "
                 f"Quality: {result.v11_quality_audit.get('quality_score', 1.0) if is_v11 else 'HIGH'}"
-            )
+            )[:2048]
         },
-        "timestamp": f"{result.date}T16:17:00Z",
-    }
-
-    return {
-        "username": "QQQ Monitor AI",
-        "avatar_url": (
-            "https://raw.githubusercontent.com/yutaofr/qqq-buyer-monitor/main/docs/images/logo?raw=true"
-        ),
-        "embeds": [embed],
+        "timestamp": iso_timestamp,
     }
 
     return {
@@ -221,7 +235,7 @@ def build_discord_payload(result: SignalResult) -> dict:
 
 
 def send_discord_signal(result: SignalResult, webhook_url: str) -> bool:
-    """Send a Discord embed aligned with the v10 runtime decision contract."""
+    """Send a Discord embed aligned with the v10/v11 runtime decision contract."""
     if not webhook_url:
         logger.warning("No Discord webhook URL provided, skipping notification.")
         return False
@@ -229,10 +243,16 @@ def send_discord_signal(result: SignalResult, webhook_url: str) -> bool:
     payload = build_discord_payload(result)
 
     try:
+        import json
+        logger.debug("Discord Payload: %s", json.dumps(payload, indent=2))
         resp = requests.post(webhook_url, json=payload, timeout=10)
-        resp.raise_for_status()
+        if resp.status_code != 204:  # Discord returns 204 No Content on success
+            resp.raise_for_status()
         logger.info("Successfully sent signal to Discord.")
         return True
     except Exception as exc:
         logger.error("Failed to send Discord notification: %s", exc)
+        # Log response content for 400 errors
+        if hasattr(exc, "response") and exc.response is not None:
+            logger.error("Discord Error Response: %s", exc.response.text)
         return False
