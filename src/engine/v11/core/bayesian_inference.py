@@ -1,25 +1,27 @@
 """v11 Core: Bayesian Inference Engine.
-The heart of the 'Entropy' architecture. 
-Strictly NO hard-coded thresholds (e.g., 800bps). 
-Uses continuous Sigmoid tension for prior shifting.
+The heart of the "Entropy" architecture.
+Strictly no hard-coded thresholds (for example 800bps).
+Uses continuous sigmoid tension for prior shifting.
 """
 from __future__ import annotations
-import numpy as np
-import pandas as pd
+
 import logging
-from typing import Dict, Any
+from typing import Any
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
+
 
 class BayesianInferenceEngine:
     """
     接收 PCA 降维后的战术证据与宏观基准，输出各 Regime 的后验概率。
     强制使用连续的 Sigmoid 函数处理先验漂移，绝无阶跃函数 (IF-ELSE)。
     """
-    def __init__(self, 
-                 kde_models: Dict[str, Any], 
-                 base_priors: Dict[str, float],
-                 sigmoid_alpha: float = 0.05, 
+    def __init__(self,
+                 kde_models: dict[str, Any],
+                 base_priors: dict[str, float],
+                 sigmoid_alpha: float = 0.05,
                  spread_baseline: float = 400.0):
         """
         Args:
@@ -33,7 +35,7 @@ class BayesianInferenceEngine:
         self.alpha = sigmoid_alpha
         self.baseline = spread_baseline
         self.regimes = ["MID_CYCLE", "BUST", "CAPITULATION", "RECOVERY", "LATE_CYCLE"]
-        
+
     def _compute_prior_shift(self, current_spread: float) -> float:
         """
         核心物理算子：使用 Sigmoid 函数将信贷绝对压力连续映射为先验漂移量。
@@ -43,31 +45,31 @@ class BayesianInferenceEngine:
         # Sigmoid 映射到 (0, 1) 区间
         sigmoid_val = 1.0 / (1.0 + np.exp(-self.alpha * (current_spread - self.baseline)))
         # 我们只在信贷恶化时施加正向推力（即 sigmoid > 0.5 的右半边）
-        shift = max(0.0, sigmoid_val - 0.5) 
+        shift = max(0.0, sigmoid_val - 0.5)
         return shift
 
-    def infer_posterior(self, pca_evidence: np.ndarray, current_spread: float) -> Dict[str, float]:
+    def infer_posterior(self, pca_evidence: np.ndarray, current_spread: float) -> dict[str, float]:
         """
         基于当前 PCA 坐标与绝对信贷压力，计算严格的贝叶斯后验概率。
         """
         posteriors = {}
         total_likelihood = 0.0
-        
+
         # 1. 计算连续先验漂移 (The Continuous Tension)
         delta_prior = self._compute_prior_shift(current_spread)
-        
+
         # 动态调整先验（从安全状态抽取概率补偿给极值状态）
         dynamic_priors = self.base_priors.copy()
-        
+
         # 危机状态吸收漂移概率
         crisis_boost = delta_prior * 0.5
         dynamic_priors["BUST"] += crisis_boost
         dynamic_priors["CAPITULATION"] += crisis_boost
-        
+
         # 平稳状态释放概率（保证和为 1）
         dynamic_priors["MID_CYCLE"] -= (crisis_boost * 2)
         dynamic_priors["MID_CYCLE"] = max(0.001, dynamic_priors["MID_CYCLE"]) # Laplacian floor
-        
+
         # 重新归一化先验
         prior_sum = sum(dynamic_priors.values())
         dynamic_priors = {k: v / prior_sum for k, v in dynamic_priors.items()}
@@ -85,7 +87,7 @@ class BayesianInferenceEngine:
             posterior = likelihood * dynamic_priors[regime]
             posteriors[regime] = posterior
             total_likelihood += posterior
-            
+
         # 3. 后验归一化
         if total_likelihood > 0:
             for r in self.regimes:
@@ -94,5 +96,5 @@ class BayesianInferenceEngine:
             # 极度黑天鹅（所有 KDE 都无法解释当前坐标），退守动态先验
             logger.warning("PCA coordinates strictly out-of-distribution. Reverting to dynamic priors.")
             posteriors = dynamic_priors.copy()
-            
+
         return posteriors

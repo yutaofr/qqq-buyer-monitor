@@ -333,6 +333,13 @@ class SignalResult:
     deployment_reasons: list[dict] = field(default_factory=list)
     feature_values: dict = field(default_factory=dict)
 
+    # v11 probabilistic runtime surface
+    engine_version: str = "v10"
+    v11_probabilities: dict[str, float] = field(default_factory=dict)
+    v11_entropy: float | None = None
+    v11_execution: dict = field(default_factory=dict)
+    v11_quality_audit: dict = field(default_factory=dict)
+
     # Deprecated fields (kept for db migration bridge)
 
     @property

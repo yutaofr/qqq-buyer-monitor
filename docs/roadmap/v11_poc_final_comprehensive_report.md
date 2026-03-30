@@ -1,3 +1,9 @@
+# Archived Research Note
+
+> 归档状态: Historical research only
+> 现行验收: `docs/roadmap/v11_acceptance_report_2026-03-30.md`
+> 说明: 本文档包含 POC 期的实验叙事与假设，不代表当前生产口径。
+
 # v11 POC 综合实验与审计终审报告 (Comprehensive Final Report)
 
 ## 1. POC 核心目的 (Purpose)

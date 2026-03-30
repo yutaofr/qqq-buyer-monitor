@@ -70,6 +70,11 @@ def is_v8_runtime_result(result: SignalResult) -> bool:
     )
 
 
+def is_v11_result(result: SignalResult) -> bool:
+    """Return True when the probabilistic v11 runtime fields are populated."""
+    return result.engine_version == "v11"
+
+
 def _format_optional_beta(beta: float | None) -> str:
     return f"{beta:.2f}x" if beta is not None else "n/a"
 
@@ -263,6 +268,51 @@ def _print_runtime_decision_tree(result: SignalResult) -> None:
     print(f"Decision:  {tree}")
 
 
+def _print_v11_signal(result: SignalResult, c) -> None:
+    execution = result.v11_execution or {}
+    probs = result.v11_probabilities or {}
+    ordered_probs = sorted(probs.items(), key=lambda item: item[1], reverse=True)
+
+    print(f"\n{c(_BOLD)}=== QQQ PROBABILISTIC MONITOR (v11.0) ==={c(_RESET)}")
+    print(f"Date:      {result.date}")
+    print(f"Price:     ${result.price:.2f}")
+    print(
+        "Target:    "
+        f"raw_beta={result.raw_target_beta:.2f}x | "
+        f"beta={result.target_beta:.2f}x | "
+        f"bucket={execution.get('target_bucket', 'n/a')}"
+    )
+    print(
+        "Behavior:  "
+        f"action={execution.get('action_required', False)} | "
+        f"lock={execution.get('lock_active', False)} | "
+        f"reason={execution.get('reason', 'n/a')}"
+    )
+    t = result.target_allocation
+    print(
+        "Reference: "
+        f"Cash={t.target_cash_pct*100:.1f}%, "
+        f"QQQ={t.target_qqq_pct*100:.1f}%, "
+        f"QLD={t.target_qld_pct*100:.1f}% | "
+        f"Entropy={result.v11_entropy:.3f}" if result.v11_entropy is not None else
+        "Reference: n/a"
+    )
+    if ordered_probs:
+        formatted = " | ".join(f"{name}={value:.2%}" for name, value in ordered_probs)
+        print(f"Posterior: {formatted}")
+    if result.data_quality:
+        total = len(result.data_quality)
+        available = sum(1 for f in result.data_quality.values() if f.get("usable"))
+        print(f"Quality:   数据质量: {available}/{total} 可用")
+    audit = result.v11_quality_audit or {}
+    anomalies = ", ".join(audit.get("anomalies", [])) or "none"
+    proxies = ", ".join(audit.get("proxy_fields", [])) or "none"
+    print(f"Audit:     anomalies={anomalies} | proxies={proxies}")
+    print(f"\n{c(_CYAN)}Rationale:{c(_RESET)}")
+    print(result.explanation)
+    print(f"{c(_BOLD)}---{c(_RESET)}")
+
+
 def print_signal(
     result: SignalResult,
     use_color: bool = True,
@@ -273,6 +323,10 @@ def print_signal(
     c = lambda code: code if use_color else ""  # noqa: E731
     r = c(_RESET)
     runtime_version = "v9.0"
+
+    if is_v11_result(result):
+        _print_v11_signal(result, c)
+        return
 
     t1 = result.tier1
     color, label = _ALLOCATION_STYLE[result.allocation_state]

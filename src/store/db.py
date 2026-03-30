@@ -128,6 +128,11 @@ def _migrate_blob(blob: dict) -> dict:
     blob.setdefault("rebalance_action", {})
     blob.setdefault("deployment_action", {})
     blob.setdefault("candidate_selection_audit", [])
+    blob.setdefault("engine_version", "v10")
+    blob.setdefault("v11_probabilities", {})
+    blob.setdefault("v11_entropy", None)
+    blob.setdefault("v11_execution", {})
+    blob.setdefault("v11_quality_audit", {})
 
     # Remove purged legacy fields if present
     blob.pop("current_portfolio", None)
@@ -413,4 +418,9 @@ def _to_json_dict(result: SignalResult) -> dict:
         "deployment_action": result.deployment_action,
         "candidate_selection_audit": result.candidate_selection_audit,
         "interval_beta_audit": result.interval_beta_audit,
+        "engine_version": result.engine_version,
+        "v11_probabilities": result.v11_probabilities,
+        "v11_entropy": _float(result.v11_entropy),
+        "v11_execution": result.v11_execution,
+        "v11_quality_audit": result.v11_quality_audit,
     }

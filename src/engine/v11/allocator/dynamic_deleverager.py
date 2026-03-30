@@ -2,7 +2,7 @@
 Implements the 'Active Bleeding' mechanism to raise free cash before the crisis peaks.
 """
 from __future__ import annotations
-import numpy as np
+
 
 class BayesianDeleverager:
     """
@@ -10,7 +10,7 @@ class BayesianDeleverager:
     """
     def __init__(self, min_exposure: float = 0.20, gamma: float = 2.0):
         self.min_exposure = min_exposure
-        self.gamma = gamma 
+        self.gamma = gamma
 
     def compute_safe_exposure(self, p_bust: float) -> float:
         """
@@ -27,6 +27,6 @@ class BayesianDeleverager:
         """
         target_ratio = self.compute_safe_exposure(p_bust)
         target_value = current_a_value * target_ratio
-        
+
         cash_freed = current_a_value - target_value
         return max(0.0, cash_freed)

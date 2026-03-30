@@ -1,3 +1,8 @@
+# Archived Research Note
+
+> 归档状态: Historical research only
+> 说明: 该研究报告保留用于追溯，不代表当前生产结论。
+
 # v11 POC Ultimate Realism Report (Phase 5R Final - The Dissection)
 
 ## 1. 实验背景 (Context)

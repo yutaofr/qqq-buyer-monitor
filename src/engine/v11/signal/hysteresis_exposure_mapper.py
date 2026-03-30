@@ -1,11 +1,13 @@
 """v11 Signal: Hysteresis Exposure Mapper.
-The Dictatorial State Machine. 
+The dictatorial state machine.
 Converts continuous probability into discrete, settlement-locked commands.
 """
 from __future__ import annotations
+
 import logging
 
 logger = logging.getLogger(__name__)
+
 
 class HysteresisExposureMapper:
     """
@@ -31,7 +33,7 @@ class HysteresisExposureMapper:
         # 1. 物理层拦截 (Settlement Lock)
         if self.cooldown_days_remaining > 0:
             return self._format_output(
-                previous_state, 
+                previous_state,
                 f"SETTLEMENT_LOCKED ({self.cooldown_days_remaining} days left)"
             )
 
@@ -40,7 +42,7 @@ class HysteresisExposureMapper:
             if self.current_state != "QLD":
                 self.current_state = "QLD"
                 # 猎杀后强制锁仓 30 天，无视洗盘
-                self.cooldown_days_remaining = 30 
+                self.cooldown_days_remaining = 30
                 signal_reason = "RESURRECTION: Z-SCORE > 3.0. OVERRIDING PROBABILITY."
             return self._format_output(previous_state, signal_reason)
 
@@ -51,7 +53,7 @@ class HysteresisExposureMapper:
                 self.current_state = "QQQ"
                 self.cooldown_days_remaining = self.settlement_t_plus
                 signal_reason = f"DELEVERAGE: P(BUST) {p_bust:.2f} > 0.40"
-                
+
         elif self.current_state == "QQQ":
             # 终极避险
             if p_bust > 0.75:
@@ -63,10 +65,10 @@ class HysteresisExposureMapper:
                 self.current_state = "QLD"
                 self.cooldown_days_remaining = self.settlement_t_plus
                 signal_reason = f"RE-LEVERAGE: P(BUST) {p_bust:.2f} < 0.20"
-                
+
         elif self.current_state == "CASH":
             # 现金池复苏极其严苛，主要靠 Kill-Switch 复活
-            if p_bust < 0.10:  
+            if p_bust < 0.10:
                 self.current_state = "QQQ"
                 self.cooldown_days_remaining = self.settlement_t_plus
                 signal_reason = f"CAUTIOUS RE-ENTRY: P(BUST) {p_bust:.2f} < 0.10"

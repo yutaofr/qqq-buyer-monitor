@@ -1,83 +1,150 @@
-# ADD: QQQ Cognitive Exoskeleton (v11.0)
+# ADD: QQQ Probabilistic Monitor (v11.0)
 
-> 版本: v11.0
-> 状态: Final Design
+> 状态: Accepted Implementation Design
 > 关联 SRD: `conductor/tracks/v11/spec.md`
-> 核心代号: "Entropy"
+> 日期: 2026-03-30
 
-## 1. 系统概览 (High-Level Design)
+## 1. High-Level Design
 
-v11 系统被设计为一个**严格单向的数据处理流水线**。数据流从“物理层”输入，经过“毒素过滤”，注入“认知中枢”进行概率坍缩，最后由“独裁映射器”输出离散指令。
+v11 不是“纯状态机”，也不是“纯连续凯利”。
 
-### 1.1 拓扑结构
-`Raw Data` -> `Degradation Pipeline` -> `Adaptive Memory` -> `PCA-KDE Engine` -> `Kill-Switch Audit` -> `Hysteresis Mapper` -> `Final Signal`
+最终实现采用**混合架构**：
 
----
+1. 上游用 Bayesian posterior 表达连续不确定性。
+2. 中游用 entropy-aware sizing 生成连续 beta。
+3. 下游用 BehavioralGuard 将连续 beta 投影到有限 bucket，并施加行为约束。
 
-## 2. 组件详细设计 (Component Specifications)
+拓扑如下：
 
-### 2.1 贝叶斯核心推断引擎 (`BayesianInferenceEngine`)
-该组件是系统的决策心脏，负责将正交的信号组坍缩为后验概率。
+`Raw Row -> Scrub/Audit -> Adaptive Percentile Features -> PCA/KDE Posterior -> Kill-Switch -> Continuous Sizing -> Behavioral Guard -> Safety Override -> Persist/Render`
 
-*   **正交信号拓扑**:
-    *   **先验层 (Prior)**: $Credit\_Spread, Liquidity\_ROC$ (决定宏观重力)。
-    *   **证据层 (Likelihood)**: $VIX, Drawdown, Breadth$ (决定市场反应)。
-*   **后验合成公式**:
-    $$P(Regime_i | Evidence) = \frac{L(Evidence | Regime_i) \times [P(Regime_i)_{base} + \Delta Prior_{sensor}]}{Z}$$
-    *   $\Delta Prior_{sensor}$: 物理传感器产生的偏移量（如利差绝对值突破 800bps 时强制提升 BUST 先验）。
-*   **PCA-KDE 推理协议**:
-    1.  **标准化**: 证据特征必须通过 `AdaptiveMemory` 生成 25 年滚动 EWMA 分位数。
-    2.  **降维**: 执行 PCA，提取解释度最高的**前 2 个主成分**。
-    3.  **似然估计**: 使用预训练的 **KDE 核密度分布** 计算当前 PCA 坐标在各 Regime 下的似然得分。
+## 2. Core Design Choices
 
-### 2.2 特征库与增量维护 (`FeatureLibraryManager`)
-*   **数据一致性**: 系统必须维护一个回溯至 1995 年的每日特征库（约 7500+ 行）。
-*   **增量注入**: 每日收盘后，将 T+0 数据追加至库末，并重新计算**指数加权分位数 (EWMA-P)**。
-*   **窗口锁死**: 所有的统计排名（Rank）必须基于此时序库，禁止在推断时使用截面快照。
+### 2.1 Why Posterior Instead of Hard Threshold States
 
-### 2.3 认知中枢：外生记忆算子 (`ExogenousMemoryOperator`)
-... (保持之前半衰期衰减设计) ...
+原因：
 
-### 2.3 猎杀扳机：双锚定 Z-Score (`DualAnchorKillSwitch`)
-*   **信号源**: $TS_t = VIX3M_t - VIX_t$。
-*   **Z-Score 计算**:
-    *   $Z_{fast}$: 基于 20 日动量均值与标准差。
-    *   $Z_{slow}$: 基于 252 日动量均值与标准差。
-*   **逻辑门**: `Resurrect = (Z_fast > 2.0) AND (Z_slow > 3.0) AND (dVIX/dt < 0)`。
+1. 状态边界在真实市场中并不稳定。
+2. 后验分布可以显式表达不确定性。
+3. uncertainty 可直接进入 beta shrinkage，而不是靠人工口头解释。
 
-### 2.4 独裁映射器 (`HysteresisExposureMapper`)
-基于状态机的离散控制，内置结算物理锁。
+### 2.2 Why Continuous Sizing Before Bucket Mapping
 
-*   **状态转移矩阵**:
-    | 当前状态 | 触发条件 (Event) | 目标状态 | 后续锁定 |
-    | :--- | :--- | :--- | :--- |
-    | QLD | $P(BUST) > 0.40$ | QQQ | T+1 |
-    | QQQ | $P(BUST) > 0.75$ | CASH | T+1 |
-    | QQQ | $P(BUST) < 0.20$ | QLD | T+1 |
-    | CASH | `Resurrect == True` | QLD | T+30 |
-    | ANY | $Q_t < 0.5$ | SAFE_BLACKOUT | 永久直至 $Q_t$ 恢复 |
+原因：
 
----
+1. 直接离散状态机会在边界产生跳跃与洗盘。
+2. 纯连续输出又无法对齐散户执行摩擦。
+3. 先连续后离散，可以同时保留统计平滑性与行为纪律。
 
-## 3. 物理数据口径 (SSoT Data Schema)
+### 2.3 Why Dollar Anchor Instead of Current-NAV-Only Ratios
 
-| 字段 | 类型 | 正交分类 | 来源 |
-| :--- | :--- | :--- | :--- |
-| `credit_spread_bps` | Float | 标定层 (Labeling) | FRED |
-| `liquidity_roc` | Float | 标定层 (Labeling) | Fed H.4.1 |
-| `vix` | Float | 推理层 (Evidence) | YFinance |
-| `vix3m` | Float | 推理层 (Evidence) | YFinance |
-| `drawdown_pct` | Float | 推理层 (Evidence) | Calculated |
+`risk_budget_dollars` 基于 `reference_capital` 与 `current_nav` 的较大者计算。
 
----
+这样做的目的：
 
-## 4. 异常处理与生存模式 (Error Handling)
+1. 避免亏损后仅因 NAV 缩小而机械失去全部再配置能力。
+2. 让回测与实时运行拥有一致的资金语义。
 
-### 4.1 结算锁冲突 (Settlement Conflict)
-如果在 T+1 冷却期内发生剧烈波动，系统将强制维持原状。设计原则是：**宁可错过第二波反弹，也不触碰结算合规红线。**
+### 2.4 Why Safety Override Runs After Execution Guard
 
-### 4.2 记忆坍塌保护
-若信贷利差发生 100bps 以上的单日异动，系统自动将所有 $\lambda$ 设为最小值 0.5，清除所有平稳期记忆，强制执行最高级别防御。
+原因：
 
----
-*Architect Sign-off: The technical blueprint is convergent. This ADD serves as the source of truth for implementation.*
+1. posterior 与 sizing 应先反映“正常世界”的统计判断。
+2. 数据质量问题属于执行安全层，不应污染 posterior 本身。
+3. 覆写发生后必须回写 guard 状态，避免“显示无需动作但目标 bucket 已变化”的错误。
+
+### 2.5 Why Current Kill-Switch Uses Single Rolling Z-Score
+
+当前实现选择 `60d` rolling z-score + `VIX` 一阶导确认，而不是多锚点复杂门控。
+
+取舍：
+
+1. 参数更少，样本外更稳。
+2. 在 2020 高压窗内能够满足 resurrection 验收。
+3. 若未来 walk-forward 证据证明双锚点更稳，再升级为下一版，不在当前基线硬塞更多旋钮。
+
+## 3. Module Mapping
+
+### 3.1 `src/engine/v11/signal/data_degradation_pipeline.py`
+
+负责数据清洗、质量计分、代理字段审计、强制降级。
+
+### 3.2 `src/engine/v11/core/feature_library.py`
+
+负责时序特征库、增量注入、stress feature 生成和自适应 percentile 特征。
+
+### 3.3 `src/engine/v11/core/calibration_service.py`
+
+负责：
+
+1. 选择 `_pct` 特征列。
+2. 标准化。
+3. PCA 降维。
+4. 各 regime KDE 训练。
+
+### 3.4 `src/engine/v11/core/bayesian_inference.py`
+
+负责 posterior 推断与 credit-spread prior tension。
+
+### 3.5 `src/engine/v11/core/position_sizer.py`
+
+负责把 posterior 映射为：
+
+1. `raw_target_beta`
+2. `target_beta`
+3. `risk_budget_dollars`
+4. `QQQ / QLD / Cash` 参考路径
+
+### 3.6 `src/engine/v11/signal/behavioral_guard.py`
+
+负责 bucket deadband、结算锁、复活锁、状态同步。
+
+### 3.7 `src/engine/v11/conductor.py`
+
+负责统一 orchestrate 全链路，并对外输出 runtime payload。
+
+## 4. User Entry Alignment
+
+### 4.1 Live Runtime
+
+`python -m src.main --engine v11`
+
+输出：
+
+1. CLI 审计版面
+2. JSON surface
+3. DB 持久化 blob
+
+### 4.2 Audit Runtime
+
+`python -m src.backtest --mode v11`
+
+输出：
+
+1. posterior 质量指标
+2. 2020 高压执行指标
+3. 无副作用审计总结
+
+## 5. Rejected Alternatives
+
+### 5.1 纯离散状态机
+
+拒绝原因：边界抖动太大，且无法显式惩罚高 entropy。
+
+### 5.2 纯 Kelly / Markowitz
+
+拒绝原因：输入噪声、样本不稳和散户执行摩擦会让连续最优解在现实里失真。
+
+### 5.3 期权凸性现金放大器
+
+拒绝原因：研究 POC 可做，生产口径不可接受。此前相关报告已归档，不进入 v11 基线。
+
+## 6. Verification Baseline
+
+当前实现验收以以下事实为准：
+
+1. `python -m src.backtest --mode v11`
+   `points=31 | top1_accuracy=58.06% | mean_actual_regime_probability=57.93% | mean_brier=0.7982`
+2. 同一审计下执行结果：
+   `left_escape=PASS | resurrection=PASS | lock_days=12`
+3. 单元与集成回归覆盖 degradation、feature library、sizing、behavior guard、main、backtest 入口。

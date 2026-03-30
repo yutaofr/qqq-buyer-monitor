@@ -1,251 +1,74 @@
-# QQQ Monitor V11.0 架构演进路线图
+# v11 Roadmap
 
-## 1. 核心状态机优化 (Cycle State Machine Refinement)
+> 更新日期: 2026-03-30
+> 状态: Baseline Implemented
 
-### 1.1 `BUST` 与 `CAPITULATION` 的冲突解决机制
+## 1. 已完成
 
-* **背景**：当前 v10.0 实现中，`BUST` 拥有绝对优先级。虽然确保了安全性，但在极端恐慌（Capitulation）阶段可能错过 VIX 坍塌引发的暴力反弹。
-* **研究目标**：引入“美联储干预”探测器。若 `Spread >= 650` (BUST) 但同时检测到 `Liquidity_ROC > 0` 且 `Credit_Acceleration < 0`，则允许系统降级切换至 `CAPITULATION` 抢筹模式。
+### 1.1 架构收敛
 
-### 1.2 动态 ERP 阈值 (Adaptive ERP Thresholds)
+已完成从“多份蓝图并存”到单一基线的收敛：
 
-* **背景**：2021 年这类“长尾泡沫期”，由于利率极低，2.5% 的 ERP 阈值可能在长时间内不被触发，导致逻辑钝化。
-* **研究目标**：建立基于 10 年移动窗口的 ERP 分位点动态计算模型，而非硬编码 2.5%。
+1. SRD/ADD 统一到 `conductor/tracks/v11/`
+2. live runtime 统一到 `python -m src.main --engine v11`
+3. audit runtime 统一到 `python -m src.backtest --mode v11`
 
----
+### 1.2 核心执行级修复
 
-## 2. 流动性层级重组 (Liquidity Re-integration)
+已完成：
 
-### 2.1 Net Liquidity (SSoT) 重回 Tier-0
+1. `T+1` 冷却锁生效
+2. degradation override 与 execution state 同步
+3. duplicate-index 导致的单行崩溃修复
+4. 代理字段会真实降低 data quality
 
-* **背景**：v10.0 过于强调定价周期（ERP），削弱了流动性指标。但历史证明 Net Liquidity 是纳指波动的先行同步指标。
-* **研究目标**：将 `WALCL - WDTGAL - RRPONTSYD` 重新作为系统全局的“环境水位线”，与 ERP 共同决定 Beta 上限。
+### 1.3 统计与行为升级
 
-### 2.2 离散化映射保护
+已完成：
 
-* **背景**：为防止 Alpha 策略被逆向工程，研究更复杂的信号离散化逻辑。
+1. posterior-first 推断
+2. entropy-aware continuous sizing
+3. dollar-anchored risk budget
+4. deadband + settlement lock + resurrection lock
 
----
+## 2. 当前验收事实
 
-## 3. 自动化审计与保真度 (AC-4 Fidelity)
+`python -m src.backtest --mode v11` 当前参考结果：
 
-### 3.1 实时 Beta 偏差实时监控
+1. `points=31`
+2. `top1_accuracy=58.06%`
+3. `mean_actual_regime_probability=57.93%`
+4. `mean_brier=0.7982`
+5. `left_escape=PASS`
+6. `resurrection=PASS`
+7. `lock_days=12`
 
-* **目标**：开发 Grafana/Web 插件，实时展示“目标 Beta vs 实际敞口”的偏离曲线，超过 0.05 自动触发警报。
+## 3. 文档分层
 
----
+### 3.1 规范层
 
-## 4. 特种资产支持 (Exotic Assets Support)
+1. `conductor/tracks/v11/spec.md`
+2. `conductor/tracks/v11/add.md`
+3. `conductor/tracks/v11/design_decisions.md`
 
-### 4.1 TMF/USD 对冲模块
+### 3.2 运维层
 
-* **背景**：在 `BUST` 周期中，现金虽安全但丧失了部分防御性 Alpha。
-* **研究目标**：研究在 BUST 阶段引入 20% 權重的長債（TMF）作為風險對沖。
+1. `docs/roadmap/v11_production_sop.md`
+2. `docs/roadmap/v11_acceptance_report_2026-03-30.md`
 
-# 以霍华德·马克斯的视角，直接评判
+### 3.3 研究归档层
 
----
+以下文档保留，但不再指导实现：
 
-**v10.0模型以及架构借用了我的语言，但犯了我最核心的认识论错误。**
+1. `docs/roadmap/QQQ_PCE_SRD_v11.0.md`
+2. `docs/roadmap/v11_design_and_execution_plan.md`
+3. `docs/roadmap/v11_*report*.md`
 
----
+## 4. 下一阶段研究
 
-**第一，把我的比喻当成了物理学定律。**
+这些任务有价值，但不阻塞当前基线：
 
-"钟摆"是一个比喻，用来传达一个认知：市场总是在走极端之间摆动。比喻的意义在于它承认我们**无法精确定位钟摆当前的位置**。这篇文章把比喻变成了精确坐标系——ERP < 2.5% 触发LATE\_CYCLE，Credit Spread > 650 bps 触发BUST，精确到小数点。这正是我在《周期》里明确警告的错误思维：把模糊的规律编译成精确的规则，会制造一种**虚假的确定性**，而虚假的确定性比无知更危险。
-
-**第二，阈值是后验的，不是先验的物理法则。**
-
-"650 bps是华尔街VaR强制平仓线"——这是对历史观察的过拟合。2008年触发了，2020年触发了，于是被奉为定律。但历史样本量极小。下一次流动性危机可能在450 bps就触发系统性踩踏（因为杠杆结构不同），也可能在800 bps才出现（因为美联储早期干预）。把3-4次历史事件里观察到的数字硬编码进系统，不叫"数学底座"，叫**样本外失效的候选者**。
-
-**第三，状态机解决不了"周期识别"本身的核心难题。**
-
-系统最大的智识诚实性问题在这里：**我们如何知道我们在LATE\_CYCLE而不是MID\_CYCLE？** 文章没有回答。1999年初，所有指标都在合理区间，ERP只是略低。1998年底LTCM危机刚结束，信贷利差还在余波里。没有任何简单公式在2000年3月崩盘前6个月明确告诉你"现在是LATE\_CYCLE"。周期识别的根本困难不是缺少公式，而是**在市场里没有人知道今天是什么日期**。
-
-**第四，CAPITULATION的AND门在实践中接近永远不触发，或触发时已无意义。**
-
-四个条件同时满足：Spread ≥ 600，ERP ≥ 4.5%，Drawdown ≥ 18%，Accel ≤ 0。这个条件组合在历史上极罕见，但每次出现时，都是流动性真正枯竭、QLD可能面临底层资产清算的时刻。更根本的问题是：**你用来"猎杀"的新资金从哪里来？** 如果你在BUST状态下已被压缩到0.5x，而你的总资产因为市场下跌而大幅缩水，CAPITULATION触发时你真正能部署的绝对资金量是微小的。文章没有处理这个路径依赖的问题。
-
-**第五，单一资产的集中策略与"周期"框架本身产生根本矛盾。**
-
-整套系统的前提是"我能识别周期位置"。但如果我真的能识别周期位置，正确的行动不是调整QQQ/QLD的比例，而是**调整整个资产类别的敞口**。纳斯达克100是全球估值最高、对利率最敏感的股权篮子之一。LATE\_CYCLE的正确应对是离开这个篮子，而不是把QLD从10%降到0%然后继续持有80%的QQQ。这套系统名为防御，实为永远不离场的合理化叙事。
-
----
-
-**值得认可的部分：**
-
-框架的层级优先权（BUST先于CAPITULATION）体现了真实的风险意识——生存优先于盈利。信贷利差作为核心信号而非GDP增速或新闻情绪，这个选择本身是正确的方向。文章最后一段关于"执行纪律"的描述，是整篇文章最诚实的部分。
-
----
-
-**最终判断：**
-
-这是一套用严谨语言包装的**过拟合规则系统**，它的真正功能是为持续持有纳斯达克提供心理上的合法性。系统越精密，使用者越相信自己拥有优势，而这种自信本身就是周期末端最典型的心理特征。
-
-真正理解周期的人，不会把周期压缩成一个状态机。他们理解的恰恰是：**无法压缩，才是周期认知的全部意义所在。**
-
-上一条评判指出了这套系统的认识论缺陷。现在转入工程层面，直接给出重构建议。
-
----
-
-## 一、首先承认不可压缩的东西
-
-在动任何模型之前，必须接受一个前提：**周期位置识别本质上是概率分布，不是状态分类**。
-
-当前系统的根本架构错误是把连续变量强行离散化为5个状态。这制造了虚假的精确性，同时产生了"边界效应"——ERP 2.49% 和 2.51% 的决策完全不同，但现实风险几乎相同。
-
-重构的第一原则：**用概率密度替换状态机**。
-
----
-
-## 二、具体建模重构
-
-### 1. 用分位数替换硬编码阈值
-
-当前做法：ERP < 2.5% = LATE\_CYCLE（绝对数字）
-
-正确做法：
-
-```python
-# 滚动历史分位数，而非固定阈值
-erp_percentile = rolling_percentile(erp_current, window=20yr)
-spread_percentile = rolling_percentile(spread_current, window=20yr)
-
-# 危险程度是连续变量
-danger_score = weighted_average([
-    erp_percentile,          # 越高越危险（估值贵）
-    spread_percentile,       # 越高越危险（信贷紧）
-    drawdown_magnitude,
-    breadth_deterioration
-])
-```
-
-**理由**：2.5%的ERP在低利率时代是正常值，在高利率时代是极度危险信号。绝对数字会随着利率结构性水平变化而失效。用滚动分位数，让阈值自适应当前宏观利率体系。
-
----
-
-### 2. 把仓位权重变成连续函数，不是查表
-
-当前做法：CAPITULATION → QLD上限25%（查表）
-
-正确做法：
-
-```python
-def qqq_weight(danger_score, opportunity_score):
-    # 基础仓位是危险程度的单调递减函数
-    base = max_exposure * (1 - danger_score ** 1.5)
-    
-    # 机会加成：只在danger_score同时满足机会条件时叠加
-    opportunity_bonus = qld_max * opportunity_score * (1 - danger_score)
-    
-    return base, opportunity_bonus
-```
-
-这样，仓位变化是平滑的，不会因为某个指标跨越某条线而产生跳跃式调整——跳跃式调整在真实市场里会带来巨大的执行摩擦和心理压力。
-
----
-
-### 3. 把"信号"从"决策"里剥离，加入明确的不确定性层
-
-当前系统最大的隐患：**所有指标被当成客观事实，而非噪音信号**。
-
-信贷利差今天读数650，但明天可能因为一条新闻变成580。系统是否因此从BUST退回NEUTRAL？如果是，这是"响应灵敏"还是"被噪音鞭打"？
-
-建议加入**信号置信度层**：
-
-```python
-# 信号需要持续确认才生效，防止假突破
-def confirmed_signal(indicator, threshold, confirmation_days=5):
-    recent = indicator.tail(confirmation_days)
-    return (recent > threshold).mean() > 0.8  # 80%的观测日超过阈值才算确认
-
-# 或者用指数移动平均平滑信号
-smoothed_spread = spread.ewm(span=10).mean()
-```
-
----
-
-### 4. 增加"方向"维度，不仅看水位，还看导数
-
-这一点文章部分做到了（credit\_accel），但没有系统性地应用到所有指标上。
-
-真正重要的不是ERP是否低于2.5%，而是：
-
-* ERP从3.5%跌到2.5%（快速恶化，危险加速）
-* ERP从1.8%回升到2.5%（正在修复，机会开窗）
-
-这两种情况下2.5%的读数含义完全相反，但当前系统给出相同的LATE\_CYCLE判断。
-
-```python
-erp_level_score = percentile_rank(erp)
-erp_momentum_score = (erp - erp.rolling(60).mean()) / erp.rolling(60).std()
-
-# 合成：水位 + 方向
-erp_composite = 0.6 * erp_level_score + 0.4 * erp_momentum_score
-```
-
----
-
-### 5. 处理路径依赖问题（当前系统完全忽视）
-
-假设你持有80%的QQQ，市场下跌30%，你现在的实际QQQ敞口（以初始资金计）是56%。系统说"CAPITULATION，可以加到80%"——但这80%是基于**当前净值**还是**初始资金**？
-
-这不是细节问题。这决定了你是否在用已经亏损的账户继续加杠杆，从而把Kelly准则踩碎。
-
-建议：**所有仓位上限以初始资金或峰值净值的某个比例定义，而非当前净值**。
-
-```python
-# 仓位绝对额，不是比例
-max_qqq_dollars = initial_capital * 0.80
-current_qqq_dollars = current_shares * current_price
-
-# 加仓空间 = 绝对额度上限 - 当前持有绝对额
-room_to_add = max(0, max_qqq_dollars - current_qqq_dollars)
-```
-
----
-
-### 6. 回测必须包含的三个诚实性测试（当前文章没有做）
-
-文章说"2008年和2000年系统都躲过了"——这是**in-sample拟合**，不是**out-of-sample验证**。
-
-必须做的测试：
-
-**① 参数敏感性测试**：把ERP阈值从2.5%改成2.2%或2.8%，结果变化多大？如果改动0.3%导致结果天翻地覆，系统就是过拟合的。
-
-**② Walk-forward验证**：在1990年之前的数据上校准参数，然后在1990-2010年测试，禁止回头看。不允许用2008年的危机来"验证"一个知道2008年存在才设定的参数。
-
-**③ 压力测试非历史情景**：日本式通缩（长期零利率但股市持续阴跌）、美元失去储备货币地位、科技监管导致QQQ成分剧变。这些情景下系统怎么表现？
-
----
-
-## 三、一个更诚实的架构
-
-```
-不是：指标 → 状态 → 仓位表
-而是：指标 → 概率分布 → 期望收益/风险比 → 凯利公式 → 仓位
-```
-
-核心方程：
-
-```
-position_size = f(edge / variance)
-edge = E[return | current_regime_probability]
-variance = σ² + regime_uncertainty²
-```
-
-**加入regime\_uncertainty²**是关键。当前系统假设周期识别是确定的。真实情况是，识别本身有误差。这个误差在周期转折点最大，恰好是系统最需要精确的时候。把不确定性显式建模进去，会自动让系统在转折点附近缩小仓位——这才是真正的风险管理。
-
----
-
-## 四、唯一真正不可替代的护城河
-
-上面所有建议都是技术层面的改进，可以被编码，可以被复制。
-
-真正无法建模的是这篇文章最后一段说的那件事，但它说得还不够彻底：
-
-**系统的敌人不是市场，是你自己对系统的解释权。**
-
-每次系统给出一个你不舒服的指令，你都会找到一个"这次不同"的理由来覆盖它。这不是执行纪律问题，这是人类认知结构问题。唯一的工程解决方案是：**把覆盖系统的成本显式化**——每次手动覆盖都必须写下书面理由，事后强制复盘覆盖决策的结果，建立个人的覆盖错误率统计。
-
-当你知道自己的历史覆盖成功率是多少，你才有资格判断自己的直觉是否比系统更可靠。
+1. 更长窗口的 walk-forward 再标定
+2. kill-switch 单窗口 vs 多窗口比较
+3. live monitoring dashboard
+4. 更完整的特征库自动刷新
