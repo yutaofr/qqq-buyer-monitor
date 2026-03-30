@@ -2381,7 +2381,16 @@ def run_v11_audit(
     standardized_test = standardized[standardized["observation_date"] >= evaluation_start].copy()
 
     calibrator = CalibrationService()
-    calibrator.calibrate(standardized_train, train)
+    # Explicitly use baseline features only
+    baseline_features = [
+        "spread_stress_pct",
+        "liquidity_stress_pct",
+        "vix_stress_pct",
+        "drawdown_stress_pct",
+        "breadth_stress_pct",
+        "term_structure_stress_pct",
+    ]
+    calibrator.calibrate(standardized_train, train, feature_cols=baseline_features)
     inference = BayesianInferenceEngine(
         kde_models=calibrator.kde_models,
         base_priors={

@@ -18,7 +18,7 @@ class CalibrationService:
         self.feature_cols: list[str] = []
         self.is_fitted = False
 
-    def calibrate(self, standardized_df: pd.DataFrame, labeled_df: pd.DataFrame):
+    def calibrate(self, standardized_df: pd.DataFrame, labeled_df: pd.DataFrame, feature_cols: list[str] | None = None):
         """
         根据标定标签训练 KDE 模型。
         """
@@ -26,7 +26,9 @@ class CalibrationService:
             self.is_fitted = False
             return
 
-        feature_cols = sorted(c for c in standardized_df.columns if c.endswith("_pct"))
+        if feature_cols is None:
+            feature_cols = sorted(c for c in standardized_df.columns if c.endswith("_pct"))
+        
         self.feature_cols = feature_cols
 
         # 1. 对齐数据
