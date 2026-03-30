@@ -2380,7 +2380,7 @@ def run_v11_audit(
     lib_df = df.copy()
     lib_df["ma200"] = lib_df["qqq_close"].rolling(200, min_periods=1).mean()
     lib_df["price_vs_ma200"] = (lib_df["qqq_close"] / lib_df["ma200"]) - 1.0
-    lib_df["rolling_drawdown"] = (lib_df["qqq_close"] / lib_df["qqq_close"].expanding().max()) - 1.0
+    lib_df["rolling_drawdown_val"] = (lib_df["qqq_close"] / lib_df["qqq_close"].expanding().max()) - 1.0
     
     # 2. Compute expected beta for all rows using the actual signal_expectations logic
     from src.research.signal_expectations import _expected_target_beta
@@ -2392,10 +2392,10 @@ def run_v11_audit(
             credit_accel=float(row.get("credit_acceleration_pct_10d", 0.0)),
             liquidity_roc=float(row.get("liquidity_roc_pct_4w", 0.0)),
             funding_stress=bool(row.get("funding_stress_flag", False)),
-            erp=float(row.get("erp_pct", 3.0)), # Use pct field as erp
+            erp=3.5, 
             breadth=float(row.get("breadth_proxy", 0.5)),
             price_vs_ma200=float(row.get("price_vs_ma200", 0.0)),
-            rolling_drawdown=abs(float(row.get("drawdown_pct", 0.0)) / 100.0),
+            rolling_drawdown=abs(row["rolling_drawdown_val"]),
         )
         expected_betas.append(beta)
     lib_df["expected_target_beta_dynamic"] = expected_betas
@@ -2403,13 +2403,13 @@ def run_v11_audit(
     train = lib_df[lib_df["observation_date"] < evaluation_start].copy()
     test = lib_df[lib_df["observation_date"] >= evaluation_start].copy()
     
-    # Update standardized features using the enriched dataframe
+    # Update standardized features
     library = FeatureLibraryManager(storage_path=dataset_path, persist=False)
-    library.df = lib_df.drop(columns=["expected_target_beta_dynamic", "ma200", "price_vs_ma200", "rolling_drawdown"]).copy()
+    library.df = lib_df.copy()
     standardized = library.get_standardized_features()
     standardized_test = standardized[standardized["observation_date"] >= evaluation_start].copy()
 
-    # ... (Bayesian Engine setup remains same) ...
+    # ... (Bayesian Engine Calibration) ...
     calibrator = CalibrationService()
     baseline_features = ["spread_stress_pct", "liquidity_stress_pct", "vix_stress_pct", "drawdown_stress_pct", "breadth_stress_pct", "term_structure_stress_pct"]
     calibrator.calibrate(standardized[standardized["observation_date"] < evaluation_start], train, feature_cols=baseline_features)

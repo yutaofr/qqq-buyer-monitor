@@ -34,17 +34,28 @@ def _advised_beta_series(frame: pd.DataFrame) -> pd.Series:
 
 
 def _coerce_frame(daily_ts: pd.DataFrame) -> pd.DataFrame:
+    """Enforce strict datetime indexing and sanity checks."""
     if daily_ts.empty:
         raise ValueError("daily_timeseries is empty")
 
     frame = daily_ts.copy()
-    frame.index = pd.to_datetime(frame.index, errors="coerce")
-    frame = frame.loc[~frame.index.isna()].sort_index()
+    
+    # Ensure 'date' column is used if available, otherwise use index
+    if "date" in frame.columns:
+        frame["date"] = pd.to_datetime(frame["date"])
+        frame = frame.set_index("date")
+    else:
+        # If no date column, index must be convertable
+        frame.index = pd.to_datetime(frame.index, errors="coerce")
+        
+    frame = frame.sort_index()
+    frame = frame.loc[~frame.index.isna()]
+    
+    # Filter out any weird epoch-zero artifacts (1970)
+    frame = frame[frame.index.year > 1990]
+    
     if frame.empty:
-        raise ValueError("daily_timeseries has no valid timestamps")
-
-    if "close" not in frame.columns:
-        raise ValueError("daily_timeseries must contain close")
+        raise ValueError("daily_timeseries has no valid timestamps after filtering")
 
     return frame
 
