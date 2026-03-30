@@ -72,12 +72,11 @@ jobs:
         env:
           ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          VERCEL_BLOB_READ_WRITE_TOKEN: ${{ secrets.VERCEL_BLOB_READ_WRITE_TOKEN }}
           GITHUB_ACTIONS: "true"
         run: |
-          # Run the engine with the notify-discord flag. 
-          # --no-save is critical to avoid polluting historical data with 17:17 snapshots 
-          # if the hourly cron also captures a valid EOD/Intraday state.
-          python -m src.main --engine v11 --notify-discord --no-save
+          # V11 Bayesian Pipeline: Pulls memory from cloud, computes, and pushes updates back
+          python -m src.main --engine v11 --notify-discord
 
       - name: Notify on Failure
         if: failure()

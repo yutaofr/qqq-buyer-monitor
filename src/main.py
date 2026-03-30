@@ -252,11 +252,9 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 
     # ── Export & Notify (Atomic) ──────────────────────────────────────────────
     if getattr(args, "export_web", False) or os.environ.get("EXPORT_WEB") == "1":
-        from src.output.web_exporter import export_feature_library_to_blob, export_web_snapshot
-        logger.info("Exporting v11 web snapshot and syncing feature library to cloud...")
+        from src.output.web_exporter import export_web_snapshot
+        logger.info("Exporting v11 web snapshot...")
         export_web_snapshot(result)
-        # Persistent cloud sync for V11 memory parity across CI runs
-        export_feature_library_to_blob()
 
     if getattr(args, "notify_discord", False):
         from src.output.discord_notifier import send_discord_signal
@@ -267,6 +265,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 
     if not args.no_save:
         from src.store.db import save_macro_state, save_runtime_inputs, save_signal
+        from src.output.web_exporter import export_feature_library_to_blob
         save_signal(result)
         # Persistent audit trails for regression testing (AC-3)
         save_runtime_inputs(
@@ -281,7 +280,10 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
                 forward_pe=float(erp), # Mapping current ERP to forward_pe for DB compatibility
                 real_yield=float(real_yield) if real_yield else 0.0,
             )
-        logger.info("v11 signal and runtime states successfully persisted.")
+        
+        # MANDATORY: Sync feature library to cloud whenever persistence is active in CI
+        export_feature_library_to_blob()
+        logger.info("v11 signal and cloud memory successfully persisted.")
 
 
 def _history(args: argparse.Namespace) -> None:
