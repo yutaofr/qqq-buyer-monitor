@@ -18,10 +18,47 @@ class FeatureLibraryManager:
         self.df = self._load_library()
 
     def _load_library(self) -> pd.DataFrame:
+        """
+        加载特征库：优先从 Vercel Blob 同步最新数据，并与本地缓存合并。
+        """
+        local_df = pd.DataFrame()
         if self.storage_path.exists():
-            df = pd.read_csv(self.storage_path)
-            df["observation_date"] = pd.to_datetime(df["observation_date"])
-            return df.sort_values("observation_date")
+            local_df = pd.read_csv(self.storage_path)
+            local_df["observation_date"] = pd.to_datetime(local_df["observation_date"])
+
+        # Cloud Sync (Read-only pull from edge to ensure memory parity)
+        import os
+        import requests
+        import io
+        
+        # We only attempt cloud pull in CI or if explicitly configured
+        is_ci = os.environ.get("GITHUB_ACTIONS") == "true"
+        blob_token = os.environ.get("VERCEL_BLOB_READ_WRITE_TOKEN")
+        
+        if is_ci and blob_token:
+            try:
+                # Use standard public URL for reading if possible, or authenticated API
+                blob_url = "https://blob.vercel-storage.com/v11_feature_library.csv"
+                headers = {"authorization": f"Bearer {blob_token}"}
+                resp = requests.get(blob_url, headers=headers, timeout=10)
+                
+                if resp.status_code == 200:
+                    cloud_df = pd.read_csv(io.BytesIO(resp.content))
+                    cloud_df["observation_date"] = pd.to_datetime(cloud_df["observation_date"])
+                    
+                    # Merge and deduplicate
+                    if local_df.empty:
+                        local_df = cloud_df
+                    else:
+                        local_df = pd.concat([local_df, cloud_df]).drop_duplicates(subset=["observation_date"])
+                    
+                    print(f"DEBUG: V11 Feature Library synced from cloud (Total rows: {len(local_df)})")
+            except Exception as e:
+                # Silent fallback to local data to prevent pipeline halts
+                print(f"WARNING: V11 Cloud Sync failed, falling back to local: {e}")
+
+        if not local_df.empty:
+            return local_df.sort_values("observation_date").reset_index(drop=True)
         return pd.DataFrame()
 
     def update_library(self, new_row: pd.Series):

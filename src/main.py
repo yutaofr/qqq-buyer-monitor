@@ -901,9 +901,13 @@ def run_pipeline(args: argparse.Namespace) -> None:
 
     # ── Web Export Logic ──────────────────────────────────────────────────────
     if getattr(args, "export_web", False) or os.environ.get("EXPORT_WEB") == "1":
-        from src.output.web_exporter import export_web_snapshot
+        from src.output.web_exporter import export_feature_library_to_blob, export_web_snapshot
         logger.info("Exporting web snapshot...")
         export_web_snapshot(result)
+        
+        # Persistent cloud sync for V11 memory parity
+        if args.engine == "v11":
+            export_feature_library_to_blob()
 
     # ── Discord Notification Logic ────────────────────────────────────────────
     if getattr(args, "notify_discord", False):

@@ -621,3 +621,48 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
             # In CI, propagate the error so the workflow fails and notifies the developer.
             raise
         return False
+
+
+def export_feature_library_to_blob(library_path: str | Path = "data/v11_feature_library.csv") -> bool:
+    """
+    Persist the V11 feature library to Vercel Blob storage.
+    Ensures long-term memory parity across CI runs without repo pollution.
+    """
+    try:
+        blob_token = os.environ.get("VERCEL_BLOB_READ_WRITE_TOKEN")
+        is_ci = os.environ.get("GITHUB_ACTIONS") == "true"
+        
+        if not is_ci or not blob_token:
+            logger.info("Skipping feature library cloud upload (Non-CI or missing token).")
+            return False
+
+        lib_path = Path(library_path)
+        if not lib_path.exists():
+            logger.error("Feature library file not found: %s", library_path)
+            return False
+
+        logger.info("Syncing V11 Feature Library to Vercel Edge...")
+        blob_url = "https://blob.vercel-storage.com/v11_feature_library.csv"
+        
+        with open(lib_path, "rb") as f:
+            content = f.read()
+
+        headers = {
+            "authorization": f"Bearer {blob_token}",
+            "x-api-version": "7",
+            "content-type": "text/csv; charset=utf-8",
+            "x-add-random-suffix": "false",
+            "x-access": "public"
+        }
+
+        resp = requests.put(blob_url, data=content, headers=headers, timeout=30)
+        if resp.status_code == 200:
+            logger.info("V11 Feature Library successfully persisted to cloud.")
+            return True
+        
+        logger.error("Vercel Blob Sync Failed (%d): %s", resp.status_code, resp.text)
+        return False
+
+    except Exception as e:
+        logger.error("Critical failure during Vercel Blob library sync: %s", e)
+        return False
