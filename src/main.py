@@ -124,7 +124,14 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
         logic_trace=[
             {"step": "degradation", "decision": quality_audit},
             {"step": "posterior", "decision": runtime_result["probabilities"]},
-            {"step": "position_sizer", "decision": runtime_result["target_allocation"]},
+            {
+                "step": "position_sizer",
+                "decision": {
+                    **runtime_result["target_allocation"],
+                    "target_beta": runtime_result["target_beta"],
+                    "raw_target_beta": runtime_result["raw_target_beta"],
+                },
+            },
             {"step": "behavior_guard", "decision": runtime_result["signal"]},
         ],
         target_allocation=target_allocation,
@@ -212,7 +219,9 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 
     if not args.no_save:
         save_signal(result)
-        logger.info("v11 signal saved to DB.")
+        from src.output.web_exporter import export_web_snapshot
+        export_web_snapshot(result)
+        logger.info("v11 signal saved to DB and exported to web.")
 
 
 def _history(args: argparse.Namespace) -> None:

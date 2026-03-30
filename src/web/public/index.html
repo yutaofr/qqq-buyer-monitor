@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QQQ 晴雨表 - v10.0 Cycle-Aware Target-Beta 仪表盘</title>
+    <title>QQQ 晴雨表 - Probabilistic Target-Beta 仪表盘</title>
     <!-- Vercel Analytics -->
     <script>
         window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
@@ -13,10 +13,13 @@
     <style>
         .state-active { background-color: #09090b; color: #f8fafc; }
         .state-frozen { background-color: #09090b; color: #f8fafc; }
+        .state-locked { background-color: #09090b; color: #f8fafc; }
         .state-active .glass { background: rgba(15, 23, 42, 0.4); border-color: rgba(16, 185, 129, 0.2); } 
         .state-frozen .glass { background: rgba(15, 23, 42, 0.4); border-color: rgba(139, 92, 246, 0.2); }
+        .state-locked .glass { background: rgba(15, 23, 42, 0.4); border-color: rgba(239, 68, 68, 0.2); }
         .state-active .accent-bar { border-left-color: #10b981; }
         .state-frozen .accent-bar { border-left-color: #8b5cf6; }
+        .state-locked .accent-bar { border-left-color: #ef4444; }
         .state-stale { background-color: #09090b; color: #94a3b8; filter: grayscale(1); pointer-events: none; }
         .pulse { animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .7; } }
@@ -29,6 +32,7 @@
         .text-ghost { opacity: 0.1; filter: blur(0.5px); }
         #insights-panel { max-height: 0; overflow: hidden; opacity: 0; pointer-events: none; transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
         #insights-panel.open { max-height: 2500px; margin-top: 1.5rem; opacity: 1; pointer-events: auto; }
+        .prob-bar { transition: width 1s ease-out; }
     </style>
 </head>
 <body id="body" class="state-stale min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700">
@@ -37,22 +41,22 @@
         <div class="flex justify-between items-center mb-6 px-1">
             <div>
                 <h1 class="text-2xl font-black tracking-tighter text-white">晴雨表</h1>
-                <p id="version" class="text-[9px] tracking-[0.2em] opacity-40 text-slate-400 uppercase">v10.0 Cycle-Aware Target-Beta</p>
+                <p id="version" class="text-[9px] tracking-[0.2em] opacity-40 text-slate-400 uppercase">v11.0 Probabilistic Monitor</p>
             </div>
             <div id="indicator" class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.8)]"></div>
         </div>
 
         <!-- Main Logic -->
         <div id="content" class="space-y-6">
-            <!-- Macro & Cycle Regime -->
+            <!-- Macro & Uncertainty -->
             <div class="grid grid-cols-2 gap-3 px-2">
                 <div class="space-y-0.5">
-                    <p class="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40 text-slate-400">宏观 (Macro)</p>
+                    <p class="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40 text-slate-400">当前主导制度 (Regime)</p>
                     <p id="regime" class="text-lg font-black tracking-tight text-white line-clamp-1">--</p>
                 </div>
                 <div class="space-y-0.5 border-l border-white/5 pl-3 text-right">
-                    <p class="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40 text-slate-400">战术周期 (Cycle)</p>
-                    <p id="cycle-regime" class="text-lg font-black tracking-tight text-emerald-400 line-clamp-1">--</p>
+                    <p class="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40 text-slate-400">信息熵/不确定性 (Entropy)</p>
+                    <p id="entropy" class="text-lg font-black tracking-tight text-emerald-400 line-clamp-1">--</p>
                 </div>
             </div>
             <div class="px-2">
@@ -64,7 +68,7 @@
                 <!-- Target Beta Card -->
                 <div class="factor-card p-5 rounded-[2.5rem] border-l-4 border-emerald-500/30 space-y-4 accent-bar transition-all">
                     <div class="flex justify-between items-end">
-                        <p class="text-[9px] font-black uppercase tracking-[0.2em] opacity-50 text-emerald-400">建议 Beta 决策 (Advisory)</p>
+                        <p class="text-[9px] font-black uppercase tracking-[0.2em] opacity-50 text-emerald-400">连续 Beta 建议 (Advisory)</p>
                         <p id="exposure" class="text-4xl font-black tracking-tighter text-white">--</p>
                     </div>
                     <div class="w-full h-1.5 bg-white/5 rounded-full overflow-hidden relative">
@@ -74,20 +78,27 @@
                     <!-- BETA LOGIC INPUTS -->
                     <div class="flex justify-between items-center text-[9px] font-bold uppercase tracking-wider">
                         <div class="flex flex-col space-y-0.5">
-                            <span class="opacity-30">宏观上限 (Limit)</span>
+                            <span class="opacity-30">上限 (Limit)</span>
                             <span id="beta-ceiling" class="text-slate-200">--</span>
                         </div>
                         <div class="flex flex-col space-y-0.5 text-right">
-                            <span class="opacity-30">策略建议 (Suggested)</span>
+                            <span class="opacity-30">原始建议 (Raw)</span>
                             <span id="raw-beta" class="text-emerald-500/80">--</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Deployment Rhythm Card -->
-                <div class="factor-card p-5 rounded-[2rem] border-l-4 border-blue-500/30 space-y-1.5 accent-bar transition-all">
-                    <p class="text-[10px] font-black uppercase tracking-[0.2em] opacity-70 text-blue-400">入场节奏 (Incremental Cash)</p>
-                    <p id="deploy" class="text-3xl font-black tracking-tighter text-white">--</p>
+                <!-- Behavioral State Card -->
+                <div id="lock-card" class="factor-card p-5 rounded-[2rem] border-l-4 border-blue-500/30 space-y-1.5 accent-bar transition-all">
+                    <p class="text-[10px] font-black uppercase tracking-[0.2em] opacity-70 text-blue-400">执行状态 (Execution)</p>
+                    <div class="flex items-center space-x-2">
+                        <p id="deploy" class="text-3xl font-black tracking-tighter text-white">--</p>
+                        <div id="lock-icon" class="hidden">
+                            <svg class="w-5 h-5 text-red-500 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                    </div>
                     <p id="deploy-desc" class="text-[10px] leading-relaxed opacity-60 text-slate-300"></p>
                 </div>
             </div>
@@ -310,14 +321,11 @@
                 data?.meta?.calculated_at_utc,
                 data?.meta?.expires_at_utc,
                 data?.signal?.regime,
-                data?.signal?.cycle_regime,
                 data?.signal?.target_beta,
                 data?.signal?.raw_target_beta,
                 data?.signal?.beta_ceiling,
-                data?.signal?.candidate_id,
                 data?.signal?.decision_path,
                 data?.signal?.exposure_band,
-                data?.signal?.deploy_rhythm,
                 data?.evidence?.node_traces
             ];
             if (required.some(v => v === undefined || v === null)) {
@@ -355,13 +363,22 @@
                 body.classList.remove('state-stale');
                 staleMsg.classList.add('hidden');
 
+                const isV11 = data.meta.version.includes('v11');
+                const isLocked = data.signal.lock_active;
                 const state = data.meta.market_state;
-                if (state === 'ACTIVE') {
+                
+                if (isLocked) {
+                    body.className = 'state-locked min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700';
+                    indicator.className = 'w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.8)]';
+                    document.getElementById('lock-icon').classList.remove('hidden');
+                } else if (state === 'ACTIVE') {
                     body.className = 'state-active min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700';
                     indicator.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.8)] pulse';
+                    document.getElementById('lock-icon').classList.add('hidden');
                 } else {
                     body.className = 'state-frozen min-h-screen flex items-center justify-center p-3 font-sans transition-colors duration-700';
                     indicator.className = 'w-2.5 h-2.5 rounded-full bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.8)]';
+                    document.getElementById('lock-icon').classList.add('hidden');
                 }
 
                 const safeUpdate = (id, val, suffix = "") => {
@@ -369,15 +386,15 @@
                     if (el) el.textContent = val !== undefined && val !== null ? val + suffix : '--';
                 };
 
-                safeUpdate('version', `${data.meta.version} Target-Beta-First`);
+                safeUpdate('version', `${data.meta.version} Bayesian-Core`);
                 safeUpdate('regime', data.signal.regime);
-                safeUpdate('cycle-regime', data.signal.cycle_regime);
+                safeUpdate('entropy', isV11 ? data.signal.v11_entropy.toFixed(3) : '--');
                 safeUpdate('regime-desc', data.signal.regime_desc);
                 safeUpdate('exposure', data.signal.target_beta.toFixed(2) + 'x');
-                safeUpdate('beta-ceiling', data.signal.beta_ceiling.toFixed(2) + 'x (上限)');
-                safeUpdate('raw-beta', data.signal.raw_target_beta.toFixed(2) + 'x (建议)');
+                safeUpdate('beta-ceiling', data.signal.beta_ceiling.toFixed(2) + 'x');
+                safeUpdate('raw-beta', data.signal.raw_target_beta.toFixed(2) + 'x');
                 safeUpdate('deploy', data.signal.deploy_rhythm);
-                safeUpdate('deploy-desc', data.signal.deploy_desc);
+                safeUpdate('deploy-desc', isLocked ? "行为守卫已锁定：触发 T+1 结算锁或 30 日 Resurrection 锁。" : data.signal.deploy_desc);
                 
                 const match = data.signal.exposure_band.match(/(\d+)-(\d+)%/);
                 const maxVal = match ? parseInt(match[2]) : 0;
@@ -406,15 +423,11 @@
                 if (data.evidence) {
                     const ev = data.evidence;
                     const regime = data.signal.regime;
-                    const risk_key = ev.risk_state;
-                    const deploy_key = data.evidence.deploy_reasons[0]?.rule?.includes('fast') ? 'FAST' : 
-                                     data.evidence.deploy_reasons[0]?.rule?.includes('slow') ? 'SLOW' :
-                                     data.evidence.deploy_reasons[0]?.rule?.includes('pause') ? 'PAUSE' : 'BASE';
                     
                     safeUpdate('tree-t0', regime);
                     safeUpdate('tree-cycle', data.signal.cycle_regime);
-                    safeUpdate('tree-risk', `${risk_key} → ${data.signal.candidate_id} → ${data.signal.target_beta.toFixed(2)}x`);
-                    safeUpdate('tree-deploy', `${data.signal.deploy_rhythm} · QQQ only`);
+                    safeUpdate('tree-risk', isV11 ? `V11 Bayesian Sizing → ${data.signal.target_beta.toFixed(2)}x` : `${ev.risk_state} → ${data.signal.candidate_id}`);
+                    safeUpdate('tree-deploy', isV11 ? `${data.signal.deploy_rhythm} · Lock=${isLocked}` : `${data.signal.deploy_rhythm} · QQQ only`);
 
                     const updateGhostTags = (id, activeKey, activeLabel = "") => {
                         const el = document.getElementById(id);
@@ -434,14 +447,36 @@
                         });
                     };
 
-                    updateGhostTags('tree-t0', ev.risk_reasons[0]?.tier0_regime || "", regime);
+                    updateGhostTags('tree-t0', regime);
                     updateGhostTags('tree-cycle', data.signal.cycle_regime);
-                    updateGhostTags('tree-risk', risk_key);
-                    updateGhostTags('tree-deploy', deploy_key);
 
                     const tableBody = document.getElementById('evidence-table-body');
                     if (tableBody) {
                         tableBody.innerHTML = '';
+                        
+                        if (isV11 && data.signal.v11_probabilities) {
+                            // Special Probabilities Visualizer for V11
+                             const probRow = document.createElement('tr');
+                             probRow.className = "bg-emerald-400/5 border-b border-white/5";
+                             let probHtml = '<td class="px-4 py-4" colspan="3"><p class="text-[9px] font-black uppercase tracking-[0.2em] opacity-40 mb-3">后验概率分布 (Posterior Distribution)</p><div class="flex flex-col space-y-2">';
+                             
+                             const sortedProbs = Object.entries(data.signal.v11_probabilities).sort((a,b) => b[1] - a[1]);
+                             sortedProbs.forEach(([name, val]) => {
+                                 const pct = (val * 100).toFixed(1) + '%';
+                                 probHtml += `
+                                    <div class="flex items-center space-x-3">
+                                        <span class="text-[10px] font-bold w-20 opacity-70">${name}</span>
+                                        <div class="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
+                                            <div class="h-full bg-emerald-400 opacity-60 prob-bar" style="width: ${pct}"></div>
+                                        </div>
+                                        <span class="text-[10px] font-black w-10 text-right">${pct}</span>
+                                    </div>`;
+                             });
+                             probHtml += '</div></td>';
+                             probRow.innerHTML = probHtml;
+                             tableBody.appendChild(probRow);
+                        }
+
                         const TYPE_COLORS = {
                             'MACRO': 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
                             'SIGNAL': 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20',
