@@ -104,7 +104,8 @@ class PriorKnowledgeBase:
         
         # Log top 2 regimes in the final prior for immediate visibility
         top_regimes = sorted(final_prior.items(), key=lambda x: x[1], reverse=True)[:2]
-        logger.info(f"  Synthesized Prior: {top_regimes[0][0]} ({top_regimes[0][1]:.1%}), {top_regimes[1][0]} ({top_regimes[1][1]:.1%})")
+        prior_str = ", ".join([f"{r} ({p:.1%})" for r, p in top_regimes])
+        logger.info(f"  Synthesized Prior: {prior_str}")
 
         details = {
             "base_weight": base_weight,
@@ -153,8 +154,9 @@ class PriorKnowledgeBase:
         
         # Log the finalized state for confirmation
         top_posteriors = sorted(self.last_posterior.items(), key=lambda x: x[1], reverse=True)[:2]
+        post_str = ", ".join([f"{r} ({p:.1%})" for r, p in top_posteriors])
         logger.info(f"Bayesian State Finalized for {self.last_observation_date}:")
-        logger.info(f"  Saved Posterior: {top_posteriors[0][0]} ({top_posteriors[0][1]:.1%}), {top_posteriors[1][0]} ({top_posteriors[1][1]:.1%})")
+        logger.info(f"  Saved Posterior: {post_str}")
         logger.info(f"  Note: This posterior will serve as Source 2 (Recent Memory) for the next run.")
         
         self._save()
