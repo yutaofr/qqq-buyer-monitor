@@ -33,7 +33,8 @@ def evaluate_probabilistic_performance(args):
 
     # Drop rows with NaNs in features or target
     clean_df = df_eval[features + [target_col]].dropna()
-    if len(clean_df) < 1000: return None
+    if len(clean_df) < 1000:
+        return None
 
     # Split into Train (Historical Calibration) and Test (Out-of-sample simulation)
     # We use a temporal split to simulate production reality
@@ -54,9 +55,10 @@ def evaluate_probabilistic_performance(args):
     for r in regimes:
         r_mask = train_df[target_col] == r
         r_data = X_train_pca[r_mask]
-        if len(r_data) < 20: continue
+        if len(r_data) < 20:
+            continue
 
-        kde = KernelDensity(bandwidth='scott').fit(r_data)
+        kde = KernelDensity(bandwidth="scott").fit(r_data)
         kde_models[r] = kde
 
     # 3. Bayesian Inference on Test Set
@@ -120,9 +122,12 @@ def run_research():
     df = df.sort_values("observation_date")
 
     # Standardize column names
-    if "erp_pct_macro" in df.columns: df["erp_pct"] = df["erp_pct_macro"]
-    if "erp" in df.columns and "erp_pct" not in df.columns: df["erp_pct"] = df["erp"]
-    if "real_yield_10y_pct_macro" in df.columns: df["real_yield_10y_pct"] = df["real_yield_10y_pct_macro"]
+    if "erp_pct_macro" in df.columns:
+        df["erp_pct"] = df["erp_pct_macro"]
+    if "erp" in df.columns and "erp_pct" not in df.columns:
+        df["erp_pct"] = df["erp"]
+    if "real_yield_10y_pct_macro" in df.columns:
+        df["real_yield_10y_pct"] = df["real_yield_10y_pct_macro"]
 
     # Calculate Extended Class A features
     valid_factors = []

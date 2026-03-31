@@ -64,7 +64,7 @@ def build_discord_payload(result: SignalResult) -> dict:
 
     metadata = result.metadata or {}
     deployment_readiness = metadata.get("deployment_readiness", 0.0)
-    
+
     # Check behavioral guard lock in logic trace or metadata if available
     lock_active = False
     target_bucket = "n/a"
@@ -94,7 +94,7 @@ def build_discord_payload(result: SignalResult) -> dict:
     # Probabilities Distribution
     sorted_probs = sorted(result.probabilities.items(), key=lambda x: x[1], reverse=True)
     prob_str = "\n".join([f"`{k:12}`: `{v:.1%}`" for k, v in sorted_probs])
-    
+
     fields = [
         {
             "name": "📊 Posterior Distribution",

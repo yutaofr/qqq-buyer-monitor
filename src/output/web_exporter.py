@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -31,17 +31,24 @@ REGIME_MAP = {
 
 def _discretize_allocation(beta: float) -> str:
     """Maps precise beta/allocation to 10% bands."""
-    if beta <= 0.05: return "0-5% (极轻仓/现金)"
-    if beta <= 0.25: return "10-20% (防御性)"
-    if beta <= 0.45: return "30-40% (保守)"
-    if beta <= 0.65: return "50-60% (稳健)"
-    if beta <= 0.85: return "70-80% (积极)"
-    if beta <= 1.05: return "90-100% (满仓)"
+    if beta <= 0.05:
+        return "0-5% (极轻仓/现金)"
+    if beta <= 0.25:
+        return "10-20% (防御性)"
+    if beta <= 0.45:
+        return "30-40% (保守)"
+    if beta <= 0.65:
+        return "50-60% (稳健)"
+    if beta <= 0.85:
+        return "70-80% (积极)"
+    if beta <= 1.05:
+        return "90-100% (满仓)"
     return "110-120% (进攻/杠杆)"
 
 
 class MarketCursor:
     """Handles market calendar aware calculations."""
+
     def __init__(self, calendar_name: str = "NYSE"):
         if mcal:
             self.cal = mcal.get_calendar(calendar_name)
@@ -49,18 +56,35 @@ class MarketCursor:
             self.cal = None
 
     def get_market_state(self, now: datetime) -> str:
-        if not self.cal: return "UNKNOWN"
+        if not self.cal:
+            return "UNKNOWN"
         now_utc = now.astimezone(UTC)
         schedule = self.cal.schedule(start_date=now.date(), end_date=now.date())
-        if schedule.empty: return "FROZEN"
-        return "ACTIVE" if (schedule.iloc[0].market_open <= pd.Timestamp(now_utc) <= schedule.iloc[0].market_close) else "FROZEN"
+        if schedule.empty:
+            return "FROZEN"
+        return (
+            "ACTIVE"
+            if (
+                schedule.iloc[0].market_open
+                <= pd.Timestamp(now_utc)
+                <= schedule.iloc[0].market_close
+            )
+            else "FROZEN"
+        )
 
     def get_expires_at_utc(self, now: datetime, jitter_hours: int = 4) -> datetime:
-        if not self.cal: return (now + timedelta(hours=24)).astimezone(UTC)
+        if not self.cal:
+            return (now + timedelta(hours=24)).astimezone(UTC)
         now_est = now.astimezone(EASTERN)
-        schedule = self.cal.schedule(start_date=now_est.date(), end_date=(now_est + timedelta(days=7)).date())
+        schedule = self.cal.schedule(
+            start_date=now_est.date(), end_date=(now_est + timedelta(days=7)).date()
+        )
         # Simplification: next day open + jitter
-        next_open = schedule.iloc[1].market_open if now.astimezone(UTC) > schedule.iloc[0].market_close else schedule.iloc[0].market_open
+        next_open = (
+            schedule.iloc[1].market_open
+            if now.astimezone(UTC) > schedule.iloc[0].market_close
+            else schedule.iloc[0].market_open
+        )
         return (next_open + timedelta(hours=jitter_hours)).to_pydatetime().astimezone(UTC)
 
 
@@ -69,10 +93,10 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
     try:
         now_utc = datetime.now(UTC)
         cursor = MarketCursor()
-        
+
         regime_info = REGIME_MAP.get(result.stable_regime, {"label": result.stable_regime, "desc": "Unknown"})
         metadata = result.metadata or {}
-        
+
         payload = {
             "meta": {
                 "version": "v11.5",
@@ -110,12 +134,16 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         return False
 
 
-def export_feature_library_to_blob(library_path: str | Path = "data/v11_feature_library.csv") -> bool:
+def export_feature_library_to_blob(
+    library_path: str | Path = "data/v11_feature_library.csv",
+) -> bool:
     """Sync V11 feature library to cloud."""
     cloud = CloudPersistenceBridge()
-    if not cloud.is_ci or not cloud.token: return False
+    if not cloud.is_ci or not cloud.token:
+        return False
     lib_path = Path(library_path)
-    if not lib_path.exists(): return False
+    if not lib_path.exists():
+        return False
     try:
         with open(lib_path, "rb") as f:
             return cloud.push_payload(f.read(), "v11_feature_library.csv", is_binary=True)

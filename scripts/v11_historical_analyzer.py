@@ -11,7 +11,7 @@ from datetime import date
 from pathlib import Path
 
 import pandas as pd
-import numpy as np
+
 from src.engine.v11.conductor import V11Conductor
 
 # Suppress noisy logs
@@ -19,7 +19,7 @@ logging.getLogger("src.engine.v11").setLevel(logging.WARNING)
 
 def run_historical_audit(start_date: str, end_date: str, csv_path: str):
     print(f"=== v11.5 Historical Audit: {start_date} to {end_date} ===")
-    
+
     # 1. Load Dataset
     if not Path(csv_path).exists():
         print(f"Error: {csv_path} not found.")
@@ -27,7 +27,7 @@ def run_historical_audit(start_date: str, end_date: str, csv_path: str):
 
     full_df = pd.read_csv(csv_path, parse_dates=["observation_date"])
     window_df = full_df[
-        (full_df["observation_date"] >= start_date) & 
+        (full_df["observation_date"] >= start_date) &
         (full_df["observation_date"] <= end_date)
     ].sort_values("observation_date")
 
@@ -48,9 +48,9 @@ def run_historical_audit(start_date: str, end_date: str, csv_path: str):
         t0_df = pd.DataFrame([row_raw])
         t0_df.index = [dt]
         t0_df.index.name = "observation_date"
-        
+
         runtime = conductor.daily_run(t0_df)
-        
+
         # Capture context
         history.append({
             "date": dt,
@@ -68,7 +68,7 @@ def run_historical_audit(start_date: str, end_date: str, csv_path: str):
     # 4. Chronology of Transitions
     history_df["regime_change"] = history_df["regime"] != history_df["regime"].shift(1)
     changes = history_df[history_df["regime_change"]].dropna(subset=["regime"])
-    
+
     print("\n[CHRONOLOGY] Regime Transitions:")
     if changes.empty:
         print("  (No transitions detected in this window)")
@@ -80,11 +80,11 @@ def run_historical_audit(start_date: str, end_date: str, csv_path: str):
     if history_df["actual_regime"].notna().any():
         valid = history_df.dropna(subset=["actual_regime", "regime"])
         accuracy = (valid["regime"] == valid["actual_regime"]).mean()
-        print(f"\n[METRICS] Predictive Quality:")
+        print("\n[METRICS] Predictive Quality:")
         print(f"  Top-1 Accuracy: {accuracy:.2%}")
-    
+
     # 6. Stability Statistics
-    print(f"\n[STABILITY] Analysis:")
+    print("\n[STABILITY] Analysis:")
     print(f"  Total Transitions: {len(changes)}")
     print(f"  Avg Entropy:       {history_df['entropy'].mean():.4f}")
     print(f"  Avg Target Beta:   {history_df['beta'].mean():.2f}x")
@@ -100,7 +100,7 @@ def main():
     parser.add_argument("--start", default="2025-01-01", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", default=date.today().isoformat(), help="End date (YYYY-MM-DD)")
     parser.add_argument("--dataset", default="data/macro_historical_dump.csv", help="Path to CSV")
-    
+
     args = parser.parse_args()
     run_historical_audit(args.start, args.end, args.dataset)
 
