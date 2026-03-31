@@ -70,6 +70,7 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
             "engine_version": "v11.5",
             "quality_audit": runtime_result.get("quality_audit", {}),
             "feature_values": runtime_result.get("feature_values", {}),
+            "prior_details": runtime_result.get("prior_details", {}),
             "deployment_readiness": float(runtime_result.get("deployment_readiness", 0.0)),
         }
     )

@@ -52,7 +52,9 @@ def test_prior_knowledge_persists_posterior_updates(tmp_path, bootstrap_history)
     updated_priors = reloaded.current_priors()
 
     assert updated_priors["BUST"] > base_priors["BUST"]
-    assert reloaded.runtime_priors()["BUST"] > reloaded.runtime_priors()["MID_CYCLE"]
+    
+    priors_2, _ = reloaded.runtime_priors()
+    assert priors_2["BUST"] > priors_2["MID_CYCLE"]
 
     payload = json.loads(storage_path.read_text())
     assert payload["last_observation_date"] == "2026-03-30"

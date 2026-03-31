@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Iterable
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class PriorKnowledgeBase:
@@ -49,15 +52,32 @@ class PriorKnowledgeBase:
     def current_priors(self) -> dict[str, float]:
         return self._normalize(self.counts)
 
-    def runtime_priors(self, previous_posterior: dict[str, float] | None = None) -> dict[str, float]:
+    def runtime_priors(
+        self, previous_posterior: dict[str, float] | None = None
+    ) -> tuple[dict[str, float], dict[str, any]]:
         base_priors = self.current_priors()
         prior_source = previous_posterior or self.last_posterior
+        
+        logger.info("Bayesian Prior Synthesis initiated.")
+        logger.info(f"  Source 1 [Historical Baseline]: Based on {sum(self.counts.values()):.1f} total counts from {self.storage_path}")
+        
+        # If no previous knowledge, return baseline as 100% of the prior
         if not prior_source:
-            return base_priors
+             logger.info("  Source 2 [Recent Memory]: No previous observation found. Using 100% baseline.")
+             details = {
+                "base_weight": 1.0,
+                "posterior_weight": 0.0,
+                "transition_weight": 0.0,
+                "base_priors": base_priors,
+                "posterior_prior": base_priors,
+                "transition_prior": base_priors
+            }
+             return base_priors, details
 
-        prior_source = self._normalize(prior_source)
+        logger.info(f"  Source 2 [Recent Memory]: Found posterior from {self.last_observation_date or 'unknown date'}")
+        normalized_source = self._normalize(prior_source)
         transition_prior = {regime: 0.0 for regime in self.regimes}
-        for regime, weight in prior_source.items():
+        for regime, weight in normalized_source.items():
             row = self.transition_counts.get(regime)
             if not row:
                 continue
@@ -65,17 +85,36 @@ class PriorKnowledgeBase:
             for target, target_weight in normalized_row.items():
                 transition_prior[target] += weight * target_weight
 
+        # Blending logic constants
         posterior_weight = self.transition_blend * 0.5
         transition_weight = self.transition_blend * 0.5
         base_weight = 1.0 - posterior_weight - transition_weight
+
+        logger.info(f"  Blending weights: {base_weight:.1%} history | {posterior_weight:.1%} last-seen | {transition_weight:.1%} predicted-shift")
+
         blended = {}
         for regime in self.regimes:
             blended[regime] = (
                 base_weight * base_priors.get(regime, 0.0)
-                + posterior_weight * prior_source.get(regime, 0.0)
+                + posterior_weight * normalized_source.get(regime, 0.0)
                 + transition_weight * transition_prior.get(regime, 0.0)
             )
-        return self._normalize(blended)
+        
+        final_prior = self._normalize(blended)
+        
+        # Log top 2 regimes in the final prior for immediate visibility
+        top_regimes = sorted(final_prior.items(), key=lambda x: x[1], reverse=True)[:2]
+        logger.info(f"  Synthesized Prior: {top_regimes[0][0]} ({top_regimes[0][1]:.1%}), {top_regimes[1][0]} ({top_regimes[1][1]:.1%})")
+
+        details = {
+            "base_weight": base_weight,
+            "posterior_weight": posterior_weight,
+            "transition_weight": transition_weight,
+            "base_priors": base_priors,
+            "posterior_prior": normalized_source,
+            "transition_prior": self._normalize(transition_prior)
+        }
+        return final_prior, details
 
     def update_with_posterior(
         self,
@@ -84,6 +123,14 @@ class PriorKnowledgeBase:
         posterior: dict[str, float],
     ) -> None:
         normalized_posterior = self._normalize(posterior)
+        
+        # KISS Idempotency: Skip count updates if we already saw this date
+        if str(observation_date) == self.last_observation_date:
+            # We still update the last_posterior to ensure the next day uses the most recent inference
+            self.last_posterior = normalized_posterior
+            self._save()
+            return
+
         for regime in self.regimes:
             self.counts[regime] = self.counts.get(regime, self.pseudo_count) + normalized_posterior.get(
                 regime, 0.0
@@ -103,6 +150,13 @@ class PriorKnowledgeBase:
 
         self.last_posterior = normalized_posterior
         self.last_observation_date = str(observation_date)
+        
+        # Log the finalized state for confirmation
+        top_posteriors = sorted(self.last_posterior.items(), key=lambda x: x[1], reverse=True)[:2]
+        logger.info(f"Bayesian State Finalized for {self.last_observation_date}:")
+        logger.info(f"  Saved Posterior: {top_posteriors[0][0]} ({top_posteriors[0][1]:.1%}), {top_posteriors[1][0]} ({top_posteriors[1][1]:.1%})")
+        logger.info(f"  Note: This posterior will serve as Source 2 (Recent Memory) for the next run.")
+        
         self._save()
 
     def get_execution_state(self) -> dict[str, float | str | int | bool | None]:
