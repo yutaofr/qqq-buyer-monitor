@@ -44,7 +44,7 @@ class SovereignMemoryBooster:
         """
         # Ensure Deterministic System & Engineering Integrity (v11.51)
         np.random.seed(seed)
-        
+
         end_date = datetime.now()
         dates = pd.date_range(start=f"{start_year}-01-01", end=end_date, freq="D")
 
