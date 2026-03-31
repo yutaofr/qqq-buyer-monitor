@@ -1,6 +1,7 @@
 import json
+
 import pandas as pd
-import pytest
+
 import src.main as main_module
 
 

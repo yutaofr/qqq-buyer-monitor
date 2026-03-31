@@ -24,7 +24,7 @@ def run_diagnostic():
 
     # 4. Probabilities for latest evidence
     probs = cond.gnb.predict_proba(latest_vector)[0]
-    posteriors = {str(k): float(v) for k, v in zip(cond.gnb.classes_, probs)}
+    posteriors = {str(k): float(v) for k, v in zip(cond.gnb.classes_, probs, strict=True)}
 
     print("\n--- Current Posteriors ---")
     for r, p in sorted(posteriors.items(), key=lambda x: x[1], reverse=True):

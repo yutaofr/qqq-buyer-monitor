@@ -2,9 +2,8 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, date
-from pathlib import Path
-import pytest
+from datetime import UTC, date, datetime
+
 from src.models import SignalResult, TargetAllocationState
 from src.output.web_exporter import MarketCursor, export_web_snapshot
 

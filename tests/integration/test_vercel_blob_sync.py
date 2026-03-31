@@ -1,8 +1,9 @@
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
+
 from src.output.web_exporter import export_feature_library_to_blob
 
 

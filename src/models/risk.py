@@ -1,6 +1,8 @@
 """Risk state models for v11 Bayesian Monitor."""
 from __future__ import annotations
+
 from enum import StrEnum
+
 
 class RiskState(StrEnum):
     """Broad risk regimes for auditing."""

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date
+
 from src.models import SignalResult, TargetAllocationState
 from src.output.discord_notifier import send_discord_signal
 
@@ -45,7 +46,7 @@ def test_discord_notification_uses_v11_contract(monkeypatch):
     assert "🎯 Target Beta: `0.91x`" in embed["description"]
     assert "Bayesian Regime:** ⚖️ `MID_CYCLE`" in embed["description"]
     assert "Entropy:** `0.170`" in embed["description"]
-    
+
     # Check fields
     field_names = [f["name"] for f in embed["fields"]]
     assert "📊 Posterior Distribution" in field_names

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import sqlite3
 from datetime import date
 
 from src.models import SignalResult, TargetAllocationState
-from src.store.db import init_db, load_history, save_signal
+from src.store.db import load_history, save_signal
 
 
 def test_save_and_load_signal(tmp_path):
