@@ -52,7 +52,7 @@ def test_prior_knowledge_persists_posterior_updates(tmp_path, bootstrap_history)
     updated_priors = reloaded.current_priors()
 
     assert updated_priors["BUST"] > base_priors["BUST"]
-    
+
     priors_2, _ = reloaded.runtime_priors()
     assert priors_2["BUST"] > priors_2["MID_CYCLE"]
 

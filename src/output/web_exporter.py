@@ -10,7 +10,6 @@ import pandas as pd
 import pytz
 
 from src.models import SignalResult
-from src.store.cloud_manager import CloudPersistenceBridge
 
 try:
     import pandas_market_calendars as mcal
