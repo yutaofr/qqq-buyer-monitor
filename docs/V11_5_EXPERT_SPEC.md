@@ -1,16 +1,16 @@
 # 基于递归贝叶斯推断与信息熵定价的宏观制度引擎技术白皮书 (v11.5)
 
-## 1. 证据空间：非参数化自适应分位数变换 (Adaptive Quantile Mapping)
-系统拒绝直接处理具有异方差性和厚尾分布的原始宏观指标。
-*   **数学算子**：对原始特征序列 $x_t$，执行自适应 EWMA 分位数转换：
-    $$F(x_t; \lambda) = \frac{\sum_{i=0}^t e^{-(t-i)\lambda} \cdot \mathbb{I}(x_i \le x_t)}{\sum_{i=0}^t e^{-(t-i)\lambda}}$$
-*   **时域特征衍生**：
-    - **位置能级 (Position)**：$F(x_t)$，表征特征在历史长河中的相对分位。
-    - **动能矢量 (Momentum)**：$\Delta F(x_t) = F(x_t) - \text{SMA}(F(x), n)$，表征宏观环境变迁的加速度。
-*   **解决方案意义**：该映射将 $\mathbb{R}^n$ 空间强制收缩至 $U(0,1)^n$ 超立方体，消除了量纲差异，使得信贷利差（BPS）与 ERP（百分比）在似然估计中具备等权的几何意义。
+## 1. 证据空间：因果自校准标准化 (Causal Self-Calibrating Normalization)
+系统拒绝使用固定阈值或人工锚点去解释宏观指标。
+*   **数学算子**：对原始特征序列 $x_t$，执行严格因果的历史自校准：
+    $$z_t = \frac{x_t - \mu_{\le t}}{\sigma_{\le t} + \epsilon}$$
+*   **时域策略**：
+    - **结构因子**：使用长窗口滚动标准化，保持对制度慢变量的稳定感知。
+    - **绝对因子**：使用 expanding 标准化，避免把主观锚点硬编码进特征空间。
+*   **工程意义**：特征空间的尺度完全由历史 DNA 自身给出，不再依赖手工设定的 level anchor。
 
 ## 2. 推断核心：递归贝叶斯算子与 JIT 似然标定
-*   **JIT 似然估计**：系统不存储静态参数，而是每次运行通过 DNA 库（`macro_historical_dump.csv`）进行实时核密度估计（KDE）或高斯参数拟合。
+*   **JIT 似然估计**：系统不存储静态参数，而是每次运行通过 DNA 库（`macro_historical_dump.csv`）进行实时高斯参数拟合。
 *   **递归推断公式**：
     $$P(R_{k,t} | \mathbf{e}_t) = \eta \cdot P(\mathbf{e}_t | R_{k,t}) \cdot [ \sum_j P(R_{k,t} | R_{j,t-1}) \cdot P(R_{j,t-1} | \mathbf{e}_{t-1}) ]$$
     其中，$\eta$ 为归一化常数，$P(R_{k,t} | R_{j,t-1})$ 为制度转移矩阵 $T$。
@@ -18,12 +18,13 @@
     - **可选方案**：隐马尔可夫模型 (HMM)。
     - **折衷点**：HMM 在宏观小样本下极易陷入局部最优且对初始值敏感。我们选择 **GaussianNB + 显式转移矩阵修正**。
     - **理由**：GNB 提供了更强的正则化，且通过递归先验引入了时域连续性，兼具了 HMM 的平滑特征与朴素贝叶斯的泛化定力。
+*   **工程约束**：每次 JIT 拟合后必须校验 `theta_ / var_ / class_prior_` 的有限性、正定性与归一化，否则拒绝进入生产或审计链路。
 
 ## 3. 风险定价：Shannon 熵 Haircut 算子
 *   **不确定性量化**：$H(P) = -\sum_{k \in \mathcal{R}} p_k \log_2 p_k$。
 *   **Beta 推出逻辑**：
-    $$\beta_{final} = \beta_{base}(R_{max}) \cdot (1 - \text{Clip}(\frac{H(P) - H_{min}}{H_{max} - H_{min}}, 0, 1))^\alpha$$
-*   **数学目标**：当后验分布高度极化（确信度高）时，Beta 趋向基准值；当分布趋于均匀（模型犹豫）时，系统自动执行**不确定性减仓**。
+    $$\beta_{final} = \mathbb{E}[\beta | P] \cdot e^{-H(P)}$$
+*   **数学目标**：当后验分布高度极化（确信度高）时，Beta 趋向后验期望值；当分布趋于均匀（模型犹豫）时，系统自动执行**连续不确定性减仓**，且绝不增加风险。
 
 ## 4. 增量因子进场节奏 (Deployment Pacing)
 *   **逻辑方案**：不同于存量仓位的 Beta 管理，增量资金采用 **Kelly-derived Pacing**。

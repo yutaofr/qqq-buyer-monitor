@@ -11,11 +11,11 @@ The core design shifts responsibility from human-defined rules ("If X then Y") t
 
 | Layer | Component | Responsibility |
 | :--- | :--- | :--- |
-| **Inference** | `src/engine/v11/` | **The Brain**. Recursive Bayesian inference, Entropy Controller, and JIT GaussianNB training. |
+| **Inference** | `src/engine/v11/` | **The Brain**. Recursive Bayesian inference, entropy pricing, JIT GaussianNB training, and coefficient validation. |
 | **Ingestion** | `src/collector/` | **The Sensors**. Multi-source data fetching (FRED, yf) with fail-soft defaults. |
-| **Seeding** | `ProbabilitySeeder` | **Feature Engineering**. Normalizing raw macro data into percentile rankings via adaptive EWMA. |
+| **Seeding** | `ProbabilitySeeder` | **Feature Engineering**. Deterministic causal normalization of curated macro factors with no fixed decision thresholds. |
 | **Storage** | `src/store/` | **The Memory**. Managing local DNA (CSV), Prior state (JSON), and Cloud sync (Vercel Blob). |
-| **Execution** | `BehavioralGuard` | **The Armor**. Enforcing T+1 settlement locks and inertia-based beta smoothing. |
+| **Execution** | `BehavioralGuard` | **The Armor**. Enforcing entropy-aware bucket switching and T+1 settlement locks with topology-derived barriers. |
 | **Models** | `src/models/` | **Data Contracts**. Unified `SignalResult` and `PortfolioState`. |
 
 ---
@@ -30,8 +30,8 @@ graph TD
     C[Prior State: JSON] -->|Recursive Input| D{Bayesian Core}
     E[Live Observation] -->|Standardized Vector| D
     D -->|Posterior Probabilities| F[Entropy Controller]
-    F -->|Entropy Haircut| G[Position Sizing]
-    G -->|Inertial Smoothing| H[Behavioral Guard]
+    F -->|Entropy Haircut| G[Continuous Sizing Payload]
+    G -->|Inertial Smoothing + Bucket Evidence| H[Behavioral Guard]
     H -->|Final Signal| I[Output: status.json / Discord]
     I -->|T+0 Feedback| A
     I -->|State Update| C
@@ -42,15 +42,26 @@ graph TD
 ## 4. Core Implementation Mandates
 
 ### 4.1 AC-1: Causal Isolation
-The engine enforces strict temporal boundaries. Inference for date $T$ is only exposed to DNA data $\le T$. This is audited via `src/backtest.py` which replicates the JIT training environment for every historical day.
+The engine enforces strict temporal boundaries. Inference for date $T$ is only exposed to DNA data `< T` for model fitting, while the date-$T$ observation is used only as evidence. This is audited via `src/backtest.py` which now performs a deterministic walk-forward re-fit for every evaluation day.
 
 ### 4.2 AC-2: Numerical Integrity (Decimal Parity)
 To prevent "Distribution Drift", all macro inputs are standardized to **decimal units** (e.g., ERP of 5.0% is represented as `0.05`). This ensures the KDE likelihood clusters remain stable across research and production environments.
 
 ### 4.3 Uncertainty-Aware Positioning (Entropy Haircut)
 Risk is not binary. The system calculates the **Shannon Entropy ($H$)** of the posterior distribution:
-- **Low Entropy**: High confidence; exposure targets base regime betas.
-- **High Entropy**: Model doubt; exposure is automatically reduced (Haircut) to protect capital during regime transitions.
+- **Low Entropy**: High confidence; exposure stays close to the posterior-weighted raw beta.
+- **High Entropy**: Model doubt; exposure is multiplicatively reduced by a threshold-free entropy factor.
+
+The active rule is:
+
+`target_beta = raw_target_beta * exp(-H)`
+
+### 4.4 JIT Model Integrity
+Every live or audit `GaussianNB` fit must pass a deterministic integrity contract before inference:
+- finite `theta_`
+- strictly positive finite `var_`
+- positive normalized `class_prior_`
+- class coverage aligned with the supplied regime DNA
 
 ---
 
@@ -61,6 +72,7 @@ The system is designed for **Stateless Execution** (e.g., GitHub Actions):
 3. **Push**: Upload updated state back to Vercel Blob.
 
 Namespace isolation (e.g., `prod/`, `staging/`) is enforced to prevent development runs from contaminating production memory.
+Canonical DNA is mandatory; synthetic bootstrap is not part of the production path.
 
 ---
 © 2026 QQQ Entropy Architecture Group.

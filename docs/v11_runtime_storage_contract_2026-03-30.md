@@ -35,6 +35,7 @@
    - 6 因子的判别力与缩放
    - 训练样本的近端代表性
    - `GaussianNB` 的类条件分布假设
+   - `GaussianNB` 的 `theta_ / var_ / class_prior_` 是否通过了当前的模型完整性校验
 
 不是先把锅甩给 `v11_prior_state.json`。
 
@@ -92,11 +93,12 @@
 3. 如果 `data/v11_prior_state.json` 本地也不存在：
    - `PriorKnowledgeBase` 用 `data/v11_poc_phase1_results.csv` 的历史 regime 标签做 deterministic bootstrap
 4. 如果连 `data/macro_historical_dump.csv` / `data/v11_poc_phase1_results.csv` 都缺失或损坏：
-   - `SovereignMemoryBooster.ensure_baseline()` 触发 synthetic bootstrap
+   - 生产与审计主路径现在直接 fail closed
+   - synthetic bootstrap 仅允许在测试或显式灾备工具中使用
 
 注意：
 
-- synthetic bootstrap 是最后兜底，不是首选生产初始化方案
+- synthetic bootstrap 不再是生产初始化方案
 - 生产首跑应该优先依赖 checked-in canonical seed，再把第一天生成的 runtime state 推回 blob
 
 ## 2. Runtime Storage 边界
@@ -161,15 +163,13 @@ data/v11_prior_state.json
 
 ### 3.2 不推荐但仍可自愈的场景
 
-如果 canonical baseline 也缺失，系统会退回 `SovereignMemoryBooster` 的 synthetic DNA。
-
-这能保证“系统还能跑”，但不保证“它相信的是你认可的世界”。
+如果 canonical baseline 缺失，当前规则是不允许生产/审计继续运行。
 
 因此生产要求是：
 
-1. synthetic bootstrap 只作为灾备
-2. canonical macro/regime seed 才是首选初始态
-3. 首跑后立即把 runtime state 固化到 blob，避免每天重新从灾备态起步
+1. canonical macro/regime seed 才是唯一允许的初始态
+2. synthetic bootstrap 只作为测试或离线灾备工具
+3. 首跑后立即把 runtime state 固化到 blob，避免每天重新从初始态起步
 
 ## 4. `MID_CYCLE 100%` 的解释口径
 
@@ -222,4 +222,4 @@ python -m src.main --engine v11 --notify-discord --export-web
 
 1. `MID_CYCLE 100%` 这类单点塌缩说明当前 classifier 对近端样本的区分过于自信。
 2. `CAPITULATION` 当前几乎没有有效先验质量，仍然是稀疏状态。
-3. `SovereignMemoryBooster` 的 synthetic baseline 仍然存在，必须明确它只是灾备，不是生产事实库。
+3. 任何 synthetic baseline 都不得进入生产或审计主路径。

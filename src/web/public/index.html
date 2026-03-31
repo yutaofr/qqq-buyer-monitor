@@ -245,8 +245,8 @@
                 document.getElementById('exposure').textContent = data.signal.target_beta.toFixed(2) + 'x';
                 document.getElementById('entropy').textContent = data.signal.entropy.toFixed(3);
                 
-                const deployStateKey = data.signal.deployment_state_key || 'BASE';
-                const dRhythm = (data.signal.deployment_state || '--').replace('入场', '').trim();
+                const deployStateKey = data.signal.deployment_state_key || (String(data.signal.deployment_state || 'DEPLOY_BASE').replace('DEPLOY_', '')) || 'BASE';
+                const dRhythm = String(data.signal.deployment_state || '--').replace('DEPLOY_', '').replace('入场', '').trim();
                 const dText = document.getElementById('deploy');
                 dText.textContent = dRhythm;
                 dText.className = `text-xl sm:text-2xl font-black ${DEPLOY_COLORS[deployStateKey] || 'text-blue-400'}`;
@@ -260,7 +260,7 @@
                 const bar = document.getElementById('exposure-bar'); const beta = data.signal.target_beta;
                 bar.style.width = Math.min(100, beta * 83.33) + '%'; bar.className = beta > 1.0 ? 'h-full overclock' : 'h-full bg-emerald-500';
                 
-                const bucket = (data.signal.reference_path.qld_pct > 0 ? "QLD" : (data.signal.reference_path.qqq_pct > 0.1 ? "QQQ" : "CASH"));
+                const bucket = data.signal.execution_bucket || (data.signal.reference_path.qld_pct > 0 ? "QLD" : (data.signal.reference_path.qqq_pct > 0.1 ? "QQQ" : "CASH"));
                 
                 document.querySelectorAll('.tag').forEach(t => {
                     const key = t.getAttribute('data-key');

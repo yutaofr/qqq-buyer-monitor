@@ -64,15 +64,17 @@ def build_discord_payload(result: SignalResult) -> dict:
 
     metadata = result.metadata or {}
     deployment_readiness = metadata.get("deployment_readiness", 0.0)
+    deployment_state = str(metadata.get("deployment_state", "DEPLOY_BASE"))
+    execution_bucket = str(metadata.get("execution_bucket", "n/a"))
+    raw_regime = str(metadata.get("raw_regime", result.stable_regime))
 
     # Check behavioral guard lock in logic trace or metadata if available
     lock_active = False
-    target_bucket = "n/a"
     for trace in result.logic_trace:
         if trace.get("step") == "behavioral_guard":
             guard_result = trace.get("result", {})
             lock_active = guard_result.get("lock_active", False)
-            target_bucket = guard_result.get("target_bucket", "n/a")
+            execution_bucket = guard_result.get("target_bucket", execution_bucket)
 
     if lock_active:
         color = COLOR_LOCKED
@@ -104,7 +106,10 @@ def build_discord_payload(result: SignalResult) -> dict:
         {
             "name": "🛡️ Execution Audit",
             "value": (
-                f"**Bucket:** `{target_bucket}`\n"
+                f"**Stable Regime:** `{result.stable_regime}`\n"
+                f"**Raw Regime:** `{raw_regime}`\n"
+                f"**Bucket:** `{execution_bucket}`\n"
+                f"**Deployment:** `{deployment_state}`\n"
                 f"**Readiness:** `{deployment_readiness:.1%}`\n"
                 f"**Entropy Penalty:** `{result.entropy:.3f}`"
             ),

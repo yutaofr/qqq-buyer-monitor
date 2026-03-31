@@ -2,7 +2,7 @@
 
 本报告记录 QQQ Monitor 在 v11.5 架构下的最新全量审计结果。系统已彻底收敛至贝叶斯全概率引擎，移除了所有旧版线性流水线逻辑。
 
-**审计日期：** `2026-03-31`  
+**审计日期：** `2026-04-01`  
 **执行引擎：** `v11.5 Bayesian Conductor (GaussianNB JIT)`  
 **执行命令：**
 ```bash
@@ -17,10 +17,10 @@ python -m src.backtest --evaluation-start 2018-01-01
 
 | 指标 | 当前表现 | 状态 | 说明 |
 | :--- | :--- | :--- | :--- |
-| **Top-1 Accuracy** | **97.04%** | ✅ PASS | 预测制度与基准标签的匹配程度 |
-| **Brier Score** | **0.0487** | ✅ PASS | 衡量概率预测的准确性与置信度（越低越好） |
-| **Mean Entropy** | **0.052** | ✅ PASS | 系统推断的平均确定性水平 |
-| **Lock Incidence** | **0.2%** | ✅ PASS | 行为守卫（结算锁）的触发频率 |
+| **Top-1 Accuracy** | **98.71%** | ✅ PASS | 预测制度与基准标签的匹配程度 |
+| **Brier Score** | **0.0225** | ✅ PASS | 衡量概率预测的准确性与置信度（越低越好） |
+| **Mean Entropy** | **0.046** | ✅ PASS | 系统推断的平均确定性水平 |
+| **Lock Incidence** | **0.4%** | ✅ PASS | 行为守卫（结算锁）的触发频率 |
 
 ---
 
@@ -43,11 +43,17 @@ python -m src.backtest --evaluation-start 2018-01-01
 ### 3.1 因果隔离 (Causal Isolation)
 系统在审计过程中严格遵守**因果隔离原则**：
 - 每一天的推断仅使用该日期之前的 DNA 数据进行 JIT 训练。
+- 审计采用 **walk-forward daily re-fit**，不再使用单次静态 train/test 拟合冒充生产同构。
 - 彻底杜绝了未来函数（Look-ahead Bias），确保回测结果具备 100% 的实盘参考价值。
 
-### 3.2 风险定价：从阈值到概率
+### 3.2 JIT 模型完整性 (Model Integrity)
+- 每个审计窗口在 `fit()` 后都会校验 `GaussianNB` 的 `classes_ / theta_ / var_ / class_prior_`。
+- 若系数出现非有限值、非正方差或 class prior 失真，审计立即 fail closed。
+- 这保证了 walk-forward 回测不仅因果正确，而且不会在损坏模型上“跑出漂亮数字”。
+
+### 3.3 风险定价：从阈值到概率
 - **V9 旧逻辑**：通过 `IF Price < MA200` 等硬性条件触发决策。
-- **V11.5 新逻辑**：计算特征向量在贝叶斯空间的**密度分布**。若市场进入“迷雾区”（高熵状态），系统会自动对 Beta 执行系数级 Haircut（削减），实现了风险定价的连续性。
+- **V11.5 新逻辑**：计算特征向量在贝叶斯空间的**密度分布**。若市场进入“迷雾区”（高熵状态），系统会自动对 `raw_target_beta` 执行无阈值 Shannon Haircut：`target_beta = raw_target_beta * exp(-H)`。
 
 ---
 

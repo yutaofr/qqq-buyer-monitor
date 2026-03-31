@@ -53,7 +53,9 @@ class ProbabilitySeeder:
             # 3. Dynamic Z-Score Normalization (Rolling 1-Year baseline)
             # This ensures we only use information available at time T
             if cfg.get("absolute"):
-                features[feat_name] = self._scale_absolute_feature(src_col, val)
+                mean = val.expanding(min_periods=1).mean()
+                std = val.expanding(min_periods=2).std()
+                features[feat_name] = ((val - mean) / (std.fillna(1e-6).replace(0, 1e-6))).clip(-8.0, 8.0)
             else:
                 mean = val.rolling(252, min_periods=1).mean()
                 std = val.rolling(252, min_periods=1).std()
@@ -62,23 +64,6 @@ class ProbabilitySeeder:
         # Final cleanup: Remove bfill() to prevent Look-Ahead Bias.
         # We only ffill (causal) and fillna(0) for the very beginning of the series.
         return features.ffill().fillna(0.0)
-
-    def _scale_absolute_feature(self, src_col: str, val: pd.Series) -> pd.Series:
-        """
-        Deterministically maps level features into a roughly z-score-like space.
-        Random perturbations are forbidden because they destroy prior stability.
-        """
-        numeric = pd.to_numeric(val, errors="coerce")
-        if src_col == "erp_pct":
-            scaled = (numeric * 100.0 - 4.0) / 2.0
-        elif src_col == "credit_spread_bps":
-            scaled = (numeric - 350.0) / 100.0
-        elif src_col == "real_yield_10y_pct":
-            scaled = (numeric * 100.0 - 3.5) / 2.0
-        else:
-            scaled = numeric
-
-        return scaled.clip(-8.0, 8.0)
 
     def _normalize_index(self, df: pd.DataFrame) -> pd.DataFrame:
         """Forces index to be DatetimeIndex, frequency-aligned, and tz-naive."""

@@ -47,3 +47,11 @@ def test_behavioral_guard_switches_immediately_on_large_low_entropy_move():
     assert decision.target_bucket == "QLD"
     assert decision.action_required is True
     assert guard.cooldown_days_remaining == 1
+
+
+def test_behavioral_guard_entropy_barrier_is_structural_not_tuned_constant():
+    lower_barrier = BehavioralGuard._entropy_barrier(0.5, bucket_count=2)
+    higher_barrier = BehavioralGuard._entropy_barrier(0.5, bucket_count=3)
+
+    assert lower_barrier == 0.5
+    assert higher_barrier == 1.0 / 3.0

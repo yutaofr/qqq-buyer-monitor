@@ -9,7 +9,7 @@ from sklearn.naive_bayes import GaussianNB
 
 from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
 from src.engine.v11.core.entropy_controller import EntropyController
-from src.engine.v11.core.mahalanobis_guard import MahalanobisGuard
+from src.engine.v11.core.model_validation import validate_gaussian_nb
 from src.engine.v11.core.position_sizer import PositionSizingResult
 from src.engine.v11.core.prior_knowledge import PriorKnowledgeBase
 from src.engine.v11.probability_seeder import ProbabilitySeeder
@@ -17,7 +17,6 @@ from src.engine.v11.signal.behavioral_guard import BehavioralGuard
 from src.engine.v11.signal.deployment_policy import ProbabilisticDeploymentPolicy
 from src.engine.v11.signal.inertial_beta_mapper import InertialBetaMapper
 from src.engine.v11.signal.regime_stabilizer import RegimeStabilizer
-from src.engine.v11.utils.memory_booster import SovereignMemoryBooster
 
 logger = logging.getLogger(__name__)
 
@@ -40,21 +39,22 @@ class V11Conductor:
         with open(self.audit_path, encoding="utf-8") as f:
             self.audit_data = json.load(f)
 
-        self.macro_data_path = macro_data_path
-        self.regime_data_path = regime_data_path
+        self.macro_data_path = str(macro_data_path)
+        self.regime_data_path = str(regime_data_path)
         self.base_betas = self.audit_data["base_betas"]
         self.regime_sharpes = self.audit_data["regime_sharpes"]
-        self.entropy_threshold = self.audit_data["risk_thresholds"]["entropy_max"]
         self.regimes = list(self.base_betas.keys())
+        self._validate_canonical_inputs()
         self.regime_history = pd.read_csv(
-            regime_data_path,
+            self.regime_data_path,
             parse_dates=["observation_date"],
         ).set_index("observation_date")
+        self.model_regimes = sorted(self.regime_history["regime"].astype(str).unique())
+        self._validate_regime_coverage()
 
         # v11.5 Internal Controllers
         self.seeder = ProbabilitySeeder()
-        self.entropy_ctrl = EntropyController(threshold=self.entropy_threshold)
-        self.outlier_guard = MahalanobisGuard()
+        self.entropy_ctrl = EntropyController()
         self.prior_book = PriorKnowledgeBase(
             storage_path=prior_state_path,
             regimes=self.regimes,
@@ -87,6 +87,7 @@ class V11Conductor:
         # Initial Model Training & Seeder Priming (Epic 1)
         if initial_model is not None:
             self.gnb = initial_model
+            self._validate_model(self.gnb)
         else:
             self.gnb = self._initialize_model(macro_data_path, regime_data_path)
 
@@ -95,11 +96,30 @@ class V11Conductor:
             base_priors=self._get_base_priors()
         )
 
+    def _validate_canonical_inputs(self) -> None:
+        macro_path = Path(self.macro_data_path)
+        regime_path = Path(self.regime_data_path)
+
+        if not macro_path.exists():
+            raise FileNotFoundError(
+                f"Canonical macro DNA missing at {macro_path}. Production cold start requires checked-in DNA, not synthetic bootstrap."
+            )
+        if not regime_path.exists():
+            raise FileNotFoundError(
+                f"Canonical regime DNA missing at {regime_path}. Production cold start requires checked-in DNA, not synthetic bootstrap."
+            )
+
+    def _validate_regime_coverage(self) -> None:
+        missing_betas = sorted(set(self.model_regimes) - set(self.base_betas))
+        missing_sharpes = sorted(set(self.model_regimes) - set(self.regime_sharpes))
+        if missing_betas or missing_sharpes:
+            raise ValueError(
+                "Audit calibration is incomplete for the supplied regime DNA: "
+                f"missing base_betas={missing_betas}, missing regime_sharpes={missing_sharpes}."
+            )
+
     def _initialize_model(self, macro_data_path: str, regime_data_path: str) -> GaussianNB:
-        """JIT training of the Bayesian regime inference model with Sovereign DNA."""
-        # AC-0: Always ensure baseline memory exists (DNA self-healing)
-        booster = SovereignMemoryBooster(macro_data_path, regime_data_path)
-        booster.ensure_baseline()
+        """JIT training of the Bayesian regime inference model with canonical DNA."""
 
         # 1. Load Seeding Datasets
         macro_df = pd.read_csv(macro_data_path, index_col="observation_date", parse_dates=True)
@@ -117,14 +137,26 @@ class V11Conductor:
         gnb = GaussianNB(var_smoothing=1e-2)
         feature_cols = [c for c in df.columns if c != "regime"]
         gnb.fit(df[feature_cols], df["regime"])
+        summary = self._validate_model(gnb, feature_count=len(feature_cols))
 
-        # Fit Outlier Guard on 'Stable' regimes (MID_CYCLE, RECOVERY)
-        stable_mask = df["regime"].isin(["MID_CYCLE", "RECOVERY"])
-        if stable_mask.any():
-            self.outlier_guard.fit_baseline(df.loc[stable_mask, feature_cols])
-
-        logger.info(f"V11.5 Conductor: JIT-Model Provenance established. Classes: {gnb.classes_}")
+        logger.info(
+            "V11.5 Conductor: JIT-Model Provenance established. "
+            "Classes=%s features=%s theta=[%.4f, %.4f] var=[%.6f, %.6f]",
+            summary["classes"],
+            summary["feature_count"],
+            summary["theta_min"],
+            summary["theta_max"],
+            summary["var_min"],
+            summary["var_max"],
+        )
         return gnb
+
+    def _validate_model(self, gnb: GaussianNB, *, feature_count: int | None = None) -> dict[str, object]:
+        return validate_gaussian_nb(
+            gnb,
+            expected_classes=self.model_regimes,
+            feature_count=feature_count or len(self.seeder.config),
+        )
 
     def _get_base_priors(self) -> dict[str, float]:
         """Returns deterministic priors from the persistent knowledge base."""
@@ -199,16 +231,10 @@ class V11Conductor:
         norm_h = self.entropy_ctrl.calculate_normalized_entropy(posteriors)
         regime_decision = self.regime_stabilizer.update(posteriors=posteriors, entropy=norm_h)
 
-        # Adaptive Outlier Inference (v11.7)
-        outlier_multiplier = self.outlier_guard.calculate_outlier_multiplier(latest_vector)
-
-        # Continuous Probabilistic Penalty (v11.6)
-        ry_z = float(features.iloc[-1].get("real_yield_structural_z", 0.0))
         protected_beta = self.entropy_ctrl.apply_haircut(
             raw_beta_expectation,
             norm_h,
-            structural_z=ry_z,
-            outlier_multiplier=outlier_multiplier
+            state_count=len(posteriors),
         )
 
         # 4. Continuous Beta Surface with cross-run inertia
@@ -242,8 +268,6 @@ class V11Conductor:
             "net_liquidity": float(latest_raw.get("net_liquidity_usd_bn", 0.0)),
             "vix": float(latest_raw.get("vix", 0.0)),
             "entropy": norm_h,
-            "outlier_stress": 1.0 - outlier_multiplier,
-            "tactical_stress_score": int(np.abs(latest_vector).values.sum() * 10),
             "deployment_readiness": deployment_readiness,
         }
 

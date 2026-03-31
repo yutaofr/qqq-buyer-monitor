@@ -43,11 +43,17 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
         reverse=True,
     )
     stable_regime = runtime_result.get("stable_regime", ordered_probs[0][0])
+    raw_regime = runtime_result.get("raw_regime", ordered_probs[0][0])
+    deployment = runtime_result.get("deployment", {})
+    deployment_state = str(deployment.get("deployment_state", "DEPLOY_BASE"))
+    deployment_state_key = deployment_state.replace("DEPLOY_", "")
+    execution_bucket = str(runtime_result.get("signal", {}).get("target_bucket", "QQQ"))
 
     explanation = (
         f"v11.5 Bayesian Conductor: beta={runtime_result['target_beta']:.2f}x | "
         f"entropy={runtime_result.get('entropy', 0.0):.3f} | "
-        f"regime={stable_regime} ({ordered_probs[0][1]:.1%})"
+        f"stable={stable_regime} | raw={raw_regime} ({ordered_probs[0][1]:.1%}) | "
+        f"deploy={deployment_state_key}"
     )
 
     return SignalResult(
@@ -63,6 +69,7 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
             {"step": "probabilistic_inference", "result": runtime_result["probabilities"]},
             {"step": "entropy_haircut", "result": {"entropy": runtime_result.get("entropy", 0.0)}},
             {"step": "position_sizing", "result": runtime_result["target_allocation"]},
+            {"step": "deployment_policy", "result": deployment},
             {"step": "behavioral_guard", "result": runtime_result["signal"]},
         ],
         explanation=explanation,
@@ -73,6 +80,10 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
             "prior_details": runtime_result.get("prior_details", {}),
             "deployment_readiness": float(runtime_result.get("deployment_readiness", 0.0)),
             "raw_target_beta": float(runtime_result.get("raw_target_beta", runtime_result["target_beta"])),
+            "raw_regime": raw_regime,
+            "deployment_state": deployment_state,
+            "deployment_state_key": deployment_state_key,
+            "execution_bucket": execution_bucket,
             "beta_ceiling": 1.2,
         }
     )

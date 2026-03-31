@@ -37,6 +37,9 @@ python -m src.main --json --no-save
 *   `data/macro_historical_dump.csv` (DNA 库)
 *   `data/v11_prior_state.json` (贝叶斯先验)
 
+若云端缺失，则只能回退到仓库中的 canonical DNA；
+若 canonical DNA 也缺失，生产任务必须失败并报警，不允许 synthetic baseline 混入主路径。
+
 ### Step 2: 模型 JIT 训练
 系统读取 DNA 库，在内存中即时训练 **高斯朴素贝叶斯分类器**。该过程确保模型参数永远捕捉最新的宏观波动模式。
 
@@ -60,7 +63,7 @@ python -m src.main --json --no-save
 | 场景 | 处置逻辑 |
 | :--- | :--- |
 | **API 采集失败** | 自动降级。非核心指标注入中性值，记录 Warning。 |
-| **Vercel 存储为空** | **冷启动自愈**。系统自动扫描物理 DNA 库并进行 Bootstrap 重建记忆。 |
+| **Vercel 存储为空** | **冷启动自愈**。系统从仓库内 canonical DNA Bootstrap prior 记忆；若 canonical DNA 缺失则任务失败。 |
 | **DB 模式冲突** | **破坏性对齐**。`init_db` 会自动检测并重置不兼容的旧 Schema。 |
 | **网络同步中断** | 自动重试。`CloudPersistenceBridge` 执行 3 次指数退避重试。 |
 
