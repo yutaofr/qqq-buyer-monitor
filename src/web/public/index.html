@@ -237,18 +237,18 @@
                 lumiere.className = `lumiere ${REGIME_COLORS[activeRegimeKey] || 'bg-slate-500'}`;
 
                 document.getElementById('exposure').textContent = data.signal.target_beta.toFixed(2) + 'x';
-                document.getElementById('entropy').textContent = data.signal.v11_entropy.toFixed(3);
+                document.getElementById('entropy').textContent = data.signal.entropy.toFixed(3);
                 
                 const deployStateKey = data.signal.deployment_state_key || 'BASE';
-                const dRhythm = (data.signal.deployment_state || data.signal.deploy_rhythm || '--').replace('入场', '').trim();
+                const dRhythm = (data.signal.deployment_state || '--').replace('入场', '').trim();
                 const dText = document.getElementById('deploy');
                 dText.textContent = dRhythm;
                 dText.className = `text-xl sm:text-2xl font-black ${DEPLOY_COLORS[deployStateKey] || 'text-blue-400'}`;
                 document.getElementById('deploy-readiness').textContent = data.signal.deployment_readiness != null ? `Kelly 就绪度 ${(data.signal.deployment_readiness * 100).toFixed(1)}%` : '--';
                 
                 document.getElementById('calc-at').textContent = data.meta.calculated_at_utc.replace('T',' ').replace('Z','');
-                document.getElementById('beta-ceiling').textContent = data.signal.beta_ceiling.toFixed(2) + 'x';
-                document.getElementById('raw-beta').textContent = data.signal.raw_target_beta.toFixed(2) + 'x';
+                document.getElementById('beta-ceiling').textContent = (data.signal.beta_ceiling || 1.20).toFixed(2) + 'x';
+                document.getElementById('raw-beta').textContent = (data.signal.raw_target_beta || data.signal.target_beta).toFixed(2) + 'x';
                 document.getElementById('market-label').textContent = mkt;
 
                 const bar = document.getElementById('exposure-bar'); const beta = data.signal.target_beta;
@@ -258,12 +258,12 @@
                 
                 document.querySelectorAll('.tag').forEach(t => {
                     const key = t.getAttribute('data-key');
-                    if (key === stableRegimeKey || key === rawRegimeKey || key === bucket || (data.signal.v11_probabilities && data.signal.v11_probabilities[key] > 0.4)) {
+                    if (key === stableRegimeKey || key === rawRegimeKey || key === bucket || (data.signal.probabilities && data.signal.probabilities[key] > 0.4)) {
                         t.className = 'tag node-active text-[10px] px-3 py-2 border border-emerald-500/50 rounded-2xl transition-all duration-1000';
                     } else { t.className = 'tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl'; }
                 });
 
-                renderDistribution('prob-container', data.signal.v11_probabilities, '暂无后验分布');
+                renderDistribution('prob-container', data.signal.probabilities, '暂无后验分布');
                 renderDistribution('prior-container', data.signal.priors, '当前未透传运行时先验');
             } catch (e) { console.error(e); sourceLabel.textContent = "SYNC_ERROR"; body.className = 'state-stale min-h-screen flex items-center justify-center p-3 sm:p-4'; }
         }
