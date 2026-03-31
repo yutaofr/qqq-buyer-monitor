@@ -91,10 +91,18 @@ def run_v11_audit(
     from src.engine.v11.probability_seeder import ProbabilitySeeder
     from src.engine.v11.signal.behavioral_guard import BehavioralGuard
     from src.engine.v11.signal.inertial_beta_mapper import InertialBetaMapper
+    from src.engine.v11.utils.memory_booster import SovereignMemoryBooster
     from src.output.backtest_plots import (
         save_v11_fidelity_figure,
         save_v11_probabilistic_audit_figure,
     )
+
+    # Sovereign Determinism: Ensure baseline data exists for audit (v11.51)
+    # This prevents FileNotFoundError in ephemeral CI/CD environments.
+    SovereignMemoryBooster(
+        macro_path=dataset_path, 
+        regime_path="data/v11_poc_phase1_results.csv"
+    ).ensure_baseline()
 
     macro_df = pd.read_csv(dataset_path, parse_dates=["observation_date"]).set_index("observation_date")
     regime_df = pd.read_csv("data/v11_poc_phase1_results.csv", parse_dates=["observation_date"]).set_index("observation_date")
