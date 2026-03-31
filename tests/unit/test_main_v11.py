@@ -50,6 +50,7 @@ def test_build_v11_live_macro_row_normalizes_units():
     row = main_module._build_v11_live_macro_row(
         observation_date=pd.Timestamp("2026-03-30"),
         credit_spread=342.0,
+        credit_spread_source="proxy:nfci",
         net_liquidity=5818.9,
         liquidity_roc=0.78,
         vix=30.6,
@@ -67,3 +68,4 @@ def test_build_v11_live_macro_row_normalizes_units():
     assert row["erp_pct"] == 0.02
     assert row["real_yield_10y_pct"] == 0.021
     assert row["credit_spread_bps"] == 342.0
+    assert row["source_credit_spread"] == "proxy:nfci"

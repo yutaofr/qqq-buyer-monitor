@@ -93,6 +93,7 @@ def _build_v11_live_macro_row(
     *,
     observation_date: pd.Timestamp,
     credit_spread: float,
+    credit_spread_source: str = "direct",
     net_liquidity: float | None,
     liquidity_roc: float,
     vix: float,
@@ -112,6 +113,7 @@ def _build_v11_live_macro_row(
             {
                 "observation_date": observation_ts,
                 "credit_spread_bps": float(credit_spread),
+                "source_credit_spread": str(credit_spread_source),
                 "net_liquidity_usd_bn": float(net_liquidity) if net_liquidity is not None else None,
                 "liquidity_roc_pct_4w": float(liquidity_roc or 0.0),
                 "vix": float(vix),
@@ -162,7 +164,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     from src.collector.breadth import fetch_breadth
     from src.collector.fear_greed import fetch_fear_greed
     from src.collector.fundamentals import fetch_forward_pe
-    from src.collector.macro import fetch_credit_spread
+    from src.collector.macro import fetch_credit_spread_snapshot
     from src.collector.macro_v3 import fetch_net_liquidity, fetch_real_yield
     from src.collector.price import fetch_price_data
     from src.collector.vix import fetch_vix_term_structure
@@ -218,10 +220,16 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         pct_above_50d = 0.50
 
     try:
-        credit_spread = fetch_credit_spread()
+        credit_spread_snapshot = fetch_credit_spread_snapshot()
+        credit_spread = credit_spread_snapshot.get("value")
+        credit_spread_source = str(credit_spread_snapshot.get("source", "direct"))
+        if credit_spread is None:
+            credit_spread = 400.0
+            credit_spread_source = "default:credit_spread"
     except Exception as exc:
         logger.warning("Credit-spread fetch failed: %s", exc)
         credit_spread = 400.0
+        credit_spread_source = "default:credit_spread"
 
     try:
         net_liq, liq_roc = fetch_net_liquidity()
@@ -236,6 +244,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     raw_row = _build_v11_live_macro_row(
         observation_date=pd.Timestamp(price_data["date"]),
         credit_spread=float(credit_spread),
+        credit_spread_source=credit_spread_source,
         net_liquidity=net_liq,
         liquidity_roc=liq_roc,
         vix=float(vix_term["vix"]),

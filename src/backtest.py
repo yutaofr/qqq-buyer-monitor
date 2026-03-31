@@ -90,7 +90,7 @@ def run_v11_audit(
 
     from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
     from src.engine.v11.core.entropy_controller import EntropyController
-    from src.engine.v11.core.model_validation import validate_gaussian_nb
+    from src.engine.v11.core.model_validation import validate_feature_contract, validate_gaussian_nb
     from src.engine.v11.core.position_sizer import PositionSizingResult
     from src.engine.v11.core.prior_knowledge import PriorKnowledgeBase
     from src.engine.v11.probability_seeder import ProbabilitySeeder
@@ -132,6 +132,12 @@ def run_v11_audit(
     macro_df["qqq_close"] = macro_df["qqq_close"].ffill()
 
     seeder = ProbabilitySeeder()
+    validate_feature_contract(
+        expected_hash=audit_data.get("feature_contract", {}).get("seeder_config_hash"),
+        actual_hash=seeder.contract_hash(),
+        expected_features=audit_data.get("feature_contract", {}).get("feature_names"),
+        actual_features=seeder.feature_names(),
+    )
     features = seeder.generate_features(macro_df)
     full_df = features.join(regime_df["regime"], how="inner")
     full_df["qqq_close"] = macro_df["qqq_close"]

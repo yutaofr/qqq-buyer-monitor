@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from sklearn.naive_bayes import GaussianNB
 
-from src.engine.v11.core.model_validation import validate_gaussian_nb
+from src.engine.v11.core.model_validation import validate_feature_contract, validate_gaussian_nb
 
 
 def _fit_valid_model() -> GaussianNB:
@@ -39,3 +39,13 @@ def test_validate_gaussian_nb_rejects_class_drift():
 
     with pytest.raises(ValueError, match="Expected classes"):
         validate_gaussian_nb(model, expected_classes=["BUST", "LATE_CYCLE", "MID_CYCLE"])
+
+
+def test_validate_feature_contract_rejects_hash_drift():
+    with pytest.raises(ValueError, match="feature contract hash"):
+        validate_feature_contract(
+            expected_hash="sha256:expected",
+            actual_hash="sha256:actual",
+            expected_features=["spread_21d"],
+            actual_features=["spread_21d"],
+        )

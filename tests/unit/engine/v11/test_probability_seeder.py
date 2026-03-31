@@ -77,3 +77,13 @@ def test_seeder_is_deterministic(sample_macro_df):
     second = seeder.generate_features(sample_macro_df)
 
     pd.testing.assert_frame_equal(first, second)
+
+
+def test_seeder_contract_hash_is_stable():
+    seeder = ProbabilitySeeder()
+
+    first = seeder.contract_hash()
+    second = seeder.contract_hash()
+
+    assert first == second
+    assert first.startswith("sha256:")

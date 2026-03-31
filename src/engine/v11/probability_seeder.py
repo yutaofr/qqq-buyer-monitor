@@ -1,3 +1,6 @@
+import hashlib
+import json
+
 import pandas as pd
 
 
@@ -18,6 +21,14 @@ class ProbabilitySeeder:
             "spread_absolute": {"src": "credit_spread_bps", "window": 1, "mom": False, "accel": False, "ewma": False, "absolute": True},
             "yield_absolute": {"src": "real_yield_10y_pct", "window": 1, "mom": False, "accel": False, "ewma": False, "absolute": True},
         }
+
+    def contract_hash(self) -> str:
+        canonical = json.dumps(self.config, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        return f"sha256:{digest}"
+
+    def feature_names(self) -> list[str]:
+        return list(self.config.keys())
 
     def generate_features(self, macro_df: pd.DataFrame) -> pd.DataFrame:
         """
