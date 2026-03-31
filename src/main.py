@@ -252,12 +252,25 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     else:
         print_signal(result, use_color=not args.no_color)
 
+    # 2. Notify Discord if explicitly requested
+    if args.notify_discord:
+        webhook_url = os.environ.get("ALERT_WEBHOOK_URL")
+        if not webhook_url:
+            logger.warning("ALERT_WEBHOOK_URL not set; skipping Discord notification.")
+        else:
+            from src.output.discord_notifier import send_discord_signal
+            ok = send_discord_signal(result, webhook_url)
+            if ok:
+                logger.info("Discord signal notification sent successfully.")
+            else:
+                logger.error("Failed to send Discord signal notification.")
+
     if not args.no_save:
         from src.store.db import save_signal
         save_signal(result)
         _upsert_v11_macro_feedback(raw_row, "data/macro_historical_dump.csv")
 
-        # 2. Synchronize State & Distribution to Cloud
+        # 3. Synchronize State & Distribution to Cloud
         if cloud.is_ci:
             # Sync core state files
             cloud.push_state(sync_files)
@@ -273,6 +286,7 @@ def main(argv: list[str] | None = None) -> None:
     # Deprecated engine param for CLI compatibility, but always forces v11
     parser.add_argument("--engine", choices=["v11"], default="v11", help="Always v11.")
     parser.add_argument("--json", action="store_true", help="Output JSON report")
+    parser.add_argument("--notify-discord", action="store_true", help="Send signal to Discord")
     parser.add_argument("--no-save", action="store_true", help="Skip saving to DB")
     parser.add_argument("--no-color", action="store_true", help="Disable ANSI color output")
     args = parser.parse_args(argv)
