@@ -112,6 +112,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
             "meta": {
                 "version": "v11.5",
                 "calculated_at_utc": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "observation_date": result.date.isoformat(),
                 "expires_at_utc": cursor.get_expires_at_utc(now_utc).strftime(
                     "%Y-%m-%dT%H:%M:%SZ"
                 ),
@@ -130,6 +131,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "exposure_band": _discretize_allocation(result.target_beta),
                 "probabilities": result.probabilities,
                 "priors": result.priors,
+                "prior_breakdown": metadata.get("prior_details", {}),
                 "deployment_readiness": metadata.get("deployment_readiness", 0.0),
                 "deployment_state": target_bucket,
                 "reference_path": {

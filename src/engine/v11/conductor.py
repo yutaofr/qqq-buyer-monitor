@@ -164,8 +164,9 @@ class V11Conductor:
         # 2. Bayesian Inference (Epic 2)
         # Inference only on the last point
         latest_vector = features.iloc[-1:]
-        runtime_priors = self.prior_book.runtime_priors()
+        runtime_priors, prior_details = self.prior_book.runtime_priors()
 
+        logger.info(f"Model Inference: Initiating GaussianNB probabilities with current priors...")
         # AC-3: Numerical Resilience (v11.21)
         try:
             probs = self.gnb.predict_proba(latest_vector)
@@ -287,6 +288,7 @@ class V11Conductor:
                 "action_required": execution.action_required,
             },
             "priors": runtime_priors,
+            "prior_details": prior_details,
             "probabilities": posteriors,
             "raw_regime": regime_decision["raw_regime"],
             "stable_regime": regime_decision["stable_regime"],
