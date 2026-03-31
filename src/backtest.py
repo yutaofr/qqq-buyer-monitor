@@ -100,7 +100,7 @@ def run_v11_audit(
     # Sovereign Determinism: Ensure baseline data exists for audit (v11.51)
     # This prevents FileNotFoundError in ephemeral CI/CD environments.
     SovereignMemoryBooster(
-        macro_path=dataset_path, 
+        macro_path=dataset_path,
         regime_path="data/v11_poc_phase1_results.csv"
     ).ensure_baseline()
 
