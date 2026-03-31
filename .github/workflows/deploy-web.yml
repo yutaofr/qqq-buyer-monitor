@@ -2,8 +2,9 @@ name: Deploy Web Dashboard Snapshot
 
 on:
   schedule:
-    # AVOID TOP-OF-THE-HOUR CONGESTION: Trigger at 13th minute, Monday to Friday
-    - cron: '13 * * * 1-5'
+    # 22:30 UTC = 18:30 EDT (Summer) / 17:30 EST (Winter).
+    # Trigger after US market close and daily settlement.
+    - cron: '30 22 * * 1-5'
   workflow_dispatch:
 
 # CONCURRENCY MUFFLING: Prevent dirty writes by canceling previous runs
@@ -13,9 +14,9 @@ concurrency:
 
 jobs:
   deploy:
-    uses: ./.github/workflows/v11-runtime.yml
+    uses: ./.github/workflows/runtime.yml
     with:
       job_name: Deploy Web Dashboard Snapshot
-      command: python -m src.main --engine v11 --export-web
+      command: python -m src.main
       timeout_minutes: 30
     secrets: inherit
