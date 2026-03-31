@@ -138,8 +138,8 @@ def build_historical_macro_dataset(output_path: str | Path | None = None) -> pd.
         "effective_date",
         "erp_pct",
         calendar,
-    )
-    daily["real_yield_10y_pct"] = daily["DFII10"]
+    ) / 100.0
+    daily["real_yield_10y_pct"] = daily["DFII10"] / 100.0
     daily["net_liquidity_usd_bn"] = _asof_align(
         weekly_liquidity.loc[:, ["observation_date", "net_liquidity_usd_bn"]],
         "net_liquidity_usd_bn",

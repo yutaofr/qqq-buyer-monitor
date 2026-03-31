@@ -1,9 +1,10 @@
-import os
 import json
 import logging
-import requests
+import os
 import time
 from pathlib import Path
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ class CloudPersistenceBridge:
         self.token = token or os.environ.get("VERCEL_BLOB_READ_WRITE_TOKEN")
         self.is_ci = os.environ.get("GITHUB_ACTIONS") == "true"
         self.branch = os.environ.get("GITHUB_REF_NAME", "local")
-        
+
         # 1. Namespace Calculation
         if self.branch == "main":
             self.namespace = "prod"
@@ -47,7 +48,7 @@ class CloudPersistenceBridge:
             return True
 
         logger.info("Initiating cloud state pull for namespace: %s", self.namespace)
-        
+
         # 1. Fetch current blob list to find URLs
         try:
             list_resp = requests.get(f"{self.base_api_url}?limit=1000", headers=self.headers, timeout=10)
@@ -63,7 +64,7 @@ class CloudPersistenceBridge:
         for filename in local_files:
             remote_path = self._get_remote_path(filename)
             download_url = url_map.get(remote_path)
-            
+
             local_path = Path(filename)
             local_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -93,7 +94,7 @@ class CloudPersistenceBridge:
             return True
 
         logger.info("Initiating cloud state push for %s files...", len(local_files))
-        
+
         for filename in local_files:
             local_path = Path(filename)
             if not local_path.exists():
@@ -102,7 +103,7 @@ class CloudPersistenceBridge:
 
             with open(local_path, "rb") as f:
                 content = f.read()
-            
+
             self.push_payload(content, filename, is_binary=True)
 
         return True
@@ -116,7 +117,7 @@ class CloudPersistenceBridge:
 
         remote_path = self._get_remote_path(filename)
         put_url = f"{self.base_api_url}/{remote_path}"
-        
+
         put_headers = self.headers.copy()
         put_headers.update({
             "x-add-random-suffix": "false",
@@ -141,5 +142,5 @@ class CloudPersistenceBridge:
                 if attempt == max_retries - 1:
                     raise
                 time.sleep(2 ** attempt)
-        
+
         return False

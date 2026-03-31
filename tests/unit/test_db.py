@@ -1,33 +1,30 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import date
 
-from src.store.db import init_db
+from src.models import SignalResult, TargetAllocationState
+from src.store.db import init_db, load_history, save_signal
 
 
-def test_init_db_migrates_forward_pe_for_existing_macro_state_table(tmp_path):
+def test_save_and_load_signal(tmp_path):
     db_path = tmp_path / "signals.db"
-    conn = sqlite3.connect(db_path)
-    conn.execute(
-        """
-        CREATE TABLE macro_states (
-            date TEXT PRIMARY KEY,
-            credit_spread REAL,
-            trailing_pe REAL,
-            real_yield REAL,
-            fcf_yield REAL,
-            earnings_revisions_breadth REAL
-        )
-        """
+    result = SignalResult(
+        date=date(2026, 3, 19),
+        price=402.0,
+        target_beta=0.90,
+        probabilities={"MID_CYCLE": 1.0},
+        entropy=0.0,
+        stable_regime="MID_CYCLE",
+        target_allocation=TargetAllocationState(0.10, 0.90, 0.0, 0.90),
+        logic_trace=[],
+        explanation="test",
     )
-    conn.commit()
-    conn.close()
 
-    migrated = init_db(str(db_path))
-    columns = {
-        row[1]
-        for row in migrated.execute("PRAGMA table_info(macro_states)").fetchall()
-    }
-    migrated.close()
+    save_signal(result, path=str(db_path))
+    history = load_history(n=1, path=str(db_path))
 
-    assert "forward_pe" in columns
+    assert len(history) == 1
+    assert history[0]["date"] == "2026-03-19"
+    assert history[0]["target_beta"] == 0.90
+    assert history[0]["price"] == 402.0

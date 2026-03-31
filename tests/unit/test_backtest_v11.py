@@ -9,9 +9,9 @@ def test_backtest_routes_v11_mode(monkeypatch):
     def fake_run_v11_audit(**kwargs):
         called["kwargs"] = kwargs
 
-    monkeypatch.setattr(backtest_module, "run_v11_audit", fake_run_v11_audit, raising=False)
+    monkeypatch.setattr(backtest_module, "run_v11_audit", fake_run_v11_audit)
 
-    rc = backtest_module.main(["--mode", "v11"])
+    rc = backtest_module.main([])
 
     assert rc == 0
     assert "kwargs" in called

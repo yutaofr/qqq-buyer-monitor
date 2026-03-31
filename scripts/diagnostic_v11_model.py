@@ -1,33 +1,35 @@
-import pandas as pd
-import numpy as np
 import logging
+
+import numpy as np
+import pandas as pd
+
 from src.engine.v11.conductor import V11Conductor
 
 logging.basicConfig(level=logging.INFO)
 
 def run_diagnostic():
     print("=== v11.5 Probability Diagnostic ===")
-    
+
     # 1. Load Conductor
     cond = V11Conductor()
-    
+
     # 2. Get current macro data from the dump
     macro_df = pd.read_csv("data/macro_historical_dump.csv", index_col="observation_date", parse_dates=True)
     features = cond.seeder.generate_features(macro_df)
     latest_vector = features.iloc[-1:]
-    
+
     # 3. Inspect the GNB Model
     print(f"\nModel Classes: {cond.gnb.classes_}")
     print(f"Priors (log): {cond.gnb.class_prior_}")
-    
+
     # 4. Probabilities for latest evidence
     probs = cond.gnb.predict_proba(latest_vector)[0]
     posteriors = {str(k): float(v) for k, v in zip(cond.gnb.classes_, probs)}
-    
+
     print("\n--- Current Posteriors ---")
     for r, p in sorted(posteriors.items(), key=lambda x: x[1], reverse=True):
         print(f"{r:20}: {p:.10%}")
-        
+
     # 5. Internal Likelihoods (P(E|R))
     # GaussianNB stores means in theta_ and variances in var_
     print("\n--- Feature Distributions (theta_ / var_) ---")

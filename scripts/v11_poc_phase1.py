@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """v11 POC Phase 1: Feature Engineering & Likelihood Calibration."""
-import pandas as pd
-import numpy as np
-from sklearn.decomposition import PCA
-from sklearn.neighbors import KernelDensity
-from sklearn.model_selection import GridSearchCV
 import logging
 from pathlib import Path
+
+import numpy as np
+import pandas as pd
+from sklearn.decomposition import PCA
+from sklearn.model_selection import GridSearchCV
+from sklearn.neighbors import KernelDensity
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -15,26 +16,26 @@ def run_phase1():
     # 1. Load Data
     macro_path = "data/macro_historical_dump.csv"
     price_vix_path = "data/v11_price_vix_history.csv"
-    
+
     if not Path(macro_path).exists() or not Path(price_vix_path).exists():
         logger.error("Required data files missing.")
         return
 
     macro_df = pd.read_csv(macro_path)
     price_df = pd.read_csv(price_vix_path)
-    
+
     macro_df["observation_date"] = pd.to_datetime(macro_df["observation_date"])
     price_df["observation_date"] = pd.to_datetime(price_df["observation_date"])
-    
+
     # 1.2 PRICE PROXY: Fill qqq_close with qqew_close if missing (early history)
     price_df = price_df.sort_values("observation_date")
     price_df["qqq_close"] = price_df["qqq_close"].fillna(price_df["qqew_close"])
-    
+
     # Manually recalculate drawdown if missing
     if "drawdown_pct" not in price_df.columns or price_df["drawdown_pct"].isna().any():
         price_df["hwm"] = price_df["qqq_close"].expanding().max()
         price_df["drawdown_pct"] = (price_df["qqq_close"] / price_df["hwm"] - 1.0) * 100
-        
+
     # Manually calculate breadth proxy if missing
     if "breadth_proxy" not in price_df.columns or price_df["breadth_proxy"].isna().any():
         # breadh_proxy is basically relative strength momentum
@@ -43,32 +44,32 @@ def run_phase1():
     # Merge on observation_date
     df = pd.merge(macro_df, price_df, on="observation_date", how="outer")
     df = df.sort_values("observation_date")
-    
+
     # FILTER: Start from 1995 to build rolling memory for 1999
     df = df[df["observation_date"] >= "1995-01-01"].copy()
-    
+
     # 1.5 PROXY DEGRADATION: Fill missing macro with neutral proxies for 1999-2008
     df["credit_spread_bps"] = df["credit_spread_bps"].ffill().fillna(400.0)
     df["erp_pct"] = df["erp_pct"].ffill().fillna(3.5) # Generic healthy ERP
     df["liquidity_roc_pct_4w"] = df["liquidity_roc_pct_4w"].ffill().fillna(0.0)
     df["funding_stress_flag"] = df["funding_stress_flag"].ffill().fillna(0.0)
-    
+
     logger.info(f"Augmented dataset: {len(df)} rows from {df['observation_date'].min()} to {df['observation_date'].max()}")
 
     # 2. Calculate Percentile Ranks (1yr Rolling for early availability)
     window = 252 * 1
     logger.info(f"Calculating rolling {window}d percentiles...")
-    
+
     # Labeling Signals (Macro)
     df["spread_pct"] = df["credit_spread_bps"].rolling(window, min_periods=20).rank(pct=True)
     df["erp_pct_rank"] = df["erp_pct"].rolling(window, min_periods=20).rank(pct=True)
     df["spread_accel"] = df["credit_spread_bps"].diff(10) / df["credit_spread_bps"].shift(10) * 100
-    
+
     # Evidence Signals (Price/Tactical)
     df["vix_pct"] = df["vix"].rolling(window, min_periods=20).rank(pct=True)
     df["dd_pct"] = df["drawdown_pct"].rolling(window, min_periods=20).rank(pct=True)
     df["breadth_pct"] = df["breadth_proxy"].rolling(window, min_periods=20).rank(pct=True)
-    
+
     # Filter for 1999 start (enough memory built since 1995)
     df = df[df["observation_date"] >= "1999-01-01"].copy()
     df = df.dropna(subset=["spread_pct", "vix_pct", "dd_pct", "qqq_close"]).copy()
@@ -76,7 +77,7 @@ def run_phase1():
 
     # 3. Labeling Priority Protocol
     logger.info("Applying Labeling Priority Protocol...")
-    
+
     def label_regime(row):
         # 1. BUST: Spread_pct >= 0.90 (Priority 1)
         if row["spread_pct"] >= 0.90:
@@ -93,7 +94,7 @@ def run_phase1():
 
     # Pre-calculate spread_20d_delta for Recovery
     df["spread_20d_delta"] = df["credit_spread_bps"].diff(20)
-    
+
     def label_regime_final(row):
         if row["spread_pct"] >= 0.90:
             return "BUST"
@@ -110,29 +111,29 @@ def run_phase1():
 
     # 4. Likelihood via Percentile-PCA & KDE
     logger.info("Performing PCA and KDE Likelihood Calibration...")
-    
+
     # Evidence Vector: [vix_pct, dd_pct, breadth_pct]
     evidence_cols = ["vix_pct", "dd_pct", "breadth_pct"]
     df = df.dropna(subset=evidence_cols).copy()
     X = df[evidence_cols].values
-    
+
     pca = PCA(n_components=2)
     X_pca = pca.fit_transform(X)
     df["pca1"] = X_pca[:, 0]
     df["pca2"] = X_pca[:, 1]
-    
+
     logger.info(f"PCA Variance Explained: {pca.explained_variance_ratio_}")
 
     # Build KDE for each Regime
     regimes = df["regime"].unique()
     kde_models = {}
-    
+
     for r in regimes:
         r_data = df[df["regime"] == r][["pca1", "pca2"]].values
         if len(r_data) < 5:
             logger.warning(f"Insufficient data for regime {r}: {len(r_data)} rows. Skipping KDE.")
             continue
-            
+
         # Optimize bandwidth via GridSearch
         params = {"bandwidth": np.logspace(-2, 0, 20)}
         grid = GridSearchCV(KernelDensity(), params)
