@@ -17,54 +17,21 @@ logger = logging.getLogger(__name__)
 
 
 class FeatureLibraryManager:
-    def __init__(self, storage_path: str = "data/v11_feature_library.csv", *, persist: bool = True):
-        self.storage_path = Path(storage_path)
-        self.persist = persist
+    def __init__(self, *, storage_path: str | None = None):
         self.memory_engine = ExogenousMemoryOperator()
-        self.df = self._load_library()
+        # In-memory only baseline for v11 Bayesian convergence
+        self.df = pd.DataFrame()
 
     def _load_library(self) -> pd.DataFrame:
-        """
-        Load feature library: prioritize Vercel Blob sync via Bridge and merge with local cache.
-        """
-        local_df = pd.DataFrame()
-        if self.storage_path.exists():
-            local_df = pd.read_csv(self.storage_path)
-            local_df["observation_date"] = pd.to_datetime(local_df["observation_date"])
-
-        # Cloud Sync via Centralized Bridge
-        from src.store.cloud_manager import CloudPersistenceBridge
-
-        bridge = CloudPersistenceBridge()
-        lib_filename = "v11_feature_library.csv"
-
-        # Pull latest state from cloud into local storage path
-        if bridge.pull_state([lib_filename]):
-            # If successfully pulled or verified, reload local_df from the standardized path
-            if self.storage_path.exists():
-                new_df = pd.read_csv(self.storage_path)
-                new_df["observation_date"] = pd.to_datetime(new_df["observation_date"])
-                
-                # Merge and deduplicate, prioritizing cloud data
-                if local_df.empty:
-                    local_df = new_df
-                else:
-                    local_df = pd.concat([local_df, new_df]).drop_duplicates(subset=["observation_date"], keep="last")
-                
-                logger.info("V11 Feature Library synced and merged from cloud via Bridge.")
-
-        if not local_df.empty:
-            return local_df.sort_values("observation_date").reset_index(drop=True)
+        """Deprecated: Logic consolidated into Seeder."""
         return pd.DataFrame()
 
     def update_library(self, new_row: pd.Series):
-        """追加 T+0 数据并持久化"""
+        """Append T+0 data in-memory."""
         new_row_df = pd.DataFrame([new_row])
         new_row_df["observation_date"] = pd.to_datetime(new_row_df["observation_date"])
         self.df = pd.concat([self.df, new_row_df]).drop_duplicates(subset=["observation_date"])
         self.df = self.df.sort_values("observation_date").reset_index(drop=True)
-        if self.persist:
-            self.df.to_csv(self.storage_path, index=False)
 
     def get_standardized_features(self, lookback_window: int = 252*20) -> pd.DataFrame:
         """
