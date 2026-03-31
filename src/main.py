@@ -72,6 +72,8 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
             "feature_values": runtime_result.get("feature_values", {}),
             "prior_details": runtime_result.get("prior_details", {}),
             "deployment_readiness": float(runtime_result.get("deployment_readiness", 0.0)),
+            "raw_target_beta": float(runtime_result.get("raw_target_beta", runtime_result["target_beta"])),
+            "beta_ceiling": 1.2,
         }
     )
 
