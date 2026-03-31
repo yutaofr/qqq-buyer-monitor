@@ -14,6 +14,8 @@
 - **AC-1 因果隔离:** 严禁在特征提取 (ProbabilitySeeder) 或推断过程中引入任何形式的未来函数。
 - **AC-2 数值一致性:** 数据管道产出的所有宏观指标必须采用小数单位 (Decimal Normalize)，严禁使用百分点 (Percent Points) 以防止 KDE 溢出。
 - **AC-3 验证先于定论:** 任何代码变更必须通过 `src.backtest` 的全量因果回归审计。
+- **AC-4 意志与行动分离 (Intent-Action Separation):** 所有对外的信号接口必须同时包含 `raw_target_beta` (原始贝叶斯期望) 与 `target_beta` (经过惯性平滑后的执行目标)，严禁隐藏推断黑盒。
+- **AC-5 冷启动智能对齐 (Smart Priming):** 系统在缺失历史执行状态 (T0) 时，必须直接对齐首日原始期望值，严禁使用硬编码默认值 (如 1.0) 产生启动滞后。
 
 ---
 
