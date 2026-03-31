@@ -89,28 +89,48 @@ class MarketCursor:
 
 
 def export_web_snapshot(result: SignalResult, output_path: str | Path | None = None) -> bool:
-    """Export a v11.5 compliant web snapshot."""
+    """Export a v11.5 compliant high-fidelity web snapshot."""
     try:
         now_utc = datetime.now(UTC)
         cursor = MarketCursor()
 
-        regime_info = REGIME_MAP.get(result.stable_regime, {"label": result.stable_regime, "desc": "Unknown"})
+        regime_info = REGIME_MAP.get(
+            result.stable_regime, {"label": result.stable_regime, "desc": "Unknown"}
+        )
         metadata = result.metadata or {}
+
+        # Extract lock state from logic trace
+        lock_active = False
+        target_bucket = "CASH"
+        for trace in result.logic_trace:
+            if trace.get("step") == "behavioral_guard":
+                guard_res = trace.get("result", {})
+                lock_active = guard_res.get("lock_active", False)
+                target_bucket = guard_res.get("target_bucket", "CASH")
 
         payload = {
             "meta": {
                 "version": "v11.5",
                 "calculated_at_utc": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "expires_at_utc": cursor.get_expires_at_utc(now_utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "expires_at_utc": cursor.get_expires_at_utc(now_utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
                 "market_state": cursor.get_market_state(now_utc),
             },
             "signal": {
                 "regime": regime_info["label"],
                 "regime_desc": regime_info["desc"],
+                "stable_regime": result.stable_regime,
+                "raw_regime": result.stable_regime,  # Simplified for now
                 "target_beta": result.target_beta,
+                "raw_target_beta": metadata.get("raw_target_beta", result.target_beta),
+                "beta_ceiling": metadata.get("beta_ceiling", 1.20),
                 "entropy": result.entropy,
+                "lock_active": lock_active,
                 "exposure_band": _discretize_allocation(result.target_beta),
                 "probabilities": result.probabilities,
+                "deployment_readiness": metadata.get("deployment_readiness", 0.0),
+                "deployment_state": target_bucket,
                 "reference_path": {
                     "qqq_pct": result.target_allocation.target_qqq_pct,
                     "qld_pct": result.target_allocation.target_qld_pct,
@@ -120,9 +140,8 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
             "evidence": {
                 "logic_trace": result.logic_trace,
                 "feature_values": metadata.get("feature_values", {}),
-            }
+            },
         }
-
         path = Path(output_path) if output_path else Path("src/web/public/status.json")
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:

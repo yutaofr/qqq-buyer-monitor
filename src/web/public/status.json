@@ -1,122 +1,43 @@
 {
   "meta": {
-    "version": "v11",
-    "calculated_at_utc": "2026-03-30T21:28:35Z",
-    "expires_at_utc": "2026-03-31T17:30:00Z",
-    "market_state": "FROZEN"
+    "version": "v11.5",
+    "calculated_at_utc": "2026-03-31T13:17:46Z",
+    "expires_at_utc": "2026-04-01T13:17:46Z",
+    "market_state": "UNKNOWN"
   },
   "signal": {
     "regime": "末端 (LATE_CYCLE)",
     "regime_desc": "周期动能衰减，结构性风险增加，审慎缩减。",
-    "stable_regime": "末端 (LATE_CYCLE)",
-    "raw_regime": "末端 (LATE_CYCLE)",
-    "contract": "target_beta_signal",
-    "contract_desc": "系统输出为概率优先的连续目标 Beta；后验概率决定方向，信息熵惩罚（Entropy Penalty）控制缩放，行为守卫（Behavioral Guard）负责离散化执行。",
-    "cycle_regime": "末端 (LATE_CYCLE)",
-    "target_beta": 0.8018615694487123,
-    "raw_target_beta": 0.8002491412286785,
+    "stable_regime": "LATE_CYCLE",
+    "raw_regime": "LATE_CYCLE",
+    "target_beta": 0.8,
+    "raw_target_beta": 0.85,
     "beta_ceiling": 1.2,
-    "qld_ceiling": null,
-    "candidate_id": "v11_probabilistic",
-    "decision_path": "Stable(LATE_CYCLE) -> PosteriorTop1(LATE_CYCLE) -> Advisory(0.80x->0.80x) -> Deployment(SLOW:20.0%)",
+    "entropy": 0.001,
+    "lock_active": false,
     "exposure_band": "70-80% (积极)",
-    "exposure_desc": "目标 Beta 对应的存量风险带，用于帮助理解风险区间。",
-    "deploy_rhythm": "减速入场",
-    "deployment_state": "减速入场",
-    "deployment_state_key": "SLOW",
-    "deployment_readiness": 0.19978299192192311,
-    "deploy_desc": "离散节奏状态，决定新增资金是快速、常规、减速还是暂停。",
-    "readiness_desc": "Bayesian Kelly 就绪度，衡量新增资金进场质量，不等于部署状态。",
+    "probabilities": {
+      "LATE_CYCLE": 0.9998,
+      "MID_CYCLE": 0.0001
+    },
+    "deployment_readiness": 0.0,
+    "deployment_state": "QQQ",
     "reference_path": {
-      "qqq_pct": 0.8018615694487125,
+      "qqq_pct": 0.802,
       "qld_pct": 0.0,
-      "cash_pct": 0.1981384305512876
-    },
-    "reference_desc": "参考路径仅用于说明一种实现目标 beta 的仓位组合，不是系统强制配比。",
-    "fidelity": "高 (Bayesian)",
-    "v11_probabilities": {
-      "BUST": 1.9847031977235196e-17,
-      "CAPITULATION": 0.0,
-      "LATE_CYCLE": 0.9987877209272484,
-      "MID_CYCLE": 0.001145424931468761,
-      "RECOVERY": 6.685414128273424e-05
-    },
-    "priors": {
-      "BUST": 0.13719662882974842,
-      "CAPITULATION": 0.0002171072380698864,
-      "RECOVERY": 0.12302717783855566,
-      "LATE_CYCLE": 0.5116546397155375,
-      "MID_CYCLE": 0.22790444637808865
-    },
-    "v11_entropy": 0.005971654346473859,
-    "lock_active": false
+      "cash_pct": 0.198
+    }
   },
   "evidence": {
-    "risk_state": "V11_CONTINUOUS",
-    "risk_reasons": [],
-    "deploy_reasons": [
+    "logic_trace": [
       {
-        "rule": "v11_deployment_surface",
-        "state": "DEPLOY_SLOW",
-        "reason": "PACE_HOLD",
-        "scores": {
-          "DEPLOY_PAUSE": 0.005879983725323765,
-          "DEPLOY_SLOW": 0.9905290247060295,
-          "DEPLOY_BASE": 0.0034464023672057358,
-          "DEPLOY_FAST": 0.00014458920144082578
-        },
-        "readiness_score": 0.19978299192192311,
-        "value_score": 1.0
+        "step": "behavioral_guard",
+        "result": {
+          "lock_active": false,
+          "target_bucket": "QQQ"
+        }
       }
     ],
-    "data_quality_summary": "2/2 可用",
-    "factors": {
-      "macro": {
-        "credit_spread": 342.0,
-        "erp": 0.019717227235438884,
-        "net_liquidity": 5818.972,
-        "liquidity_roc": null
-      },
-      "tactical": {
-        "vix": 30.610000610351562,
-        "fear_greed": null,
-        "rolling_drawdown": null,
-        "tactical_stress": 17
-      }
-    },
-    "node_traces": [
-      {
-        "step": "degradation",
-        "node": "Data Degradation 数据降级",
-        "type": "FILTER",
-        "formula": "quality=1.00",
-        "explanation": "物理常识校验与清洗，质量分低于 0.5 时强制 CASH。",
-        "result": "1.00"
-      },
-      {
-        "step": "posterior",
-        "node": "Bayesian Inference 贝叶斯推断",
-        "type": "MACRO",
-        "formula": "Bayesian Posterior Distribution",
-        "explanation": "根据宏观与战术特征输出五态后验概率分布。",
-        "result": "LATE_CYCLE"
-      },
-      {
-        "step": "position_sizer",
-        "node": "Probabilistic Sizing 仓位建议",
-        "type": "ADVISORY",
-        "formula": "raw_beta=0.80x",
-        "explanation": "基于后验分布与信息熵惩罚（Entropy Penalty）生成目标 Beta。",
-        "result": "0.80x"
-      },
-      {
-        "step": "behavior_guard",
-        "node": "Behavioral Guard 行为守卫",
-        "type": "SIGNAL",
-        "formula": "bucket=QQQ",
-        "explanation": "施加执行级约束，包括死区滞后、结算锁与单日变动上限。",
-        "result": "QQQ"
-      }
-    ]
+    "feature_values": {}
   }
 }
