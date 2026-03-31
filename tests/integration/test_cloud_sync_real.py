@@ -88,6 +88,7 @@ def test_discord_notification_real_api():
         price=558.28,
         target_beta=0.80,
         probabilities={"LATE_CYCLE": 0.95, "MID_CYCLE": 0.05},
+        priors={"LATE_CYCLE": 0.50, "MID_CYCLE": 0.50},
         entropy=0.042,
         stable_regime="LATE_CYCLE",
         target_allocation=TargetAllocationState(0.20, 0.80, 0.0, 0.80),

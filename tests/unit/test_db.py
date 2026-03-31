@@ -13,6 +13,7 @@ def test_save_and_load_signal(tmp_path):
         price=402.0,
         target_beta=0.90,
         probabilities={"MID_CYCLE": 1.0},
+        priors={"MID_CYCLE": 1.0},
         entropy=0.0,
         stable_regime="MID_CYCLE",
         target_allocation=TargetAllocationState(0.10, 0.90, 0.0, 0.90),

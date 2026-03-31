@@ -129,6 +129,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "lock_active": lock_active,
                 "exposure_band": _discretize_allocation(result.target_beta),
                 "probabilities": result.probabilities,
+                "priors": result.priors,
                 "deployment_readiness": metadata.get("deployment_readiness", 0.0),
                 "deployment_state": target_bucket,
                 "reference_path": {

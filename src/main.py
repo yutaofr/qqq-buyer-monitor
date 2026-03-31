@@ -55,6 +55,7 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
         price=float(price),
         target_beta=float(runtime_result["target_beta"]),
         probabilities={k: float(v) for k, v in runtime_result["probabilities"].items()},
+        priors={k: float(v) for k, v in runtime_result.get("priors", {}).items()},
         entropy=float(runtime_result.get("entropy", 0.0)),
         stable_regime=str(stable_regime),
         target_allocation=target_allocation,

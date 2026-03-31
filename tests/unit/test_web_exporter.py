@@ -14,6 +14,7 @@ def _v11_result() -> SignalResult:
         price=562.58,
         target_beta=0.91,
         probabilities={"MID_CYCLE": 0.82, "LATE_CYCLE": 0.15},
+        priors={"MID_CYCLE": 0.50, "LATE_CYCLE": 0.50},
         entropy=0.17,
         stable_regime="MID_CYCLE",
         target_allocation=TargetAllocationState(0.10, 0.90, 0.0, 0.90),

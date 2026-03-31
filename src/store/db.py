@@ -67,6 +67,7 @@ def _to_json_dict(result: SignalResult) -> dict:
         "price": float(result.price),
         "target_beta": float(result.target_beta),
         "probabilities": {k: float(v) for k, v in result.probabilities.items()},
+        "priors": {k: float(v) for k, v in result.priors.items()},
         "entropy": float(result.entropy),
         "stable_regime": result.stable_regime,
         "target_allocation": result.target_allocation.to_dict(),

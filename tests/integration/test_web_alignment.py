@@ -23,6 +23,7 @@ def test_web_frontend_contract_alignment():
         price=558.28,
         target_beta=0.80,
         probabilities={"LATE_CYCLE": 0.9998, "MID_CYCLE": 0.0001},
+        priors={"LATE_CYCLE": 0.80, "MID_CYCLE": 0.20},
         entropy=0.001,
         stable_regime="LATE_CYCLE",
         target_allocation=TargetAllocationState(0.198, 0.802, 0.0, 0.80),
@@ -46,6 +47,7 @@ def test_web_frontend_contract_alignment():
     required_json_keys = [
         "data.signal.entropy",
         "data.signal.probabilities",
+        "data.signal.priors",
         "data.signal.target_beta",
         "data.signal.beta_ceiling",
         "data.signal.raw_target_beta",
@@ -63,6 +65,7 @@ def test_web_frontend_contract_alignment():
     # 4. Check specific V11 fields
     assert data["signal"]["entropy"] == 0.001
     assert "LATE_CYCLE" in data["signal"]["probabilities"]
+    assert "LATE_CYCLE" in data["signal"]["priors"]
     assert data["signal"]["lock_active"] is False
     
     print("\nWeb Alignment: SUCCESS. V11.5 Engine and Frontend are in sync.")

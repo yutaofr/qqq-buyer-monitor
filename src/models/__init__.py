@@ -107,6 +107,7 @@ class SignalResult:
     price: float
     target_beta: float
     probabilities: dict[str, float]
+    priors: dict[str, float]
     entropy: float
     stable_regime: str
     target_allocation: TargetAllocationState
