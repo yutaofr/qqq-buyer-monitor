@@ -72,6 +72,7 @@ def test_cloud_sync_full_lifecycle_real_api(tmp_path):
 def test_discord_notification_real_api():
     """
     Sends a real integration test signal to Discord using ALERT_WEBHOOK_URL.
+    Requires ENABLE_REAL_DISCORD_TEST=true to prevent accidental leakage.
     """
     from datetime import date
 
@@ -79,8 +80,12 @@ def test_discord_notification_real_api():
     from src.output.discord_notifier import send_discord_signal
 
     webhook_url = os.environ.get("ALERT_WEBHOOK_URL")
+    enable_real = os.environ.get("ENABLE_REAL_DISCORD_TEST") == "true"
+
     if not webhook_url:
         pytest.skip("ALERT_WEBHOOK_URL not set in environment.")
+    if not enable_real:
+        pytest.skip("ENABLE_REAL_DISCORD_TEST not set to 'true'; skipping real Discord push.")
 
     # Construct a high-fidelity test result
     result = SignalResult(
