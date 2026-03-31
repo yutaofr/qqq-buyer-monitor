@@ -1,70 +1,66 @@
-# Architecture Design Document: QQQ Monitor (v6.4)
+# Architecture Design Document: QQQ Monitor (v11.5 Bayesian-Core)
 
-> **Archive note:** this document preserves the v6.4 architecture review for historical reference. The current production runtime is the v8.1 linear pipeline documented in `README.md` and `docs/v8.0_linear_pipeline_*`.
-
-This document provides a technical deep-dive into the internal architecture, data contracts, and design patterns of the `qqq-monitor` system, specifically focusing on the v6.4 **Personal Allocation Search** engine and **Live Path Scoring**.
+This document details the **V11.5 Bayesian Probabilistic Architecture**, which represents the system's evolution from threshold-based logic to a unified probabilistic inference engine.
 
 ---
 
-## 1. System Components & Responsibility
+## 1. System Philosophy: Probabilistic Survival
+The core design shifts responsibility from human-defined rules ("If X then Y") to **Evidence-Based Inference**. Risk is managed by quantifying uncertainty through **Shannon Entropy**.
 
-The system follows a **Functional Pipeline (Monadic)** architecture, evolving from a static matrix to a search-based optimization layer integrated into the daily execution.
+## 2. Component Responsibility Matrix
 
-| Component | Responsibility |
-| :--- | :--- |
-| **Collector Layer** (`src/collector/`) | Fetching raw market and macro data. Now provides `history` for live scoring. |
-| **Model Layer** (`src/models/`) | Dual Models: **Reality (`CurrentPortfolioState`)** vs **Ideal (`TargetAllocationState`)**. |
-| **Search Engine** (`src/engine/allocation_search.py`) | **Candidate Enumerator & Selector**. Enforces **AC-5 (30% MDD Hard Threshold)**. |
-| **Aggregator Layer** (`src/engine/aggregator.py`) | Orchestrates the **Live Path Candidate Scoring** using a mini-backtest. |
-| **Backtest Oracle** (`src/backtest.py`) | **Performance Scorer**. Now implements **AC-3 (Measured NAV Integrity)**. |
-| **Store Layer** (`src/store/`) | Persistence using SQLite with v6.4 schema support (audit fields). |
+| Layer | Component | Responsibility |
+| :--- | :--- | :--- |
+| **Inference** | `src/engine/v11/` | **The Brain**. Recursive Bayesian inference, Entropy Controller, and JIT GaussianNB training. |
+| **Ingestion** | `src/collector/` | **The Sensors**. Multi-source data fetching (FRED, yf) with fail-soft defaults. |
+| **Seeding** | `ProbabilitySeeder` | **Feature Engineering**. Normalizing raw macro data into percentile rankings via adaptive EWMA. |
+| **Storage** | `src/store/` | **The Memory**. Managing local DNA (CSV), Prior state (JSON), and Cloud sync (Vercel Blob). |
+| **Execution** | `BehavioralGuard` | **The Armor**. Enforcing T+1 settlement locks and inertia-based beta smoothing. |
+| **Models** | `src/models/` | **Data Contracts**. Unified `SignalResult` and `PortfolioState`. |
 
 ---
 
-## 2. Data Flow & Execution Sequence (v6.4 Live Pipeline)
+## 3. Data Flow: The Bayesian Loop
 
-The v6.4 pipeline performs dynamic optimization during `aggregate()`.
+The system operates as a **Recursive Feedback Loop**, enabling the model to "evolve" with every daily run.
 
 ```mermaid
 graph TD
-    A[Fetch Price + History] --> B[Initialize DecisionContext]
-    B --> C[_step_structural_regime]
-    C --> D[_step_allocation_policy]
-    D --> E[Enumerate Candidates]
-    E --> F[Mini-Backtest Scoring]
-    F --> G[Deterministic Selection with MDD Filter]
-    G --> H[_step_strategic_allocation]
-    H --> I[Final Signal + Audit Trace]
+    A[Macro DNA: CSV] -->|JIT Training| B(GaussianNB Classifier)
+    C[Prior State: JSON] -->|Recursive Input| D{Bayesian Core}
+    E[Live Observation] -->|Standardized Vector| D
+    D -->|Posterior Probabilities| F[Entropy Controller]
+    F -->|Entropy Haircut| G[Position Sizing]
+    G -->|Inertial Smoothing| H[Behavioral Guard]
+    H -->|Final Signal| I[Output: status.json / Discord]
+    I -->|T+0 Feedback| A
+    I -->|State Update| C
 ```
 
 ---
 
-## 3. Core Mandates Implementation
+## 4. Core Implementation Mandates
 
-### 3.1 AC-5: 30% MDD Hard Constraint
-The `find_best_allocation` function acts as a risk gate.
-- **Filter**: Candidates with realized `max_drawdown > 0.30` in backtests are pruned from the primary selection list.
-- **Fallback**: If no candidate meets the threshold, the system selects the one with the lowest MDD to maintain defensive posture.
+### 4.1 AC-1: Causal Isolation
+The engine enforces strict temporal boundaries. Inference for date $T$ is only exposed to DNA data $\le T$. This is audited via `src/backtest.py` which replicates the JIT training environment for every historical day.
 
-### 3.2 AC-3: Measured NAV Integrity
-The `Backtester` has been refactored to calculate `nav_integrity` based on solvency:
-- It verifies that $\text{NAV} = \sum(\text{Assets}) + \text{Cash}$ throughout every step.
-- The metric is exported to the `logic_trace` and persistence layer, replacing hardcoded placeholders.
+### 4.2 AC-2: Numerical Integrity (Decimal Parity)
+To prevent "Distribution Drift", all macro inputs are standardized to **decimal units** (e.g., ERP of 5.0% is represented as `0.05`). This ensures the KDE likelihood clusters remain stable across research and production environments.
 
-### 3.3 Live Path Scoring
-The `run_pipeline` in `src/main.py` now passes `historical_ohlcv` to the aggregator. This allows the system to validate the performance of `4:4:2` vs `4:3:3` (in FAST state) using recent data before recommending the final action.
+### 4.3 Uncertainty-Aware Positioning (Entropy Haircut)
+Risk is not binary. The system calculates the **Shannon Entropy ($H$)** of the posterior distribution:
+- **Low Entropy**: High confidence; exposure targets base regime betas.
+- **High Entropy**: Model doubt; exposure is automatically reduced (Haircut) to protect capital during regime transitions.
 
 ---
 
-## 4. Risk Audit & Rebalancing (AC-4)
+## 5. Persistence & Cloud Bridge (Stateless Resilience)
+The system is designed for **Stateless Execution** (e.g., GitHub Actions):
+1. **Pull**: Retrieve DB, DNA, and Prior State from Vercel Blob.
+2. **Run**: Execute JIT inference and update local files.
+3. **Push**: Upload updated state back to Vercel Blob.
 
-### 4.1 AC-4: Beta Fidelity
-The system maintains a mean interval beta deviation of **0.0015**. This is achieved through:
-- **T+0 Daily Rebalancing**: Atomic swaps between QQQ and QLD to correct leverage drift.
-- **Interval Audit**: Contiguous state blocks are audited for realized vs target covariance.
+Namespace isolation (e.g., `prod/`, `staging/`) is enforced to prevent development runs from contaminating production memory.
 
-### 4.2 Exposure Transparency
-The CLI output and JSON reports now include the `Search Rationale` (e.g., "Optimal candidate selected for BASE_DCA (Beta: 0.90)").
-
-### 4.3 Recommended Operating Matrix
-For historical reference, the repository keeps the v6.4 default matrix discussion in [docs/backtest_report.md](./backtest_report.md). Current runtime recommendations use the v8.1 beta/deployment split rather than the old `AllocationState` operating matrix.
+---
+© 2026 QQQ Entropy Architecture Group.
