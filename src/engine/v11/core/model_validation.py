@@ -75,6 +75,36 @@ def validate_gaussian_nb(
     }
 
 
+def validate_feature_contract(
+    *,
+    expected_hash: str | None,
+    actual_hash: str,
+    expected_features: Sequence[str] | None = None,
+    actual_features: Sequence[str] | None = None,
+) -> dict[str, object]:
+    """Validate that production feature engineering matches the audited DNA contract."""
+    if not expected_hash:
+        raise ValueError("Audit archive is missing the ProbabilitySeeder feature contract hash.")
+    if actual_hash != expected_hash:
+        raise ValueError(
+            "ProbabilitySeeder feature contract hash mismatch: "
+            f"expected {expected_hash}, got {actual_hash}."
+        )
+
+    normalized_expected = sorted(str(feature) for feature in (expected_features or []))
+    normalized_actual = sorted(str(feature) for feature in (actual_features or []))
+    if normalized_expected and normalized_actual != normalized_expected:
+        raise ValueError(
+            "ProbabilitySeeder feature contract mismatch: "
+            f"expected features {normalized_expected}, got {normalized_actual}."
+        )
+
+    return {
+        "seeder_config_hash": actual_hash,
+        "feature_names": list(actual_features or normalized_expected),
+    }
+
+
 def _require_finite(values: np.ndarray, label: str) -> None:
     if not np.isfinite(values).all():
         raise ValueError(f"GaussianNB validation failed: {label} contains non-finite values.")

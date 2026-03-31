@@ -9,7 +9,7 @@ from sklearn.naive_bayes import GaussianNB
 
 from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
 from src.engine.v11.core.entropy_controller import EntropyController
-from src.engine.v11.core.model_validation import validate_gaussian_nb
+from src.engine.v11.core.model_validation import validate_feature_contract, validate_gaussian_nb
 from src.engine.v11.core.position_sizer import PositionSizingResult
 from src.engine.v11.core.prior_knowledge import PriorKnowledgeBase
 from src.engine.v11.probability_seeder import ProbabilitySeeder
@@ -54,6 +54,7 @@ class V11Conductor:
 
         # v11.5 Internal Controllers
         self.seeder = ProbabilitySeeder()
+        self.feature_contract = self._validate_feature_contract()
         self.entropy_ctrl = EntropyController()
         self.prior_book = PriorKnowledgeBase(
             storage_path=prior_state_path,
@@ -117,6 +118,15 @@ class V11Conductor:
                 "Audit calibration is incomplete for the supplied regime DNA: "
                 f"missing base_betas={missing_betas}, missing regime_sharpes={missing_sharpes}."
             )
+
+    def _validate_feature_contract(self) -> dict[str, object]:
+        expected_contract = self.audit_data.get("feature_contract", {})
+        return validate_feature_contract(
+            expected_hash=expected_contract.get("seeder_config_hash"),
+            actual_hash=self.seeder.contract_hash(),
+            expected_features=expected_contract.get("feature_names"),
+            actual_features=self.seeder.feature_names(),
+        )
 
     def _initialize_model(self, macro_data_path: str, regime_data_path: str) -> GaussianNB:
         """JIT training of the Bayesian regime inference model with canonical DNA."""
@@ -223,12 +233,22 @@ class V11Conductor:
             logger.error("Bayesian Inference crashed: %s. Falling back to priors.", e)
             posteriors = runtime_priors
 
+        latest_raw = raw_t0_data.iloc[-1]
+        quality_audit = self._assess_data_quality(latest_raw)
+        posterior_entropy = self.entropy_ctrl.calculate_normalized_entropy(posteriors)
+        norm_h = self._apply_data_quality_penalty(
+            posterior_entropy=posterior_entropy,
+            quality_score=float(quality_audit["quality_score"]),
+        )
+        quality_audit["posterior_entropy"] = posterior_entropy
+        quality_audit["effective_entropy"] = norm_h
+        quality_audit["entropy_penalty"] = max(0.0, norm_h - posterior_entropy)
+
         # 3. Probabilistic Exposure Mapping (v11.5)
         # AC-0: No constants. Base betas are audit-derived.
         raw_beta_expectation = sum(posteriors.get(regime, 0.0) * self.base_betas.get(regime, 1.0)
                                    for regime in self.base_betas.keys())
 
-        norm_h = self.entropy_ctrl.calculate_normalized_entropy(posteriors)
         regime_decision = self.regime_stabilizer.update(posteriors=posteriors, entropy=norm_h)
 
         protected_beta = self.entropy_ctrl.apply_haircut(
@@ -261,7 +281,6 @@ class V11Conductor:
         )
 
         # 6. UI/Main Alignment Data
-        latest_raw = raw_t0_data.iloc[-1]
         feature_values = {
             "credit_spread": float(latest_raw.get("credit_spread_bps", 0.0)),
             "erp": float(latest_raw.get("erp_pct", 0.0)),
@@ -280,9 +299,7 @@ class V11Conductor:
         execution = self.behavior_guard.apply(sizing)
         bucket = execution.target_bucket
 
-        # Data Integrity Label
-        quality = 0.0 if any(np.isnan(v) for v in feature_values.values()) else 1.0
-        reason = "SENSOR DEGRADATION" if quality < 1.0 else "V11_PROBABILISTIC_OPTIMAL"
+        quality = float(quality_audit["quality_score"])
 
         # 6. Legacy Signal Formatting
         resurrection = (regime_decision["stable_regime"] == "RECOVERY")
@@ -327,8 +344,59 @@ class V11Conductor:
             "feature_values": feature_values,
             "data_quality": quality,
             "resurrection_active": resurrection,
-            "quality_audit": {"quality_score": quality, "reason": reason},
+            "quality_audit": quality_audit,
             "v11_execution": execution.to_dict(),
+        }
+
+    @staticmethod
+    def _apply_data_quality_penalty(*, posterior_entropy: float, quality_score: float) -> float:
+        h = float(np.clip(posterior_entropy, 0.0, 1.0))
+        q = float(np.clip(quality_score, 0.0, 1.0))
+        return 1.0 - ((1.0 - h) * q)
+
+    @staticmethod
+    def _assess_data_quality(latest_raw: pd.Series) -> dict[str, object]:
+        field_specs = {
+            "credit_spread": ("credit_spread_bps", "source_credit_spread"),
+            "erp": ("erp_pct", None),
+            "net_liquidity": ("net_liquidity_usd_bn", None),
+            "real_yield": ("real_yield_10y_pct", None),
+        }
+
+        fields: dict[str, dict[str, object]] = {}
+        degraded_present = False
+        missing_present = False
+        quality_values: list[float] = []
+
+        for field_name, (value_key, source_key) in field_specs.items():
+            raw_value = latest_raw.get(value_key)
+            numeric_value = pd.to_numeric(pd.Series([raw_value]), errors="coerce").iloc[0]
+            available = bool(pd.notna(numeric_value) and np.isfinite(float(numeric_value)))
+            source = str(latest_raw.get(source_key, "direct")) if source_key else "direct"
+            degraded = source.startswith(("proxy:", "fallback:", "synthetic:", "default:", "unavailable:"))
+            field_quality = 1.0 if available and not degraded else 0.0
+            degraded_present = degraded_present or degraded
+            missing_present = missing_present or not available
+            quality_values.append(field_quality)
+            fields[field_name] = {
+                "available": available,
+                "source": source,
+                "degraded": degraded,
+                "quality": field_quality,
+            }
+
+        quality_score = float(np.mean(quality_values)) if quality_values else 1.0
+        if degraded_present:
+            reason = "DEGRADED_SOURCE"
+        elif missing_present:
+            reason = "SENSOR_DEGRADATION"
+        else:
+            reason = "V11_PROBABILISTIC_OPTIMAL"
+
+        return {
+            "quality_score": quality_score,
+            "reason": reason,
+            "fields": fields,
         }
 
     @staticmethod

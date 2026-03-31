@@ -225,7 +225,7 @@ def fetch_hyg_proxy() -> float | None:
         logger.debug("HYG proxy fetch failed: %s", exc)
         return None
 
-def fetch_credit_spread(series_id: str = "BAMLH0A0HYM2") -> float | None:
+def fetch_credit_spread_snapshot(series_id: str = "BAMLH0A0HYM2") -> dict[str, float | str | bool | None]:
     """
     Fetch the latest Ice BofA US High Yield Index Option-Adjusted Spread.
     1. Primary: FRED
@@ -240,7 +240,11 @@ def fetch_credit_spread(series_id: str = "BAMLH0A0HYM2") -> float | None:
             df = df.dropna(subset=[series_id])
             if not df.empty:
                 latest_val = float(df.iloc[-1][series_id])
-                return latest_val * 100
+                return {
+                    "value": latest_val * 100,
+                    "source": f"fred:{series_id}",
+                    "degraded": False,
+                }
     except Exception as exc:
         logger.debug("Error processing FRED %s: %s", series_id, exc)
 
@@ -248,7 +252,11 @@ def fetch_credit_spread(series_id: str = "BAMLH0A0HYM2") -> float | None:
     logger.info("FRED unavailable; attempting Chicago Fed NFCI fallback...")
     nfci_val = fetch_chicago_fed_nfci()
     if nfci_val is not None:
-        return nfci_val
+        return {
+            "value": nfci_val,
+            "source": "proxy:nfci",
+            "degraded": True,
+        }
 
     # 3. Treasury Inversion Fallback
     logger.info("Chicago Fed unavailable; attempting Treasury Yield Curve fallback...")
@@ -263,10 +271,31 @@ def fetch_credit_spread(series_id: str = "BAMLH0A0HYM2") -> float | None:
             synthetic_spread = 350.0 + (1.0 - yc_spread) * 125.0
             logger.info("Fetched Treasury proxy spread: %.0f bps (YC Spread: %.2f%%)",
                         synthetic_spread, yc_spread)
-            return synthetic_spread
+            return {
+                "value": synthetic_spread,
+                "source": "proxy:treasury_curve",
+                "degraded": True,
+            }
     except Exception as exc:
         logger.debug("Treasury fallback failed: %s", exc)
 
     # 4. HYG Proxy Fallback
     logger.info("Treasury unavailable; attempting HYG proxy fallback...")
-    return fetch_hyg_proxy()
+    hyg_val = fetch_hyg_proxy()
+    if hyg_val is not None:
+        return {
+            "value": hyg_val,
+            "source": "proxy:hyg",
+            "degraded": True,
+        }
+    return {
+        "value": None,
+        "source": "unavailable:credit_spread",
+        "degraded": True,
+    }
+
+
+def fetch_credit_spread(series_id: str = "BAMLH0A0HYM2") -> float | None:
+    snapshot = fetch_credit_spread_snapshot(series_id)
+    value = snapshot.get("value")
+    return float(value) if value is not None else None

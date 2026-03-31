@@ -12,8 +12,8 @@ The core design shifts responsibility from human-defined rules ("If X then Y") t
 | Layer | Component | Responsibility |
 | :--- | :--- | :--- |
 | **Inference** | `src/engine/v11/` | **The Brain**. Recursive Bayesian inference, entropy pricing, JIT GaussianNB training, and coefficient validation. |
-| **Ingestion** | `src/collector/` | **The Sensors**. Multi-source data fetching (FRED, yf) with fail-soft defaults. |
-| **Seeding** | `ProbabilitySeeder` | **Feature Engineering**. Deterministic causal normalization of curated macro factors with no fixed decision thresholds. |
+| **Ingestion** | `src/collector/` | **The Sensors**. Multi-source data fetching (FRED, yf) with fail-soft defaults and explicit provenance for degraded proxy inputs. |
+| **Seeding** | `ProbabilitySeeder` | **Feature Engineering**. Deterministic causal normalization of curated macro factors with no fixed decision thresholds and a hashed feature-DNA contract. |
 | **Storage** | `src/store/` | **The Memory**. Managing local DNA (CSV), Prior state (JSON), and Cloud sync (Vercel Blob). |
 | **Execution** | `BehavioralGuard` | **The Armor**. Enforcing entropy-aware bucket switching and T+1 settlement locks with topology-derived barriers. |
 | **Models** | `src/models/` | **Data Contracts**. Unified `SignalResult` and `PortfolioState`. |
@@ -62,6 +62,14 @@ Every live or audit `GaussianNB` fit must pass a deterministic integrity contrac
 - strictly positive finite `var_`
 - positive normalized `class_prior_`
 - class coverage aligned with the supplied regime DNA
+
+### 4.5 Degraded-Source Conservatism
+Runtime data provenance now affects effective uncertainty:
+- canonical direct observations keep posterior entropy unchanged
+- degraded proxy observations reduce `quality_score`
+- reduced `quality_score` raises effective entropy before beta pricing and state transitions
+
+This preserves deterministic behavior while preventing proxy-fed observations from masquerading as canonical DNA.
 
 ---
 

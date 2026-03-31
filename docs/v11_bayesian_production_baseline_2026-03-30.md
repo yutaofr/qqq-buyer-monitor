@@ -152,6 +152,31 @@ Every fitted `GaussianNB` now passes a deterministic coefficient validation cont
 
 This closes the old gap where JIT training was correct in principle but could still admit silently corrupted coefficients.
 
+### Feature DNA Parity
+
+`ProbabilitySeeder` is now bound to the audit archive by a deterministic feature contract:
+
+- `feature_names` are recorded in `regime_audit.json`
+- the seeder config is hashed into `feature_contract.seeder_config_hash`
+- production and backtest both fail closed if the live seeder hash drifts from the audited hash
+
+This closes the old spec-to-code gap where feature engineering could change without invalidating the archived calibration.
+
+### Data Quality Penalty
+
+Live runtime now distinguishes between:
+
+- canonical direct observations
+- degraded proxy observations
+- missing observations
+
+When a live input arrives through a degraded proxy path such as `proxy:nfci` or `proxy:hyg`, the conductor now raises effective entropy through a deterministic data-quality penalty:
+
+- `quality_score` is computed from core field availability/provenance
+- `effective_entropy = 1 - ((1 - posterior_entropy) * quality_score)`
+
+This means degraded live data cannot be treated as if it had the same informational clarity as canonical DNA, even if the classifier itself remains numerically stable.
+
 ## 5. Current Measured Result
 
 Current `python -m src.backtest --evaluation-start 2018-01-01` result on the checked-in corpus:

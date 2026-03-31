@@ -81,6 +81,9 @@
 
 - `status.json` 是 dashboard/前端消费工件
 - `v11_feature_library.csv` 当前只是单独上传的辅助工件，不是 `v11` 当日推断的必需输入
+- 实时单日输入行现在可以携带轻量 provenance 字段，例如 `source_credit_spread`
+  - 这些字段不属于 cloud runtime round-trip 清单
+  - 它们只用于当日推断中的 data quality penalty，不会替代 canonical DNA
 
 ### Q4. 如果 Vercel Storage 为空，或者第一次运行怎么办？
 
