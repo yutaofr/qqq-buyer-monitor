@@ -37,11 +37,14 @@ class SovereignMemoryBooster:
         self.generate_synthetic_baseline()
         return True
 
-    def generate_synthetic_baseline(self, start_year: int = 2010):
+    def generate_synthetic_baseline(self, start_year: int = 2010, seed: int = 115):
         """
         Generates 10+ years of synthetic macro data with distinct regime fingerprints.
         Calibration adjusted for Late Cycle sensitivity (v11.25 DNA edit).
         """
+        # Ensure Deterministic System & Engineering Integrity (v11.51)
+        np.random.seed(seed)
+        
         end_date = datetime.now()
         dates = pd.date_range(start=f"{start_year}-01-01", end=end_date, freq="D")
 
