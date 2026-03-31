@@ -238,18 +238,29 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     runtime = V11Conductor().daily_run(raw_row)
     result = _build_v11_signal_result(runtime, price=float(price_data["price"]))
 
+    # 1. Export Web Snapshot Locally (Production Baseline)
+    from src.output.web_exporter import export_web_snapshot
+    web_json_path = "src/web/public/status.json"
+    export_web_snapshot(result, output_path=web_json_path)
+
     if args.json:
         print(to_json(result))
     else:
-        # Note: print_signal may need update to support v11 result, but we'll assume it works or we'll fix it
         print_signal(result, use_color=not args.no_color)
 
     if not args.no_save:
         from src.store.db import save_signal
         save_signal(result)
         _upsert_v11_macro_feedback(raw_row, "data/macro_historical_dump.csv")
+        
+        # 2. Synchronize State & Distribution to Cloud
         if cloud.is_ci:
+            # Sync core state files
             cloud.push_state(sync_files)
+            # Sync Public status.json to the ROOT of the namespace (e.g. prod/status.json)
+            with open(web_json_path, "rb") as f:
+                cloud.push_payload(f.read(), "status.json", is_binary=True)
+        
         logger.info("v11 signal persisted and cloud state synchronized.")
 
 
