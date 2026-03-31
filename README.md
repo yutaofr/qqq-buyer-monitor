@@ -1,90 +1,69 @@
-# QQQ "Entropy" Monitor (v11)
+# QQQ "Entropy" Monitor (v11.5)
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Audit: 27yr Passed](https://img.shields.io/badge/Audit-27yr_Passed-green.svg)](docs/WIKI_V11.md)
 
-**QQQ Entropy** is a probabilistic regime engine for personal investors. The current production path is deterministic in engineering terms: persistent priors/posteriors, explicit posterior reweighting, a curated six-factor regime core, and separate surfaces for `target_beta` and `deployment_state`.
+**QQQ Entropy** is a unified Bayesian probabilistic engine for portfolio risk management. It leverages 25+ years of macro memory to synthesize optimal `Target Beta` recommendations and `Incremental Cash` deployment pacing.
 
 > "The exoskeleton doesn't walk for you, but it keeps you upright in the storm."
 
 ---
 
 ## 🧠 Core Philosophy: Bayesian-Core
-v11 marks the evolution from hard-coded thresholds to **probabilistic survival**.
-*   **Deterministic Memory**: `data/v11_prior_state.json` persists prior, posterior, regime state, beta inertia, deployment state, and execution evidence.
-*   **Uncertainty as Signal**: High entropy delays regime and bucket flips instead of hiding uncertainty behind hard-coded thresholds.
-*   **Dual-Surface Contract**: `target_beta` manages portfolio risk; `deployment_state` manages incremental cash pacing.
+v11.5 marks the final convergence from threshold-based logic to **Pure Probabilistic Inference**.
+*   **JIT Intelligence**: Real-time GaussianNB training on the latest macro DNA (`macro_historical_dump.csv`).
+*   **Uncertainty Pricing**: Shannon Entropy quantifies model doubt, triggering automatic "haircuts" on risk exposure.
+*   **Bit-Identical Determinism**: Standardized decimal data contracts ensure research-to-production parity.
 
 ## 🚀 Performance Snapshot (1999-2026 Audit)
-Verified on **March 30, 2026**, via `python -m src.backtest --mode v11`:
+Verified via `python -m src.backtest` (Evaluation Start: 2018):
 
-| Metric | Performance | Result |
+| Metric | Performance | Status |
 | :--- | :--- | :--- |
-| **Regime Accuracy** | **97.05%** | Current checked-in audit corpus |
-| **Brier Score** | **0.0487** | Lower is better |
-| **Mean Entropy** | **0.052** | Low posterior uncertainty on the current corpus |
-| **Lock Incidence** | **0.2%** | Minimal churn after stabilization |
+| **Top-1 Accuracy** | **97.04%** | Bit-identical across runs |
+| **Brier Score** | **0.0487** | High-fidelity confidence calibration |
+| **Mean Entropy** | **0.052** | Stable inference clusters |
+| **Lock Incidence** | **0.2%** | Minimal execution churn |
 
 ## 🛠 Quick Start
 
 ### 1. Environment Setup
 ```bash
-python -m venv .venv
-source .venv/bin/activate
 pip install -e .[dev]
 ```
 
-### 2. Live Recommendation
-Run the Bayesian runtime for today's signal:
+### 2. Live Run (T+0)
+Generate today's Bayesian signal and update cloud state:
 ```bash
-python -m src.main --engine v11
+python -m src.main
 ```
 
-### 3. High-Performance Audit
-Run the current v11 audit:
+### 3. Fidelity Audit (Backtest)
+Run the 27-year causal isolation audit:
 ```bash
-python -m src.backtest --mode v11
+python -m src.backtest --evaluation-start 2018-01-01
 ```
-Artifacts are written to `artifacts/v11_5_acceptance/`.
+*Visual artifacts: `artifacts/v11_5_acceptance/`*
 
 ## 🏗 System Architecture
 
 ```mermaid
 graph TD
-    A[Macro Inputs] --> B[ProbabilitySeeder]
-    B --> C[GaussianNB + Prior Reweighting]
-    C --> D[RegimeStabilizer]
-    C --> E[EntropyController + InertialBetaMapper]
-    C --> F[ProbabilisticDeploymentPolicy]
-    E --> G[BehavioralGuard]
-    D --> H[stable_regime]
-    F --> I[deployment_state]
-    G --> J[Execution Bucket: QLD/QQQ/CASH]
+    A[Macro DNA] --> B[ProbabilitySeeder]
+    B --> C[JIT GaussianNB Training]
+    C --> D[Recursive Bayesian Update]
+    D --> E[Entropy Controller]
+    E --> F[Regime Stabilizer]
+    F --> G[Behavioral Guard]
+    G --> H[Output: status.json & Discord]
 ```
 
 ## 📂 Repository Map
-*   `src/engine/v11/` - Current probabilistic production engine.
-*   `src/research/` - Logic for signal expectations and performance benchmarks.
-*   `artifacts/v11_5_acceptance/` - Current audit charts.
-*   `docs/WIKI_V11.md` - **[Master User Manual]** Detailed methodology and chart guide.
-
-## 📖 Normative Documentation
-For architects and developers:
-1. [Production Baseline](docs/v11_bayesian_production_baseline_2026-03-30.md) - Current v11 contract.
-2. [Production SOP](docs/roadmap/v11_production_sop.md) - Operational runbook.
-3. [Universal Factor Registry](docs/v11_universal_factor_registry.md) - Research/archive factor inventory.
-
-`conductor/tracks/v11/spec.md` and `conductor/tracks/v11/add.md` are preserved as historical design snapshots, not the live production baseline.
-
-## ⚙️ GitHub Actions
-The repository now separates automation into:
-
-1. `ci-v11.yml` for deterministic verification: lint, v11 tests, and audit backtest.
-2. `deploy-web.yml` for scheduled dashboard export.
-3. `discord-signal.yml` for scheduled Discord notification.
-
-Production workflows share the same reusable runtime base and no longer duplicate environment/bootstrap logic.
+*   `src/engine/v11/` - Bayesian core implementation.
+*   `src/models/` - Standardized V11 data contracts.
+*   `src/store/` - CloudPersistenceBridge (Vercel Blob) & SQLite.
+*   `scripts/v11_historical_analyzer.py` - Standardized wave analysis tool.
 
 ---
 © 2026 QQQ Entropy Development Group.
