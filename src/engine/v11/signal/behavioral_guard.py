@@ -100,7 +100,10 @@ class BehavioralGuard:
         desired_bucket = self._bucket_from_beta(sizing.target_beta)
         if desired_bucket != previous_bucket:
             self.evidence += self._switch_margin(previous_bucket, desired_bucket, sizing.target_beta)
-            barrier = self._entropy_barrier(sizing.entropy)
+            barrier = self._entropy_barrier(
+                sizing.entropy,
+                bucket_count=len(self._BUCKET_ORDER),
+            )
             if self.evidence < barrier:
                 self.current_bucket = previous_bucket
                 self.last_target_beta = sizing.target_beta
@@ -162,10 +165,11 @@ class BehavioralGuard:
         crossed_boundaries = cls._BOUNDARIES[lower:upper]
         return float(sum(abs(float(target_beta) - boundary) for boundary in crossed_boundaries))
 
-    @staticmethod
-    def _entropy_barrier(entropy: float) -> float:
+    @classmethod
+    def _entropy_barrier(cls, entropy: float, *, bucket_count: int | None = None) -> float:
         h = min(0.999, max(0.0, float(entropy)))
-        return (h / max(1e-6, 1.0 - h)) / 3.0
+        states = max(1, int(bucket_count or len(cls._BUCKET_ORDER)))
+        return (h / max(1e-6, 1.0 - h)) / states
 
     def _decision(
         self,

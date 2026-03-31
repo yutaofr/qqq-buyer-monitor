@@ -10,6 +10,7 @@ import argparse
 import json
 import logging
 import os
+import tempfile
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -81,37 +82,47 @@ def _v11_inference_task(
 def run_v11_audit(
     *,
     dataset_path: str = "data/macro_historical_dump.csv",
+    regime_path: str = "data/v11_poc_phase1_results.csv",
     evaluation_start: str = "2018-01-01",
 ) -> dict[str, Any]:
-    """Run the unified v11.5 probabilistic audit with causal isolation."""
+    """Run the unified v11.5 probabilistic audit with deterministic walk-forward causality."""
     from sklearn.naive_bayes import GaussianNB
 
+    from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
     from src.engine.v11.core.entropy_controller import EntropyController
+    from src.engine.v11.core.model_validation import validate_gaussian_nb
     from src.engine.v11.core.position_sizer import PositionSizingResult
+    from src.engine.v11.core.prior_knowledge import PriorKnowledgeBase
     from src.engine.v11.probability_seeder import ProbabilitySeeder
     from src.engine.v11.signal.behavioral_guard import BehavioralGuard
+    from src.engine.v11.signal.deployment_policy import ProbabilisticDeploymentPolicy
     from src.engine.v11.signal.inertial_beta_mapper import InertialBetaMapper
-    from src.engine.v11.utils.memory_booster import SovereignMemoryBooster
+    from src.engine.v11.signal.regime_stabilizer import RegimeStabilizer
     from src.output.backtest_plots import (
         save_v11_fidelity_figure,
         save_v11_probabilistic_audit_figure,
     )
 
-    # Sovereign Determinism: Ensure baseline data exists for audit (v11.51)
-    # This prevents FileNotFoundError in ephemeral CI/CD environments.
-    SovereignMemoryBooster(
-        macro_path=dataset_path,
-        regime_path="data/v11_poc_phase1_results.csv"
-    ).ensure_baseline()
+    dataset = Path(dataset_path)
+    regimes_file = Path(regime_path)
+    if not dataset.exists():
+        raise FileNotFoundError(
+            f"Canonical macro DNA missing at {dataset}. Walk-forward audit requires checked-in baseline data."
+        )
+    if not regimes_file.exists():
+        raise FileNotFoundError(
+            f"Canonical regime DNA missing at {regimes_file}. Walk-forward audit requires checked-in baseline labels."
+        )
 
     macro_df = pd.read_csv(dataset_path, parse_dates=["observation_date"]).set_index("observation_date")
-    regime_df = pd.read_csv("data/v11_poc_phase1_results.csv", parse_dates=["observation_date"]).set_index("observation_date")
+    regime_df = pd.read_csv(regime_path, parse_dates=["observation_date"]).set_index("observation_date")
 
     audit_path = Path("src/engine/v11/resources/regime_audit.json")
     with open(audit_path, encoding="utf-8") as f:
         audit_data = json.load(f)
     base_betas = audit_data["base_betas"]
-    entropy_threshold = audit_data["risk_thresholds"]["entropy_max"]
+    regime_sharpes = audit_data["regime_sharpes"]
+    ordered_regimes = list(base_betas.keys())
 
     price_df = _load_price_history("data/qqq_history_cache.csv")
     price_df.index = pd.to_datetime(price_df.index, utc=True).tz_localize(None).normalize()
@@ -124,87 +135,203 @@ def run_v11_audit(
     features = seeder.generate_features(macro_df)
     full_df = features.join(regime_df["regime"], how="inner")
     full_df["qqq_close"] = macro_df["qqq_close"]
-    full_df = full_df.dropna()
+    if "erp_pct" in macro_df.columns:
+        full_df["erp_pct"] = pd.to_numeric(macro_df["erp_pct"], errors="coerce")
+    full_df = full_df.dropna(subset=["regime"])
     full_df = full_df.reset_index().rename(columns={"index": "observation_date"})
+    full_df = full_df.sort_values("observation_date").reset_index(drop=True)
 
-    train = full_df[full_df["observation_date"] < pd.to_datetime(evaluation_start)].copy()
-    test = full_df[full_df["observation_date"] >= pd.to_datetime(evaluation_start)].copy()
+    eval_start = pd.to_datetime(evaluation_start)
+    train = full_df[full_df["observation_date"] < eval_start].copy()
+    test = full_df[full_df["observation_date"] >= eval_start].copy()
+
+    if train.empty:
+        raise ValueError(f"No pre-evaluation history available before {evaluation_start}.")
+    if test.empty:
+        raise ValueError(f"No evaluation rows available on or after {evaluation_start}.")
 
     logger.info(f"v11.5 Audit: Training on {len(train)} days (pre-{evaluation_start}), testing on {len(test)} days.")
 
     feature_cols = [c for c in train.columns if c not in ["observation_date", "regime", "qqq_close"]]
-    gnb = GaussianNB()
-    gnb.fit(train[feature_cols], train["regime"])
+    entropy_ctrl = EntropyController()
+    last_train_regime = str(train.iloc[-1]["regime"])
+    initial_beta = float(base_betas.get(last_train_regime, 1.0))
+    initial_bucket = "QLD" if initial_beta > 1.0 else ("QQQ" if initial_beta >= 0.5 else "CASH")
 
-    print(f"Parallel Inference: Dispatching {len(test)} tasks...")
-    source_df_map = macro_df.reset_index()
-    tasks = []
-    for _, row in test.iterrows():
-        source_row = source_df_map[source_df_map["observation_date"] == row["observation_date"]].iloc[0]
-        tasks.append((row, source_row, gnb, list(gnb.classes_), feature_cols))
+    def _initial_deployment_state(regime: str) -> str:
+        if regime == "BUST":
+            return "DEPLOY_PAUSE"
+        if regime == "LATE_CYCLE":
+            return "DEPLOY_SLOW"
+        if regime in {"RECOVERY", "CAPITULATION"}:
+            return "DEPLOY_FAST"
+        return "DEPLOY_BASE"
 
-    import concurrent.futures
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        probability_results = list(executor.map(_v11_inference_task, tasks))
+    beta_mapper = InertialBetaMapper(initial_beta=initial_beta)
+    behavior_guard = BehavioralGuard(initial_bucket=initial_bucket)
+    regime_stabilizer = RegimeStabilizer(initial_regime=last_train_regime)
+    deployment_policy = ProbabilisticDeploymentPolicy(
+        initial_state=_initial_deployment_state(last_train_regime)
+    )
 
-    probability_df = pd.DataFrame([r for r in probability_results if r])
-    probability_df = probability_df.sort_values("date")
-
-    entropy_ctrl = EntropyController(threshold=entropy_threshold)
-    beta_mapper = InertialBetaMapper()
-    behavior_guard = BehavioralGuard()
-
-    execution_rows = []
-    for _, prob_row in probability_df.iterrows():
-        dt = prob_row["date"]
-        source_row = test[test["observation_date"] == dt].iloc[0]
-        posteriors = prob_row["posterior"]
-
-        raw_beta = sum(posteriors.get(regime, 1.0) * base_betas.get(regime, 1.0)
-                       for regime in posteriors)
-
-        norm_h = entropy_ctrl.calculate_normalized_entropy(posteriors)
-        protected_beta = entropy_ctrl.apply_haircut(raw_beta, norm_h)
-
-        final_beta = beta_mapper.calculate_inertial_beta(protected_beta, norm_h)
-        if final_beta > 1.0:
-            qld = (final_beta - 1.0) * 100_000.0
-            qqq = 100_000.0
-            cash = 0.0
-        else:
-            qld = 0.0
-            qqq = 100_000.0 * final_beta
-            cash = 100_000.0 - qqq
-        invested = qqq + qld
-        sizing = PositionSizingResult(
-            target_beta=round(float(final_beta), 6),
-            raw_target_beta=round(float(raw_beta), 6),
-            entropy=round(float(norm_h), 6),
-            uncertainty_penalty=round(max(0.0, float(raw_beta) - float(final_beta)), 6),
-            reference_capital=100_000.0,
-            current_nav=100_000.0,
-            risk_budget_dollars=round(100_000.0 * float(final_beta), 6),
-            qqq_dollars=round(qqq, 6),
-            qld_notional_dollars=round(qld, 6),
-            cash_dollars=round(cash, 6),
-            qld_share=round(qld / invested, 6) if invested > 0 else 0.0,
+    with tempfile.TemporaryDirectory(prefix="v11_audit_") as tmp_dir:
+        prior_book = PriorKnowledgeBase(
+            storage_path=Path(tmp_dir) / "prior_state.json",
+            regimes=ordered_regimes,
+            bootstrap_regimes=train["regime"].astype(str).tolist(),
         )
-        execution = behavior_guard.apply(sizing)
+        inference_engine = BayesianInferenceEngine(
+            kde_models={regime: None for regime in ordered_regimes},
+            base_priors=prior_book.current_priors(),
+        )
 
-        execution_rows.append({
-            "date": dt,
-            "target_beta": final_beta,
-            "raw_target_beta": raw_beta,
-            "entropy": norm_h,
-            "predicted_regime": prob_row["predicted_regime"],
-            "actual_regime": source_row["regime"],
-            "lock_active": execution.lock_active,
-            "target_bucket": execution.target_bucket,
-            "close": source_row["qqq_close"]
-        })
+        probability_rows: list[dict[str, Any]] = []
+        execution_rows: list[dict[str, Any]] = []
 
-    execution_df = pd.DataFrame(execution_rows)
-    full_audit_df = pd.merge(execution_df, probability_df.drop(columns=["posterior"]), on="date", how="left")
+        print(f"Walk-forward Audit: Re-fitting {len(test)} causal windows...")
+        for _, row in test.iterrows():
+            dt = row["observation_date"]
+            train_window = full_df[full_df["observation_date"] < dt].copy()
+            if train_window.empty:
+                continue
+
+            gnb = GaussianNB(var_smoothing=1e-2)
+            gnb.fit(train_window[feature_cols], train_window["regime"])
+            validate_gaussian_nb(
+                gnb,
+                expected_classes=sorted(train_window["regime"].astype(str).unique()),
+                feature_count=len(feature_cols),
+            )
+
+            evidence = pd.DataFrame([row[feature_cols].to_dict()], columns=feature_cols)
+            classifier_posteriors = {
+                str(label): float(probability)
+                for label, probability in zip(gnb.classes_, gnb.predict_proba(evidence)[0], strict=True)
+            }
+            class_priors = list(getattr(gnb, "class_prior_", []))
+            if len(class_priors) != len(gnb.classes_):
+                class_priors = [1.0 / len(gnb.classes_)] * len(gnb.classes_)
+            training_priors = {
+                str(label): float(probability)
+                for label, probability in zip(gnb.classes_, class_priors, strict=True)
+            }
+            runtime_priors, _ = prior_book.runtime_priors()
+            posteriors = inference_engine.reweight_probabilities(
+                classifier_posteriors=classifier_posteriors,
+                training_priors=training_priors,
+                runtime_priors=runtime_priors,
+            )
+
+            actual_regime = str(row["regime"])
+            predicted_regime = max(posteriors, key=posteriors.get)
+            brier = sum(
+                (posteriors.get(name, 0.0) - (1.0 if name == actual_regime else 0.0)) ** 2
+                for name in ordered_regimes
+            )
+            norm_h = entropy_ctrl.calculate_normalized_entropy(posteriors)
+            regime_decision = regime_stabilizer.update(posteriors=posteriors, entropy=norm_h)
+
+            raw_beta = sum(
+                posteriors.get(regime, 0.0) * base_betas.get(regime, 1.0)
+                for regime in ordered_regimes
+            )
+            protected_beta = entropy_ctrl.apply_haircut(
+                raw_beta,
+                norm_h,
+                state_count=len(posteriors),
+            )
+            final_beta = beta_mapper.calculate_inertial_beta(protected_beta, norm_h)
+
+            if final_beta > 1.0:
+                qld = (final_beta - 1.0) * 100_000.0
+                qqq = 100_000.0
+                cash = 0.0
+            else:
+                qld = 0.0
+                qqq = 100_000.0 * final_beta
+                cash = 100_000.0 - qqq
+            invested = qqq + qld
+            sizing = PositionSizingResult(
+                target_beta=round(float(final_beta), 6),
+                raw_target_beta=round(float(raw_beta), 6),
+                entropy=round(float(norm_h), 6),
+                uncertainty_penalty=round(max(0.0, float(raw_beta) - float(final_beta)), 6),
+                reference_capital=100_000.0,
+                current_nav=100_000.0,
+                risk_budget_dollars=round(100_000.0 * float(final_beta), 6),
+                qqq_dollars=round(qqq, 6),
+                qld_notional_dollars=round(qld, 6),
+                cash_dollars=round(cash, 6),
+                qld_share=round(qld / invested, 6) if invested > 0 else 0.0,
+            )
+            execution = behavior_guard.apply(sizing)
+
+            train_erp = pd.to_numeric(train_window.get("erp_pct"), errors="coerce").dropna()
+            current_erp = pd.to_numeric(pd.Series([row.get("erp_pct")]), errors="coerce").dropna()
+            if train_erp.empty or current_erp.empty:
+                erp_percentile = 0.5
+            else:
+                erp_percentile = float(
+                    pd.concat([train_erp, current_erp], ignore_index=True).rank(pct=True).iloc[-1]
+                )
+            e_sharpe = sum(posteriors.get(regime, 0.0) * regime_sharpes.get(regime, 0.0) for regime in ordered_regimes)
+            deployment_readiness = float(
+                max(0.0, min(1.0, (1.0 - norm_h) * max(0.0, e_sharpe) * erp_percentile))
+            )
+            deployment_decision = deployment_policy.decide(
+                posteriors=posteriors,
+                entropy=norm_h,
+                readiness_score=deployment_readiness,
+                value_score=erp_percentile,
+            )
+
+            probability_row = {
+                "date": dt,
+                "actual_regime": actual_regime,
+                "actual_regime_probability": float(posteriors.get(actual_regime, 0.0)),
+                "predicted_regime": predicted_regime,
+                "brier": brier,
+            }
+            for regime in ordered_regimes:
+                probability_row[f"prob_{regime}"] = float(posteriors.get(regime, 0.0))
+            probability_rows.append(probability_row)
+
+            execution_rows.append(
+                {
+                    "date": dt,
+                    "target_beta": final_beta,
+                    "raw_target_beta": raw_beta,
+                    "entropy": norm_h,
+                    "predicted_regime": predicted_regime,
+                    "actual_regime": actual_regime,
+                    "raw_regime": regime_decision["raw_regime"],
+                    "stable_regime": regime_decision["stable_regime"],
+                    "deployment_state": deployment_decision["deployment_state"],
+                    "lock_active": execution.lock_active,
+                    "target_bucket": execution.target_bucket,
+                    "close": row["qqq_close"],
+                }
+            )
+
+            prior_book.update_with_posterior(
+                observation_date=pd.Timestamp(dt).date().isoformat(),
+                posterior=posteriors,
+            )
+            prior_book.update_execution_state(
+                current_beta=float(beta_mapper.current_beta),
+                beta_evidence=float(beta_mapper.evidence),
+                current_bucket=behavior_guard.current_bucket,
+                bucket_evidence=float(behavior_guard.evidence),
+                bucket_cooldown_days=int(behavior_guard.cooldown_days_remaining),
+                stable_regime=str(regime_decision["stable_regime"]),
+                regime_evidence=float(regime_stabilizer.evidence),
+                deployment_state=str(deployment_decision["deployment_state"]),
+                deployment_evidence=float(deployment_policy.evidence),
+            )
+
+    probability_df = pd.DataFrame(probability_rows).sort_values("date")
+    execution_df = pd.DataFrame(execution_rows).sort_values("date")
+    full_audit_df = pd.merge(execution_df, probability_df, on=["date", "predicted_regime", "actual_regime"], how="left")
 
     summary = {
         "compared_points": int(len(probability_df)),
@@ -238,10 +365,16 @@ def main(argv: list[str] | None = None) -> int:
         default="data/macro_historical_dump.csv",
         help="Path to the historical macro dataset.",
     )
+    parser.add_argument(
+        "--regime-path",
+        default="data/v11_poc_phase1_results.csv",
+        help="Path to the historical regime label dataset.",
+    )
     args = parser.parse_args(argv)
 
     run_v11_audit(
         dataset_path=args.dataset_path,
+        regime_path=args.regime_path,
         evaluation_start=args.evaluation_start
     )
     return 0

@@ -100,12 +100,18 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
 
         # Extract lock state from logic trace
         lock_active = False
-        target_bucket = "CASH"
+        execution_bucket = str(metadata.get("execution_bucket", "CASH"))
         for trace in result.logic_trace:
             if trace.get("step") == "behavioral_guard":
                 guard_res = trace.get("result", {})
                 lock_active = guard_res.get("lock_active", False)
-                target_bucket = guard_res.get("target_bucket", "CASH")
+                execution_bucket = str(guard_res.get("target_bucket", execution_bucket))
+
+        raw_regime = str(metadata.get("raw_regime", result.stable_regime))
+        deployment_state = str(metadata.get("deployment_state", "DEPLOY_BASE"))
+        deployment_state_key = str(
+            metadata.get("deployment_state_key", deployment_state.replace("DEPLOY_", ""))
+        )
 
         payload = {
             "meta": {
@@ -121,7 +127,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "regime": regime_info["label"],
                 "regime_desc": regime_info["desc"],
                 "stable_regime": result.stable_regime,
-                "raw_regime": result.stable_regime,  # Simplified for now
+                "raw_regime": raw_regime,
                 "target_beta": result.target_beta,
                 "raw_target_beta": metadata.get("raw_target_beta", result.target_beta),
                 "beta_ceiling": metadata.get("beta_ceiling", 1.20),
@@ -132,7 +138,9 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "priors": result.priors,
                 "prior_breakdown": metadata.get("prior_details", {}),
                 "deployment_readiness": metadata.get("deployment_readiness", 0.0),
-                "deployment_state": target_bucket,
+                "deployment_state": deployment_state,
+                "deployment_state_key": deployment_state_key,
+                "execution_bucket": execution_bucket,
                 "reference_path": {
                     "qqq_pct": result.target_allocation.target_qqq_pct,
                     "qld_pct": result.target_allocation.target_qld_pct,

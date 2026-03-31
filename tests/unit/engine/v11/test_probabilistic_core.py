@@ -41,17 +41,24 @@ def test_entropy_calculation():
     assert controller.calculate_normalized_entropy(uncertain_probs) == pytest.approx(1.0)
 
 def test_entropy_beta_haircut():
-    """验证当熵值过高时，Beta 能够正确切削回 1.0 (中性)"""
-    controller = EntropyController(threshold=0.75)
+    """高熵只能持续减仓，绝不能把任何 beta 拉回更高风险。"""
+    controller = EntropyController()
 
-    # 低熵，不切削
-    low_entropy = 0.2
-    assert controller.apply_haircut(1.2, low_entropy) == 1.2
+    assert controller.apply_haircut(1.2, 0.0) == pytest.approx(1.2)
+    assert controller.apply_haircut(1.2, 1.0) < 1.2
+    assert controller.apply_haircut(0.6, 1.0) < 0.6
 
-    # 极高熵 (1.0)，强制切削回 1.0
-    high_entropy = 1.0
-    assert controller.apply_haircut(1.2, high_entropy) == 1.0
-    assert controller.apply_haircut(0.6, high_entropy) == 1.0
+
+def test_entropy_haircut_is_threshold_free_and_never_increases_risk():
+    """全概率系统下，风险定价不应依赖任意阈值，也绝不能把防御 beta 往上抬。"""
+    loose = EntropyController(threshold=0.20)
+    tight = EntropyController(threshold=0.80)
+
+    loose_beta = loose.apply_haircut(0.60, 0.90)
+    tight_beta = tight.apply_haircut(0.60, 0.90)
+
+    assert loose_beta == pytest.approx(tight_beta)
+    assert loose_beta < 0.60
 
 
 def test_classifier_posteriors_can_be_reweighted_by_runtime_priors():

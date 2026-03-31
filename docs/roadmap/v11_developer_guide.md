@@ -12,7 +12,7 @@
     1.  在 `src/collector/` 中实现新的采集逻辑。
     2.  在 `src/research/historical_macro_builder.py` 中将新指标整合进 DNA 库。
     3.  **关键**：确保新指标在 CSV 中采用 **小数归一化** 单位（AC-2）。
-    4.  在 `ProbabilitySeeder.generate_features` 中实现分位数排名逻辑。
+    4.  在 `ProbabilitySeeder.generate_features` 中实现**因果自校准标准化**，严禁人工 anchor 或离散阈值。
 *   **注意事项**：避免引入具有强烈前瞻性（Look-ahead）的特征。
 
 ## 2. 似然标定与 JIT 训练 (Likelihood & Training)
@@ -38,13 +38,14 @@
     *   **Accuracy > 95%** (对齐基准标签)。
     *   **Brier Score < 0.06** (概率质量可靠)。
     *   **Bit-identical Parity**：连续运行三次回测，结果必须完全一致。
-*   **性能优化**：审计过程高度依赖 `ProcessPoolExecutor`。在扩展逻辑时，确保 `InferenceTask` 是可序列化的，以维持并行效率。
+*   **实现约束**：回测必须是 walk-forward daily re-fit，不允许一次静态 train/test 代替生产同构审计。
 
 ## 5. 云端同步开发
 
 由于 GHA 是无状态的，本地开发时请务必注意：
 *   **禁止物理修改 `prod/` 数据**。
 *   进行云端测试时，修改 `CloudPersistenceBridge` 的 `branch` 为你的 feature 分支名，确保同步至 `staging/`。
+*   **禁止在生产/审计主路径引入 synthetic baseline**；若 canonical DNA 缺失，应直接修复数据，而不是让代码偷偷补世界观。
 
 ---
 © 2026 QQQ Entropy 技术委员会.

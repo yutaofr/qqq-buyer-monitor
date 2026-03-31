@@ -8,7 +8,8 @@ class EntropyController:
     Responsibility: Information-theoretic safety valve.
     Scales Target Beta toward 1.0 (Safe Neutral) as posterior uncertainty (Shannon Entropy) increases.
     """
-    def __init__(self, threshold: float = 0.75):
+    def __init__(self, threshold: float | None = None):
+        # Retained for backwards compatibility only. Risk pricing is now threshold-free.
         self.threshold = threshold
 
     def calculate_normalized_entropy(self, probs: dict[str, float]) -> float:
@@ -17,9 +18,14 @@ class EntropyController:
         0.0 = Absolute certainty (one state handles all).
         1.0 = Absolute chaos (equal probability for all states).
         """
-        p_vals = list(probs.values())
+        p_vals = [max(0.0, float(value)) for value in probs.values()]
         if len(p_vals) < 2:
             return 0.0
+
+        total = float(sum(p_vals))
+        if total <= 0.0:
+            return 1.0
+        p_vals = [value / total for value in p_vals]
 
         # Calculate raw entropy (base 2)
         h = entropy(p_vals, base=2)
@@ -32,30 +38,19 @@ class EntropyController:
         self,
         base_beta: float,
         norm_entropy: float,
-        structural_z: float = 0.0,
-        outlier_multiplier: float = 1.0
+        *,
+        state_count: int | None = None,
     ) -> float:
         """
-        Applies linear haircut to the target beta if entropy exceeds threshold.
-        Also applies a Probabilistic Valuation Penalty (v11.6) and an Outlier Resilience Penalty (v11.7).
+        Applies a threshold-free probabilistic haircut derived from Shannon entropy.
+
+        The multiplier is the inverse effective state count:
+        confidence = exp(-H) = N^(-H_norm)
+
+        This preserves determinism, removes arbitrary thresholds, and guarantees
+        that uncertainty never increases portfolio risk.
         """
-        # 1. Non-Threshold Valuation Penalty (v11.6)
-        valuation_penalty = 1.0
-        if structural_z > 0:
-            decay = 1.0 - np.exp(-0.2 * structural_z)
-            valuation_penalty = 1.0 - (decay * 0.25)
-
-        # 2. Adaptive Outlier Scaling (v11.7)
-        # Outlier multiplier is derived from Mahalanobis Distance (D_M).
-        target_beta = base_beta * valuation_penalty * outlier_multiplier
-
-        # 3. Entropy Protection
-        if norm_entropy <= self.threshold:
-            return target_beta
-
-        # Scale 0 to 1 as entropy goes threshold -> 1.0
-        haircut_strength = (norm_entropy - self.threshold) / (1.0 - self.threshold)
-        haircut_strength = np.clip(haircut_strength, 0.0, 1.0)
-
-        # Weighted average between predicted beta and neutral 1.0
-        return target_beta * (1.0 - haircut_strength) + 1.0 * haircut_strength
+        h = float(np.clip(norm_entropy, 0.0, 1.0))
+        states = max(2, int(state_count or 2))
+        confidence = float(np.exp(-h * np.log(states)))
+        return float(base_beta) * confidence
