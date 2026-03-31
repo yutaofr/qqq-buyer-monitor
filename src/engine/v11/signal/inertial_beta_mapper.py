@@ -7,7 +7,7 @@ class InertialBetaMapper:
     as a dynamic, zero-constant barrier.
     Zero-Constant Architecture.
     """
-    def __init__(self, initial_beta: float = 1.0):
+    def __init__(self, initial_beta: float | None = 1.0):
         self.current_beta = initial_beta
         self.evidence = 0.0
 
@@ -15,11 +15,13 @@ class InertialBetaMapper:
         """
         Updates target beta only if the cumulative signal evidence
         surpasses the current Information Odds Ratio (barrier).
-        Formula:
-           Evidence += (Raw_Beta - Current_Beta)
-           Threshold = 1.0 + (Entropy / (1.0 - Entropy))
-           If |Evidence| > Threshold: Update Current_Beta and reset Evidence.
         """
+        # 0. Cold Start Priming
+        if self.current_beta is None:
+            self.current_beta = target_beta_raw
+            self.evidence = 0.0
+            return self.current_beta
+
         # 1. Accumulate Informational Evidence
         delta = target_beta_raw - self.current_beta
         self.evidence += delta

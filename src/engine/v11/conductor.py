@@ -62,7 +62,7 @@ class V11Conductor:
         )
         execution_state = self.prior_book.get_execution_state()
         self.beta_mapper = InertialBetaMapper(
-            initial_beta=float(execution_state.get("current_beta", 1.0) or 1.0)
+            initial_beta=float(execution_state["current_beta"]) if "current_beta" in execution_state else None
         )
         self.beta_mapper.evidence = float(execution_state.get("beta_evidence", 0.0) or 0.0)
         self.behavior_guard = BehavioralGuard(
