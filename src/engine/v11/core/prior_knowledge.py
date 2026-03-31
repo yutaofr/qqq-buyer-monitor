@@ -57,10 +57,10 @@ class PriorKnowledgeBase:
     ) -> tuple[dict[str, float], dict[str, any]]:
         base_priors = self.current_priors()
         prior_source = previous_posterior or self.last_posterior
-        
+
         logger.info("Bayesian Prior Synthesis initiated.")
         logger.info(f"  Source 1 [Historical Baseline]: Based on {sum(self.counts.values()):.1f} total counts from {self.storage_path}")
-        
+
         # If no previous knowledge, return baseline as 100% of the prior
         if not prior_source:
              logger.info("  Source 2 [Recent Memory]: No previous observation found. Using 100% baseline.")
@@ -99,9 +99,9 @@ class PriorKnowledgeBase:
                 + posterior_weight * normalized_source.get(regime, 0.0)
                 + transition_weight * transition_prior.get(regime, 0.0)
             )
-        
+
         final_prior = self._normalize(blended)
-        
+
         # Log top 2 regimes in the final prior for immediate visibility
         top_regimes = sorted(final_prior.items(), key=lambda x: x[1], reverse=True)[:2]
         prior_str = ", ".join([f"{r} ({p:.1%})" for r, p in top_regimes])
@@ -124,7 +124,7 @@ class PriorKnowledgeBase:
         posterior: dict[str, float],
     ) -> None:
         normalized_posterior = self._normalize(posterior)
-        
+
         # KISS Idempotency: Skip count updates if we already saw this date
         if str(observation_date) == self.last_observation_date:
             # We still update the last_posterior to ensure the next day uses the most recent inference
@@ -151,14 +151,14 @@ class PriorKnowledgeBase:
 
         self.last_posterior = normalized_posterior
         self.last_observation_date = str(observation_date)
-        
+
         # Log the finalized state for confirmation
         top_posteriors = sorted(self.last_posterior.items(), key=lambda x: x[1], reverse=True)[:2]
         post_str = ", ".join([f"{r} ({p:.1%})" for r, p in top_posteriors])
         logger.info(f"Bayesian State Finalized for {self.last_observation_date}:")
         logger.info(f"  Saved Posterior: {post_str}")
-        logger.info(f"  Note: This posterior will serve as Source 2 (Recent Memory) for the next run.")
-        
+        logger.info("  Note: This posterior will serve as Source 2 (Recent Memory) for the next run.")
+
         self._save()
 
     def get_execution_state(self) -> dict[str, float | str | int | bool | None]:

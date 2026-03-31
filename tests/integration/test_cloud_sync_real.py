@@ -5,10 +5,10 @@ Usage: pytest tests/integration/test_cloud_sync_real.py -m external_service
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import pandas as pd
 import pytest
+
 from src.store.cloud_manager import CloudPersistenceBridge
 
 
@@ -36,8 +36,8 @@ def test_cloud_sync_full_lifecycle_real_api(tmp_path):
 
     # 2. Act - Push
     push_ok = bridge.push_payload(
-        local_path.read_bytes(), 
-        test_filename, 
+        local_path.read_bytes(),
+        test_filename,
         is_binary=True
     )
     assert push_ok is True, "Cloud push failed."
@@ -50,12 +50,12 @@ def test_cloud_sync_full_lifecycle_real_api(tmp_path):
     import requests
     list_resp = requests.get(f"{bridge.base_api_url}?limit=1000", headers=bridge.headers)
     blobs = list_resp.json().get("blobs", [])
-    
+
     remote_path = f"testing/integration/{test_filename}"
     target_blob = next((b for b in blobs if b["pathname"] == remote_path), None)
-    
+
     assert target_blob is not None, f"File {remote_path} not found in cloud after push."
-    
+
     file_resp = requests.get(target_blob["downloadUrl"])
     with open(restore_path, "wb") as f:
         f.write(file_resp.content)

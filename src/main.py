@@ -254,7 +254,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         from src.store.db import save_signal
         save_signal(result)
         _upsert_v11_macro_feedback(raw_row, "data/macro_historical_dump.csv")
-        
+
         # 2. Synchronize State & Distribution to Cloud
         if cloud.is_ci:
             # Sync core state files
@@ -262,7 +262,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
             # Sync Public status.json to the ROOT of the namespace (e.g. prod/status.json)
             with open(web_json_path, "rb") as f:
                 cloud.push_payload(f.read(), "status.json", is_binary=True)
-        
+
         logger.info("v11 signal persisted and cloud state synchronized.")
 
 

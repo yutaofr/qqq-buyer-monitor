@@ -3,13 +3,9 @@ Maintains the 25-year historical dataset required for consistent EWMA ranking.
 """
 from __future__ import annotations
 
-import io
 import logging
-import os
-from pathlib import Path
 
 import pandas as pd
-import requests
 
 from src.engine.v11.core.adaptive_memory import ExogenousMemoryOperator
 
