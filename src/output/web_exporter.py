@@ -151,20 +151,3 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
     except Exception as exc:
         logger.error("Web export failed: %s", exc)
         return False
-
-
-def export_feature_library_to_blob(
-    library_path: str | Path = "data/v11_feature_library.csv",
-) -> bool:
-    """Sync V11 feature library to cloud."""
-    cloud = CloudPersistenceBridge()
-    if not cloud.is_ci or not cloud.token:
-        return False
-    lib_path = Path(library_path)
-    if not lib_path.exists():
-        return False
-    try:
-        with open(lib_path, "rb") as f:
-            return cloud.push_payload(f.read(), "v11_feature_library.csv", is_binary=True)
-    except Exception:
-        return False
