@@ -84,7 +84,11 @@ class ProbabilitySeeder:
         """Forces index to be DatetimeIndex, frequency-aligned, and tz-naive."""
         res = df.copy()
         if not isinstance(res.index, pd.DatetimeIndex):
-            res.index = pd.to_datetime(res.index)
+            # Use format='mixed' if available, otherwise fallback to default robust parsing
+            try:
+                res.index = pd.to_datetime(res.index, format="mixed")
+            except (TypeError, ValueError):
+                res.index = pd.to_datetime(res.index)
 
         if res.index.tz is not None:
             res.index = res.index.tz_convert(None)

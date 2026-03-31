@@ -31,8 +31,8 @@ def _canonical_macro_frame() -> pd.DataFrame:
             "credit_spread_bps": [350.0, 355.0],
             "credit_acceleration_pct_10d": [0.0, 0.5],
             "forward_pe": [24.0, 23.5],
-            "erp_pct": [3.8, 3.9],
-            "real_yield_10y_pct": [1.25, 1.20],
+            "erp_pct": [0.038, 0.039],
+            "real_yield_10y_pct": [0.0125, 0.0120],
             "nfci_raw": [-0.1, -0.2],
             "net_liquidity_usd_bn": [250.0, 249.0],
             "liquidity_roc_pct_4w": [0.0, -0.4],
@@ -350,7 +350,8 @@ def test_build_historical_macro_dataset_derives_canonical_fields(monkeypatch, tm
     assert pd.isna(df["credit_acceleration_pct_10d"].iloc[9])
     assert df["credit_acceleration_pct_10d"].iloc[-1] > 0
     assert df["forward_pe"].iloc[-1] == pytest.approx(24.0)
-    assert df["erp_pct"].iloc[-1] == pytest.approx(3.8)
+    assert df["erp_pct"].iloc[-1] == pytest.approx(0.038)
+    assert df["real_yield_10y_pct"].iloc[-1] == pytest.approx(0.0224)
     assert df["liquidity_roc_pct_4w"].notna().any()
     assert df["funding_stress_flag"].isin([0, 1]).all()
     assert df["funding_stress_flag"].max() == 1
@@ -451,8 +452,8 @@ def test_historical_macro_seeder_uses_effective_date_visibility():
     assert visible["credit_spread"] == 350.0
     assert visible["credit_accel"] == 0.0
     assert visible["forward_pe"] == 24.0
-    assert visible["erp"] == 3.8
-    assert visible["real_yield"] == 1.25
+    assert visible["erp"] == 0.038
+    assert visible["real_yield"] == 0.0125
     assert visible["liquidity_roc"] == 0.0
     assert visible["is_funding_stressed"] is False
 

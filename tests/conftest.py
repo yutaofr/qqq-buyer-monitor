@@ -1,65 +1,22 @@
-"""Shared pytest fixtures."""
+"""Shared pytest fixtures for v11 Bayesian convergence."""
 from __future__ import annotations
-
-from datetime import date
 
 import pandas as pd
 import pytest
 
-from src.models import MarketData
-
 
 @pytest.fixture
-def sample_options_df() -> pd.DataFrame:
-    """A minimal options chain with known OI and gamma values for deterministic tests."""
-    rows = [
-        # Calls
-        {"strike": 400.0, "expiration": "2026-03-21", "option_type": "call",
-         "openInterest": 1000, "impliedVolatility": 0.20, "gamma": 0.01, "gamma_source": "yfinance"},
-        {"strike": 410.0, "expiration": "2026-03-21", "option_type": "call",
-         "openInterest": 5000, "impliedVolatility": 0.20, "gamma": 0.02, "gamma_source": "yfinance"},
-        {"strike": 420.0, "expiration": "2026-03-21", "option_type": "call",
-         "openInterest": 8000, "impliedVolatility": 0.18, "gamma": 0.015, "gamma_source": "yfinance"},  # call wall
-        {"strike": 430.0, "expiration": "2026-03-21", "option_type": "call",
-         "openInterest": 2000, "impliedVolatility": 0.18, "gamma": 0.008, "gamma_source": "yfinance"},
-        # Puts
-        {"strike": 400.0, "expiration": "2026-03-21", "option_type": "put",
-         "openInterest": 9000, "impliedVolatility": 0.25, "gamma": 0.018, "gamma_source": "yfinance"},  # put wall
-        {"strike": 390.0, "expiration": "2026-03-21", "option_type": "put",
-         "openInterest": 4000, "impliedVolatility": 0.28, "gamma": 0.012, "gamma_source": "yfinance"},
-        {"strike": 380.0, "expiration": "2026-03-21", "option_type": "put",
-         "openInterest": 2000, "impliedVolatility": 0.30, "gamma": 0.006, "gamma_source": "yfinance"},
-    ]
-    return pd.DataFrame(rows)
-
-
-@pytest.fixture
-def neutral_market_data(sample_options_df) -> MarketData:
-    """Market data with neutral (mid-range) values — should score ~40."""
-    return MarketData(
-        date=date(2026, 3, 8),
-        price=410.0,
-        ma200=405.0,  # price slightly above MA200 → deviation ~+1.2% → 0 pts
-        high_52w=440.0,  # drawdown ~6.8% → below 8% → 0 pts
-        vix=18.0,  # below 22 → 0 pts
-        fear_greed=50,  # neutral → 0 pts
-        adv_dec_ratio=0.75,  # healthy breadth → 0 pts
-        pct_above_50d=0.55,  # healthy → 0 pts
-        options_df=sample_options_df,
-    )
-
-
-@pytest.fixture
-def bullish_market_data(sample_options_df) -> MarketData:
-    """Market data with extremely bullish (contrarian) values — should score high."""
-    return MarketData(
-        date=date(2026, 3, 8),
-        price=412.0,
-        ma200=450.0,  # price below MA200 by ~8.4% → 20 pts
-        high_52w=480.0,  # drawdown ~14.2% → 20 pts
-        vix=35.0,  # above 30 → 20 pts
-        fear_greed=15,  # extreme fear (<=20) → 20 pts
-        adv_dec_ratio=0.35,  # capitulation → 20 pts
-        pct_above_50d=0.20,  # extreme → 20 pts (full breadth)
-        options_df=sample_options_df,
-    )
+def sample_macro_df() -> pd.DataFrame:
+    """A minimal historical macro dataset for v11 feature seeding."""
+    dates = pd.date_range(start="2020-01-01", periods=10, freq="D")
+    data = {
+        "observation_date": dates,
+        "effective_date": dates + pd.Timedelta(days=1),
+        "credit_spread_bps": [300.0, 310.0, 320.0, 350.0, 400.0, 450.0, 420.0, 400.0, 380.0, 360.0],
+        "erp_pct": [0.04, 0.041, 0.042, 0.045, 0.05, 0.055, 0.052, 0.05, 0.048, 0.046],
+        "real_yield_10y_pct": [0.01, 0.011, 0.012, 0.015, 0.02, 0.025, 0.022, 0.02, 0.018, 0.016],
+        "net_liquidity_usd_bn": [6000.0, 5950.0, 5900.0, 5800.0, 5700.0, 5600.0, 5650.0, 5700.0, 5750.0, 5800.0],
+        "vix": [15.0, 16.0, 18.0, 22.0, 30.0, 35.0, 28.0, 25.0, 22.0, 20.0],
+        "qqq_close": [300.0, 298.0, 295.0, 280.0, 260.0, 250.0, 265.0, 275.0, 285.0, 290.0],
+    }
+    return pd.DataFrame(data).set_index("observation_date")

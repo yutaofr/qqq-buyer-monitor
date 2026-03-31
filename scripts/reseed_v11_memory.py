@@ -1,4 +1,5 @@
 import logging
+
 from src.engine.v11.utils.memory_booster import SovereignMemoryBooster
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s – %(message)s")
