@@ -25,29 +25,48 @@ RESEARCH_OPTIONAL_SERIES: tuple[str, ...] = (
     "CPFF",
 )
 
-def fetch_real_yield() -> float | None:
-    """Fetch 10-Year Treasury Real Yield (DFII10) with Treasury XML fallback."""
+
+def fetch_real_yield_snapshot() -> dict[str, float | str | bool | None]:
+    """Fetch 10-Year Treasury Real Yield (DFII10) with provenance."""
     try:
         df = fetch_fred_data("DFII10")
         if df is not None and not df.empty:
             val = df.iloc[-1]["DFII10"]
             if pd.notnull(val):
-                return float(val)
+                return {
+                    "value": float(val),
+                    "source": "fred:DFII10",
+                    "degraded": False,
+                }
     except Exception as exc:
         logger.warning("FRED Real Yield fetch failed: %s", exc)
 
-    # Fallback to Treasury XML
     try:
         logger.info("Falling back to Treasury XML for real yield proxy...")
         yields = fetch_treasury_yields()
         nominal_10y = yields.get("10Y")
         if nominal_10y is not None:
-            # Proxy real yield as 10Y Nominal - 2.0 (approx inflation expectation)
-            return nominal_10y - 2.0
+            return {
+                "value": nominal_10y - 2.0,
+                "source": "proxy:treasury_xml",
+                "degraded": True,
+            }
     except Exception as exc:
         logger.warning("Treasury XML fallback failed: %s", exc)
 
-    return None
+    return {
+        "value": None,
+        "source": "unavailable:real_yield",
+        "degraded": True,
+    }
+
+
+def fetch_real_yield() -> float | None:
+    """Fetch 10-Year Treasury Real Yield (DFII10) with Treasury XML fallback."""
+    snapshot = fetch_real_yield_snapshot()
+    value = snapshot.get("value")
+    return float(value) if value is not None else None
+
 
 def fetch_fcf_yield(ticker: str = None) -> float | None:
     """
@@ -65,6 +84,7 @@ def fetch_earnings_revisions_breadth(ticker: str = None) -> float | None:
         return None
     return 10.0  # Placeholder for revision breadth
 
+
 def fetch_move_index() -> float | None:
     """Fetch Bond Volatility Index (MOVE Index) via ^MOVE."""
     try:
@@ -80,14 +100,25 @@ def fetch_sector_rotation(ticker: str = "QQQ") -> float | None:
     """Analyze cyclical vs defensive sector rotation."""
     return 1.0 # Placeholder
 
+
 def fetch_short_volume_proxy(ticker: str = "QQQ") -> float | None:
     """Fetch FINRA short volume ratio for QQQ."""
     return 0.45 # Placeholder
 
 def fetch_net_liquidity(series_id: str = "WDTGAL") -> tuple[float | None, float | None]:
+    snapshot = fetch_net_liquidity_snapshot(series_id=series_id)
+    value = snapshot.get("value")
+    roc = snapshot.get("roc")
+    return (
+        float(value) if value is not None else None,
+        float(roc) if roc is not None else None,
+    )
+
+
+def fetch_net_liquidity_snapshot(series_id: str = "WDTGAL") -> dict[str, float | str | bool | None]:
     """
     Calculate Net Liquidity = WALCL - WDTGAL - RRPONTSYD.
-    Returns (Latest_Value_In_Billions, 4-Week_ROC).
+    Returns latest value, ROC, and provenance metadata.
 
     WALCL: Fed Total Assets (Millions)
     WDTGAL: Treasury General Account (Millions)
@@ -99,7 +130,12 @@ def fetch_net_liquidity(series_id: str = "WDTGAL") -> tuple[float | None, float 
         rrp = fetch_fred_data("RRPONTSYD")
 
         if walcl is None or tga is None or rrp is None:
-            return None, None
+            return {
+                "value": None,
+                "roc": None,
+                "source": "unavailable:net_liquidity",
+                "degraded": True,
+            }
 
         # Merge on date
         merged = pd.merge(walcl, tga, on="observation_date", how="inner")
@@ -121,10 +157,21 @@ def fetch_net_liquidity(series_id: str = "WDTGAL") -> tuple[float | None, float 
             roc = 0.0
 
         logger.info("Net Liquidity: %.2f B, 4-Week ROC: %.2f%%", latest_val, roc)
-        return latest_val, roc
+        return {
+            "value": latest_val,
+            "roc": roc,
+            "source": "derived:fred:WALCL-WDTGAL-RRPONTSYD",
+            "degraded": False,
+        }
     except Exception as exc:
         logger.error("Failed to calculate net liquidity: %s", exc)
-        return None, None
+        return {
+            "value": None,
+            "roc": None,
+            "source": "unavailable:net_liquidity",
+            "degraded": True,
+        }
+
 
 def fetch_credit_acceleration(window: int = 10) -> float | None:
     """

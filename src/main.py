@@ -23,6 +23,20 @@ logging.basicConfig(
 logger = logging.getLogger("qqq_monitor")
 
 
+def _is_degraded_source(source: str | None) -> bool:
+    source_str = str(source or "")
+    return source_str.startswith(("proxy:", "fallback:", "synthetic:", "default:", "unavailable:"))
+
+
+def _compose_derived_source(metric_name: str, *upstream_sources: str | None) -> str:
+    normalized = [str(source or "unavailable:unknown") for source in upstream_sources]
+    if any(source.startswith("unavailable:") for source in normalized):
+        return f"unavailable:{metric_name}"
+    if any(_is_degraded_source(source) for source in normalized):
+        return f"proxy:derived:{metric_name}[{'|'.join(normalized)}]"
+    return f"derived:{metric_name}[{'|'.join(normalized)}]"
+
+
 def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalResult:
     """Map conductor runtime output to the unified v11 SignalResult model."""
     allocation = runtime_result["target_allocation"]
@@ -92,9 +106,13 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
 def _build_v11_live_macro_row(
     *,
     observation_date: pd.Timestamp,
+    build_version: str,
     credit_spread: float,
     credit_spread_source: str = "direct",
+    forward_pe: float | None,
+    forward_pe_source: str = "direct",
     net_liquidity: float | None,
+    net_liquidity_source: str = "direct",
     liquidity_roc: float,
     vix: float,
     vix3m: float | None,
@@ -104,8 +122,11 @@ def _build_v11_live_macro_row(
     breadth_source: str = "direct",
     breadth_quality_score: float = 1.0,
     fear_greed: float,
+    fear_greed_source: str = "direct",
     erp_pct_points: float | None,
+    erp_source: str = "direct",
     real_yield_pct_points: float | None,
+    real_yield_source: str = "direct",
     reference_capital: float,
     current_nav: float,
 ) -> pd.DataFrame:
@@ -114,11 +135,16 @@ def _build_v11_live_macro_row(
         [
             {
                 "observation_date": observation_ts,
+                "build_version": str(build_version),
                 "credit_spread_bps": float(credit_spread),
                 "source_credit_spread": str(credit_spread_source),
+                "forward_pe": float(forward_pe) if forward_pe is not None else None,
+                "source_forward_pe": str(forward_pe_source),
                 "net_liquidity_usd_bn": float(net_liquidity) if net_liquidity is not None else None,
+                "source_net_liquidity": str(net_liquidity_source),
                 "liquidity_roc_pct_4w": float(liquidity_roc or 0.0),
                 "vix": float(vix),
+                "source_vix": "direct:vol_surface",
                 "vix3m": None if vix3m is None else float(vix3m),
                 "qqq_close": float(price),
                 "drawdown_pct": float(drawdown_pct),
@@ -126,8 +152,11 @@ def _build_v11_live_macro_row(
                 "source_breadth": str(breadth_source),
                 "breadth_quality_score": float(breadth_quality_score),
                 "fear_greed": float(fear_greed),
+                "source_fear_greed": str(fear_greed_source),
                 "erp_pct": (float(erp_pct_points) / 100.0) if erp_pct_points is not None else None,
+                "source_erp": str(erp_source),
                 "real_yield_10y_pct": (float(real_yield_pct_points) / 100.0) if real_yield_pct_points is not None else None,
+                "source_real_yield": str(real_yield_source),
                 "reference_capital": float(reference_capital),
                 "current_nav": float(current_nav),
             }
@@ -157,7 +186,7 @@ def _upsert_v11_macro_feedback(raw_row: pd.DataFrame, macro_csv_path: str) -> No
     new_row = row.copy()
     new_row["observation_date"] = obs_dt
     new_row["effective_date"] = eff_dt
-    new_row["build_version"] = "v11_live_feedback"
+    new_row["build_version"] = str(new_row.get("build_version", "v11_live_feedback"))
 
     updated = pd.concat([existing, pd.DataFrame([new_row])], ignore_index=True)
     updated.to_csv(path, index=False)
@@ -169,7 +198,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     from src.collector.fear_greed import fetch_fear_greed
     from src.collector.fundamentals import fetch_forward_pe
     from src.collector.macro import fetch_credit_spread_snapshot
-    from src.collector.macro_v3 import fetch_net_liquidity, fetch_real_yield
+    from src.collector.macro_v3 import fetch_net_liquidity_snapshot, fetch_real_yield_snapshot
     from src.collector.price import fetch_price_data
     from src.collector.vix import fetch_vix_term_structure
     from src.engine.v11.conductor import V11Conductor
@@ -196,26 +225,35 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 
     try:
         fg = fetch_fear_greed()
+        fear_greed_source = "direct:cnn_fear_greed"
     except Exception as exc:
         logger.warning("Fear & Greed fetch failed: %s", exc)
         fg = 50
+        fear_greed_source = "default:fear_greed"
 
     try:
         pe_dict = fetch_forward_pe()
         forward_pe = pe_dict.get("forward_pe")
+        forward_pe_source = str(pe_dict.get("source", "direct:yfinance"))
     except Exception as exc:
         logger.warning("Forward PE fetch failed: %s", exc)
         forward_pe = None
+        forward_pe_source = "unavailable:forward_pe"
 
     try:
-        real_yield_pct = fetch_real_yield()
+        real_yield_snapshot = fetch_real_yield_snapshot()
+        real_yield_pct = real_yield_snapshot.get("value")
+        real_yield_source = str(real_yield_snapshot.get("source", "unavailable:real_yield"))
     except Exception as exc:
         logger.warning("Real Yield fetch failed: %s", exc)
         real_yield_pct = None
+        real_yield_source = "unavailable:real_yield"
 
     erp_pct = None
+    erp_source = "unavailable:erp"
     if forward_pe and real_yield_pct is not None:
         erp_pct = (100.0 / forward_pe) - float(real_yield_pct)
+        erp_source = _compose_derived_source("erp", forward_pe_source, real_yield_source)
 
     try:
         breadth = fetch_breadth()
@@ -241,10 +279,14 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         credit_spread_source = "default:credit_spread"
 
     try:
-        net_liq, liq_roc = fetch_net_liquidity()
+        net_liquidity_snapshot = fetch_net_liquidity_snapshot()
+        net_liq = net_liquidity_snapshot.get("value")
+        liq_roc = net_liquidity_snapshot.get("roc") or 0.0
+        net_liquidity_source = str(net_liquidity_snapshot.get("source", "unavailable:net_liquidity"))
     except Exception as exc:
         logger.warning("Net-liquidity fetch failed: %s", exc)
         net_liq, liq_roc = None, 0.0
+        net_liquidity_source = "unavailable:net_liquidity"
 
     reference_capital = float(os.environ.get("V11_REFERENCE_CAPITAL", "100000"))
     current_nav = float(os.environ.get("V11_CURRENT_NAV", str(reference_capital)))
@@ -252,9 +294,13 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 
     raw_row = _build_v11_live_macro_row(
         observation_date=pd.Timestamp(price_data["date"]),
+        build_version="v11_live_feedback",
         credit_spread=float(credit_spread),
         credit_spread_source=credit_spread_source,
+        forward_pe=float(forward_pe) if forward_pe is not None else None,
+        forward_pe_source=forward_pe_source,
         net_liquidity=net_liq,
+        net_liquidity_source=net_liquidity_source,
         liquidity_roc=liq_roc,
         vix=float(vix_term["vix"]),
         vix3m=vix_term.get("vix3m"),
@@ -264,8 +310,11 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         breadth_source=breadth_source,
         breadth_quality_score=breadth_quality_score,
         fear_greed=float(fg),
+        fear_greed_source=fear_greed_source,
         erp_pct_points=erp_pct,
+        erp_source=erp_source,
         real_yield_pct_points=real_yield_pct,
+        real_yield_source=real_yield_source,
         reference_capital=reference_capital,
         current_nav=current_nav,
     )

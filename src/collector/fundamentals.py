@@ -9,12 +9,13 @@ logger = logging.getLogger(__name__)
 # YFinance often reports 30x+ due to different EPS definitions.
 INSTITUTIONAL_PE_ESTIMATE = 24.38  # Birinyi Associates via WSJ (2026-03-06)
 
+
 def fetch_forward_pe(ticker: str = "QQQ") -> dict:
     """
     Fetch trailing and forward PE ratios.
     Combines yfinance with institutional consensus logic.
     """
-    result = {"trailing_pe": None, "forward_pe": None, "source": "yfinance"}
+    result = {"trailing_pe": None, "forward_pe": None, "source": "direct:yfinance"}
 
     # 1. Primary: yfinance
     try:
@@ -31,11 +32,11 @@ def fetch_forward_pe(ticker: str = "QQQ") -> dict:
         logger.info("yfinance PE (%s) seems like an outlier compared to institutional consensus (~25x). Using institutional override.", result["forward_pe"])
         result["forward_pe_raw"] = result["forward_pe"]
         result["forward_pe"] = INSTITUTIONAL_PE_ESTIMATE
-        result["source"] = "institutional_consensus (WSJ/Birinyi)"
+        result["source"] = "fallback:institutional_consensus"
 
     # 3. Final Fallback if yfinance is None
     if result["forward_pe"] is None:
         result["forward_pe"] = INSTITUTIONAL_PE_ESTIMATE
-        result["source"] = "institutional_fallback"
+        result["source"] = "fallback:institutional_fallback"
 
     return result
