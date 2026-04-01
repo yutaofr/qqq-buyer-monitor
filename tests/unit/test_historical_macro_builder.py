@@ -115,7 +115,7 @@ def test_fetch_historical_fred_series_does_not_use_proxy_fallbacks(monkeypatch):
         }
     )
 
-    monkeypatch.setattr(macro, "fetch_fred_data", lambda series_id, timeout=15: raw)
+    monkeypatch.setattr(macro, "fetch_fred_data", lambda series_id, timeout=15, vintage=False: raw)
     monkeypatch.setattr(macro, "fetch_chicago_fed_nfci", lambda: (_ for _ in ()).throw(AssertionError("unexpected fallback")))
     monkeypatch.setattr(macro, "fetch_treasury_yields", lambda: (_ for _ in ()).throw(AssertionError("unexpected fallback")))
     monkeypatch.setattr(macro, "fetch_hyg_proxy", lambda: (_ for _ in ()).throw(AssertionError("unexpected fallback")))

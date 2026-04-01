@@ -1,84 +1,60 @@
-# QQQ "Entropy" 贝叶斯正交因子监控引擎 (v12.0)
+# QQQ "Entropy" 贝叶斯哨兵监控引擎 (v12.1)
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Architecture: Locked](https://img.shields.io/badge/架构-v12.0_锁版-red.svg)](docs/V12_ORTHOGONAL_FACTOR_SPEC.md)
+[![Architecture: Locked](https://img.shields.io/badge/架构-v12.1_锁版-red.svg)](docs/core/v12_sentinel.md)
 
-**QQQ Entropy v12.0** 是一款基于**贝叶斯正交因子重构 (Orthogonal Factor Reconstruction)** 的资产配置决策引擎。系统通过 10 个在时域与物理意义上相互正交的宏观齿轮，利用 GaussianNB 协方差自发现算法，为 QQQ 提供全天候的风险定价与防御性 Beta 建议。
-
-> “正交化不是为了消除不确定性，而是为了诚实地映射它。”
+**QQQ Entropy v12.1** 是一款融合了**宏观贝叶斯正交推断**与**微观量价离群检测 (Sentinel)** 的资产配置引擎。系统通过 10 个宏观正交因子锁定大趋势，并通过 Layer 4 哨兵实时捕捉量价背离与市场恐慌，实现“宏观守拙、微观猎杀”的非对称博弈。
 
 ---
 
-## 🧠 核心架构：三层正交推断 (v12.0)
+## 🧠 核心架构：大一统动力学 (v12.1)
 
-v12.0 彻底解决了 v11.5 因子库中存在的“信息近亲繁殖”问题，建立了严密的三层正交体系：
+v12.1 在 v12.0 正交因子的基础上，引入了基于信息论的 **Sentinel (哨兵)** 模块，实现了宏微观决策的深度融合：
 
-*   **Layer 1: 贴现层 (Discount)** - 捕捉货币与通胀周期。核心因子：真实收益率趋势、**国债已实现波动率 (MOVE 代理)**、通胀预期加速度。
-*   **Layer 2: 实体层 (Real Economy)** - 捕捉资本开支与跨境融资压力。核心因子：**核心资本支出动能 (Core Capex)**、铜金比 ROC、日元套息交易 (USD/JPY)。
-*   **Layer 3: 情绪层 (Sentiment)** - 捕捉信用与流动性周期。核心因子：信用利差绝对水位/脉冲、净流动性、**基于 Shiller TTM EPS 的股权风险溢价 (ERP)**。
+*   **Layers 1-3: 宏观正交层** - 提供低频基座。通过贴现、实体、情绪三大矩阵进行贝叶斯后验推断。
+*   **Layer 4: 微观哨兵层 (Sentinel)** - 提供高频修正。利用二元高斯分布监控 QQQ 的 [收益率, 成交量] 拓扑，通过 **JSD 散度** 识别宏微观共识破裂。
 
 ### 关键技术特性
-*   **PIT (Point-in-Time) 完整性**：严格执行**发布滞后对齐协议 (Lag Alignment)**。系统在回测中强制模拟历史真实信息流，严禁使用事后修正的宏观终值，确保回测收益零水分。
-*   **Gram-Schmidt 正交化引擎**：对共线性极高的因子（如 MOVE 与信用利差）执行无条件在线正交化，确保每一张“贝叶斯选票”都代表独立的物理维度。
-*   **信息诚实性 (Entropy-First)**：承认高维空间的稀疏性。系统不再追求虚高的 Top-1 准确率，而是通过 **Shannon 熵** 诚实反映市场混沌度，在高不确定性下自动触发 **Entropy Haircut** 保护仓位。
+*   **ALFRED PIT 隔离**：接入美联储 ALFRED 数据库，回测强制使用**历史初值 (Initial Release)**，杜绝数据修正带来的未来函数。
+*   **广义凯利大一统**：利用连续可导的拓扑映射，将微观惊奇度 (Surprisal) 转化为方差惩罚，将 JSD 散度转化为猎杀乘数。
+*   **物理风控 (Tikhonov)**：协方差求逆引入吉洪诺夫正则化，确保在流动性枯竭的“奇异矩阵”状态下依然保持痛觉。
 
-## 🚀 审计准则 (v12.0 验收标准)
+## 🚀 审计准则 (v12.1 验收标准)
 
 | 审计维度 | 核心指标 | 预期值 | 架构意义 |
 | :--- | :--- | :--- | :--- |
-| **制度召回** | 极端 Regime 召回率 | **>= 90%** | 确保 2008/2020/2022 等危机被精准识别 |
-| **预测校准** | Brier 分数 | **<= 0.15** | 概率分布的统计一致性优于绝对准确率 |
-| **信息诚实** | 平均信息熵 | **0.15 - 0.40** | 承认高维推断的混沌属性，拒绝虚假确信 |
-| **防伪验证** | PIT 合规性 | **100%** | 全部宏观因子必须通过物理发布滞后审计 |
-
-## 🛠 快速开始
-
-### 1. 环境配置 (Docker 推荐)
-```bash
-docker build -t qqq-monitor .
-```
-
-### 2. 实时生产运行 (T+0)
-```bash
-# 获取 v12 正交推断建议
-python -m src.main
-```
-
-### 3. v12 法医级全量回测 (Backtest)
-执行包含 PIT 滞后模拟的 16 年全量因果审计：
-```bash
-python -m src.backtest --evaluation-start 2010-01-01
-```
+| **相对生存** | Annual IR Diff | **>= -0.05** | L4 的叠加在任何自然年不得显著拖累基础策略 |
+| **证伪测试** | 白噪声 Alpha | **Real > Noise** | 证明猎杀信号源于物理真实的量价结构而非噪音 |
+| **预测校准** | Brier 分数 | **<= 0.15** | 宏观推断的统计一致性 |
+| **物理鲁棒** | 矩阵免疫 | **100%** | 彻底免疫 LinAlgError 崩溃 |
 
 ## 🏗 系统拓扑
 
 ```mermaid
 graph TD
-    subgraph "正交采样 (Sampling)"
-        D[贴现层: RYield/RVol/Inf]
-        E[实体层: Capex/Cu-Au/JPY]
-        S[情绪层: Spread/Liq/ERP]
+    subgraph "宏观层 (L1-3)"
+        M[10因子正交矩阵] --> P_MACRO[宏观后验 P_macro]
     end
 
-    subgraph "推断核心 (Kernel)"
-        GS[Gram-Schmidt 正交化]
-        GNB[GaussianNB 协方差自发现]
-        PIT[PIT 滞后对齐契约]
+    subgraph "微观层 (L4 Sentinel)"
+        X[r_t, v_t] --> GNB[在线二元高斯]
+        GNB --> P_MICRO[微观情绪 P_micro]
+        GNB --> SURP[惊奇度 S_micro]
     end
 
-    D & E & S --> GS --> GNB
-    GNB --> PIT --> POST[后验概率分布]
-    
-    POST --> ENT[Shannon 熵 Haircut]
-    ENT --> BETA["β_final = E[β|P] · e^{-H}"]
+    P_MACRO & P_MICRO --> JSD[JSD 散度套利]
+    JSD --> MEDGE[M_edge 猎杀乘数]
+    SURP --> PENALTY[Penalty 物理惩罚]
+
+    MEDGE & PENALTY & P_MACRO --> KELLY["β_final = (μ_macro · M_edge) / Penalty"]
 ```
 
 ## 📂 仓库地图
-*   `src/engine/v11/` - 贝叶斯推断引擎核心（v12 沿用并增强）。
-*   `src/collector/` - **v12 全球正交因子采集器** (DGS10/Shiller/FRED)。
-*   `docs/V12_ORTHOGONAL_FACTOR_SPEC.md` - **v12 锁版架构说明书**。
-*   `scripts/v12_historical_data_builder.py` - PIT 合规历史 DNA 构建器。
+*   `src/engine/v11/sentinel.py` - **v12.1 Sentinel 核心逻辑**。
+*   `src/research/auditor.py` - **相对生存约束审计器**。
+*   `docs/core/v12_sentinel.md` - **v12.1 哨兵 specs 说明书**。
+*   `scripts/falsify_sentinel_white_noise.py` - 数学证伪脚本。
 
 ---
 © 2026 QQQ Entropy 决策系统开发组.

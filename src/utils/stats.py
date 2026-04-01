@@ -99,7 +99,7 @@ def calculate_inertial_recovery(previous_decay: float, current_raw_decay: float,
     if current_raw_decay <= previous_decay:
         # If it's still decaying or same, no inertia needed
         return current_raw_decay
-    
+
     # Simple EMA-like recovery: new = old + (target - old) / N
     # This prevents the factor from jumping from 0.1 to 1.0 instantly.
     alpha = 1.0 / recovery_days
@@ -113,15 +113,15 @@ def calculate_annual_metrics(returns: pd.Series) -> dict[str, float]:
     """
     if returns.empty:
         return {"return": 0.0, "vol": 0.0, "ir": 0.0}
-        
+
     avg_return = returns.mean()
     vol = returns.std()
-    
+
     ann_return = avg_return * 252
     ann_vol = vol * np.sqrt(252)
-    
+
     ir = ann_return / ann_vol if ann_vol > 0 else 0.0
-    
+
     return {
         "annualized_return": float(ann_return),
         "annualized_vol": float(ann_vol),

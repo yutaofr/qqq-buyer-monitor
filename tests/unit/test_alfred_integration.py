@@ -1,7 +1,7 @@
-import pandas as pd
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
 from src.collector import macro
+
 
 def test_fetch_fred_api_with_vintage_extracts_initial_releases():
     # Mock response data representing multiple vintages for the same observation date
@@ -19,7 +19,7 @@ def test_fetch_fred_api_with_vintage_extracts_initial_releases():
     with patch("requests.get") as mock_get:
         mock_get.return_value.status_code = 200
         mock_get.return_value.json.return_value = mock_response
-        
+
         # Test the new vintage=True parameter (which we haven't implemented yet)
         with patch.dict("os.environ", {"FRED_API_KEY": "fake_key"}):
             df = macro.fetch_fred_api("UNRATE", vintage=True)
@@ -27,7 +27,7 @@ def test_fetch_fred_api_with_vintage_extracts_initial_releases():
     assert df is not None
     assert len(df) == 2
     assert "published_date" in df.columns
-    
+
     # Should keep the EARLIEST realtime_start for each date
     jan_row = df[df["observation_date"] == "2024-01-01"].iloc[0]
     assert jan_row["published_date"] == "2024-01-05"

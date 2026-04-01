@@ -1,7 +1,8 @@
-import pandas as pd
 import numpy as np
-import pytest
+import pandas as pd
+
 from src.research.wfo_engine import WFOEngine
+
 
 def mock_backtest(data, params):
     # Returns a dummy execution_df
@@ -23,26 +24,26 @@ def test_wfo_engine_rolling_logic():
         "observation_date": dates,
         "dummy_val": np.random.randn(3650)
     })
-    
+
     # 7-year IS, 1-year OOS
     wfo = WFOEngine(is_years=7, oos_years=1)
-    
+
     param_grid = [
         {"alpha_decay": 0.01},
         {"alpha_decay": 0.05},
         {"alpha_decay": 0.10}
     ]
-    
+
     results = wfo.run_rolling_optimization(full_data, param_grid, mock_backtest)
-    
+
     assert "combined_oos" in results
     assert "params_history" in results
-    
-    # With 10 years, 7 IS + 1 OOS = 8 years. 
+
+    # With 10 years, 7 IS + 1 OOS = 8 years.
     # We should have at least 2 OOS windows (Year 8, Year 9).
     # Year 10 is the 10th year.
     assert len(results["params_history"]) >= 2
-    
+
     combined_oos = results["combined_oos"]
     # Check that OOS dates are strictly after the first training period (7 years)
     first_test_date = combined_oos["date"].min()

@@ -1,9 +1,11 @@
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
-import numpy as np
 import pytest
-from unittest.mock import patch, MagicMock
 from sklearn.naive_bayes import GaussianNB
+
 from src.engine.v11.conductor import V11Conductor
+
 
 @pytest.fixture
 def mock_audit_data():
@@ -38,11 +40,11 @@ def test_conductor_integration_with_sentinel(mock_audit_data):
                     mock_prior_instance.get_execution_state.return_value = {}
                     mock_prior_instance.runtime_priors.return_value = ({}, {})
                     mock_prior_instance.current_priors.return_value = {}
-                    
+
                     with patch("src.engine.v11.conductor.V11Conductor._initialize_model") as mock_init_model:
                         mock_init_model.return_value = MagicMock(spec=GaussianNB)
                         mock_init_model.return_value.classes_ = ["BOOM", "MID_CYCLE", "LATE_CYCLE", "BUST"]
-                        
+
                         with patch("pandas.read_csv") as mock_read_csv:
                             # Mock regime history and macro history
                             mock_read_csv.return_value = pd.DataFrame({
@@ -50,15 +52,15 @@ def test_conductor_integration_with_sentinel(mock_audit_data):
                                 "regime": ["MID_CYCLE"],
                                 "effective_date": pd.to_datetime(["2024-01-01"])
                             })
-                            
+
                             conductor = V11Conductor()
-                            
+
                             # Mock price history for Sentinel
                             price_hist = pd.DataFrame({
                                 "Close": [100.0, 101.0],
                                 "Volume": [1000, 1100]
                             }, index=pd.to_datetime(["2024-01-01", "2024-01-02"]))
-                            
+
                             # Mock raw_t0_data
                             raw_t0 = pd.DataFrame([{
                                 "observation_date": "2024-01-02",
@@ -66,11 +68,11 @@ def test_conductor_integration_with_sentinel(mock_audit_data):
                                 "credit_spread_bps": 350.0
                             }])
                             raw_t0.attrs["history"] = price_hist
-                            
+
                             # Mock dependencies of daily_run
                             conductor.seeder.generate_features = MagicMock(return_value=pd.DataFrame({"f1": [0.5], "f2": [0.5]}, index=["2024-01-02"]))
                             conductor.inference_engine.infer_gaussian_nb_posterior = MagicMock(return_value={"MID_CYCLE": 1.0})
-                            
+
                             # Run it
                             res = conductor.daily_run(raw_t0)
 

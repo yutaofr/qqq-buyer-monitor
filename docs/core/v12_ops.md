@@ -1,4 +1,4 @@
-# v12.0 Operational Commands
+# v12.1 Operational Commands
 
 > **The "Commands" - Environment & Scripts**
 
@@ -15,12 +15,17 @@ docker run --rm -v $(pwd):/app -w /app [IMAGE] python -m src.main
 docker run --rm -v $(pwd):/app -w /app [IMAGE] python -m src.backtest --evaluation-start 2010-01-01
 ```
 
-### 3. Engine Unit Testing
+### 3. WFO Parameter Optimization
 ```bash
-docker run --rm -v $(pwd):/app -w /app [IMAGE] pytest tests/unit/engine/v12 -q
+docker run --rm -v $(pwd):/app -w /app [IMAGE] python -m scripts.run_v12_wfo
 ```
 
-### 4. Full Environment Validation
+### 4. Mathematical Falsification (White-noise Test)
+```bash
+docker run --rm -v $(pwd):/app -w /app [IMAGE] python scripts/falsify_sentinel_white_noise.py
+```
+
+### 5. Full Environment Validation
 ```bash
 docker-compose up --build
 ```

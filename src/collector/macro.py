@@ -102,14 +102,14 @@ def normalize_fred_history_frame(df: pd.DataFrame | None, series_id: str) -> pd.
     frame["observation_date"] = pd.to_datetime(frame["observation_date"], errors="coerce")
     if "published_date" in frame.columns:
         frame["published_date"] = pd.to_datetime(frame["published_date"], errors="coerce")
-    
+
     frame[series_id] = pd.to_numeric(frame[series_id], errors="coerce")
     frame = frame.dropna(subset=["observation_date"]).sort_values("observation_date")
-    
+
     # For non-vintage data, we drop duplicates. For vintage data, we already did it in fetch_fred_api.
     if "published_date" not in frame.columns:
         frame = frame.drop_duplicates(subset=["observation_date"], keep="last")
-        
+
     return frame.reset_index(drop=True)
 
 

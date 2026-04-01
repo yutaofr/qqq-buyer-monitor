@@ -256,11 +256,11 @@ class V11Conductor:
         latest_vector = features.iloc[-1:]
         runtime_priors, prior_details = self.prior_book.runtime_priors()
         latest_raw = raw_t0_data.iloc[-1]
-        
+
         # v12.1: Sentinel Micro-structure Analysis
         # We need QQQ price and volume history for Sentinel
         # Use pandas attrs to avoid polluting the dataframe schema
-        qqq_history = raw_t0_data.attrs.get("history") 
+        qqq_history = raw_t0_data.attrs.get("history")
         if qqq_history is None:
             # Fallback: check if it's in columns (some backtest frameworks might do this)
             if "history" in raw_t0_data.columns:
@@ -270,25 +270,25 @@ class V11Conductor:
                 from src.collector.price import fetch_price_data
                 price_data = fetch_price_data()
                 qqq_history = price_data["history"]
-            
+
         # Ensure qqq_history is sorted and has enough data
         qqq_history = qqq_history.sort_index()
         close = qqq_history["Close"]
         volume = qqq_history["Volume"]
-        
+
         # r_t: Log return
         r_t = float(np.log(close.iloc[-1] / close.iloc[-2])) if len(close) >= 2 else 0.0
         # v_t: Log excess volume (V_t / V_MA21)
         v_ma21 = volume.rolling(21).mean().iloc[-1]
         v_t = float(np.log(volume.iloc[-1] / v_ma21)) if v_ma21 > 0 else 0.0
-        
+
         quality_audit = self._assess_data_quality(latest_raw, previous_raw=previous_raw)
         stale_days = 0
         obs_dt = latest_raw.get("observation_date")
         eff_dt = latest_raw.get("effective_date")
         if obs_dt and eff_dt:
             stale_days = (pd.to_datetime(eff_dt) - pd.to_datetime(obs_dt)).days
-            
+
         # 3. Bayesian Inference (continued)
         feature_weights = self._feature_reliability_weights(
             latest_vector=latest_vector,
@@ -357,10 +357,10 @@ class V11Conductor:
             mu_macro=np.array([raw_beta_expectation]),
             stale_days=stale_days
         )
-        
+
         m_edge = sentinel_res["m_effective_edge"]
         penalty = sentinel_res["penalty"]
-        
+
         # Apply Sentinel multipliers to the expectation
         # Final_Target_Beta = (mu_macro * M_edge) / Penalty
         raw_beta_expectation = (raw_beta_expectation * m_edge) / penalty

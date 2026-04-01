@@ -340,6 +340,9 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         current_nav=current_nav,
     )
 
+    # v12.1: Attach history for Sentinel
+    raw_row.attrs["history"] = price_data["history"]
+
     runtime = V11Conductor().daily_run(raw_row)
     result = _build_v11_signal_result(runtime, price=float(price_data["price"]))
 

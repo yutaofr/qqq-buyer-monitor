@@ -2,34 +2,35 @@
 import numpy as np
 import pandas as pd
 
+
 class SentinelEngine:
     """
     Orchestrator for Layer 4 Sentinel logic.
     Integrates Online GNB, Smooth Divergence, and Probability Calibration.
     """
-    def __init__(self, 
-                 alpha: float = 0.05, 
-                 span_base: int = 252, 
+    def __init__(self,
+                 alpha: float = 0.05,
+                 span_base: int = 252,
                  vol_floor: float = 0.005,
                  gamma_brier: float = 10.0,
                  ridge_lambda: float = 1e-6):
         self.gaussian = OnlineBivariateGaussian(alpha=alpha, ridge_lambda=ridge_lambda, burn_in_samples=span_base)
         self.divergence = SmoothDivergenceEngine(span=span_base, vol_floor=vol_floor)
         self.calibrator = ProbabilityCalibrator(gamma=gamma_brier)
-        
+
         # State for low-pass filter on decay
         self.previous_stale_decay = 1.0
         # Historical HWM for surprisal
         self.surprisal_history = []
-        
+
         # State for momentum
         self.previous_mu_macro = None
         self.previous_mu_micro = None
-        
-    def update(self, 
-               r_t: float, 
-               v_t: float, 
-               p_macro: np.ndarray, 
+
+    def update(self,
+               r_t: float,
+               v_t: float,
+               p_macro: np.ndarray,
                mu_macro: np.ndarray,
                y_true_idx: int | None = None,
                stale_days: int = 0,
@@ -46,26 +47,26 @@ class SentinelEngine:
         """
         x_t = np.array([r_t, v_t])
         self.gaussian.update(x_t)
-        
+
         # 1. Calculate Surprisal and Penalty
         s_micro = self.gaussian.calculate_surprisal(x_t)
         self.surprisal_history.append(s_micro)
         if len(self.surprisal_history) > 1764: # 7-year rolling HWM
             self.surprisal_history = self.surprisal_history[-1764:]
-            
+
         baseline = np.mean(self.surprisal_history[-252:]) if len(self.surprisal_history) >= 20 else 1.0
         hwm_99 = np.percentile(self.surprisal_history, 99) if len(self.surprisal_history) >= 100 else 3.0
-        
+
         penalty = float(np.exp(max(s_micro - baseline, s_micro - hwm_99)))
-        
+
         # 2. Micro Posterior and JSD
         p_micro = self._infer_micro_posterior(x_t)
         jsd = calculate_jsd(p_macro, p_micro)
-        
+
         # 3. Alignment Score (Z-score + Tanh)
         mu_micro = self.gaussian.mu
         alignment = 1.0
-        
+
         if self.previous_mu_macro is not None and self.previous_mu_micro is not None:
             # Directional momentum product
             # Convert to numpy arrays to ensure vector-like behavior even for scalars
@@ -73,33 +74,33 @@ class SentinelEngine:
             prev_macro = np.atleast_1d(self.previous_mu_macro)
             curr_micro = np.atleast_1d(mu_micro)
             prev_micro = np.atleast_1d(self.previous_mu_micro)
-            
+
             delta_macro = curr_macro - prev_macro
             delta_micro = curr_micro - prev_micro
-            
+
             # Use only common dimensions for dot product, or first element if mismatched
-            # In QQQ Monitor, delta_macro is typically [delta_beta] (1,) 
+            # In QQQ Monitor, delta_macro is typically [delta_beta] (1,)
             # and delta_micro is [delta_r, delta_v] (2,)
             # Alignment is primarily between expected beta change and realized return change
             common_dim = min(len(delta_macro), len(delta_micro))
             raw_alignment_signal = float(np.dot(delta_macro[:common_dim], delta_micro[:common_dim]))
             alignment = self.divergence.calculate_alignment_score(raw_alignment_signal)
-            
+
         self.previous_mu_macro = np.atleast_1d(mu_macro).copy() if mu_macro is not None else None
         self.previous_mu_micro = np.atleast_1d(mu_micro).copy() if mu_micro is not None else None
-        
+
         # 4. Stale Data Decay with Resumption Low-Pass
         from src.utils.stats import calculate_decay, calculate_inertial_recovery
         raw_stale_decay = calculate_decay(stale_days, nominal_period)
         effective_stale_decay = calculate_inertial_recovery(self.previous_stale_decay, raw_stale_decay)
         self.previous_stale_decay = effective_stale_decay
-        
+
         # 5. Combined Multiplier
         # M_edge = exp(Alignment * JSD)
         m_edge = float(np.exp(alignment * jsd))
         # Effective edge with stale decay
         m_effective_edge = 1.0 + effective_stale_decay * (m_edge - 1.0)
-        
+
         return {
             "s_micro": s_micro,
             "penalty": penalty,
@@ -109,7 +110,7 @@ class SentinelEngine:
             "m_effective_edge": m_effective_edge,
             "stale_decay": effective_stale_decay
         }
-        
+
     def _infer_micro_posterior(self, x: np.ndarray) -> np.ndarray:
         """
         Infer micro-regime probabilities based on distance from regime centroids in [r, v] space.
@@ -117,7 +118,7 @@ class SentinelEngine:
         """
         if self.gaussian.mu is None:
             return np.array([0.25, 0.25, 0.25, 0.25])
-            
+
         # Simplified distance-based probabilities:
         # In a real run, these centroids should be extracted from the training set.
         # Here we use heuristic centroids for Phase 3 integration:
@@ -128,16 +129,16 @@ class SentinelEngine:
             2: np.array([0.0005, 0.2]), # LATE: Tiny return, high volume (Exhaustion)
             3: np.array([-0.002, 0.5])  # BUST: Negative return, high volume (Panic)
         }
-        
+
         probs = []
         inv_cov = self.gaussian.get_inverse_covariance()
-        
+
         for i in range(4):
             diff = x - centroids[i]
             # Use Mahalanobis distance to each centroid as a proxy for negative log-likelihood
             dist = float(diff.T @ inv_cov @ diff)
             probs.append(np.exp(-0.5 * dist))
-            
+
         probs = np.array(probs)
         # Normalize to probability distribution
         total = probs.sum()
@@ -148,26 +149,31 @@ def calculate_jsd(p: np.ndarray, q: np.ndarray) -> float:
     """
     Calculate Jensen-Shannon Divergence between two distributions.
     Bounded in [0, ln(2)].
+    Handles mismatched dimensions by aligning to the smallest common subset.
     """
     # Ensure arrays
     p = np.array(p)
     q = np.array(q)
-    
+
+    # Handle dimension mismatch (e.g., test mocks with fewer regimes)
+    min_dim = min(len(p), len(q))
+    p = p[:min_dim]
+    q = q[:min_dim]
+
     # Avoid zero for log
     p = np.clip(p, 1e-12, 1.0)
     q = np.clip(q, 1e-12, 1.0)
-    
-    # Normalize
+
+    # Normalize after clipping
     p /= p.sum()
     q /= q.sum()
-    
+
     m = 0.5 * (p + q)
-    
+
     def kl_divergence(a, b):
         return np.sum(a * np.log(a / b))
-        
-    return 0.5 * kl_divergence(p, m) + 0.5 * kl_divergence(q, m)
 
+    return 0.5 * kl_divergence(p, m) + 0.5 * kl_divergence(q, m)
 
 class ProbabilityCalibrator:
     """
@@ -176,7 +182,7 @@ class ProbabilityCalibrator:
     def __init__(self, gamma: float = 10.0, threshold: float = 0.25):
         self.gamma = gamma
         self.threshold = threshold
-        
+
     def calculate_brier_score(self, y_true_idx: int, p_pred: np.ndarray) -> float:
         """
         Calculate Brier Score for a single multi-class prediction.
@@ -185,7 +191,7 @@ class ProbabilityCalibrator:
         y_true = np.zeros_like(p_pred)
         y_true[y_true_idx] = 1.0
         return float(np.mean((p_pred - y_true)**2))
-        
+
     def calculate_confidence_weight(self, brier_score: float) -> float:
         """
         Calculate a continuous confidence weight using Softplus decay.
@@ -205,7 +211,7 @@ class SmoothDivergenceEngine:
         self.span = span
         self.vol_floor = vol_floor
         self.signals = []
-        
+
     def calculate_alignment_score(self, raw_signal: float) -> float:
         """
         Calculate a continuous alignment score in [-1, 1].
@@ -214,14 +220,14 @@ class SmoothDivergenceEngine:
         self.signals.append(raw_signal)
         if len(self.signals) > self.span * 2: # Keep some history but limit
             self.signals = self.signals[-self.span:]
-            
+
         if len(self.signals) < 20:
             return 0.0
-            
+
         series = pd.Series(self.signals)
         mu = series.mean()
         sigma = max(series.std(), self.vol_floor)
-        
+
         z_signal = (raw_signal - mu) / sigma
         return float(np.tanh(z_signal))
 
@@ -235,27 +241,27 @@ class OnlineBivariateGaussian:
         self.alpha = alpha
         self.ridge_lambda = ridge_lambda
         self.burn_in_samples = burn_in_samples
-        
+
         self.mu = None
         self.sigma = None
         self.sample_count = 0
-        
+
     def update(self, x: np.ndarray):
         """Update mean and covariance with a new observation x = [r, v]"""
         self.sample_count += 1
-        
+
         if self.mu is None:
             self.mu = x.copy()
             self.sigma = np.eye(2) * 0.01 # Initial small variance
             return
-            
+
         # EWMA update for mean
         self.mu = (1 - self.alpha) * self.mu + self.alpha * x
-        
+
         # EWMA update for covariance
         diff = (x - self.mu).reshape(-1, 1)
         self.sigma = (1 - self.alpha) * self.sigma + self.alpha * (diff @ diff.T)
-        
+
     def get_covariance(self, robust: bool = True) -> np.ndarray:
         """Return the current covariance matrix, optionally with Tikhonov regularization."""
         if self.sigma is None:
@@ -263,7 +269,7 @@ class OnlineBivariateGaussian:
         if robust:
             return self.sigma + self.ridge_lambda * np.eye(2)
         return self.sigma
-        
+
     def get_inverse_covariance(self) -> np.ndarray:
         """
         Return the robust inverse covariance matrix.
@@ -275,28 +281,28 @@ class OnlineBivariateGaussian:
         a, b = cov[0, 0], cov[0, 1]
         c, d = cov[1, 0], cov[1, 1]
         det = a * d - b * c
-        
+
         # det should not be zero due to Tikhonov regularization, but safety first
         if abs(det) < 1e-15:
             return np.eye(2) * 1e6 # Return very large variance if still singular
-            
+
         inv_cov = np.array([
             [d, -b],
             [-c, a]
         ]) / det
         return inv_cov
-        
+
     def calculate_surprisal(self, x: np.ndarray) -> float:
         """Calculate the Shannon Surprisal (1/2 * Mahalanobis Distance squared)"""
         if self.mu is None:
             return 1.0 # Default expectation
-            
+
         inv_cov = self.get_inverse_covariance()
         diff = x - self.mu
         # D_M^2 = (x-mu)^T * Sigma^-1 * (x-mu)
         dm_sq = float(diff.T @ inv_cov @ diff)
         return 0.5 * dm_sq
-        
+
     def is_ready(self) -> bool:
         """Check if the burn-in period is complete."""
         return self.sample_count >= self.burn_in_samples

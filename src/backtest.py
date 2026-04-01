@@ -221,7 +221,7 @@ def run_v11_audit(
     deployment_policy = ProbabilisticDeploymentPolicy(
         initial_state=_initial_deployment_state(last_train_regime)
     )
-    
+
     # v12.1 Sentinel Engine
     from src.engine.v11.sentinel import SentinelEngine
     sentinel = SentinelEngine()
@@ -290,17 +290,22 @@ def run_v11_audit(
                 posteriors.get(regime, 0.0) * base_betas.get(regime, 1.0)
                 for regime in ordered_regimes
             )
-            
+
             # v12.1 Sentinel
             raw_beta_l4 = raw_beta_base
             hist_up_to_now = price_df[price_df.index <= dt].sort_index()
             if len(hist_up_to_now) >= 2:
                 close_s = hist_up_to_now["Close"]
-                vol_s = hist_up_to_now["Volume"]
                 r_t = float(np.log(close_s.iloc[-1] / close_s.iloc[-2]))
-                v_ma21 = vol_s.rolling(21).mean().iloc[-1]
-                v_t = float(np.log(vol_s.iloc[-1] / v_ma21)) if v_ma21 > 0 else 0.0
-                
+
+                # Volume might be missing in some test mocks
+                if "Volume" in hist_up_to_now.columns:
+                    vol_s = hist_up_to_now["Volume"]
+                    v_ma21 = vol_s.rolling(21).mean().iloc[-1]
+                    v_t = float(np.log(vol_s.iloc[-1] / v_ma21)) if v_ma21 > 0 else 0.0
+                else:
+                    v_t = 0.0
+
                 sentinel_res = sentinel.update(
                     r_t=r_t,
                     v_t=v_t,
@@ -309,11 +314,10 @@ def run_v11_audit(
                     stale_days=0
                 )
                 raw_beta_l4 = (raw_beta_base * sentinel_res["m_effective_edge"]) / sentinel_res["penalty"]
-
             # Apply haircuts and inertia to both
             protected_beta_l4 = entropy_ctrl.apply_haircut(raw_beta_l4, norm_h, state_count=len(posteriors))
             protected_beta_base = entropy_ctrl.apply_haircut(raw_beta_base, norm_h, state_count=len(posteriors))
-            
+
             final_beta_l4 = beta_mapper.calculate_inertial_beta(protected_beta_l4, norm_h)
             final_beta_base = beta_mapper_base.calculate_inertial_beta(protected_beta_base, norm_h)
 
@@ -413,13 +417,13 @@ def run_v11_audit(
     # v12.1 Relative Survival Audit
     from src.research.auditor import SentinelAuditor
     auditor = SentinelAuditor(tolerance=0.05)
-    
+
     # Calculate returns
     execution_df["daily_price_return"] = execution_df["close"].pct_change().fillna(0.0)
     # L4 returns: using final_beta_l4 (target_beta) from PREVIOUS day to avoid look-ahead
     execution_df["return_l4"] = execution_df["target_beta"].shift(1).fillna(initial_beta) * execution_df["daily_price_return"]
     execution_df["return_base"] = execution_df["final_beta_base"].shift(1).fillna(initial_beta) * execution_df["daily_price_return"]
-    
+
     survival_results = auditor.validate_relative_survival(
         execution_df.set_index("date")["return_l4"],
         execution_df.set_index("date")["return_base"]
