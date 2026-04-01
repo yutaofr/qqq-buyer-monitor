@@ -1,56 +1,61 @@
-# v12.0 Layer 4: 广义凯利微观方差规格书 (Sentinel)
+# v12.0 Layer 4: KL散度“猎杀”与广义凯利规格书 (Sentinel)
 
-> **状态**: PROPOSED (Grand Unification - Zero Constant Revision)
-> **版本**: v12.0-L4-SENTINEL-GENERALIZED-KELLY
+> **状态**: PROPOSED (Information-Theoretic Hunting Revision)
+> **版本**: v12.0-L4-SENTINEL-KL-DIVERGENCE
 > **架构层级**: Layer 4 (Micro-Structure Overlay)
-> **数学核心**: 贝叶斯在线协方差更新、广义逆矩阵与连续凯利方程
+> **数学核心**: Kullback-Leibler Divergence, Micro-GaussianNB, 广义凯利方程
 
 ---
 
-## 1. 核心信仰：绝对的零常数 (Zero-Constant Axiom)
+## 1. 核心信仰：用信息论量化“带血的筹码”
 
-量化系统的脆弱性皆源于“魔法数字”。本模块在架构上**严禁**任何形式的时间窗口（如 252 天）、正则化扰动（如 $10^{-6}$）、截断函数（如 `min/max`）以及人为的象限条件（如 `if 涨缩背离`）。
-
-所有决策必须是连续、可导且由数据自身的概率分布驱动的。
+量化系统的猎杀本能不应源于人工设定的超跌阈值，而应源于**市场定价误差的数学绝对值**。本规格书通过引入 Kelly-KL 定理，将巴菲特的“别人恐惧我贪婪”转化为严格的无参数对数方程。
 
 ---
 
-## 2. 核心数学推导 (The Mathematics)
+## 2. 数学推导：上帝与乌合之众的对决
 
-### 2.1 微观分布的无窗在线更新 (Parameter-Free Online Updating)
-废弃固定窗口。量价向量 $X = [r_t, v_t]^T$ 的均值 $\mu_t$ 与协方差 $\Sigma_t$ 采用随时间流逝自适应的逆威沙特分布进行在线贝叶斯更新（Online Bayesian Updating）。
-数据更新的卡尔曼增益由新观测值带来的信息增益自然决定，**时间跨度由数据自身的信噪比定义，而非人工常量。**
+### 2.1 God Sensor (宏观真实分布 $P_{macro}$)
+由 10 因子正交贝叶斯核（L1-L3）输出的真实后验概率分布：
+$$P_{macro} = [p_{boom}, p_{mid}, p_{late}, p_{bust}]$$
+这是基于实体经济和流动性得出的“物理真相”。
 
-### 2.2 绝对确定的马氏惊奇度 (Deterministic Surprisal)
-废弃 Tikhonov 扰动。使用摩尔-彭若斯广义逆 (Moore-Penrose Pseudo-Inverse, $\Sigma^+$) 来解决极端无波动日的奇异矩阵问题，利用 IEEE 754 硬件精度实现截断。
-$$D_M^2 = (X_t - \mu_{t-1})^T (\Sigma_{t-1})^+ (X_t - \mu_{t-1})$$
-瞬时微观惊奇度 (Surprisal)：
-$$S_{micro} = \frac{1}{2} D_M^2 \quad (\text{理论期望 } E[S_{micro}] = 1.0)$$
+### 2.2 Crowd Sensor (微观隐含分布 $P_{micro}$)
+建立一个平行的**微观特征高斯朴素贝叶斯 (Micro-GNB)**。
+- **输入特征**: $X_t = [r_t, v_t]$（仅包含当日对数收益率与日频超额成交量）。
+- **推断结果**: 仅依据当日量价的恐慌或贪婪程度，反推大众隐含的 Regime 概率：
+  $$P_{micro} = GNB_{micro}.predict\_proba(X_t)$$
 
----
-
-## 3. 决策大一统：广义凯利方程 (Generalized Kelly Pacing)
-
-所有的战术干预（不接飞刀、不追高、缩量加仓）统一收敛为对凯利方程方差项的连续调制。
-
-### 3.1 有效微观方差 (Effective Variance)
-将瞬时惊奇度作为宏观方差的指数乘数：
-$$\sigma_{eff}^2 = \sigma_{macro}^2 \cdot \exp(S_{micro} - 1.0)$$
-
-### 3.2 终极目标 Beta (The Ultimate Target Beta)
-$$Final\_Target\_Beta = \frac{\mu_{macro}}{\sigma_{macro}^2 \cdot \exp(S_{micro} - 1.0)}$$
-
-#### 物理自洽性推演 (Physical Self-Consistency)
-1. **防范“飞刀” (Anti-Climax)**：放量暴跌引发 $S_{micro} \gg 1.0$。分母指数级膨胀，$Beta \to 0$。凯利判据自动拒绝在高方差局部接盘。
-2. **防范“虚假繁荣” (Anti-Exhaustion)**：高位异动或天量滞涨，同样导致 $S_{micro} \gg 1.0$。分母膨胀迫使系统自动止盈。
-3. **拥抱“静水流深” (Embrace Calmness)**：市场极度平静（如经典的无量慢牛），$S_{micro} < 1.0$。方差缩小，Beta 自动放大，资金利用率达到极致。
+### 2.3 猎杀期望 (The Alpha): KL 散度
+根据信息论，利用市场定价错误（$P_{micro}$）相对于物理真相（$P_{macro}$）进行下注的理论最大指数增长率，严格等于两者的 Kullback-Leibler 散度：
+$$Edge_{KL} = D_{KL}(P_{macro} || P_{micro}) = \sum_{i \in Regimes} P_{macro}(i) \ln \left( \frac{P_{macro}(i)}{P_{micro}(i) + \epsilon_{math}} \right)$$
+*(注: $\epsilon_{math}=10^{-12}$ 仅为防止对数除零的 IEEE 754 硬件护城河，非业务超参)*
 
 ---
 
-## 4. 验证与证伪标准 (Falsifiability)
+## 3. 广义凯利大一统方程 (The Grand Unification Kelly)
 
-- **Test A (白噪声证伪)**：将 $V_t$ 替换为高斯白噪声。由于白噪声无结构性异动，$S_{micro}$ 均值将死锁于 1.0，$Final\_Target\_Beta$ 将退化为纯宏观模型。如果加入真实 $V_t$ 的信息比率 (IR) 不能以 $p < 0.05$ 的显著性击败白噪声退化模型，则本规格书作废。
-- **Test B (拓扑连续性)**：要求目标 Beta 函数在任意市场极端切片下（包括 2020.03 的六次熔断）保持 $C^1$ 连续（一阶可导），严禁出现因 `if/else` 导致的阶跃断层。
+所有的战术干预（猎杀错杀、规避真崩盘、平滑慢牛）收敛为单一连续方程：
+
+$$Final\_Target\_Beta = \frac{\mu_{base\_macro} + \lambda \cdot D_{KL}(P_{macro} || P_{micro})}{H(P_{macro}) + S_{micro}(X_t)}$$
+
+*(注: $\lambda=1.0$，单位为 Nats，物理量纲完美对齐)*
+
+### 3.1 物理自洽性推演 (Physical Self-Consistency)
+
+| 市场情境 | 宏观状态 | 微观量价 | 变量坍缩态 | 最终 Beta | 物理意义 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **带血的筹码 (错杀)** | **BOOM** (健康) | **暴跌放量** (恐慌) | $D_{KL} \to \infty$ <br> $S_{micro} \to Large$ | **飙升 (>1.0)** | 错杀收益率的爆发远超微观局部方差的惩罚，系统**加杠杆嗜血猎杀**。 |
+| **真实的雪崩 (崩盘)** | **BUST** (恶化) | **暴跌放量** (恐慌) | $D_{KL} \to 0$ <br> $S_{micro} \to \infty$ | **坍缩 (\approx 0)** | 上帝与大众都认为是崩盘（无错杀 Alpha），微观方差无限大，系统**空仓保命**。 |
+| **虚假的繁荣 (诱多)** | **BUST** (恶化) | **无量拉升** (贪婪) | $D_{KL} \to \infty$ <br> $S_{micro} \to Medium$ | **封锁 (\approx 0)** | 虽然散度大，但基础期望 $\mu_{base}$ 为负，且方差抑制，系统**拒绝追高**。 |
+| **静水流深 (慢牛)** | **MID** (温和) | **缩量微涨** (平静) | $D_{KL} \to 0$ <br> $S_{micro} \to 0$ | **平稳 (1.0)** | 宏微观共识一致，方差极小，系统依靠时间价值稳定获取 Beta。 |
+
+---
+
+## 4. 验证与防过拟合 (Falsifiability)
+
+- **Test A (无超参验证)**：除防止浮点溢出的系统级极小值外，禁止引入任何人为权重。KL 散度的 Nat 单位必须与 Shannon 熵的 Nat 单位在数学上等价，实现 1:1 无损相加。
+- **Test B (白噪声免疫测试)**：当 $X_t$ 被注入高斯白噪声时，$P_{micro}$ 退化为历史先验（Prior），$D_{KL}$ 常态化，系统安全退化为纯宏观模型，不会引发错误猎杀。
 
 ---
 © 2026 QQQ Entropy 大一统架构组.
