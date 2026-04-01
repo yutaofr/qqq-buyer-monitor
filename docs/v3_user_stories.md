@@ -1,3 +1,7 @@
+> [DEPRECATED: LEGACY PRE-V11 CONTEXT]
+> 本文档属于 v3.0 的 ERP/阈值时代拆解记录，保留作历史追踪，不代表 v11.5 的全概率贝叶斯规范。
+> 当前生产实现禁止将本文中的固定阈值逻辑直接回流到主链。
+
 # QQQ Buy-Signal Monitor v3.0 - User Stories & Tasks
 
 This document translates the [v3.0 PRD](./fundamental_macro_v3.md) into actionable Epics, User Stories, and technical tasks for standard GitHub tracking.
