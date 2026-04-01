@@ -178,7 +178,8 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         "data/macro_historical_dump.csv",
         "data/v11_prior_state.json",
     ]
-    cloud.pull_state(sync_files)
+    if not cloud.pull_state(sync_files):
+        raise RuntimeError("Cloud state pull failed; refusing to continue with potentially stale runtime memory.")
 
     logger.info("Fetching market data…")
     price_data = fetch_price_data()

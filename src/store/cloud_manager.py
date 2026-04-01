@@ -38,6 +38,41 @@ class CloudPersistenceBridge:
         """Applies namespace prefix to the filename."""
         return f"{self.namespace}/{local_filename}"
 
+    def _list_blob_url_map(self, limit: int = 1000) -> dict[str, str]:
+        """List cloud blobs across paginated responses and map pathname to download URL."""
+        url_map: dict[str, str] = {}
+        cursor: str | None = None
+        seen_cursors: set[str] = set()
+
+        while True:
+            list_url = f"{self.base_api_url}?limit={limit}"
+            if cursor:
+                list_url = f"{list_url}&cursor={cursor}"
+
+            list_resp = requests.get(list_url, headers=self.headers, timeout=10)
+            list_resp.raise_for_status()
+            payload = list_resp.json()
+            blobs = payload.get("blobs", [])
+            url_map.update(
+                {
+                    blob["pathname"]: blob["downloadUrl"]
+                    for blob in blobs
+                    if blob.get("pathname") and blob.get("downloadUrl")
+                }
+            )
+
+            next_cursor = payload.get("cursor") or payload.get("nextCursor")
+            if not next_cursor:
+                break
+            if next_cursor in seen_cursors:
+                logger.error("Repeated blob cursor encountered: %s", next_cursor)
+                break
+
+            seen_cursors.add(next_cursor)
+            cursor = str(next_cursor)
+
+        return url_map
+
     def pull_state(self, local_files: list[str]) -> bool:
         """
         Pull listed files from the cloud namespace.
@@ -51,14 +86,11 @@ class CloudPersistenceBridge:
 
         # 1. Fetch current blob list to find URLs
         try:
-            list_resp = requests.get(f"{self.base_api_url}?limit=1000", headers=self.headers, timeout=10)
-            list_resp.raise_for_status()
-            blobs = list_resp.json().get("blobs", [])
-            # Map path/pathname to downloadUrl
-            # Vercel Blob uses 'pathname' as the original stable identifier
-            url_map = {b["pathname"]: b["downloadUrl"] for b in blobs}
+            # Map path/pathname to downloadUrl.
+            # Vercel Blob uses 'pathname' as the original stable identifier.
+            url_map = self._list_blob_url_map(limit=1000)
         except Exception as e:
-            logger.error("Failed to list cloud blobs: %s. Proceeding with local seeds.", e)
+            logger.error("Failed to list cloud blobs: %s. Refusing to continue with stale runtime state.", e)
             return False
 
         for filename in local_files:
@@ -81,6 +113,7 @@ class CloudPersistenceBridge:
                 logger.info("Successfully RESTORED %s from Cloud.", filename)
             except Exception as e:
                 logger.error("Failed to download %s: %s", remote_path, e)
+                return False
 
         return True
 

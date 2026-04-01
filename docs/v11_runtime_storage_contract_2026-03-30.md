@@ -92,12 +92,15 @@
 顺序如下：
 
 1. `CloudPersistenceBridge.pull_state(...)` 先尝试从 blob 拉取
-2. 如果 blob 404，则退回本地仓库内已有 seed/runtime 文件
+2. 如果单个 blob 缺失 (`404` / pathname miss)，则退回本地仓库内已有 seed/runtime 文件
 3. 如果 `data/v11_prior_state.json` 本地也不存在：
    - `PriorKnowledgeBase` 用 `data/v11_poc_phase1_results.csv` 的历史 regime 标签做 deterministic bootstrap
 4. 如果连 `data/macro_historical_dump.csv` / `data/v11_poc_phase1_results.csv` 都缺失或损坏：
    - 生产与审计主路径现在直接 fail closed
    - synthetic bootstrap 仅允许在测试或显式灾备工具中使用
+5. 如果 blob 列表、鉴权、网络或已存在对象的下载发生非 `404` 异常：
+   - `pull_state(...)` 直接返回 fatal
+   - `src.main` 必须中止运行，禁止用潜在 stale state 继续推断并回写
 
 注意：
 
@@ -135,6 +138,8 @@ data/signals.db
 data/macro_historical_dump.csv
 data/v11_prior_state.json
 ```
+
+云端枚举采用分页 cursor 拉取；对象数量增长后，仍必须完整覆盖当前 namespace 的 blob 视图。
 
 这三项分别承担：
 
@@ -220,6 +225,11 @@ python -m src.main --engine v11 --notify-discord --export-web
 2. 完成推断
 3. 回写 runtime state
 4. 单独上传 `status.json`
+
+其中第 1 步的规则是：
+
+- 单个对象缺失 (`404`) 允许冷启动回退
+- 非 `404` 的 blob list / auth / network / download 异常必须 fail closed
 
 ## 7. 需要持续关注的风险
 

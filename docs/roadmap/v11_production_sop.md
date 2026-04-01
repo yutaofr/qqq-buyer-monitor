@@ -39,6 +39,7 @@ python -m src.main --json --no-save
 
 若云端缺失，则只能回退到仓库中的 canonical DNA；
 若 canonical DNA 也缺失，生产任务必须失败并报警，不允许 synthetic baseline 混入主路径。
+若 Blob 列表、鉴权、网络或已存在对象下载失败，则任务也必须立即失败，禁止带着 stale runtime state 继续推断并回写。
 
 ### Step 2: 模型 JIT 训练
 系统读取 DNA 库，在内存中即时训练 **高斯朴素贝叶斯分类器**。该过程确保模型参数永远捕捉最新的宏观波动模式。
