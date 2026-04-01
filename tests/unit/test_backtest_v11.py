@@ -142,7 +142,8 @@ def test_run_v11_audit_refits_model_for_each_evaluation_day(tmp_path, monkeypatc
     assert FakeGaussianNB.fit_calls >= 3
     assert FakeGaussianNB.init_var_smoothing[0] == pytest.approx(1e-3)
     assert "top1_accuracy" in summary
-    assert sorted(summary["state_support"]["unsupported_audit_regimes"]) == ["CAPITULATION", "RECOVERY"]
+    assert summary["audit_regimes"] == ["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"]
+    assert sorted(summary["state_support"]["unsupported_audit_regimes"]) == ["RECOVERY"]
     assert summary["feature_contract_validation"].startswith("override:")
 
 

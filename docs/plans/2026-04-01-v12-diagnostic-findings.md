@@ -12,12 +12,23 @@ The first v12 baseline (`Accuracy 65.85%`, `Brier 0.4929`, `Entropy 0.225`) did 
 
 ## Structural Finding
 
-The audit contract still contains `CAPITULATION`, but `data/v11_poc_phase1_results.csv` does not provide label support for that regime. This is now surfaced explicitly in:
+The original v12 audit contract contained `CAPITULATION`, but `data/v11_poc_phase1_results.csv` does not provide label support for that regime. This was a real topology bug, not just a reporting annoyance.
+
+After the 2026-04-01 topology rework, the active runtime/backtest contract is canonical 4-state:
+
+- `MID_CYCLE`
+- `LATE_CYCLE`
+- `BUST`
+- `RECOVERY`
+
+`CAPITULATION` now survives only as a legacy migration alias and is deterministically folded into `RECOVERY` when old prior-state payloads or old signal surfaces are loaded/exported.
+
+This is now surfaced explicitly in:
 
 - `run_v11_audit(...)[\"state_support\"]`
 - `artifacts/v12_diagnostics/diagnostic_report.json`
 
-The state remains unsupported and must not be treated as silently valid.
+The latest rerun now reports `unsupported states = []`. The unsupported-state warning is resolved by contract, not hidden.
 
 ## Controlled Ablations
 
@@ -42,6 +53,7 @@ Three changes were accepted because they improved aggregate metrics and crisis r
 1. `GaussianNB var_smoothing`: `1e-2 -> 1e-4`
 2. `core_capex_momentum`: add `ewma_span: 3` before expanding z-score normalization
 3. posterior computation: switch default from runtime-prior reweighting to `classifier_only`
+4. topology cleanup: remove `CAPITULATION` from the active audit/runtime surface and merge legacy payloads into `RECOVERY`
 
 These changes became the new baseline through:
 
@@ -58,8 +70,9 @@ The following variants were rejected:
 - `move_orth_none`: worse accuracy and worse Brier
 - `move_orth_half` as a standalone default: better than baseline but weaker than the accepted pair
 - `clip_12` as a standalone default: near-neutral change with no decisive benefit
-- 4-state removal of `CAPITULATION`: no decisive classification gain, despite cleaning up the unsupported-state warning
 - `classifier_only` with smaller `var_smoothing` (`1e-5`, `1e-6`): marginal Brier gains but weaker return and no decisive accuracy gain over `1e-4`
+
+The earlier pure-metric view on 4-state removal still holds: it did not create a decisive classification jump by itself. It was nevertheless accepted later as a structural contract repair because leaving an unsupported active state in production was worse than the near-neutral metric effect of removing it.
 
 ## Current Best Verified Baseline
 
@@ -76,6 +89,8 @@ After adopting the accepted defaults, the verified backtest result is:
 This remains materially below the original `>=80%` accuracy aspiration, but the diagnostic evidence does not support forcing the model back toward v11.5-style pseudo-certainty. The currently accepted improvements increase separation without restoring the old leakage-prone confidence profile.
 
 The new baseline is also more conservative in rebound windows than the prior v12 baseline, but it buys that with materially better calibration and shallower drawdown. In other words, the system is now more honest and more defensive, not simply more hesitant.
+
+Topology-wise, the system is also cleaner: the active production path no longer carries an unsupported ghost state, while old persisted payloads still remain readable through deterministic alias migration.
 
 ## Work Log: v11.5 Overfit Confirmation
 

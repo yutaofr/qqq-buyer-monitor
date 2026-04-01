@@ -7,6 +7,13 @@ import logging
 from collections.abc import Iterable
 from pathlib import Path
 
+from src.regime_topology import (
+    canonicalize_regime_name,
+    canonicalize_regime_sequence,
+    merge_regime_weights,
+    merge_transition_matrix,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,9 +32,9 @@ class PriorKnowledgeBase:
         self.storage_path = Path(storage_path)
         self.pseudo_count = float(pseudo_count)
         self.transition_blend = float(transition_blend)
-        resolved_regimes = list(regimes or [])
+        resolved_regimes = canonicalize_regime_sequence(regimes, include_all=False)
         if not resolved_regimes and bootstrap_regimes is not None:
-            resolved_regimes = sorted({str(regime) for regime in bootstrap_regimes})
+            resolved_regimes = canonicalize_regime_sequence(bootstrap_regimes, include_all=False)
         expected_bootstrap_fingerprint = self._compute_bootstrap_fingerprint(bootstrap_regimes)
 
         if self.storage_path.exists():
@@ -83,7 +90,13 @@ class PriorKnowledgeBase:
              return base_priors, details
 
         logger.info(f"  Source 2 [Recent Memory]: Found posterior from {self.last_observation_date or 'unknown date'}")
-        normalized_source = self._normalize(prior_source)
+        normalized_source = self._normalize(
+            merge_regime_weights(
+                prior_source,
+                regimes=self.regimes,
+                include_zeros=True,
+            )
+        )
         transition_prior = {regime: 0.0 for regime in self.regimes}
         for regime, weight in normalized_source.items():
             row = self.transition_counts.get(regime)
@@ -131,7 +144,13 @@ class PriorKnowledgeBase:
         observation_date: str,
         posterior: dict[str, float],
     ) -> None:
-        normalized_posterior = self._normalize(posterior)
+        normalized_posterior = self._normalize(
+            merge_regime_weights(
+                posterior,
+                regimes=self.regimes,
+                include_zeros=True,
+            )
+        )
 
         # KISS Idempotency: Skip count updates if we already saw this date
         if str(observation_date) == self.last_observation_date:
@@ -177,7 +196,11 @@ class PriorKnowledgeBase:
         self._save()
 
     def _bootstrap_from_regimes(self, bootstrap_regimes: Iterable[str]) -> None:
-        history = [str(regime) for regime in bootstrap_regimes if str(regime) in self.regimes]
+        history = []
+        for regime in bootstrap_regimes:
+            canonical = canonicalize_regime_name(regime)
+            if canonical in self.regimes:
+                history.append(canonical)
         for regime in history:
             self.counts[regime] += 1.0
 
@@ -193,11 +216,14 @@ class PriorKnowledgeBase:
         backfilled = False
         payload = json.loads(self.storage_path.read_text())
         payload_regimes = payload.get("regimes")
-        if payload_regimes:
-            self.regimes = [str(regime) for regime in payload_regimes]
-        elif fallback_regimes:
-            self.regimes = [str(regime) for regime in fallback_regimes]
-            backfilled = True
+        if fallback_regimes:
+            self.regimes = canonicalize_regime_sequence(fallback_regimes, include_all=False)
+            if payload_regimes and [str(regime) for regime in payload_regimes] != self.regimes:
+                backfilled = True
+        elif payload_regimes:
+            self.regimes = canonicalize_regime_sequence(payload_regimes, include_all=False)
+            if [str(regime) for regime in payload_regimes] != self.regimes:
+                backfilled = True
         else:
             raise ValueError("PriorKnowledgeBase state is missing regimes and no bootstrap fallback is available.")
 
@@ -207,29 +233,38 @@ class PriorKnowledgeBase:
         counts_payload = payload.get("counts", {})
         if not isinstance(counts_payload, dict):
             raise ValueError("PriorKnowledgeBase counts payload must be a mapping.")
+        merged_counts = merge_regime_weights(
+            counts_payload,
+            regimes=self.regimes,
+            include_zeros=False,
+        )
+        if set(merged_counts) != set(counts_payload):
+            backfilled = True
         self.counts = {
-            regime: float(counts_payload.get(regime, self.pseudo_count))
+            regime: float(merged_counts.get(regime, self.pseudo_count))
             for regime in self.regimes
         }
 
         transition_payload = payload.get("transition_counts", {})
         if not isinstance(transition_payload, dict):
             raise ValueError("PriorKnowledgeBase transition payload must be a mapping.")
-        self.transition_counts = {}
-        for src in self.regimes:
-            row_payload = transition_payload.get(src, {})
-            if not isinstance(row_payload, dict):
-                row_payload = {}
-            self.transition_counts[src] = {
-                dst: float(row_payload.get(dst, self.pseudo_count))
+        merged_transitions = merge_transition_matrix(transition_payload, regimes=self.regimes)
+        if set(merged_transitions) != set(transition_payload):
+            backfilled = True
+        self.transition_counts = {
+            src: {
+                dst: float(merged_transitions.get(src, {}).get(dst, self.pseudo_count))
                 for dst in self.regimes
             }
+            for src in self.regimes
+        }
 
         self.last_posterior = (
-            {
-                regime: float(payload.get("last_posterior", {}).get(regime, 0.0))
-                for regime in self.regimes
-            }
+            merge_regime_weights(
+                payload.get("last_posterior", {}),
+                regimes=self.regimes,
+                include_zeros=True,
+            )
             if isinstance(payload.get("last_posterior"), dict)
             else None
         )
@@ -239,6 +274,10 @@ class PriorKnowledgeBase:
             if isinstance(payload.get("execution_state"), dict)
             else {}
         )
+        stable_regime = canonicalize_regime_name(self.execution_state.get("stable_regime"))
+        if stable_regime and stable_regime != self.execution_state.get("stable_regime"):
+            self.execution_state["stable_regime"] = stable_regime
+            backfilled = True
         stored_fingerprint = payload.get("bootstrap_fingerprint")
         if stored_fingerprint is None and expected_bootstrap_fingerprint is not None:
             self.bootstrap_fingerprint = expected_bootstrap_fingerprint
@@ -286,6 +325,9 @@ class PriorKnowledgeBase:
     def _compute_bootstrap_fingerprint(bootstrap_regimes: Iterable[str] | None) -> str | None:
         if bootstrap_regimes is None:
             return None
-        canonical = json.dumps([str(regime) for regime in bootstrap_regimes], separators=(",", ":"))
+        canonical = json.dumps(
+            [canonicalize_regime_name(regime) or str(regime) for regime in bootstrap_regimes],
+            separators=(",", ":"),
+        )
         digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         return f"sha256:{digest}"

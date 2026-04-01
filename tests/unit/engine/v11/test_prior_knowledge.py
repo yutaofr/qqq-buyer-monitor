@@ -98,3 +98,57 @@ def test_prior_knowledge_rejects_bootstrap_fingerprint_drift(tmp_path, bootstrap
 
     with pytest.raises(ValueError, match="bootstrap fingerprint"):
         PriorKnowledgeBase(storage_path=storage_path, bootstrap_regimes=bootstrap_history)
+
+
+def test_prior_knowledge_migrates_legacy_capitulation_payload_into_recovery(tmp_path, bootstrap_history):
+    storage_path = tmp_path / "prior_state.json"
+    storage_path.write_text(
+        json.dumps(
+            {
+                "version": "v11-prior-state",
+                "regimes": ["MID_CYCLE", "LATE_CYCLE", "BUST", "CAPITULATION", "RECOVERY"],
+                "counts": {
+                    "MID_CYCLE": 5.0,
+                    "LATE_CYCLE": 4.0,
+                    "BUST": 3.0,
+                    "CAPITULATION": 2.0,
+                    "RECOVERY": 7.0,
+                },
+                "transition_counts": {
+                    "MID_CYCLE": {
+                        "MID_CYCLE": 2.0,
+                        "CAPITULATION": 1.5,
+                        "RECOVERY": 1.0,
+                    },
+                    "CAPITULATION": {
+                        "RECOVERY": 3.0,
+                        "BUST": 0.5,
+                    },
+                },
+                "last_posterior": {
+                    "MID_CYCLE": 0.2,
+                    "CAPITULATION": 0.3,
+                    "RECOVERY": 0.1,
+                    "BUST": 0.4,
+                },
+                "execution_state": {
+                    "stable_regime": "CAPITULATION",
+                },
+            }
+        )
+    )
+
+    library = PriorKnowledgeBase(
+        storage_path=storage_path,
+        regimes=["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"],
+        bootstrap_regimes=bootstrap_history,
+    )
+
+    assert library.regimes == ["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"]
+    assert "CAPITULATION" not in library.counts
+    assert library.counts["RECOVERY"] == pytest.approx(9.0)
+    assert library.last_posterior["RECOVERY"] == pytest.approx(0.4)
+    assert library.execution_state["stable_regime"] == "RECOVERY"
+    payload = json.loads(storage_path.read_text())
+    assert payload["regimes"] == ["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"]
+    assert "CAPITULATION" not in payload["counts"]

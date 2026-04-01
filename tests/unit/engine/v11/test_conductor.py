@@ -296,3 +296,43 @@ def test_conductor_rejects_probability_seeder_hash_drift(tmp_path):
             prior_state_path=str(prior_path),
             audit_path=str(audit_path),
         )
+
+
+def test_conductor_migrates_legacy_capitulation_prior_state_into_canonical_topology(tmp_path):
+    regime_path = tmp_path / "regimes.csv"
+    macro_path = tmp_path / "macro.csv"
+    prior_path = tmp_path / "prior_state.json"
+
+    dates = pd.bdate_range("2024-01-01", periods=320)
+    _build_v12_macro_frame(dates).to_csv(macro_path, index=False)
+    _build_regime_frame(dates).to_csv(regime_path, index=False)
+    prior_path.write_text(
+        json.dumps(
+            {
+                "version": "v11-prior-state",
+                "regimes": ["MID_CYCLE", "LATE_CYCLE", "BUST", "CAPITULATION", "RECOVERY"],
+                "counts": {
+                    "MID_CYCLE": 10.0,
+                    "LATE_CYCLE": 9.0,
+                    "BUST": 8.0,
+                    "CAPITULATION": 2.0,
+                    "RECOVERY": 5.0,
+                },
+                "transition_counts": {},
+                "last_posterior": {"CAPITULATION": 0.25, "RECOVERY": 0.15, "BUST": 0.60},
+                "execution_state": {"stable_regime": "CAPITULATION"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    conductor = V11Conductor(
+        macro_data_path=str(macro_path),
+        regime_data_path=str(regime_path),
+        prior_state_path=str(prior_path),
+    )
+
+    assert conductor.regimes == ["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"]
+    assert conductor.prior_book.regimes == ["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"]
+    assert "CAPITULATION" not in conductor.prior_book.counts
+    assert conductor.prior_book.execution_state["stable_regime"] == "RECOVERY"

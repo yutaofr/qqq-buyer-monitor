@@ -1,16 +1,23 @@
 """Stateful regime stabilizer for v11 probabilistic output."""
 from __future__ import annotations
 
+from src.regime_topology import ACTIVE_REGIME_ORDER, canonicalize_regime_name, merge_regime_weights
+
 
 class RegimeStabilizer:
     """Resist noisy one-day regime flips under high entropy."""
 
     def __init__(self, *, initial_regime: str | None = None, evidence: float = 0.0):
-        self.current_regime = initial_regime
+        self.current_regime = canonicalize_regime_name(initial_regime)
         self.evidence = float(evidence)
 
     def update(self, *, posteriors: dict[str, float], entropy: float) -> dict[str, object]:
-        normalized = self._normalize(posteriors)
+        normalized = merge_regime_weights(
+            posteriors,
+            regimes=ACTIVE_REGIME_ORDER,
+            include_zeros=False,
+            normalize=True,
+        )
         raw_regime = max(normalized, key=normalized.get) if normalized else (self.current_regime or "MID_CYCLE")
 
         if self.current_regime is None:

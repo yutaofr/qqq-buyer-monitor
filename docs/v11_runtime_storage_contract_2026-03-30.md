@@ -4,6 +4,11 @@
 > 适用入口: `python -m src.main --engine v11`
 > 相关代码: `src/main.py`, `src/store/cloud_manager.py`, `src/engine/v11/conductor.py`
 
+> 2026-04-01 补充说明:
+> 当前 active runtime topology 已收敛为 4-state: `MID_CYCLE / LATE_CYCLE / BUST / RECOVERY`。
+> `CAPITULATION` 不再是活跃 production state，只作为 legacy alias 在读取旧 `v11_prior_state.json` 或旧信号曲面时被折叠进 `RECOVERY`。
+> 下文中若出现 `CAPITULATION`，属于 2026-03-30 之前的历史运行截面说明，不代表当前 active contract。
+
 ## 1. 直接结论
 
 ### Q1. 为什么今天会显示 `MID_CYCLE 100%`，是不是先验库坏了？
@@ -246,5 +251,5 @@ python -m src.main --engine v11 --notify-discord --export-web
 ## 7. 需要持续关注的风险
 
 1. `MID_CYCLE 100%` 这类单点塌缩说明当前 classifier 对近端样本的区分过于自信。
-2. `CAPITULATION` 当前几乎没有有效先验质量，仍然是稀疏状态。
+2. 任何 legacy `CAPITULATION` payload 都必须在载入时折叠进 `RECOVERY`，active runtime state 不允许再保留 5-state 拓扑。
 3. 任何 synthetic baseline 都不得进入生产或审计主路径。

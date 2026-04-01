@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from sklearn.naive_bayes import GaussianNB
 
+from src.regime_topology import canonicalize_regime_sequence, merge_regime_weights
 from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
 from src.engine.v11.core.entropy_controller import EntropyController
 from src.engine.v11.core.model_validation import validate_feature_contract, validate_gaussian_nb
@@ -59,8 +60,20 @@ class V11Conductor:
         self.macro_data_path = str(macro_data_path)
         self.regime_data_path = str(regime_data_path)
         self.snapshot_dir = Path(snapshot_dir)
-        self.base_betas = self.audit_data["base_betas"]
-        self.regime_sharpes = self.audit_data["regime_sharpes"]
+        canonical_audit_regimes = canonicalize_regime_sequence(
+            self.audit_data.get("base_betas", {}).keys(),
+            include_all=False,
+        )
+        self.base_betas = merge_regime_weights(
+            self.audit_data["base_betas"],
+            regimes=canonical_audit_regimes,
+            include_zeros=True,
+        )
+        self.regime_sharpes = merge_regime_weights(
+            self.audit_data["regime_sharpes"],
+            regimes=canonical_audit_regimes,
+            include_zeros=True,
+        )
         self.gaussian_nb_var_smoothing = float(
             self.audit_data.get("model_hyperparameters", {}).get("gaussian_nb_var_smoothing", 1e-2)
         )
