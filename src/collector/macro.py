@@ -19,15 +19,19 @@ FRED_CSV_URL = (
     "&fq=Daily&fam=avg&transformation=lin"
 )
 
-def fetch_fred_api(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
+def fetch_fred_api(series_id: str, timeout: int = 15, vintage: bool = False) -> pd.DataFrame | None:
     """Fetch FRED data using the official API (JSON format)."""
     api_key = os.getenv("FRED_API_KEY", "").strip()
     if not api_key or api_key == "your_fred_api_key_here":
         return None
 
     url = f"https://api.stlouisfed.org/fred/series/observations?series_id={series_id}&api_key={api_key}&file_type=json"
+    if vintage:
+        # ALFRED mode: fetch all vintages to extract initial releases
+        url += "&realtime_start=1776-07-04&realtime_end=9999-12-31"
+
     try:
-        logger.debug("Fetching FRED %s via API...", series_id)
+        logger.debug("Fetching FRED %s via API (vintage=%s)...", series_id, vintage)
         response = requests.get(url, timeout=timeout)
         response.raise_for_status()
         data = response.json()
@@ -37,22 +41,35 @@ def fetch_fred_api(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
             return None
 
         df = pd.DataFrame(observations)
-        df = df.rename(columns={"date": "observation_date", "value": series_id})
-        # Ensure numeric conversion
-        df[series_id] = pd.to_numeric(df[series_id], errors='coerce')
-        return df[["observation_date", series_id]]
+        if vintage:
+            # For ALFRED, we want the FIRST release for each observation date
+            # Sort by date and then by realtime_start (publication date)
+            df = df.sort_values(["date", "realtime_start"])
+            # Keep only the first release for each date
+            df = df.groupby("date").first().reset_index()
+            df = df.rename(columns={"date": "observation_date", "realtime_start": "published_date", "value": series_id})
+            df[series_id] = pd.to_numeric(df[series_id], errors='coerce')
+            return df[["observation_date", "published_date", series_id]]
+        else:
+            df = df.rename(columns={"date": "observation_date", "value": series_id})
+            # Ensure numeric conversion
+            df[series_id] = pd.to_numeric(df[series_id], errors='coerce')
+            return df[["observation_date", series_id]]
     except Exception as exc:
         logger.warning("FRED API fetch failed for %s: %s", series_id, exc)
         return None
 
-def fetch_fred_data(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
+def fetch_fred_data(series_id: str, timeout: int = 15, vintage: bool = False) -> pd.DataFrame | None:
     """Unified FRED fetcher: API first, then CSV fallback."""
     # 1. API
-    df = fetch_fred_api(series_id, timeout)
+    df = fetch_fred_api(series_id, timeout, vintage=vintage)
     if df is not None and not df.empty:
         return df
 
     # 2. CSV Fallback
+    if vintage:
+        logger.warning("ALFRED vintage mode requested but API failed; CSV fallback cannot provide PIT-safe data.")
+
     logger.info("Official FRED API failed or no key; falling back to CSV scraping for %s...", series_id)
     return fetch_fred_csv(series_id, timeout)
 
@@ -60,7 +77,10 @@ def fetch_fred_data(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
 def normalize_fred_history_frame(df: pd.DataFrame | None, series_id: str) -> pd.DataFrame:
     """Normalize a historical FRED series frame to the canonical research shape."""
     if df is None or df.empty:
-        return pd.DataFrame(columns=["observation_date", series_id])
+        cols = ["observation_date", series_id]
+        if df is not None and "published_date" in df.columns:
+            cols.insert(1, "published_date")
+        return pd.DataFrame(columns=cols)
 
     frame = df.copy()
     if "observation_date" not in frame.columns:
@@ -74,22 +94,33 @@ def normalize_fred_history_frame(df: pd.DataFrame | None, series_id: str) -> pd.
     if series_id not in frame.columns:
         raise ValueError(f"FRED frame for {series_id} is missing {series_id}")
 
-    frame = frame.loc[:, ["observation_date", series_id]].copy()
+    target_cols = ["observation_date", series_id]
+    if "published_date" in frame.columns:
+        target_cols.insert(1, "published_date")
+
+    frame = frame.loc[:, target_cols].copy()
     frame["observation_date"] = pd.to_datetime(frame["observation_date"], errors="coerce")
+    if "published_date" in frame.columns:
+        frame["published_date"] = pd.to_datetime(frame["published_date"], errors="coerce")
+    
     frame[series_id] = pd.to_numeric(frame[series_id], errors="coerce")
     frame = frame.dropna(subset=["observation_date"]).sort_values("observation_date")
-    frame = frame.drop_duplicates(subset=["observation_date"], keep="last").reset_index(drop=True)
-    return frame
+    
+    # For non-vintage data, we drop duplicates. For vintage data, we already did it in fetch_fred_api.
+    if "published_date" not in frame.columns:
+        frame = frame.drop_duplicates(subset=["observation_date"], keep="last")
+        
+    return frame.reset_index(drop=True)
 
 
-def fetch_historical_fred_series(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
+def fetch_historical_fred_series(series_id: str, timeout: int = 15, vintage: bool = False) -> pd.DataFrame | None:
     """
     Fetch a full historical FRED series for research use.
 
     This path is intentionally limited to FRED transport only. It does not call
     the runtime heuristic fallbacks used by live signal collection.
     """
-    raw = fetch_fred_data(series_id, timeout)
+    raw = fetch_fred_data(series_id, timeout, vintage=vintage)
     normalized = normalize_fred_history_frame(raw, series_id)
     return normalized if not normalized.empty else None
 

@@ -79,6 +79,33 @@ def calculate_volume_poc(df: pd.DataFrame, bins: int = 50) -> float:
     # Return midpoint of the bin
     return max_bin.mid
 
+def calculate_decay(age_days: int, nominal_period_days: int, half_life_days: int = 7) -> float:
+    """
+    Calculate an exponential decay factor for stale data.
+    Returns 1.0 if age <= nominal_period, otherwise decays based on excess age.
+    """
+    if age_days <= nominal_period_days:
+        return 1.0
+    excess_age = age_days - nominal_period_days
+    # exponential decay: 2^(-excess / half_life)
+    return float(np.exp(-excess_age * np.log(2) / half_life_days))
+
+
+def calculate_inertial_recovery(previous_decay: float, current_raw_decay: float, recovery_days: int = 5) -> float:
+    """
+    Apply a low-pass filter to the decay factor to prevent upward jumps.
+    Useful for smooth resumption after data stale periods.
+    """
+    if current_raw_decay <= previous_decay:
+        # If it's still decaying or same, no inertia needed
+        return current_raw_decay
+    
+    # Simple EMA-like recovery: new = old + (target - old) / N
+    # This prevents the factor from jumping from 0.1 to 1.0 instantly.
+    alpha = 1.0 / recovery_days
+    return previous_decay + alpha * (current_raw_decay - previous_decay)
+
+
 def calculate_sma_deviation_zscore(price_series: pd.Series, window: int = 200, rolling_window: int = 500) -> float:
     """
     Calculate the rolling Z-score of the deviation from SMA.
