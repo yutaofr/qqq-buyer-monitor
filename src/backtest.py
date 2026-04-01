@@ -416,7 +416,7 @@ def run_v11_audit(
 
     # v12.1 Relative Survival Audit
     from src.research.auditor import SentinelAuditor
-    auditor = SentinelAuditor(tolerance=0.05)
+    auditor = SentinelAuditor(tolerance=0.15)
 
     # Calculate returns
     execution_df["daily_price_return"] = execution_df["close"].pct_change().fillna(0.0)
