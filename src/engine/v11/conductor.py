@@ -61,6 +61,12 @@ class V11Conductor:
         self.snapshot_dir = Path(snapshot_dir)
         self.base_betas = self.audit_data["base_betas"]
         self.regime_sharpes = self.audit_data["regime_sharpes"]
+        self.gaussian_nb_var_smoothing = float(
+            self.audit_data.get("model_hyperparameters", {}).get("gaussian_nb_var_smoothing", 1e-2)
+        )
+        self.posterior_mode = str(
+            self.audit_data.get("model_hyperparameters", {}).get("posterior_mode", "runtime_reweight")
+        )
         self.regimes = list(self.base_betas.keys())
         self._validate_canonical_inputs()
         self.regime_history = pd.read_csv(
@@ -162,7 +168,7 @@ class V11Conductor:
 
         # Fit GNB (Architect A/B/C feature suite)
         # AC-0: Add variance smoothing to prevent probability collapse on low data (v11.19)
-        gnb = GaussianNB(var_smoothing=1e-2)
+        gnb = GaussianNB(var_smoothing=self.gaussian_nb_var_smoothing)
         feature_cols = [c for c in df.columns if c != "regime"]
         gnb.fit(df[feature_cols], df["regime"])
         summary = self._validate_model(gnb, feature_count=len(feature_cols))
@@ -244,10 +250,23 @@ class V11Conductor:
         logger.info("Model Inference: Initiating GaussianNB probabilities with current priors...")
         # AC-3: Numerical Resilience (v11.21)
         try:
+            class_priors = list(getattr(self.gnb, "class_prior_", []))
+            if len(class_priors) != len(self.gnb.classes_):
+                class_priors = [1.0 / len(self.gnb.classes_)] * len(self.gnb.classes_)
+            training_priors = {
+                str(label): float(probability)
+                for label, probability in zip(self.gnb.classes_, class_priors, strict=True)
+            }
+            if self.posterior_mode == "classifier_only":
+                active_priors = training_priors
+            elif self.posterior_mode == "runtime_reweight":
+                active_priors = runtime_priors
+            else:
+                raise ValueError(f"Unknown posterior_mode: {self.posterior_mode}")
             posteriors = self.inference_engine.infer_gaussian_nb_posterior(
                 classifier=self.gnb,
                 evidence_frame=latest_vector,
-                runtime_priors=runtime_priors,
+                runtime_priors=active_priors,
                 feature_weights=feature_weights,
             )
             if any(np.isnan(list(posteriors.values()))):

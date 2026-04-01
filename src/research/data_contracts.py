@@ -279,3 +279,54 @@ def summarize_signal_expectation_coverage(df: pd.DataFrame) -> dict[str, object]
         "last_date": frame["date"].max() if not frame.empty else None,
         "coverage": coverage,
     }
+
+
+def _normalize_regime_series(regimes: pd.DataFrame | pd.Series) -> pd.Series:
+    if isinstance(regimes, pd.Series):
+        series = regimes
+    elif isinstance(regimes, pd.DataFrame) and "regime" in regimes.columns:
+        series = regimes["regime"]
+    else:
+        raise ValueError("Regime support validation requires a Series or a DataFrame with a `regime` column")
+    return series.dropna().map(str)
+
+
+def summarize_regime_state_support(
+    regimes: pd.DataFrame | pd.Series,
+    *,
+    audit_regimes: Sequence[str],
+) -> dict[str, list[str]]:
+    """Compare the configured audit regimes with the regimes present in the label set."""
+    label_regimes = sorted(set(_normalize_regime_series(regimes)))
+    configured_regimes = sorted({str(regime) for regime in audit_regimes})
+    supported_regimes = [regime for regime in configured_regimes if regime in label_regimes]
+    unsupported_audit_regimes = [regime for regime in configured_regimes if regime not in label_regimes]
+    extra_label_regimes = [regime for regime in label_regimes if regime not in configured_regimes]
+    return {
+        "audit_regimes": configured_regimes,
+        "label_regimes": label_regimes,
+        "supported_regimes": supported_regimes,
+        "unsupported_audit_regimes": unsupported_audit_regimes,
+        "extra_label_regimes": extra_label_regimes,
+    }
+
+
+def validate_regime_state_support(
+    regimes: pd.DataFrame | pd.Series,
+    *,
+    audit_regimes: Sequence[str],
+    allow_missing: Sequence[str] | None = None,
+) -> None:
+    """Reject audit state contracts that reference regimes absent from the label dataset."""
+    report = summarize_regime_state_support(regimes, audit_regimes=audit_regimes)
+    allowed = {str(regime) for regime in (allow_missing or ())}
+    unsupported = [
+        regime
+        for regime in report["unsupported_audit_regimes"]
+        if regime not in allowed
+    ]
+    if unsupported:
+        raise ValueError(
+            "Audit regime contract contains states absent from the label dataset: "
+            + ", ".join(unsupported)
+        )

@@ -122,3 +122,34 @@ def test_move_is_orthogonalized_against_spread():
 
     assert features["move_21d"].corr(features["spread_21d"]) < 0.95
     assert not features["move_21d"].equals(features["spread_21d"])
+
+
+def test_seeder_accepts_window_and_clip_overrides(sample_macro_df):
+    baseline = ProbabilitySeeder()
+    variant = ProbabilitySeeder(
+        config_overrides={
+            "copper_gold_roc_126d": {"diff": (21,), "min_periods": 21},
+            "usdjpy_roc_126d": {"diff": (21,), "min_periods": 21},
+            "core_capex_momentum": {"ewma_span": 3},
+        },
+        clip_range=(-4.0, 4.0),
+    )
+
+    baseline_features = baseline.generate_features(sample_macro_df)
+    variant_features = variant.generate_features(sample_macro_df)
+
+    assert variant_features.abs().max().max() <= 4.0
+    assert not baseline_features["copper_gold_roc_126d"].equals(variant_features["copper_gold_roc_126d"])
+    assert baseline.contract_hash() != variant.contract_hash()
+
+
+def test_seeder_can_disable_move_orthogonalization(sample_macro_df):
+    seeder = ProbabilitySeeder(orthogonalization_mode="none")
+    features = seeder.generate_features(sample_macro_df)
+    diagnostics = seeder.latest_diagnostics()
+
+    pd.testing.assert_series_equal(
+        features["move_21d"],
+        diagnostics["move_21d_raw_z"],
+        check_names=False,
+    )
