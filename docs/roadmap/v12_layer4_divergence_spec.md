@@ -1,62 +1,59 @@
-# v12.0 Layer 4: 双轨制微观量价离群检测规格书 (Sentinel)
+# v12.0 Layer 4: 信息论量价离群检测规格书 (Sentinel)
 
-> **状态**: PROPOSED (Grand Unification Revision)
-> **版本**: v12.0-L4-SENTINEL-DUAL-TRACK
+> **状态**: PROPOSED (Information-Theoretic Unification)
+> **版本**: v12.0-L4-SENTINEL-INFORMATION-THEORY
 > **架构层级**: Layer 4 (Micro-Structure Overlay)
-> **数学核心**: Tikhonov 正则化马氏距离 ($D_M^2$) 与 卡方概率 ($P_{abnormal}$)
+> **数学核心**: Tikhonov 正则化马氏距离与 Shannon 惊奇度 (Surprisal) 同构
 
 ---
 
-## 1. 核心准则：双轨制与绝对平稳性
+## 1. 核心准则：量纲一致性与信息论大一统 (Dimensional Harmony)
 
-本模块旨在将 QQQ 的微观量价异动（背离、高潮、衰竭）以**无超参 (Parameter-Free)**、**连续可导**的方式，分别嵌入系统的两大核心决策主线：增量资金的 Kelly 入场与存量资金的 Beta 风险管理。
+量化工程的最高美学是**量纲一致性**。本模块将微观量价数据严格映射为**信息惊奇度 (Surprisal, 单位 Nats)**，使其在数学物理上与宏观 Shannon 熵 ($H$) 完全同构，从而实现无缝融合。
 
-### 1.1 微观结构平稳性特征提取
+### 1.1 微观惊奇度提取 (Micro Surprisal Extraction)
 - **目标变量**: $X = [r_t, v_t]^T$ 
-  - $r_t = \ln(P_t / P_{t-1})$ （对数收益率）
-  - $v_t = \ln(V_t / V_{MA21})$ （对数超额成交量）
-- **平稳化窗口**: 严格使用 **252 日 (单交易年) 滚动窗口**计算历史均值向量 $\mu$ 和协方差矩阵 $\Sigma_{252}$。
-- **正则化马氏距离 ($D_M^2$)**: 
-  $$\Sigma'_{252} = \Sigma_{252} + 10^{-6} I$$
+  - $r_t = \ln(P_t / P_{t-1})$
+  - $v_t = \ln(V_t / V_{MA21})$
+- **平稳化协方差**: 使用 252 日滚动窗口计算 $\Sigma_{252}$。
+- **正则化与马氏距离**: $\Sigma'_{252} = \Sigma_{252} + 10^{-6} I$
   $$D_M^2 = (X - \mu)^T (\Sigma'_{252})^{-1} (X - \mu)$$
-- **离群概率 ($P_{abnormal}$)**: 
-  基于自由度为 2 的卡方分布：$P_{abnormal} = CDF_{\chi^2_2}(D_M^2)$
+- **瞬时惊奇度 (Surprisal)**: 
+  根据二元高斯分布性质，当前量价异动的信息含量为：
+  $$S_{micro} = \frac{1}{2} D_M^2 \quad (\text{单位: Nats})$$
 
 ---
 
-## 2. 主线一：增量资金入场节奏 (Kelly Pacing)
+## 2. 双轨制融合方程 (The Dual-Track Unification)
 
-> **原则**：增量资金由 Kelly 判据主导，寻找盈亏比最优解。马氏距离 $D_M^2$ 物理上等价于“当前微观局部方差”。
+### 2.1 主线一：增量入场 (Kelly Readiness)
+将微观瞬时惊奇度直接并入 Kelly 公式的系统不确定性分母中。
+$$Kelly\_Readiness = \max\left(0, \frac{\text{Macro\_Expected\_Edge}}{H_{macro} + S_{micro}}\right)$$
+- **物理机制**: 任何破坏微观结构稳态的异动（如天量暴跌、无量空涨），都会产生巨大的 $S_{micro}$。总不确定性飙升，Kelly 分数自动坍缩，停止新增资金暴露。**完全无需人工设定安全阈值。**
 
-### 2.1 广义 Kelly 就绪度方程
-$$Kelly\_Readiness = \max\left(0, \frac{\mu_{macro} + \Delta \mu_{micro}}{\sigma_{macro}^2 + D_M^2}\right)$$
-
-- **分子 (期望收益)**: 宏观预期夏普率加上微观底背离补偿 $\Delta \mu_{micro}$（当 $r_t < 0, v_t < 0$ 且触及超卖时激活）。
-- **分母 (系统方差)**: 宏观 Shannon 熵 ($\sigma_{macro}^2$) 加上微观马氏距离 ($D_M^2$)。
-- **工程表现**: 当发生“放量暴跌（接飞刀）”或“高位异动放量”时，$D_M^2$ 瞬间飙升。分母趋于无穷大，Kelly 就绪度自动坍缩至 0，严禁新增资金入场。**彻底消灭人为的 `if vol > x` 规则。**
-
----
-
-## 3. 主线二：存量资金 Beta 管理 (Risk Management)
-
-> **原则**：存量资金由贝叶斯推断与信息熵主导。微观量价离群概率 $P_{abnormal}$ 作为连续的“软约束乘数”实施动态风控。
-
-### 3.1 战术惩罚乘数 (Tactical Penalty, $M_{tactical}$)
-摒弃二元对立的“破位减仓”硬规则。当且仅当系统处于**“量价衰竭象限 (Exhaustion)”**（即 $r_t > 0$ 且 $v_t < 0$）时，激活战术乘数：
-$$M_{tactical} = 1.0 - P_{abnormal}$$
-
-### 3.2 最终 Beta 映射
-$$Final\_Target\_Beta = \min\left(Bayesian\_Beta, Base\_Beta \times M_{tactical}\right)$$
-
-- **工程表现**: 如果 QQQ 在缩量（$v_t < 0$）的情况下强行拉升（$r_t > 0$）创出新高，且这种量价组合极为罕见（如 $P_{abnormal} = 0.95$），则 $M_{tactical} = 0.05$。存量资金的目标 Beta 被极其平滑地压制，拒绝跟随“非理性繁荣”。
+### 2.2 主线二：存量防守 (Beta Penalty Multiplier)
+由于 $S_{micro}$ 的理论期望值严格为 $E[S_{micro}] = 1.0 \text{ Nat}$，我们构建无超参的衰减惩罚：
+$$M_{tactical} = \min\left(1.0, \exp(1.0 - S_{micro})\right)$$
+- **物理机制**: 
+  - 当市场量价健康 ($S_{micro} \le 1.0$)，$M_{tactical} = 1.0$，决策 100% 由宏观贝叶斯引擎主导。
+  - 当市场发生罕见异动（如 $S_{micro} = 4.0$），$M_{tactical} = e^{-3} \approx 0.05$。目标 Beta 被极其平滑且剧烈地削减。
+$$Final\_Target\_Beta = Bayesian\_Beta \times M_{tactical}$$
 
 ---
 
-## 4. 验收与防过拟合 (Validation)
+## 3. 工程确定性与防过拟合体系 (Validation Protocols)
 
-1.  **无超参证明**: $M_{tactical}$ 和 $D_M^2$ 均直接由统计分布得出，严禁在回测中加入任何缩放系数进行曲线拟合。
-2.  **白噪声证伪测试**: 将输入 $V_t$ 替换为高斯白噪声。如果系统的 **信息比率 (IR)** 未显著下降，则该模块无效，必须废弃。
-3.  **确定性测试**: 注入极低波动率的僵尸数据，确保 $\Sigma'_{252}$ 求逆不引发 `LinAlgError`。
+本模块的上线合并（Merge）必须通过以下苛刻的数学与工程测试：
+
+### 3.1 零参数检查 (Zero-Hyperparameter Audit)
+代码中严禁出现任何未经第一性原理推导的常数（$\epsilon=10^{-6}$ 的计算机精度扰动除外）。
+
+### 3.2 白噪声反向证伪 (White Noise Falsification)
+**测试方法**: 将输入历史数据中的成交量 $V_t$ 替换为均值和方差相同的**高斯白噪声**序列，重新运行全量 16 年回测。
+**通过标准**: 白噪声数据注入后的系统 **信息比率 (Information Ratio)** 必须**显著且统计上稳健地**低于真实量价数据。如果白噪声表现更好，说明模型在拟合噪音，必须永久废弃该模块。
+
+### 3.3 奇异矩阵鲁棒测试 (Singular Matrix Survival)
+注入连续 20 个交易日 $r_t=0, v_t=0$ 的极端死水数据，验证系统能够依靠 Tikhonov 正则化平稳度过，绝不抛出任何 `LinAlgError`。
 
 ---
-© 2026 QQQ Entropy 双轨制架构组.
+© 2026 QQQ Entropy 统计与架构联合组.
