@@ -20,12 +20,14 @@ def sample_macro_df():
     df["credit_spread_bps"] = 300.0 + np.linspace(0.0, 180.0, len(dates)) + rng.normal(0.0, 4.0, len(dates))
     df["net_liquidity_usd_bn"] = 4000.0 + np.linspace(0.0, 250.0, len(dates))
     df["erp_ttm_pct"] = 0.035 + np.sin(np.linspace(0.0, 12.0, len(dates))) * 0.004
+    df["qqq_close"] = 100.0 + np.cumsum(rng.normal(0.05, 0.5, len(dates)))
+    df["qqq_volume"] = 1000.0 + rng.normal(0.0, 100.0, len(dates))
     df.index.name = "date"
     return df
 
 
 def test_seeder_factor_generation(sample_macro_df):
-    """v12 seeder must emit the locked 10-factor orthogonal observation vector."""
+    """v12 seeder must emit the locked 12-factor orthogonal observation vector."""
     seeder = ProbabilitySeeder()
     features_df = seeder.generate_features(sample_macro_df)
 
@@ -40,6 +42,8 @@ def test_seeder_factor_generation(sample_macro_df):
         "liquidity_252d",
         "erp_absolute",
         "spread_absolute",
+        "price_momentum_21d",
+        "vol_deviation_21d",
     ]
 
     assert list(features_df.columns) == expected_cols
@@ -113,6 +117,8 @@ def test_move_is_orthogonalized_against_spread():
             "credit_spread_bps": 350.0 + spread.values * 20.0,
             "net_liquidity_usd_bn": 4000.0 + np.linspace(0.0, 100.0, len(dates)),
             "erp_ttm_pct": 0.035 + np.linspace(0.0, 0.002, len(dates)),
+            "qqq_close": 100.0 + np.linspace(0.0, 10.0, len(dates)),
+            "qqq_volume": [1000.0] * len(dates),
         },
         index=dates,
     )

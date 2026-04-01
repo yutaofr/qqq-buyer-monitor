@@ -20,6 +20,8 @@ def _build_v12_macro_frame(dates: pd.DatetimeIndex) -> pd.DataFrame:
             "core_capex_mm": monthly_block,
             "usdjpy": 118.0 + np.linspace(0.0, 24.0, len(dates)),
             "erp_ttm_pct": 0.034 + np.sin(np.linspace(0.0, 12.0, len(dates))) * 0.003,
+            "qqq_close": np.linspace(100.0, 130.0, len(dates)),
+            "qqq_volume": [1000.0] * len(dates),
             "source_credit_spread": ["synthetic_dna"] * len(dates),
             "source_real_yield": ["synthetic_dna"] * len(dates),
             "source_net_liquidity": ["synthetic_dna"] * len(dates),
@@ -96,8 +98,8 @@ def test_run_v11_audit_refits_model_for_each_evaluation_day(tmp_path, monkeypatc
         def __init__(self, *args, **kwargs):
             type(self).init_var_smoothing.append(float(kwargs.get("var_smoothing", 0.0)))
             self.classes_ = ["BUST", "LATE_CYCLE", "MID_CYCLE"]
-            self.theta_ = np.zeros((3, 10))
-            self.var_ = np.ones((3, 10))
+            self.theta_ = np.zeros((3, 12))
+            self.var_ = np.ones((3, 12))
             self.class_prior_ = np.full(3, 1.0 / 3.0)
 
         def fit(self, X, y):
@@ -117,7 +119,7 @@ def test_run_v11_audit_refits_model_for_each_evaluation_day(tmp_path, monkeypatc
     monkeypatch.setattr(
         backtest_module,
         "_load_price_history",
-        lambda _: pd.DataFrame({"Close": np.linspace(100.0, 130.0, len(dates))}, index=dates),
+        lambda _: pd.DataFrame({"Close": np.linspace(100.0, 130.0, len(dates)), "Volume": [1000.0] * len(dates)}, index=dates),
     )
     monkeypatch.setattr("src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None)
     monkeypatch.setattr("src.output.backtest_plots.save_v11_probabilistic_audit_figure", lambda *args, **kwargs: None)
@@ -163,8 +165,8 @@ def test_run_v11_audit_accepts_audit_overrides(tmp_path, monkeypatch):
     class FakeGaussianNB:
         def __init__(self, *args, **kwargs):
             self.classes_ = ["BUST", "LATE_CYCLE", "MID_CYCLE"]
-            self.theta_ = np.zeros((3, 10))
-            self.var_ = np.ones((3, 10))
+            self.theta_ = np.zeros((3, 12))
+            self.var_ = np.ones((3, 12))
             self.class_prior_ = np.full(3, 1.0 / 3.0)
 
         def fit(self, X, y):
@@ -183,7 +185,7 @@ def test_run_v11_audit_accepts_audit_overrides(tmp_path, monkeypatch):
     monkeypatch.setattr(
         backtest_module,
         "_load_price_history",
-        lambda _: pd.DataFrame({"Close": np.linspace(100.0, 130.0, len(dates))}, index=dates),
+        lambda _: pd.DataFrame({"Close": np.linspace(100.0, 130.0, len(dates)), "Volume": [1000.0] * len(dates)}, index=dates),
     )
     monkeypatch.setattr("src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None)
     monkeypatch.setattr("src.output.backtest_plots.save_v11_probabilistic_audit_figure", lambda *args, **kwargs: None)
@@ -229,8 +231,8 @@ def test_run_v11_audit_can_use_classifier_posteriors_directly(tmp_path, monkeypa
     class FakeGaussianNB:
         def __init__(self, *args, **kwargs):
             self.classes_ = ["BUST", "LATE_CYCLE", "MID_CYCLE"]
-            self.theta_ = np.zeros((3, 10))
-            self.var_ = np.ones((3, 10))
+            self.theta_ = np.zeros((3, 12))
+            self.var_ = np.ones((3, 12))
             self.class_prior_ = np.array([0.2, 0.3, 0.5])
 
         def fit(self, X, y):
@@ -249,7 +251,7 @@ def test_run_v11_audit_can_use_classifier_posteriors_directly(tmp_path, monkeypa
     monkeypatch.setattr(
         backtest_module,
         "_load_price_history",
-        lambda _: pd.DataFrame({"Close": np.linspace(100.0, 130.0, len(dates))}, index=dates),
+        lambda _: pd.DataFrame({"Close": np.linspace(100.0, 130.0, len(dates)), "Volume": [1000.0] * len(dates)}, index=dates),
     )
     monkeypatch.setattr("src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None)
     monkeypatch.setattr("src.output.backtest_plots.save_v11_probabilistic_audit_figure", lambda *args, **kwargs: None)

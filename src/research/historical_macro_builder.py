@@ -1,6 +1,9 @@
 """Canonical v12 historical macro dataset builder."""
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -11,6 +14,8 @@ from src.research.data_contracts import (
     summarize_historical_macro_coverage,
     validate_historical_macro_frame,
 )
+
+logger = logging.getLogger(__name__)
 
 BUILD_VERSION = "v12.0-orthogonal-factor-r1"
 _LIQUIDITY_SERIES: tuple[str, ...] = ("WALCL", "WDTGAL", "RRPONTSYD")
@@ -209,23 +214,35 @@ def build_historical_macro_dataset(
 
     # v12.2: Add Hybrid-PIT Real-time Features (T+0 price context)
     # We fetch QQQ history from price collector to ensure T+0 sync
-    from src.collector.price import fetch_price_data
-    price_data = fetch_price_data()
-    price_hist = price_data["history"].copy()
+    try:
+        from src.collector.price import fetch_price_data
+        price_data = fetch_price_data()
+        price_hist = price_data["history"].copy()
 
-    # Force tz-naive and normalized index for alignment
-    if price_hist.index.tz is not None:
-        price_hist.index = price_hist.index.tz_localize(None)
-    price_hist.index = price_hist.index.normalize()
+        # Force tz-naive and normalized index for alignment
+        if price_hist.index.tz is not None:
+            price_hist.index = price_hist.index.tz_localize(None)
+        price_hist.index = price_hist.index.normalize()
 
-    daily["qqq_close"] = _asof_align_from_date_column(
-        price_hist.reset_index().rename(columns={"Date": "effective_date"}),
-        "effective_date", "Close", calendar
-    )
-    daily["qqq_volume"] = _asof_align_from_date_column(
-        price_hist.reset_index().rename(columns={"Date": "effective_date"}),
-        "effective_date", "Volume", calendar
-    )
+        # Merge price/volume
+        price_aligned = price_hist.reindex(calendar, method="ffill")
+        daily["qqq_close"] = price_aligned["Close"]
+        daily["qqq_volume"] = price_aligned["Volume"]
+    except Exception as exc:
+        logger.warning("Failed to integrate QQQ price/volume in macro builder: %s", exc)
+        daily["qqq_close"] = np.nan
+        daily["qqq_volume"] = np.nan
+
+    # v12.2: Preserve existing data if current fetch failed (e.g. Shiller site down)
+    if base_dataset_path is not None and Path(base_dataset_path).exists():
+        try:
+            existing = pd.read_csv(base_dataset_path, parse_dates=["observation_date"]).set_index("observation_date")
+            existing.index = existing.index.normalize()
+            # Use combine_first to fill NaNs in 'daily' with values from 'existing'
+            daily = daily.combine_first(existing)
+            logger.info("Preserved existing macro data for missing columns via combine_first")
+        except Exception as exc:
+            logger.warning("Could not merge with existing dataset: %s", exc)
 
     daily["credit_acceleration_pct_10d"] = daily["credit_spread_bps"].pct_change(periods=10).mul(100.0)
     daily["liquidity_roc_pct_4w"] = daily["net_liquidity_usd_bn"].pct_change(periods=20).mul(100.0)
