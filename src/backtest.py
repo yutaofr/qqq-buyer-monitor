@@ -15,6 +15,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import yfinance as yf
 
@@ -214,11 +215,16 @@ def run_v11_audit(
         return "DEPLOY_BASE"
 
     beta_mapper = InertialBetaMapper(initial_beta=initial_beta)
+    beta_mapper_base = InertialBetaMapper(initial_beta=initial_beta) # v12.1 Base case
     behavior_guard = BehavioralGuard(initial_bucket=initial_bucket)
     regime_stabilizer = RegimeStabilizer(initial_regime=last_train_regime)
     deployment_policy = ProbabilisticDeploymentPolicy(
         initial_state=_initial_deployment_state(last_train_regime)
     )
+    
+    # v12.1 Sentinel Engine
+    from src.engine.v11.sentinel import SentinelEngine
+    sentinel = SentinelEngine()
 
     with tempfile.TemporaryDirectory(prefix="v12_audit_") as tmp_dir:
         prior_book = PriorKnowledgeBase(
@@ -280,34 +286,54 @@ def run_v11_audit(
             norm_h = entropy_ctrl.calculate_normalized_entropy(posteriors)
             regime_decision = regime_stabilizer.update(posteriors=posteriors, entropy=norm_h)
 
-            raw_beta = sum(
+            raw_beta_base = sum(
                 posteriors.get(regime, 0.0) * base_betas.get(regime, 1.0)
                 for regime in ordered_regimes
             )
-            protected_beta = entropy_ctrl.apply_haircut(
-                raw_beta,
-                norm_h,
-                state_count=len(posteriors),
-            )
-            final_beta = beta_mapper.calculate_inertial_beta(protected_beta, norm_h)
+            
+            # v12.1 Sentinel
+            raw_beta_l4 = raw_beta_base
+            hist_up_to_now = price_df[price_df.index <= dt].sort_index()
+            if len(hist_up_to_now) >= 2:
+                close_s = hist_up_to_now["Close"]
+                vol_s = hist_up_to_now["Volume"]
+                r_t = float(np.log(close_s.iloc[-1] / close_s.iloc[-2]))
+                v_ma21 = vol_s.rolling(21).mean().iloc[-1]
+                v_t = float(np.log(vol_s.iloc[-1] / v_ma21)) if v_ma21 > 0 else 0.0
+                
+                sentinel_res = sentinel.update(
+                    r_t=r_t,
+                    v_t=v_t,
+                    p_macro=np.array([posteriors.get(r, 0.0) for r in ordered_regimes]),
+                    mu_macro=np.array([raw_beta_base]),
+                    stale_days=0
+                )
+                raw_beta_l4 = (raw_beta_base * sentinel_res["m_effective_edge"]) / sentinel_res["penalty"]
 
-            if final_beta > 1.0:
-                qld = (final_beta - 1.0) * 100_000.0
+            # Apply haircuts and inertia to both
+            protected_beta_l4 = entropy_ctrl.apply_haircut(raw_beta_l4, norm_h, state_count=len(posteriors))
+            protected_beta_base = entropy_ctrl.apply_haircut(raw_beta_base, norm_h, state_count=len(posteriors))
+            
+            final_beta_l4 = beta_mapper.calculate_inertial_beta(protected_beta_l4, norm_h)
+            final_beta_base = beta_mapper_base.calculate_inertial_beta(protected_beta_base, norm_h)
+
+            if final_beta_l4 > 1.0:
+                qld = (final_beta_l4 - 1.0) * 100_000.0
                 qqq = 100_000.0
                 cash = 0.0
             else:
                 qld = 0.0
-                qqq = 100_000.0 * final_beta
+                qqq = 100_000.0 * final_beta_l4
                 cash = 100_000.0 - qqq
             invested = qqq + qld
             sizing = PositionSizingResult(
-                target_beta=round(float(final_beta), 6),
-                raw_target_beta=round(float(raw_beta), 6),
+                target_beta=round(float(final_beta_l4), 6),
+                raw_target_beta=round(float(raw_beta_l4), 6),
                 entropy=round(float(norm_h), 6),
-                uncertainty_penalty=round(max(0.0, float(raw_beta) - float(final_beta)), 6),
+                uncertainty_penalty=round(max(0.0, float(raw_beta_l4) - float(final_beta_l4)), 6),
                 reference_capital=100_000.0,
                 current_nav=100_000.0,
-                risk_budget_dollars=round(100_000.0 * float(final_beta), 6),
+                risk_budget_dollars=round(100_000.0 * float(final_beta_l4), 6),
                 qqq_dollars=round(qqq, 6),
                 qld_notional_dollars=round(qld, 6),
                 cash_dollars=round(cash, 6),
@@ -348,8 +374,10 @@ def run_v11_audit(
             execution_rows.append(
                 {
                     "date": dt,
-                    "target_beta": final_beta,
-                    "raw_target_beta": raw_beta,
+                    "target_beta": final_beta_l4,
+                    "final_beta_base": final_beta_base,
+                    "raw_target_beta": raw_beta_l4,
+                    "raw_beta_base": raw_beta_base,
                     "entropy": norm_h,
                     "predicted_regime": predicted_regime,
                     "actual_regime": actual_regime,
@@ -382,6 +410,21 @@ def run_v11_audit(
     execution_df = pd.DataFrame(execution_rows).sort_values("date")
     full_audit_df = pd.merge(execution_df, probability_df, on=["date", "predicted_regime", "actual_regime"], how="left")
 
+    # v12.1 Relative Survival Audit
+    from src.research.auditor import SentinelAuditor
+    auditor = SentinelAuditor(tolerance=0.05)
+    
+    # Calculate returns
+    execution_df["daily_price_return"] = execution_df["close"].pct_change().fillna(0.0)
+    # L4 returns: using final_beta_l4 (target_beta) from PREVIOUS day to avoid look-ahead
+    execution_df["return_l4"] = execution_df["target_beta"].shift(1).fillna(initial_beta) * execution_df["daily_price_return"]
+    execution_df["return_base"] = execution_df["final_beta_base"].shift(1).fillna(initial_beta) * execution_df["daily_price_return"]
+    
+    survival_results = auditor.validate_relative_survival(
+        execution_df.set_index("date")["return_l4"],
+        execution_df.set_index("date")["return_base"]
+    )
+
     summary = {
         "compared_points": int(len(probability_df)),
         "top1_accuracy": float((probability_df["predicted_regime"] == probability_df["actual_regime"]).mean()),
@@ -394,10 +437,12 @@ def run_v11_audit(
         "experiment_config": experiment,
         "gaussian_nb_var_smoothing": float(experiment.get("var_smoothing", default_var_smoothing)),
         "posterior_mode": posterior_mode,
+        "sentinel_audit": survival_results # v12.1
     }
 
     print("\n--- v12 Unified Probabilistic Performance Audit ---")
     print(f"Accuracy: {summary['top1_accuracy']:.2%} | Brier: {summary['mean_brier']:.4f} | Entropy: {summary['mean_entropy']:.3f} | Lock: {summary['lock_incidence']:.1%}")
+    print(f"Sentinel Relative Survival: {'PASSED' if survival_results['all_passed'] else 'FAILED'} (Mean IR Diff: {survival_results['mean_diff']:.4f})")
 
     save_dir = Path(artifact_dir)
     save_dir.mkdir(parents=True, exist_ok=True)

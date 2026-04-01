@@ -14,6 +14,7 @@ from src.engine.v11.core.model_validation import validate_feature_contract, vali
 from src.engine.v11.core.position_sizer import PositionSizingResult
 from src.engine.v11.core.prior_knowledge import PriorKnowledgeBase
 from src.engine.v11.probability_seeder import ProbabilitySeeder
+from src.engine.v11.sentinel import SentinelEngine
 from src.engine.v11.signal.behavioral_guard import BehavioralGuard
 from src.engine.v11.signal.deployment_policy import ProbabilisticDeploymentPolicy
 from src.engine.v11.signal.inertial_beta_mapper import InertialBetaMapper
@@ -120,6 +121,16 @@ class V11Conductor:
         self.deployment_policy = ProbabilisticDeploymentPolicy(
             initial_state=str(execution_state.get("deployment_state", "DEPLOY_BASE") or "DEPLOY_BASE"),
             evidence=float(execution_state.get("deployment_evidence", 0.0) or 0.0),
+        )
+
+        # v12.1 Layer 4 Sentinel
+        sentinel_params = self.audit_data.get("model_hyperparameters", {}).get("sentinel", {})
+        self.sentinel = SentinelEngine(
+            alpha=float(sentinel_params.get("alpha_decay", 0.05)),
+            span_base=int(sentinel_params.get("span_base", 252)),
+            vol_floor=float(sentinel_params.get("vol_floor", 0.005)),
+            gamma_brier=float(sentinel_params.get("gamma_brier", 10.0)),
+            ridge_lambda=float(sentinel_params.get("ridge_lambda", 1e-6))
         )
 
         # Initial Model Training & Seeder Priming (Epic 1)
@@ -245,7 +256,40 @@ class V11Conductor:
         latest_vector = features.iloc[-1:]
         runtime_priors, prior_details = self.prior_book.runtime_priors()
         latest_raw = raw_t0_data.iloc[-1]
+        
+        # v12.1: Sentinel Micro-structure Analysis
+        # We need QQQ price and volume history for Sentinel
+        # Use pandas attrs to avoid polluting the dataframe schema
+        qqq_history = raw_t0_data.attrs.get("history") 
+        if qqq_history is None:
+            # Fallback: check if it's in columns (some backtest frameworks might do this)
+            if "history" in raw_t0_data.columns:
+                qqq_history = raw_t0_data["history"].iloc[0]
+            else:
+                # Live path: fetch fresh price history
+                from src.collector.price import fetch_price_data
+                price_data = fetch_price_data()
+                qqq_history = price_data["history"]
+            
+        # Ensure qqq_history is sorted and has enough data
+        qqq_history = qqq_history.sort_index()
+        close = qqq_history["Close"]
+        volume = qqq_history["Volume"]
+        
+        # r_t: Log return
+        r_t = float(np.log(close.iloc[-1] / close.iloc[-2])) if len(close) >= 2 else 0.0
+        # v_t: Log excess volume (V_t / V_MA21)
+        v_ma21 = volume.rolling(21).mean().iloc[-1]
+        v_t = float(np.log(volume.iloc[-1] / v_ma21)) if v_ma21 > 0 else 0.0
+        
         quality_audit = self._assess_data_quality(latest_raw, previous_raw=previous_raw)
+        stale_days = 0
+        obs_dt = latest_raw.get("observation_date")
+        eff_dt = latest_raw.get("effective_date")
+        if obs_dt and eff_dt:
+            stale_days = (pd.to_datetime(eff_dt) - pd.to_datetime(obs_dt)).days
+            
+        # 3. Bayesian Inference (continued)
         feature_weights = self._feature_reliability_weights(
             latest_vector=latest_vector,
             latest_raw=latest_raw,
@@ -302,6 +346,24 @@ class V11Conductor:
         # AC-0: No constants. Base betas are audit-derived.
         raw_beta_expectation = sum(posteriors.get(regime, 0.0) * self.base_betas.get(regime, 1.0)
                                    for regime in self.base_betas.keys())
+
+        # v12.1 Sentinel Alpha/Risk Unification
+        # Extract mu_macro (expected return vector)
+        # Here we use the raw_beta_expectation as a scalar proxy for the macro direction
+        sentinel_res = self.sentinel.update(
+            r_t=r_t,
+            v_t=v_t,
+            p_macro=np.array([posteriors.get(r, 0.0) for r in self.regimes]),
+            mu_macro=np.array([raw_beta_expectation]),
+            stale_days=stale_days
+        )
+        
+        m_edge = sentinel_res["m_effective_edge"]
+        penalty = sentinel_res["penalty"]
+        
+        # Apply Sentinel multipliers to the expectation
+        # Final_Target_Beta = (mu_macro * M_edge) / Penalty
+        raw_beta_expectation = (raw_beta_expectation * m_edge) / penalty
 
         regime_decision = self.regime_stabilizer.update(posteriors=posteriors, entropy=norm_h)
 

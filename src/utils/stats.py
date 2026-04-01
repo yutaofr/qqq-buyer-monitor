@@ -106,6 +106,29 @@ def calculate_inertial_recovery(previous_decay: float, current_raw_decay: float,
     return previous_decay + alpha * (current_raw_decay - previous_decay)
 
 
+def calculate_annual_metrics(returns: pd.Series) -> dict[str, float]:
+    """
+    Calculate annualized return, volatility, and Sharpe/Information Ratio.
+    Assumes daily returns.
+    """
+    if returns.empty:
+        return {"return": 0.0, "vol": 0.0, "ir": 0.0}
+        
+    avg_return = returns.mean()
+    vol = returns.std()
+    
+    ann_return = avg_return * 252
+    ann_vol = vol * np.sqrt(252)
+    
+    ir = ann_return / ann_vol if ann_vol > 0 else 0.0
+    
+    return {
+        "annualized_return": float(ann_return),
+        "annualized_vol": float(ann_vol),
+        "ir": float(ir)
+    }
+
+
 def calculate_sma_deviation_zscore(price_series: pd.Series, window: int = 200, rolling_window: int = 500) -> float:
     """
     Calculate the rolling Z-score of the deviation from SMA.
