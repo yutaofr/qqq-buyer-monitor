@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 
 import requests
 
+from src.regime_topology import ACTIVE_REGIME_ORDER, canonicalize_regime_name, merge_regime_weights
+
 if TYPE_CHECKING:
     from src.models import SignalResult
 
@@ -23,7 +25,6 @@ COLOR_STRESS = 0xE67E22
 REGIME_COLORS = {
     "MID_CYCLE": COLOR_NEUTRAL,
     "BUST": COLOR_CRISIS,
-    "CAPITULATION": COLOR_EUPHORIC,
     "RECOVERY": COLOR_EUPHORIC,
     "LATE_CYCLE": COLOR_STRESS,
 }
@@ -34,7 +35,7 @@ def _get_regime_emoji(regime: str | None) -> str:
         return "🚨"
     if regime == "LATE_CYCLE":
         return "🧯"
-    if regime in ["CAPITULATION", "RECOVERY"]:
+    if regime == "RECOVERY":
         return "💎"
     return "⚖️"
 
@@ -58,7 +59,7 @@ def _discord_timestamp(value: object) -> str:
 
 def build_discord_payload(result: SignalResult) -> dict:
     """Build a Discord payload for v11 probabilistic signals."""
-    display_regime = result.stable_regime
+    display_regime = canonicalize_regime_name(result.stable_regime) or result.stable_regime
     color = REGIME_COLORS.get(display_regime, COLOR_DEFAULT)
     macro_emoji = _get_regime_emoji(display_regime)
 
@@ -66,7 +67,12 @@ def build_discord_payload(result: SignalResult) -> dict:
     deployment_readiness = metadata.get("deployment_readiness", 0.0)
     deployment_state = str(metadata.get("deployment_state", "DEPLOY_BASE"))
     execution_bucket = str(metadata.get("execution_bucket", "n/a"))
-    raw_regime = str(metadata.get("raw_regime", result.stable_regime))
+    raw_regime = canonicalize_regime_name(metadata.get("raw_regime", display_regime)) or display_regime
+    probabilities = merge_regime_weights(
+        result.probabilities,
+        regimes=ACTIVE_REGIME_ORDER,
+        include_zeros=False,
+    )
 
     # Check behavioral guard lock in logic trace or metadata if available
     lock_active = False
@@ -94,7 +100,7 @@ def build_discord_payload(result: SignalResult) -> dict:
     title = f"QQQ V11.5 | Bayesian Decision - {result.date}"
 
     # Probabilities Distribution
-    sorted_probs = sorted(result.probabilities.items(), key=lambda x: x[1], reverse=True)
+    sorted_probs = sorted(probabilities.items(), key=lambda x: x[1], reverse=True)
     prob_str = "\n".join([f"`{k:12}`: `{v:.1%}`" for k, v in sorted_probs])
 
     fields = [

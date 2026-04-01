@@ -9,6 +9,12 @@ from pathlib import Path
 import pandas as pd
 import pytz
 
+from src.regime_topology import (
+    ACTIVE_REGIME_ORDER,
+    REGIME_DISPLAY_MAP,
+    canonicalize_regime_name,
+    merge_regime_weights,
+)
 from src.models import SignalResult
 
 try:
@@ -19,13 +25,7 @@ except ModuleNotFoundError:
 logger = logging.getLogger(__name__)
 EASTERN = pytz.timezone("US/Eastern")
 
-REGIME_MAP = {
-    "MID_CYCLE": {"label": "中期平稳 (MID_CYCLE)", "desc": "周期中性平稳期，穿越波动的基准轨道。"},
-    "BUST": {"label": "休克 (BUST)", "desc": "信贷断裂引发流动性休克，强制避险。"},
-    "CAPITULATION": {"label": "投降 (CAPITULATION)", "desc": "绝望式抛售触及极值，高赔率反弹窗口。"},
-    "RECOVERY": {"label": "修复 (RECOVERY)", "desc": "最差阶段已过，动能开始共振回归。"},
-    "LATE_CYCLE": {"label": "末端 (LATE_CYCLE)", "desc": "周期动能衰减，结构性风险增加，审慎缩减。"},
-}
+REGIME_MAP = REGIME_DISPLAY_MAP
 
 
 def _discretize_allocation(beta: float) -> str:
@@ -93,8 +93,19 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         now_utc = datetime.now(UTC)
         cursor = MarketCursor()
 
+        stable_regime = canonicalize_regime_name(result.stable_regime) or result.stable_regime
+        probabilities = merge_regime_weights(
+            result.probabilities,
+            regimes=ACTIVE_REGIME_ORDER,
+            include_zeros=True,
+        )
+        priors = merge_regime_weights(
+            result.priors,
+            regimes=ACTIVE_REGIME_ORDER,
+            include_zeros=True,
+        )
         regime_info = REGIME_MAP.get(
-            result.stable_regime, {"label": result.stable_regime, "desc": "Unknown"}
+            stable_regime, {"label": stable_regime, "desc": "Unknown"}
         )
         metadata = result.metadata or {}
 
@@ -107,7 +118,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 lock_active = guard_res.get("lock_active", False)
                 execution_bucket = str(guard_res.get("target_bucket", execution_bucket))
 
-        raw_regime = str(metadata.get("raw_regime", result.stable_regime))
+        raw_regime = canonicalize_regime_name(metadata.get("raw_regime", stable_regime)) or stable_regime
         deployment_state = str(metadata.get("deployment_state", "DEPLOY_BASE"))
         deployment_state_key = str(
             metadata.get("deployment_state_key", deployment_state.replace("DEPLOY_", ""))
@@ -126,7 +137,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
             "signal": {
                 "regime": regime_info["label"],
                 "regime_desc": regime_info["desc"],
-                "stable_regime": result.stable_regime,
+                "stable_regime": stable_regime,
                 "raw_regime": raw_regime,
                 "target_beta": result.target_beta,
                 "raw_target_beta": metadata.get("raw_target_beta", result.target_beta),
@@ -134,8 +145,8 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "entropy": result.entropy,
                 "lock_active": lock_active,
                 "exposure_band": _discretize_allocation(result.target_beta),
-                "probabilities": result.probabilities,
-                "priors": result.priors,
+                "probabilities": probabilities,
+                "priors": priors,
                 "prior_breakdown": metadata.get("prior_details", {}),
                 "deployment_readiness": metadata.get("deployment_readiness", 0.0),
                 "deployment_state": deployment_state,

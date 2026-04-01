@@ -18,6 +18,8 @@ from typing import Any
 import pandas as pd
 import yfinance as yf
 
+from src.regime_topology import canonicalize_regime_sequence, merge_regime_weights
+
 logger = logging.getLogger(__name__)
 
 START_DATE = "1999-03-10"
@@ -135,7 +137,9 @@ def run_v11_audit(
         base_betas = {str(k): float(v) for k, v in dict(audit_overrides["base_betas"]).items()}
     if audit_overrides.get("regime_sharpes"):
         regime_sharpes = {str(k): float(v) for k, v in dict(audit_overrides["regime_sharpes"]).items()}
-    ordered_regimes = list(base_betas.keys())
+    ordered_regimes = canonicalize_regime_sequence(base_betas.keys(), include_all=False)
+    base_betas = merge_regime_weights(base_betas, regimes=ordered_regimes, include_zeros=True)
+    regime_sharpes = merge_regime_weights(regime_sharpes, regimes=ordered_regimes, include_zeros=True)
     default_var_smoothing = float(
         audit_data.get("model_hyperparameters", {}).get("gaussian_nb_var_smoothing", 1e-2)
     )
@@ -205,7 +209,7 @@ def run_v11_audit(
             return "DEPLOY_PAUSE"
         if regime == "LATE_CYCLE":
             return "DEPLOY_SLOW"
-        if regime in {"RECOVERY", "CAPITULATION"}:
+        if regime == "RECOVERY":
             return "DEPLOY_FAST"
         return "DEPLOY_BASE"
 

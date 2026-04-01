@@ -77,3 +77,33 @@ def test_export_web_snapshot_preserves_dual_surface_semantics(tmp_path, monkeypa
     assert payload["signal"]["deployment_state"] == "DEPLOY_SLOW"
     assert payload["signal"]["deployment_state_key"] == "SLOW"
     assert payload["signal"]["execution_bucket"] == "QQQ"
+
+
+def test_export_web_snapshot_collapses_legacy_capitulation_into_recovery(tmp_path, monkeypatch):
+    result = SignalResult(
+        date=date(2026, 3, 27),
+        price=562.58,
+        target_beta=1.02,
+        probabilities={"CAPITULATION": 0.35, "RECOVERY": 0.25, "BUST": 0.40},
+        priors={"CAPITULATION": 0.10, "RECOVERY": 0.30, "MID_CYCLE": 0.60},
+        entropy=0.29,
+        stable_regime="CAPITULATION",
+        target_allocation=TargetAllocationState(0.0, 1.0, 0.1, 1.02),
+        logic_trace=[{"step": "inference", "result": "CAPITULATION"}],
+        explanation="legacy topology compatibility",
+        metadata={"raw_regime": "CAPITULATION"},
+    )
+    output_path = tmp_path / "status.json"
+
+    monkeypatch.setattr(MarketCursor, "get_market_state", lambda self, now: "FROZEN")
+    monkeypatch.setattr(MarketCursor, "get_expires_at_utc", lambda self, now: datetime(2026, 3, 30, 17, 30, tzinfo=UTC))
+
+    ok = export_web_snapshot(result, output_path=output_path)
+
+    assert ok is True
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["signal"]["stable_regime"] == "RECOVERY"
+    assert payload["signal"]["raw_regime"] == "RECOVERY"
+    assert payload["signal"]["regime"] == "修复 (RECOVERY)"
+    assert "CAPITULATION" not in payload["signal"]["probabilities"]
+    assert payload["signal"]["probabilities"]["RECOVERY"] == 0.60

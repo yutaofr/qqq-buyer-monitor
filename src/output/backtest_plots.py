@@ -10,6 +10,8 @@ import matplotlib.dates as mdates
 import matplotlib.ticker as mtick
 import pandas as pd
 
+from src.regime_topology import ACTIVE_REGIME_ORDER, REGIME_HEX_COLORS
+
 
 def _beta_column(frame: pd.DataFrame) -> str:
     if "target_beta" in frame.columns:
@@ -383,8 +385,8 @@ def build_v11_probabilistic_audit_figure(daily_ts: pd.DataFrame, summary: Any | 
     import matplotlib.pyplot as plt
 
     frame = _coerce_frame(daily_ts)
-    regimes = ["MID_CYCLE", "BUST", "CAPITULATION", "RECOVERY", "LATE_CYCLE"]
-    colors = {"MID_CYCLE": "#3498db", "BUST": "#e74c3c", "CAPITULATION": "#2ecc71", "RECOVERY": "#f1c40f", "LATE_CYCLE": "#9b59b6"}
+    regimes = list(ACTIVE_REGIME_ORDER)
+    colors = dict(REGIME_HEX_COLORS)
 
     fig, (ax_prob, ax_entropy) = plt.subplots(
         2, 1, figsize=(14, 10), sharex=True, constrained_layout=True,

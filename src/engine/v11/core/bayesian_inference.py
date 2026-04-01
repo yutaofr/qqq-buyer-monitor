@@ -19,7 +19,7 @@ class BayesianInferenceEngine:
 
     def infer_posterior(self, evidence_vector: np.ndarray) -> dict[str, float]:
         """
-        Calculates the 5-way posterior regime probability.
+        Calculates the posterior regime probability across the active topology.
         Uses P(Regime | Evidence) = P(Evidence | Regime) * P(Regime) / P(Evidence)
         """
         posteriors = {}

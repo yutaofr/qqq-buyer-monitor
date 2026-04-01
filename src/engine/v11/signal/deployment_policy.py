@@ -1,6 +1,7 @@
 """Independent v11 deployment policy for incremental cash pacing."""
 from __future__ import annotations
 
+from src.regime_topology import ACTIVE_REGIME_ORDER, merge_regime_weights
 from src.models.deployment import DeploymentState, deployment_multiplier_for_state
 
 
@@ -59,18 +60,22 @@ class ProbabilisticDeploymentPolicy:
         readiness_score: float,
         value_score: float,
     ) -> dict[str, float]:
-        p = ProbabilisticDeploymentPolicy._normalize(posteriors)
+        p = merge_regime_weights(
+            posteriors,
+            regimes=ACTIVE_REGIME_ORDER,
+            include_zeros=True,
+            normalize=True,
+        )
         bust = p.get("BUST", 0.0)
         late = p.get("LATE_CYCLE", 0.0)
         mid = p.get("MID_CYCLE", 0.0)
         recovery = p.get("RECOVERY", 0.0)
-        capitulation = p.get("CAPITULATION", 0.0)
 
         h = min(1.0, max(0.0, float(entropy)))
         readiness = min(1.0, max(0.0, float(readiness_score)))
         value = min(1.0, max(0.0, float(value_score)))
         conviction = 1.0 - h
-        reversal = recovery + capitulation
+        reversal = recovery
 
         raw_scores = {
             DeploymentState.DEPLOY_PAUSE.value: bust * (1.0 - readiness + h) + late * h,
