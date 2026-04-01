@@ -4,6 +4,39 @@ import pandas as pd
 import src.backtest as backtest_module
 
 
+def _build_v12_macro_frame(dates: pd.DatetimeIndex) -> pd.DataFrame:
+    monthly_block = np.repeat(np.linspace(8.0, 18.0, 14), 30)[: len(dates)]
+    return pd.DataFrame(
+        {
+            "observation_date": dates,
+            "effective_date": dates,
+            "credit_spread_bps": 300.0 + np.linspace(0.0, 220.0, len(dates)),
+            "real_yield_10y_pct": 0.008 + np.linspace(0.0, 0.02, len(dates)),
+            "net_liquidity_usd_bn": 5000.0 + np.linspace(0.0, 300.0, len(dates)),
+            "treasury_vol_21d": 0.004 + np.linspace(0.0, 0.008, len(dates)),
+            "copper_gold_ratio": 0.18 + np.linspace(0.0, 0.03, len(dates)),
+            "breakeven_10y": 0.017 + np.linspace(0.0, 0.012, len(dates)),
+            "core_capex_mm": monthly_block,
+            "usdjpy": 118.0 + np.linspace(0.0, 24.0, len(dates)),
+            "erp_ttm_pct": 0.034 + np.sin(np.linspace(0.0, 12.0, len(dates))) * 0.003,
+            "source_credit_spread": ["synthetic_dna"] * len(dates),
+            "source_real_yield": ["synthetic_dna"] * len(dates),
+            "source_net_liquidity": ["synthetic_dna"] * len(dates),
+            "source_treasury_vol": ["synthetic_dna"] * len(dates),
+            "source_copper_gold": ["synthetic_dna"] * len(dates),
+            "source_breakeven": ["synthetic_dna"] * len(dates),
+            "source_core_capex": ["synthetic_dna"] * len(dates),
+            "source_usdjpy": ["synthetic_dna"] * len(dates),
+            "source_erp_ttm": ["synthetic_dna"] * len(dates),
+            "forward_pe": [np.nan] * len(dates),
+            "erp_pct": [np.nan] * len(dates),
+            "source_forward_pe": ["deprecated:v12"] * len(dates),
+            "source_erp": ["deprecated:v12"] * len(dates),
+            "build_version": ["v12.synthetic-dna"] * len(dates),
+        }
+    )
+
+
 def test_backtest_routes_v11_mode(monkeypatch):
     called = {}
 
@@ -43,23 +76,15 @@ def test_v11_inference_task_uses_labeled_regime_and_curated_features():
 
 
 def test_run_v11_audit_refits_model_for_each_evaluation_day(tmp_path, monkeypatch):
-    dates = pd.date_range("2024-01-01", periods=6, freq="D")
+    dates = pd.bdate_range("2024-01-01", periods=320)
     macro_path = tmp_path / "macro.csv"
     regime_path = tmp_path / "regimes.csv"
 
+    _build_v12_macro_frame(dates).to_csv(macro_path, index=False)
     pd.DataFrame(
         {
             "observation_date": dates,
-            "erp_pct": [0.02, 0.021, 0.022, 0.023, 0.024, 0.025],
-            "real_yield_10y_pct": [0.01, 0.011, 0.012, 0.013, 0.014, 0.015],
-            "credit_spread_bps": [300, 320, 340, 360, 380, 400],
-            "net_liquidity_usd_bn": [5000, 5010, 5020, 5030, 5040, 5050],
-        }
-    ).to_csv(macro_path, index=False)
-    pd.DataFrame(
-        {
-            "observation_date": dates,
-            "regime": ["MID_CYCLE", "MID_CYCLE", "LATE_CYCLE", "LATE_CYCLE", "BUST", "BUST"],
+            "regime": ["MID_CYCLE"] * 160 + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
         }
     ).to_csv(regime_path, index=False)
 
@@ -68,8 +93,8 @@ def test_run_v11_audit_refits_model_for_each_evaluation_day(tmp_path, monkeypatc
 
         def __init__(self, *args, **kwargs):
             self.classes_ = ["BUST", "LATE_CYCLE", "MID_CYCLE"]
-            self.theta_ = np.zeros((3, 6))
-            self.var_ = np.ones((3, 6))
+            self.theta_ = np.zeros((3, 10))
+            self.var_ = np.ones((3, 10))
             self.class_prior_ = np.full(3, 1.0 / 3.0)
 
         def fit(self, X, y):
@@ -85,26 +110,20 @@ def test_run_v11_audit_refits_model_for_each_evaluation_day(tmp_path, monkeypatc
         def predict_proba(self, evidence):
             return [[1.0 / len(self.classes_)] * len(self.classes_)]
 
-    class InlineExecutor:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def map(self, fn, tasks):
-            return [fn(task) for task in tasks]
-
     monkeypatch.setattr("sklearn.naive_bayes.GaussianNB", FakeGaussianNB)
-    monkeypatch.setattr("concurrent.futures.ProcessPoolExecutor", InlineExecutor)
-    monkeypatch.setattr(backtest_module, "_load_price_history", lambda _: pd.DataFrame({"Close": [100, 101, 102, 103, 104, 105]}, index=dates))
+    monkeypatch.setattr(
+        backtest_module,
+        "_load_price_history",
+        lambda _: pd.DataFrame({"Close": np.linspace(100.0, 130.0, len(dates))}, index=dates),
+    )
     monkeypatch.setattr("src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None)
     monkeypatch.setattr("src.output.backtest_plots.save_v11_probabilistic_audit_figure", lambda *args, **kwargs: None)
 
-    backtest_module.run_v11_audit(
+    summary = backtest_module.run_v11_audit(
         dataset_path=str(macro_path),
         regime_path=str(regime_path),
-        evaluation_start="2024-01-04",
+        evaluation_start="2025-01-02",
     )
 
     assert FakeGaussianNB.fit_calls >= 3
+    assert "top1_accuracy" in summary

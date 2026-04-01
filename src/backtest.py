@@ -85,7 +85,7 @@ def run_v11_audit(
     regime_path: str = "data/v11_poc_phase1_results.csv",
     evaluation_start: str = "2018-01-01",
 ) -> dict[str, Any]:
-    """Run the unified v11.5 probabilistic audit with deterministic walk-forward causality."""
+    """Run the unified v12 probabilistic audit with deterministic walk-forward causality."""
     from sklearn.naive_bayes import GaussianNB
 
     from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
@@ -141,8 +141,8 @@ def run_v11_audit(
     features = seeder.generate_features(macro_df)
     full_df = features.join(regime_df["regime"], how="inner")
     full_df["qqq_close"] = macro_df["qqq_close"]
-    if "erp_pct" in macro_df.columns:
-        full_df["erp_pct"] = pd.to_numeric(macro_df["erp_pct"], errors="coerce")
+    if "erp_ttm_pct" in macro_df.columns:
+        full_df["erp_ttm_pct"] = pd.to_numeric(macro_df["erp_ttm_pct"], errors="coerce")
     full_df = full_df.dropna(subset=["regime"])
     full_df = full_df.reset_index().rename(columns={"index": "observation_date"})
     full_df = full_df.sort_values("observation_date").reset_index(drop=True)
@@ -156,9 +156,13 @@ def run_v11_audit(
     if test.empty:
         raise ValueError(f"No evaluation rows available on or after {evaluation_start}.")
 
-    logger.info(f"v11.5 Audit: Training on {len(train)} days (pre-{evaluation_start}), testing on {len(test)} days.")
+    logger.info(f"v12 Audit: Training on {len(train)} days (pre-{evaluation_start}), testing on {len(test)} days.")
 
-    feature_cols = [c for c in train.columns if c not in ["observation_date", "regime", "qqq_close"]]
+    feature_cols = [
+        c
+        for c in train.columns
+        if c not in ["observation_date", "regime", "qqq_close", "erp_ttm_pct", "erp_pct"]
+    ]
     entropy_ctrl = EntropyController()
     last_train_regime = str(train.iloc[-1]["regime"])
     initial_beta = float(base_betas.get(last_train_regime, 1.0))
@@ -180,7 +184,7 @@ def run_v11_audit(
         initial_state=_initial_deployment_state(last_train_regime)
     )
 
-    with tempfile.TemporaryDirectory(prefix="v11_audit_") as tmp_dir:
+    with tempfile.TemporaryDirectory(prefix="v12_audit_") as tmp_dir:
         prior_book = PriorKnowledgeBase(
             storage_path=Path(tmp_dir) / "prior_state.json",
             regimes=ordered_regimes,
@@ -272,8 +276,8 @@ def run_v11_audit(
             )
             execution = behavior_guard.apply(sizing)
 
-            train_erp = pd.to_numeric(train_window.get("erp_pct"), errors="coerce").dropna()
-            current_erp = pd.to_numeric(pd.Series([row.get("erp_pct")]), errors="coerce").dropna()
+            train_erp = pd.to_numeric(train_window.get("erp_ttm_pct"), errors="coerce").dropna()
+            current_erp = pd.to_numeric(pd.Series([row.get("erp_ttm_pct")]), errors="coerce").dropna()
             if train_erp.empty or current_erp.empty:
                 erp_percentile = 0.5
             else:
@@ -347,14 +351,19 @@ def run_v11_audit(
         "lock_incidence": float(execution_df["lock_active"].mean())
     }
 
-    print("\n--- v11.5 Unified Probabilistic Performance Audit ---")
+    print("\n--- v12 Unified Probabilistic Performance Audit ---")
     print(f"Accuracy: {summary['top1_accuracy']:.2%} | Brier: {summary['mean_brier']:.4f} | Entropy: {summary['mean_entropy']:.3f} | Lock: {summary['lock_incidence']:.1%}")
 
-    save_dir = Path("artifacts/v11_5_acceptance")
+    save_dir = Path("artifacts/v12_audit")
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    save_v11_fidelity_figure(execution_df, summary, [save_dir / "v11_5_target_beta_fidelity.png"])
-    save_v11_probabilistic_audit_figure(full_audit_df, summary, [save_dir / "v11_5_probabilistic_audit.png"])
+    probability_df.to_csv(save_dir / "probability_audit.csv", index=False)
+    execution_df.to_csv(save_dir / "execution_trace.csv", index=False)
+    full_audit_df.to_csv(save_dir / "full_audit.csv", index=False)
+    (save_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    save_v11_fidelity_figure(execution_df, summary, [save_dir / "v12_target_beta_fidelity.png"])
+    save_v11_probabilistic_audit_figure(full_audit_df, summary, [save_dir / "v12_probabilistic_audit.png"])
 
     return summary
 

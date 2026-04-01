@@ -21,6 +21,21 @@ from src.engine.v11.signal.regime_stabilizer import RegimeStabilizer
 
 logger = logging.getLogger(__name__)
 
+
+def _v12_quality_field_specs() -> dict[str, tuple[str, str, str | None]]:
+    return {
+        "credit_spread": ("credit_spread_bps", "source_credit_spread", None),
+        "net_liquidity": ("net_liquidity_usd_bn", "source_net_liquidity", None),
+        "real_yield": ("real_yield_10y_pct", "source_real_yield", None),
+        "treasury_vol": ("treasury_vol_21d", "source_treasury_vol", None),
+        "copper_gold": ("copper_gold_ratio", "source_copper_gold", None),
+        "breakeven": ("breakeven_10y", "source_breakeven", None),
+        "core_capex": ("core_capex_mm", "source_core_capex", None),
+        "usdjpy": ("usdjpy", "source_usdjpy", None),
+        "erp_ttm": ("erp_ttm_pct", "source_erp_ttm", None),
+    }
+
+
 class V11Conductor:
     """The Sovereign Orchestrator. No hard-coded logic constants allowed. (AC-0)"""
 
@@ -30,7 +45,7 @@ class V11Conductor:
         regime_data_path: str = "data/v11_poc_phase1_results.csv",
         audit_path: str = "src/engine/v11/resources/regime_audit.json",
         prior_state_path: str = "data/v11_prior_state.json",
-        snapshot_dir: str = "artifacts/v11_runtime_snapshots",
+        snapshot_dir: str = "artifacts/v12_runtime_snapshots",
         initial_model: GaussianNB | None = None,
     ):
         # 0. Load Sovereign Calibration (Audit Archive)
@@ -199,15 +214,12 @@ class V11Conductor:
                 t0_df = t0_df.set_index("observation_date")
             elif not isinstance(t0_df.index, pd.DatetimeIndex):
                 t0_df.index = pd.to_datetime(t0_df.index)
-            # Standardize columns for v11 macro suite
-            v11_cols = ["erp_pct", "real_yield_10y_pct", "credit_spread_bps", "net_liquidity_usd_bn"]
-            # Only use columns that exist in both to prevent KeyError
-            available_cols = [c for c in v11_cols if c in hist_df.columns and c in t0_df.columns]
-            context_df = pd.concat([hist_df[available_cols], t0_df[available_cols]])
+            context_df = pd.concat([hist_df, t0_df], sort=False)
         else:
             context_df = raw_t0_data
 
         features = self.seeder.generate_features(context_df)
+        diagnostics = self.seeder.latest_diagnostics()
 
         # 2. Bayesian Inference (Epic 2)
         # Inference only on the last point
@@ -291,14 +303,35 @@ class V11Conductor:
         )
 
         # 6. UI/Main Alignment Data
+        def _safe_float(value: object, default: float = 0.0) -> float:
+            numeric = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
+            if pd.isna(numeric) or not np.isfinite(float(numeric)):
+                return float(default)
+            return float(numeric)
+
         feature_values = {
-            "credit_spread": float(latest_raw.get("credit_spread_bps", 0.0)),
-            "erp": float(latest_raw.get("erp_pct", 0.0)),
-            "net_liquidity": float(latest_raw.get("net_liquidity_usd_bn", 0.0)),
-            "vix": float(latest_raw.get("vix", 0.0)),
+            "credit_spread": _safe_float(latest_raw.get("credit_spread_bps")),
+            "real_yield": _safe_float(latest_raw.get("real_yield_10y_pct")),
+            "net_liquidity": _safe_float(latest_raw.get("net_liquidity_usd_bn")),
+            "treasury_vol": _safe_float(latest_raw.get("treasury_vol_21d")),
+            "copper_gold": _safe_float(latest_raw.get("copper_gold_ratio")),
+            "breakeven": _safe_float(latest_raw.get("breakeven_10y")),
+            "core_capex": _safe_float(latest_raw.get("core_capex_mm")),
+            "usdjpy": _safe_float(latest_raw.get("usdjpy")),
+            "erp_ttm": _safe_float(latest_raw.get("erp_ttm_pct")),
             "entropy": norm_h,
             "deployment_readiness": deployment_readiness,
         }
+        if not diagnostics.empty:
+            latest_diag = diagnostics.iloc[-1]
+            feature_values.update(
+                {
+                    "move_21d_raw_z": _safe_float(latest_diag.get("move_21d_raw_z")),
+                    "move_21d_orth_z": _safe_float(latest_diag.get("move_21d_orth_z")),
+                    "move_spread_beta": _safe_float(latest_diag.get("move_spread_beta")),
+                    "move_spread_corr_21d": _safe_float(latest_diag.get("move_spread_corr_21d")),
+                }
+            )
 
         sizing = self._build_sizing_result(
             beta=final_beta,
@@ -370,14 +403,7 @@ class V11Conductor:
         *,
         previous_raw: pd.Series | None = None,
     ) -> dict[str, object]:
-        field_specs = {
-            "credit_spread": ("credit_spread_bps", "source_credit_spread", None),
-            "forward_pe": ("forward_pe", "source_forward_pe", None),
-            "erp": ("erp_pct", "source_erp", None),
-            "net_liquidity": ("net_liquidity_usd_bn", "source_net_liquidity", None),
-            "real_yield": ("real_yield_10y_pct", "source_real_yield", None),
-            "breadth": ("breadth_proxy", "source_breadth", "breadth_quality_score"),
-        }
+        field_specs = _v12_quality_field_specs()
 
         fields: dict[str, dict[str, object]] = {}
         degraded_present = False
@@ -408,7 +434,11 @@ class V11Conductor:
                 "quality": field_quality,
             }
 
-        quality_score = float(np.mean(quality_values)) if quality_values else 1.0
+        if quality_values:
+            denom = sum(1.0 / max(float(value), 0.01) for value in quality_values)
+            quality_score = float(len(quality_values) / denom)
+        else:
+            quality_score = 1.0
         source_switch = self._detect_source_switch(latest_raw, previous_raw=previous_raw)
         if degraded_present:
             reason = "DEGRADED_SOURCE"
@@ -451,14 +481,7 @@ class V11Conductor:
                 "current_build_version": str(latest_raw.get("build_version", "")) or None,
             }
 
-        source_fields = {
-            "credit_spread": "source_credit_spread",
-            "forward_pe": "source_forward_pe",
-            "erp": "source_erp",
-            "real_yield": "source_real_yield",
-            "net_liquidity": "source_net_liquidity",
-            "breadth": "source_breadth",
-        }
+        source_fields = {field: source_key for field, (_, source_key, _) in _v12_quality_field_specs().items()}
 
         changed_fields: list[str] = []
         for field_name, source_key in source_fields.items():
@@ -493,10 +516,14 @@ class V11Conductor:
 
         source_to_field = {
             "credit_spread_bps": "credit_spread",
-            "erp_pct": "erp",
             "net_liquidity_usd_bn": "net_liquidity",
             "real_yield_10y_pct": "real_yield",
-            "breadth_proxy": "breadth",
+            "treasury_vol_21d": "treasury_vol",
+            "copper_gold_ratio": "copper_gold",
+            "breakeven_10y": "breakeven",
+            "core_capex_mm": "core_capex",
+            "usdjpy": "usdjpy",
+            "erp_ttm_pct": "erp_ttm",
         }
 
         weights: dict[str, float] = {}
@@ -527,7 +554,7 @@ class V11Conductor:
             serialized_row = self._serialize_frame(raw_t0_data)
             observation_date = str(serialized_row[0].get("observation_date", "unknown"))
             payload = {
-                "snapshot_version": "v11_runtime_snapshot.v1",
+                "snapshot_version": "v12_runtime_snapshot.v1",
                 "captured_at_utc": datetime.now(UTC).isoformat(),
                 "observation_date": observation_date,
                 "macro_data_path": self.macro_data_path,
@@ -576,13 +603,13 @@ class V11Conductor:
 
     @staticmethod
     def _resolve_erp_percentile(context_df: pd.DataFrame, raw_t0_data: pd.DataFrame) -> float:
-        if "erp_pct" in context_df.columns:
-            erp_series = pd.to_numeric(context_df["erp_pct"], errors="coerce").dropna()
+        if "erp_ttm_pct" in context_df.columns:
+            erp_series = pd.to_numeric(context_df["erp_ttm_pct"], errors="coerce").dropna()
             if not erp_series.empty:
                 return float(erp_series.rank(pct=True).iloc[-1])
 
-        if "erp_pct" in raw_t0_data.columns:
-            erp_series = pd.to_numeric(raw_t0_data["erp_pct"], errors="coerce").dropna()
+        if "erp_ttm_pct" in raw_t0_data.columns:
+            erp_series = pd.to_numeric(raw_t0_data["erp_ttm_pct"], errors="coerce").dropna()
             if not erp_series.empty:
                 return float(erp_series.rank(pct=True).iloc[-1])
 

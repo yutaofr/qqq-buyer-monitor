@@ -16,22 +16,30 @@ def canonical_frame() -> pd.DataFrame:
     return pd.DataFrame(
         {
             "observation_date": ["2024-01-02", "2024-01-03", "2024-01-04"],
-            "effective_date": ["2024-01-02", "2024-01-03", "2024-01-04"],
+            "effective_date": ["2024-01-03", "2024-01-04", "2024-01-05"],
             "credit_spread_bps": [350.0, 355.0, 360.0],
-            "credit_acceleration_pct_10d": [0.0, 0.5, 0.2],
-            "forward_pe": [24.0, 23.5, 23.0],
-            "erp_pct": [3.5, 3.4, 3.3],
-            "real_yield_10y_pct": [1.25, 1.20, 1.15],
+            "real_yield_10y_pct": [0.0125, 0.0120, 0.0115],
             "net_liquidity_usd_bn": [250.0, 249.0, 248.5],
-            "liquidity_roc_pct_4w": [0.0, -0.4, -0.6],
-            "funding_stress_flag": [False, 0, 1],
+            "treasury_vol_21d": [0.006, 0.0065, 0.0070],
+            "copper_gold_ratio": [0.18, 0.181, 0.183],
+            "breakeven_10y": [0.022, 0.021, 0.020],
+            "core_capex_mm": [12.0, 12.0, 12.0],
+            "usdjpy": [148.0, 147.5, 147.0],
+            "erp_ttm_pct": [0.038, 0.038, 0.038],
             "source_credit_spread": ["fred:BAMLH0A0HYM2"] * 3,
-            "source_forward_pe": ["damodaran:histimpl"] * 3,
-            "source_erp": ["damodaran:histimpl"] * 3,
             "source_real_yield": ["fred:DFII10"] * 3,
             "source_net_liquidity": ["derived:FRED"] * 3,
-            "source_funding_stress": ["fred:NFCI"] * 3,
-            "build_version": ["v7.0-r1"] * 3,
+            "source_treasury_vol": ["direct:fred_dgs10"] * 3,
+            "source_copper_gold": ["direct:yfinance"] * 3,
+            "source_breakeven": ["direct:fred_t10yie"] * 3,
+            "source_core_capex": ["direct:fred_neworder"] * 3,
+            "source_usdjpy": ["direct:yfinance"] * 3,
+            "source_erp_ttm": ["direct:shiller"] * 3,
+            "build_version": ["v12.0-r1"] * 3,
+            "forward_pe": [None, None, None],
+            "erp_pct": [None, None, None],
+            "source_forward_pe": ["deprecated:v12"] * 3,
+            "source_erp": ["deprecated:v12"] * 3,
         }
     )
 
@@ -41,7 +49,7 @@ def expectation_frame() -> pd.DataFrame:
     return pd.DataFrame(
         {
             "date": ["2024-01-02", "2024-01-03", "2024-01-04"],
-            "expected_target_beta": [1.0, 0.5, 0.5],
+            "expected_target_beta": [1.0, 0.8, 0.5],
             "expected_deployment_state": ["DEPLOY_FAST", "DEPLOY_BASE", "DEPLOY_PAUSE"],
             "rolling_drawdown": [0.05, 0.15, 0.32],
             "available_new_cash": [1000.0, 1000.0, 1000.0],
@@ -54,19 +62,23 @@ def test_required_historical_macro_columns_are_stable():
         "observation_date",
         "effective_date",
         "credit_spread_bps",
-        "credit_acceleration_pct_10d",
-        "forward_pe",
-        "erp_pct",
         "real_yield_10y_pct",
         "net_liquidity_usd_bn",
-        "liquidity_roc_pct_4w",
-        "funding_stress_flag",
+        "treasury_vol_21d",
+        "copper_gold_ratio",
+        "breakeven_10y",
+        "core_capex_mm",
+        "usdjpy",
+        "erp_ttm_pct",
         "source_credit_spread",
-        "source_forward_pe",
-        "source_erp",
         "source_real_yield",
         "source_net_liquidity",
-        "source_funding_stress",
+        "source_treasury_vol",
+        "source_copper_gold",
+        "source_breakeven",
+        "source_core_capex",
+        "source_usdjpy",
+        "source_erp_ttm",
         "build_version",
     ]
 
@@ -75,13 +87,17 @@ def test_required_signal_expectation_columns_are_stable():
     assert list(SIGNAL_EXPECTATION_REQUIRED_COLUMNS) == ["date"]
 
 
-def test_validate_historical_macro_frame_accepts_canonical_schema(canonical_frame):
+def test_validate_historical_macro_frame_accepts_v12_canonical_schema(canonical_frame):
     validate_historical_macro_frame(canonical_frame)
 
 
+def test_validate_historical_macro_frame_accepts_deprecated_v11_columns_as_extras(canonical_frame):
+    validate_historical_macro_frame(canonical_frame.loc[:, canonical_frame.columns])
+
+
 def test_validate_historical_macro_frame_rejects_missing_required_column(canonical_frame):
-    bad = canonical_frame.drop(columns=["effective_date"])
-    with pytest.raises(ValueError, match="effective_date"):
+    bad = canonical_frame.drop(columns=["source_erp_ttm"])
+    with pytest.raises(ValueError, match="source_erp_ttm"):
         validate_historical_macro_frame(bad)
 
 
@@ -94,15 +110,8 @@ def test_validate_historical_macro_frame_rejects_bad_effective_date_order(canoni
 
 def test_validate_historical_macro_frame_rejects_duplicate_effective_dates(canonical_frame):
     bad = canonical_frame.copy()
-    bad.loc[2, "effective_date"] = "2024-01-03"
+    bad.loc[2, "effective_date"] = "2024-01-04"
     with pytest.raises(ValueError, match="Duplicate effective_date"):
-        validate_historical_macro_frame(bad)
-
-
-def test_validate_historical_macro_frame_rejects_invalid_funding_flag(canonical_frame):
-    bad = canonical_frame.copy()
-    bad.loc[2, "funding_stress_flag"] = "yes"
-    with pytest.raises(ValueError, match="funding_stress_flag"):
         validate_historical_macro_frame(bad)
 
 
@@ -113,7 +122,8 @@ def test_summarize_historical_macro_coverage_reports_basic_metrics(canonical_fra
     assert summary["first_observation_date"] == pd.Timestamp("2024-01-02")
     assert summary["last_observation_date"] == pd.Timestamp("2024-01-04")
     assert summary["coverage"]["credit_spread_bps"] == 1.0
-    assert summary["coverage"]["funding_stress_flag"] == 1.0
+    assert summary["coverage"]["treasury_vol_21d"] == 1.0
+    assert summary["coverage"]["erp_ttm_pct"] == 1.0
 
 
 def test_validate_signal_expectation_frame_accepts_dual_surface(expectation_frame):

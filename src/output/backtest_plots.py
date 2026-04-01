@@ -336,8 +336,8 @@ def build_v11_fidelity_figure(daily_ts: pd.DataFrame, summary: Any | None = None
     if has_expected:
         ax_beta.step(frame.index, expected_beta, label="Expected Beta", color="#4c7a3f", linewidth=1.6, linestyle="--", where="post")
 
-    ax_beta.step(frame.index, raw_beta, label="V11 Raw Beta", color="#8f99ab", linewidth=1.2, alpha=0.7, where="post")
-    ax_beta.step(frame.index, advised_beta, label="V11 Advised Beta", color="#f28c28", linewidth=2.0, where="post")
+    ax_beta.step(frame.index, raw_beta, label="V12 Raw Beta", color="#8f99ab", linewidth=1.2, alpha=0.7, where="post")
+    ax_beta.step(frame.index, advised_beta, label="V12 Advised Beta", color="#f28c28", linewidth=2.0, where="post")
 
     ax_beta.set_ylabel("Target Beta", fontsize=12, color="#2b3440")
     ax_beta.set_ylim(0.4, 1.3)
@@ -347,10 +347,9 @@ def build_v11_fidelity_figure(daily_ts: pd.DataFrame, summary: Any | None = None
     accuracy = summary.get("top1_accuracy", 0.0) if summary else 0.0
     if has_expected:
         mae = (advised_beta - expected_beta).abs().mean()
-        title = f"V11 Bayesian-Core Target Beta Fidelity\nMAE vs Expectations: {mae:.4f} | Regime Accuracy: {accuracy:.2%}"
+        title = f"V12 Bayesian-Core Target Beta Fidelity\nMAE vs Expectations: {mae:.4f} | Regime Accuracy: {accuracy:.2%}"
     else:
-        # V11.5 Probabilistic Stability Label
-        title = f"V11.5 Unified Probabilistic Adaptive Beta\nRegime Accuracy: {accuracy:.2%} | Mean Entropy: {summary.get('mean_entropy', 0.0):.3f}"
+        title = f"V12 Unified Probabilistic Adaptive Beta\nRegime Accuracy: {accuracy:.2%} | Mean Entropy: {summary.get('mean_entropy', 0.0):.3f}"
 
     ax_price.set_title(title, fontsize=14, pad=12, color="#18212b")
     ax_beta.set_xlabel("Date", fontsize=12, color="#2b3440")
@@ -379,7 +378,7 @@ def save_v11_fidelity_figure(
 
 
 def build_v11_probabilistic_audit_figure(daily_ts: pd.DataFrame, summary: Any | None = None):
-    """Build V11 posterior probability distribution and entropy figure."""
+    """Build V12 posterior probability distribution and entropy figure."""
     matplotlib.use("Agg", force=True)
     import matplotlib.pyplot as plt
 
@@ -412,7 +411,7 @@ def build_v11_probabilistic_audit_figure(daily_ts: pd.DataFrame, summary: Any | 
         ax_entropy.set_ylim(0, 1.1)
         ax_entropy.legend(loc="upper left", frameon=False)
 
-    ax_prob.set_title("V11 Bayesian Regime Posterior & Information Entropy", fontsize=14, pad=15)
+    ax_prob.set_title("V12 Bayesian Regime Posterior & Information Entropy", fontsize=14, pad=15)
     ax_entropy.set_xlabel("Date", fontsize=12)
     ax_prob.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
     return fig

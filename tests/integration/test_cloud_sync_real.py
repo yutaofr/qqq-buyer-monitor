@@ -5,9 +5,11 @@ Usage: pytest tests/integration/test_cloud_sync_real.py -m external_service
 from __future__ import annotations
 
 import os
+import uuid
 
 import pandas as pd
 import pytest
+import requests
 
 from src.store.cloud_manager import CloudPersistenceBridge
 
@@ -22,8 +24,8 @@ def test_cloud_sync_full_lifecycle_real_api(tmp_path):
     if not token:
         pytest.skip("VERCEL_BLOB_READ_WRITE_TOKEN not set in environment.")
 
-    # 1. Setup - Create a unique test file
-    test_filename = f"integration_test_{os.getpid()}.csv"
+    # 1. Setup - Create a unique test file using UUID to prevent edge cache collisions
+    test_filename = f"integration_test_{uuid.uuid4().hex}.csv"
     local_path = tmp_path / test_filename
     df_out = pd.DataFrame({"test_val": [1.2345], "status": ["verified"]})
     df_out.to_csv(local_path, index=False)
@@ -47,8 +49,8 @@ def test_cloud_sync_full_lifecycle_real_api(tmp_path):
     restore_path = tmp_path / f"restored_{test_filename}"
     # We must mock pull_state's target or use bridge internals
     # For simplicity, we leverage bridge._get_remote_path and requests directly
-    import requests
-    list_resp = requests.get(f"{bridge.base_api_url}?limit=1000", headers=bridge.headers)
+    list_resp = requests.get(f"{bridge.base_api_url}?limit=1000&prefix={bridge.namespace}/", headers=bridge.headers)
+    list_resp.raise_for_status()
     blobs = list_resp.json().get("blobs", [])
 
     remote_path = f"testing/integration/{test_filename}"
@@ -57,6 +59,7 @@ def test_cloud_sync_full_lifecycle_real_api(tmp_path):
     assert target_blob is not None, f"File {remote_path} not found in cloud after push."
 
     file_resp = requests.get(target_blob["downloadUrl"])
+    file_resp.raise_for_status()
     with open(restore_path, "wb") as f:
         f.write(file_resp.content)
 

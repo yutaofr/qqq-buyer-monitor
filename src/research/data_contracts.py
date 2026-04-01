@@ -1,4 +1,4 @@
-"""Canonical data contract for v11.10 Class A historical macro research inputs."""
+"""Canonical data contract for v12 historical macro research inputs."""
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -11,20 +11,48 @@ REQUIRED_HISTORICAL_MACRO_COLUMNS: tuple[str, ...] = (
     "observation_date",
     "effective_date",
     "credit_spread_bps",
+    "real_yield_10y_pct",
+    "net_liquidity_usd_bn",
+    "treasury_vol_21d",
+    "copper_gold_ratio",
+    "breakeven_10y",
+    "core_capex_mm",
+    "usdjpy",
+    "erp_ttm_pct",
+    "source_credit_spread",
+    "source_real_yield",
+    "source_net_liquidity",
+    "source_treasury_vol",
+    "source_copper_gold",
+    "source_breakeven",
+    "source_core_capex",
+    "source_usdjpy",
+    "source_erp_ttm",
+    "build_version",
+)
+
+OPTIONAL_HISTORICAL_MACRO_COLUMNS: tuple[str, ...] = (
     "credit_acceleration_pct_10d",
     "forward_pe",
     "erp_pct",
-    "real_yield_10y_pct",
-    "net_liquidity_usd_bn",
     "liquidity_roc_pct_4w",
     "funding_stress_flag",
-    "source_credit_spread",
     "source_forward_pe",
     "source_erp",
-    "source_real_yield",
-    "source_net_liquidity",
     "source_funding_stress",
-    "build_version",
+    "source_nfci",
+    "nfci_raw",
+    "vix",
+    "vix3m",
+    "qqq_close",
+    "drawdown_pct",
+    "breadth_proxy",
+    "source_breadth",
+    "breadth_quality_score",
+    "fear_greed",
+    "source_fear_greed",
+    "reference_capital",
+    "current_nav",
 )
 
 SIGNAL_EXPECTATION_REQUIRED_COLUMNS: tuple[str, ...] = ("date",)
@@ -47,12 +75,31 @@ _ALLOWED_DEPLOYMENT_STATES = {state.value for state in DeploymentState}
 
 _NUMERIC_COLUMNS: tuple[str, ...] = (
     "credit_spread_bps",
+    "real_yield_10y_pct",
+    "net_liquidity_usd_bn",
+    "treasury_vol_21d",
+    "copper_gold_ratio",
+    "breakeven_10y",
+    "core_capex_mm",
+    "usdjpy",
+    "erp_ttm_pct",
+)
+
+_OPTIONAL_NUMERIC_COLUMNS: tuple[str, ...] = (
     "credit_acceleration_pct_10d",
     "forward_pe",
     "erp_pct",
-    "real_yield_10y_pct",
-    "net_liquidity_usd_bn",
     "liquidity_roc_pct_4w",
+    "nfci_raw",
+    "vix",
+    "vix3m",
+    "qqq_close",
+    "drawdown_pct",
+    "breadth_proxy",
+    "breadth_quality_score",
+    "fear_greed",
+    "reference_capital",
+    "current_nav",
 )
 
 _ALLOWED_FUNDING_FLAGS = {0, 1}
@@ -87,6 +134,8 @@ def _validate_numeric_column(df: pd.DataFrame, column: str) -> None:
 
 
 def _validate_funding_stress_flag(df: pd.DataFrame) -> None:
+    if "funding_stress_flag" not in df.columns:
+        return
     series = df["funding_stress_flag"]
     invalid = series.dropna().map(lambda value: value not in _ALLOWED_FUNDING_FLAGS)
     if invalid.any():
@@ -149,6 +198,10 @@ def validate_historical_macro_frame(df: pd.DataFrame) -> None:
 
     for column in _NUMERIC_COLUMNS:
         _validate_numeric_column(df, column)
+
+    for column in _OPTIONAL_NUMERIC_COLUMNS:
+        if column in df.columns:
+            _validate_numeric_column(df, column)
 
     _validate_funding_stress_flag(df)
 
