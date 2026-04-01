@@ -77,3 +77,30 @@ def test_classifier_posteriors_can_be_reweighted_by_runtime_priors():
 
     assert sum(adjusted.values()) == pytest.approx(1.0)
     assert adjusted["BUST"] > adjusted["MID_CYCLE"]
+
+
+def test_gaussian_nb_feature_weights_can_silence_unreliable_dimensions():
+    class StubGaussianNB:
+        classes_ = np.array(["MID_CYCLE", "BUST"])
+        theta_ = np.array([[0.0, 4.0], [0.0, 0.0]])
+        var_ = np.array([[1.0, 1.0], [1.0, 1.0]])
+
+    engine = BayesianInferenceEngine({}, {"MID_CYCLE": 0.5, "BUST": 0.5})
+    evidence = np.array([[0.0, 0.0]])
+
+    full_weight = engine.infer_gaussian_nb_posterior(
+        classifier=StubGaussianNB(),
+        evidence_frame=__import__("pandas").DataFrame(evidence, columns=["signal", "breadth"]),
+        runtime_priors={"MID_CYCLE": 0.5, "BUST": 0.5},
+        feature_weights={"signal": 1.0, "breadth": 1.0},
+    )
+    muted_breadth = engine.infer_gaussian_nb_posterior(
+        classifier=StubGaussianNB(),
+        evidence_frame=__import__("pandas").DataFrame(evidence, columns=["signal", "breadth"]),
+        runtime_priors={"MID_CYCLE": 0.5, "BUST": 0.5},
+        feature_weights={"signal": 1.0, "breadth": 0.0},
+    )
+
+    assert full_weight["BUST"] > full_weight["MID_CYCLE"]
+    assert muted_breadth["MID_CYCLE"] == pytest.approx(0.5)
+    assert muted_breadth["BUST"] == pytest.approx(0.5)

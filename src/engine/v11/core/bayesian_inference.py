@@ -58,6 +58,55 @@ class BayesianInferenceEngine:
 
         return posteriors
 
+    def infer_gaussian_nb_posterior(
+        self,
+        *,
+        classifier: Any,
+        evidence_frame: Any,
+        runtime_priors: dict[str, float],
+        feature_weights: dict[str, float] | None = None,
+    ) -> dict[str, float]:
+        """
+        Infer posteriors directly from GaussianNB likelihoods with per-feature attenuation.
+
+        P(e | R) = Π_i P(e_i | R) ^ w_i
+        """
+        if evidence_frame is None or len(evidence_frame) != 1:
+            raise ValueError("evidence_frame must contain exactly one observation")
+
+        if not hasattr(classifier, "classes_") or not hasattr(classifier, "theta_") or not hasattr(classifier, "var_"):
+            raise ValueError("classifier must expose GaussianNB coefficients")
+
+        feature_names = list(getattr(evidence_frame, "columns", []))
+        x = np.asarray(evidence_frame.iloc[0], dtype=float)
+        weights = np.array(
+            [float((feature_weights or {}).get(name, 1.0)) for name in feature_names],
+            dtype=float,
+        )
+        weights = np.clip(weights, 0.0, 1.0)
+
+        runtime = self._normalize(runtime_priors or self.base_priors)
+        if not runtime:
+            runtime = self._normalize(self.base_priors)
+
+        eps = 1e-12
+        joint_logs: dict[str, float] = {}
+
+        for idx, regime in enumerate(classifier.classes_):
+            regime_key = str(regime)
+            theta = np.asarray(classifier.theta_[idx], dtype=float)
+            var = np.maximum(np.asarray(classifier.var_[idx], dtype=float), eps)
+            per_feature_log_likelihood = -0.5 * (
+                np.log(2.0 * np.pi * var) + ((x - theta) ** 2) / var
+            )
+            weighted_log_likelihood = float(np.sum(weights * per_feature_log_likelihood))
+            joint_logs[regime_key] = np.log(max(runtime.get(regime_key, 0.0), eps)) + weighted_log_likelihood
+
+        max_log = max(joint_logs.values())
+        stabilized = {regime: float(np.exp(value - max_log)) for regime, value in joint_logs.items()}
+        normalized = self._normalize(stabilized)
+        return normalized or runtime
+
     def reweight_probabilities(
         self,
         *,

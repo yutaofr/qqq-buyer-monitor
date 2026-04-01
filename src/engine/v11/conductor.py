@@ -207,34 +207,30 @@ class V11Conductor:
         # Inference only on the last point
         latest_vector = features.iloc[-1:]
         runtime_priors, prior_details = self.prior_book.runtime_priors()
+        latest_raw = raw_t0_data.iloc[-1]
+        quality_audit = self._assess_data_quality(latest_raw)
+        feature_weights = self._feature_reliability_weights(
+            latest_vector=latest_vector,
+            latest_raw=latest_raw,
+            quality_audit=quality_audit,
+        )
 
         logger.info("Model Inference: Initiating GaussianNB probabilities with current priors...")
         # AC-3: Numerical Resilience (v11.21)
         try:
-            probs = self.gnb.predict_proba(latest_vector)
-            probs_array = probs[0]
-            if np.isnan(probs_array).any():
-                logger.warning("Bayesian Inference produced NaNs. Falling back to priors.")
+            posteriors = self.inference_engine.infer_gaussian_nb_posterior(
+                classifier=self.gnb,
+                evidence_frame=latest_vector,
+                runtime_priors=runtime_priors,
+                feature_weights=feature_weights,
+            )
+            if any(np.isnan(list(posteriors.values()))):
+                logger.warning("Bayesian Inference produced NaNs after attenuation. Falling back to priors.")
                 posteriors = runtime_priors
-            else:
-                classifier_posteriors = {
-                    str(k): float(v) for k, v in zip(self.gnb.classes_, probs_array, strict=True)
-                }
-                training_priors = {
-                    str(k): float(v)
-                    for k, v in zip(self.gnb.classes_, getattr(self.gnb, "class_prior_", []), strict=True)
-                }
-                posteriors = self.inference_engine.reweight_probabilities(
-                    classifier_posteriors=classifier_posteriors,
-                    training_priors=training_priors,
-                    runtime_priors=runtime_priors,
-                )
         except Exception as e:
             logger.error("Bayesian Inference crashed: %s. Falling back to priors.", e)
             posteriors = runtime_priors
 
-        latest_raw = raw_t0_data.iloc[-1]
-        quality_audit = self._assess_data_quality(latest_raw)
         posterior_entropy = self.entropy_ctrl.calculate_normalized_entropy(posteriors)
         norm_h = self._apply_data_quality_penalty(
             posterior_entropy=posterior_entropy,
@@ -357,10 +353,11 @@ class V11Conductor:
     @staticmethod
     def _assess_data_quality(latest_raw: pd.Series) -> dict[str, object]:
         field_specs = {
-            "credit_spread": ("credit_spread_bps", "source_credit_spread"),
-            "erp": ("erp_pct", None),
-            "net_liquidity": ("net_liquidity_usd_bn", None),
-            "real_yield": ("real_yield_10y_pct", None),
+            "credit_spread": ("credit_spread_bps", "source_credit_spread", None),
+            "erp": ("erp_pct", None, None),
+            "net_liquidity": ("net_liquidity_usd_bn", None, None),
+            "real_yield": ("real_yield_10y_pct", None, None),
+            "breadth": ("breadth_proxy", "source_breadth", "breadth_quality_score"),
         }
 
         fields: dict[str, dict[str, object]] = {}
@@ -368,13 +365,18 @@ class V11Conductor:
         missing_present = False
         quality_values: list[float] = []
 
-        for field_name, (value_key, source_key) in field_specs.items():
+        for field_name, (value_key, source_key, quality_key) in field_specs.items():
             raw_value = latest_raw.get(value_key)
             numeric_value = pd.to_numeric(pd.Series([raw_value]), errors="coerce").iloc[0]
             available = bool(pd.notna(numeric_value) and np.isfinite(float(numeric_value)))
             source = str(latest_raw.get(source_key, "direct")) if source_key else "direct"
             degraded = source.startswith(("proxy:", "fallback:", "synthetic:", "default:", "unavailable:"))
-            field_quality = 1.0 if available and not degraded else 0.0
+            explicit_quality = latest_raw.get(quality_key) if quality_key else None
+            explicit_quality_numeric = pd.to_numeric(pd.Series([explicit_quality]), errors="coerce").iloc[0]
+            if pd.notna(explicit_quality_numeric):
+                field_quality = float(np.clip(float(explicit_quality_numeric), 0.0, 1.0))
+            else:
+                field_quality = 1.0 if available and not degraded else 0.0
             degraded_present = degraded_present or degraded
             missing_present = missing_present or not available
             quality_values.append(field_quality)
@@ -398,6 +400,40 @@ class V11Conductor:
             "reason": reason,
             "fields": fields,
         }
+
+    def _feature_reliability_weights(
+        self,
+        *,
+        latest_vector: pd.DataFrame,
+        latest_raw: pd.Series,
+        quality_audit: dict[str, object],
+    ) -> dict[str, float]:
+        field_quality = {
+            str(name): float(payload.get("quality", 1.0))
+            for name, payload in dict(quality_audit.get("fields", {})).items()
+        }
+
+        source_to_field = {
+            "credit_spread_bps": "credit_spread",
+            "erp_pct": "erp",
+            "net_liquidity_usd_bn": "net_liquidity",
+            "real_yield_10y_pct": "real_yield",
+            "breadth_proxy": "breadth",
+        }
+
+        weights: dict[str, float] = {}
+        for feature_name in latest_vector.columns:
+            src = self.seeder.config.get(feature_name, {}).get("src")
+            raw_value = latest_raw.get(src)
+            numeric_value = pd.to_numeric(pd.Series([raw_value]), errors="coerce").iloc[0]
+            if pd.isna(numeric_value) or not np.isfinite(float(numeric_value)):
+                weights[str(feature_name)] = 0.0
+                continue
+
+            field_name = source_to_field.get(str(src))
+            weights[str(feature_name)] = float(np.clip(field_quality.get(field_name, 1.0), 0.0, 1.0))
+
+        return weights
 
     @staticmethod
     def _resolve_erp_percentile(context_df: pd.DataFrame, raw_t0_data: pd.DataFrame) -> float:

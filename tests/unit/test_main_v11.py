@@ -60,6 +60,8 @@ def test_build_v11_live_macro_row_normalizes_units():
         price=558.0,
         drawdown_pct=-0.02,
         breadth_proxy=0.51,
+        breadth_source="unavailable:breadth",
+        breadth_quality_score=0.0,
         fear_greed=50.0,
         erp_pct_points=2.0,
         real_yield_pct_points=2.1,
@@ -71,6 +73,8 @@ def test_build_v11_live_macro_row_normalizes_units():
     assert row["real_yield_10y_pct"] == 0.021
     assert row["credit_spread_bps"] == 342.0
     assert row["source_credit_spread"] == "proxy:nfci"
+    assert row["source_breadth"] == "unavailable:breadth"
+    assert row["breadth_quality_score"] == 0.0
 
 
 def test_run_v11_pipeline_stops_when_cloud_pull_fails(monkeypatch):
