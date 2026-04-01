@@ -23,6 +23,13 @@
         .tree-line.active { background: linear-gradient(to bottom, var(--emerald), transparent); opacity: 0.6; }
         .prob-bar { height: 8px; border-radius: 6px; background: var(--emerald); transition: width 1.8s cubic-bezier(0.34, 1.56, 0.64, 1); }
         .overclock { background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444, #10b981); animation: flow 3s linear infinite; background-size: 300% 100%; }
+        .evidence-card { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 1.5rem; padding: 1rem 1.1rem; text-align: left; transition: border-color 0.3s, background 0.3s; }
+        .evidence-card[open] { border-color: rgba(16, 185, 129, 0.35); background: rgba(16, 185, 129, 0.08); }
+        .evidence-card summary { list-style: none; cursor: pointer; }
+        .evidence-card summary::-webkit-details-marker { display: none; }
+        .evidence-json { white-space: pre-wrap; word-break: break-word; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.65; color: #cbd5e1; background: rgba(2, 6, 23, 0.72); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 1rem; padding: 0.9rem; margin-top: 0.85rem; overflow-x: auto; }
+        .feature-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+        .feature-chip { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 1.25rem; padding: 0.85rem 0.95rem; text-align: left; }
         @keyframes flow { 0% { background-position: 100% 0; } 100% { background-position: 0% 0; } }
 
         /* Lumiere Point Animation */
@@ -42,6 +49,7 @@
             .factor-card { padding: 1rem !important; border-radius: 1.5rem !important; }
             .main-card { padding: 1.5rem !important; border-radius: 2rem !important; }
             .tag { font-size: 10px !important; padding: 0.4rem 0.6rem !important; }
+            .feature-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -154,6 +162,16 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="space-y-6">
+                    <p class="text-[11px] font-black uppercase opacity-40 tracking-widest">证据下钻 (Logic Trace)</p>
+                    <div id="logic-trace-container" class="space-y-3 px-2 sm:px-4"></div>
+                </div>
+
+                <div class="space-y-6">
+                    <p class="text-[11px] font-black uppercase opacity-40 tracking-widest">原始特征输入 (Feature Values)</p>
+                    <div id="feature-values-container" class="feature-grid px-2 sm:px-4"></div>
+                </div>
                 
                 <div class="pt-10 border-t border-white/5 text-[10px] font-black text-slate-600 uppercase text-left">
                     <div class="flex justify-between"><span>数据源 Data Source</span><span id="data-source" class="text-emerald-500">INIT...</span></div>
@@ -185,6 +203,13 @@
         const DEPLOY_COLORS = {
             'FAST': 'text-emerald-400', 'BASE': 'text-blue-400', 'SLOW': 'text-yellow-400', 'PAUSE': 'text-red-400', 'RECOVER': 'text-emerald-300'
         };
+        const STEP_LABELS = {
+            'probabilistic_inference': '后验推断',
+            'entropy_haircut': '熵值惩罚',
+            'position_sizing': '连续仓位映射',
+            'deployment_policy': '入场节奏',
+            'behavioral_guard': '行为守卫'
+        };
 
         function extractRegimeKey(value) {
             const upper = String(value || '').toUpperCase();
@@ -192,6 +217,90 @@
                 if (upper.includes(key)) return key;
             }
             return '--';
+        }
+
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function formatScalar(value) {
+            if (typeof value === 'number') {
+                return Number.isInteger(value) ? String(value) : value.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+            }
+            if (typeof value === 'boolean') return value ? 'true' : 'false';
+            if (value == null) return 'null';
+            return String(value);
+        }
+
+        function summarizeResult(result) {
+            if (result == null) return '无输出';
+            if (typeof result !== 'object') return formatScalar(result);
+            const entries = Object.entries(result);
+            if (!entries.length) return '空对象';
+            return entries
+                .slice(0, 3)
+                .map(([key, value]) => `${key}: ${formatScalar(value)}`)
+                .join(' · ');
+        }
+
+        function humanizeKey(value) {
+            return String(value || '')
+                .replace(/_/g, ' ')
+                .replace(/\b\w/g, char => char.toUpperCase());
+        }
+
+        function renderLogicTrace(logicTrace) {
+            const container = document.getElementById('logic-trace-container');
+            container.innerHTML = '';
+            const steps = Array.isArray(logicTrace) ? logicTrace : [];
+            if (!steps.length) {
+                container.innerHTML = '<p class="text-[11px] font-bold text-slate-500">当前没有透传决策步骤。</p>';
+                return;
+            }
+
+            steps.forEach((entry, index) => {
+                const stepKey = String(entry.step || `step_${index + 1}`);
+                const stepLabel = STEP_LABELS[stepKey] || humanizeKey(stepKey);
+                const summary = summarizeResult(entry.result);
+                const body = escapeHtml(JSON.stringify(entry.result ?? null, null, 2));
+                container.innerHTML += `
+                    <details class="evidence-card" ${index === steps.length - 1 ? 'open' : ''}>
+                        <summary class="flex items-start justify-between gap-4">
+                            <div>
+                                <p class="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-400/80">Step ${index + 1}</p>
+                                <p class="text-sm sm:text-[15px] font-black text-white mt-1">${escapeHtml(stepLabel)}</p>
+                            </div>
+                            <p class="text-[10px] sm:text-[11px] font-bold text-slate-400 text-right leading-relaxed max-w-[55%]">${escapeHtml(summary)}</p>
+                        </summary>
+                        <pre class="evidence-json">${body}</pre>
+                    </details>
+                `;
+            });
+        }
+
+        function renderFeatureValues(featureValues) {
+            const container = document.getElementById('feature-values-container');
+            container.innerHTML = '';
+            const entries = Object.entries(featureValues || {});
+            if (!entries.length) {
+                container.innerHTML = '<p class="text-[11px] font-bold text-slate-500 col-span-full">当前没有透传原始特征。</p>';
+                return;
+            }
+
+            entries.sort((a, b) => a[0].localeCompare(b[0]));
+            entries.forEach(([key, value]) => {
+                container.innerHTML += `
+                    <div class="feature-chip">
+                        <p class="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">${escapeHtml(humanizeKey(key))}</p>
+                        <p class="text-base sm:text-lg font-black text-white mt-2 break-all">${escapeHtml(formatScalar(value))}</p>
+                    </div>
+                `;
+            });
         }
 
         function renderDistribution(containerId, distribution, fallbackText) {
@@ -271,6 +380,8 @@
 
                 renderDistribution('prob-container', data.signal.probabilities, '暂无后验分布');
                 renderDistribution('prior-container', data.signal.priors, '当前未透传运行时先验');
+                renderLogicTrace(data.evidence.logic_trace);
+                renderFeatureValues(data.evidence.feature_values);
             } catch (e) { console.error(e); sourceLabel.textContent = "SYNC_ERROR"; body.className = 'state-stale min-h-screen flex items-center justify-center p-3 sm:p-4'; }
         }
         updateDashboard(); setInterval(updateDashboard, 60000);

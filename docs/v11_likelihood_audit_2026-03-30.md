@@ -166,6 +166,8 @@
 - `deployment_readiness`
 - `priors`
 - `v11_probabilities`
+- `logic_trace`
+- `feature_values`
 
 避免把：
 
@@ -173,6 +175,8 @@
 - “当日 posterior top-1”
 - “新增资金节奏”
 - “Kelly 就绪度”
+
+同时前端必须真正消费 `logic_trace + feature_values`，提供可展开的证据下钻，而不是只把它们停留在导出 JSON 中。
 
 混成一个字段。
 

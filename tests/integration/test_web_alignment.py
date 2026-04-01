@@ -51,7 +51,9 @@ def test_web_frontend_contract_alignment():
         "data.signal.beta_ceiling",
         "data.signal.raw_target_beta",
         "data.signal.lock_active",
-        "data.meta.calculated_at_utc"
+        "data.meta.calculated_at_utc",
+        "data.evidence.logic_trace",
+        "data.evidence.feature_values",
     ]
 
     print("\n--- Frontend Alignment Audit ---")
@@ -66,6 +68,8 @@ def test_web_frontend_contract_alignment():
     assert "LATE_CYCLE" in data["signal"]["probabilities"]
     assert "LATE_CYCLE" in data["signal"]["priors"]
     assert data["signal"]["lock_active"] is False
+    assert "logic-trace-container" in html_content
+    assert "feature-values-container" in html_content
 
     print("\nWeb Alignment: SUCCESS. V11.5 Engine and Frontend are in sync.")
 
