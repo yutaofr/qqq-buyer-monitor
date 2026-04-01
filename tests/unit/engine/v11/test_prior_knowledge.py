@@ -30,7 +30,27 @@ def test_prior_knowledge_bootstrap_is_deterministic(tmp_path, bootstrap_history)
 
     assert sum(priors.values()) == pytest.approx(1.0)
     assert priors["MID_CYCLE"] > priors["BUST"]
+    assert library.execution_state["stable_regime"] == "RECOVERY"
     assert storage_path.exists()
+
+
+def test_prior_knowledge_bootstrap_anchors_latest_regime(tmp_path):
+    storage_path = tmp_path / "prior_state.json"
+    bootstrap_history = [
+        "MID_CYCLE",
+        "MID_CYCLE",
+        "LATE_CYCLE",
+        "LATE_CYCLE",
+    ]
+
+    library = PriorKnowledgeBase(
+        storage_path=storage_path,
+        regimes=["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"],
+        bootstrap_regimes=bootstrap_history,
+    )
+
+    assert library.execution_state["stable_regime"] == "LATE_CYCLE"
+    assert library.execution_state["regime_evidence"] == pytest.approx(0.0)
 
 
 def test_prior_knowledge_persists_posterior_updates(tmp_path, bootstrap_history):
@@ -80,9 +100,11 @@ def test_prior_knowledge_loads_legacy_payload_with_default_injection(tmp_path, b
     assert library.counts["MID_CYCLE"] == 4.0
     assert library.counts["LATE_CYCLE"] == pytest.approx(1.0)
     assert library.transition_counts["MID_CYCLE"]["BUST"] == pytest.approx(1.0)
-    assert library.execution_state == {}
+    assert library.execution_state["stable_regime"] == "RECOVERY"
+    assert library.execution_state["regime_evidence"] == pytest.approx(0.0)
     payload = json.loads(storage_path.read_text())
     assert payload["bootstrap_fingerprint"].startswith("sha256:")
+    assert payload["execution_state"]["stable_regime"] == "RECOVERY"
 
 
 def test_prior_knowledge_rejects_bootstrap_fingerprint_drift(tmp_path, bootstrap_history):

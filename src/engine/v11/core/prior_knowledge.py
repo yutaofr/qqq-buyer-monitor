@@ -40,6 +40,7 @@ class PriorKnowledgeBase:
         if self.storage_path.exists():
             backfilled = self._load(
                 fallback_regimes=resolved_regimes,
+                bootstrap_regimes=bootstrap_regimes,
                 expected_bootstrap_fingerprint=expected_bootstrap_fingerprint,
             )
             if backfilled:
@@ -57,7 +58,10 @@ class PriorKnowledgeBase:
         }
         self.last_posterior: dict[str, float] | None = None
         self.last_observation_date: str | None = None
-        self.execution_state: dict[str, float | str | int | bool | None] = {}
+        self.execution_state: dict[str, float | str | int | bool | None] = self._bootstrap_execution_state(
+            bootstrap_regimes=bootstrap_regimes,
+            fallback_regimes=self.regimes,
+        )
         self.bootstrap_fingerprint = expected_bootstrap_fingerprint
 
         if bootstrap_regimes is not None:
@@ -211,6 +215,7 @@ class PriorKnowledgeBase:
         self,
         *,
         fallback_regimes: Iterable[str] | None = None,
+        bootstrap_regimes: Iterable[str] | None = None,
         expected_bootstrap_fingerprint: str | None = None,
     ) -> bool:
         backfilled = False
@@ -278,6 +283,14 @@ class PriorKnowledgeBase:
         if stable_regime and stable_regime != self.execution_state.get("stable_regime"):
             self.execution_state["stable_regime"] = stable_regime
             backfilled = True
+        if stable_regime is None:
+            bootstrap_state = self._bootstrap_execution_state(
+                bootstrap_regimes=bootstrap_regimes,
+                fallback_regimes=self.regimes,
+            )
+            if bootstrap_state:
+                self.execution_state.update(bootstrap_state)
+                backfilled = True
         stored_fingerprint = payload.get("bootstrap_fingerprint")
         if stored_fingerprint is None and expected_bootstrap_fingerprint is not None:
             self.bootstrap_fingerprint = expected_bootstrap_fingerprint
@@ -296,6 +309,28 @@ class PriorKnowledgeBase:
                 "PriorKnowledgeBase bootstrap fingerprint mismatch. Canonical regime DNA drift detected."
             )
         return backfilled
+
+    @staticmethod
+    def _bootstrap_execution_state(
+        *,
+        bootstrap_regimes: Iterable[str] | None,
+        fallback_regimes: Iterable[str] | None,
+    ) -> dict[str, str | float]:
+        history = canonicalize_regime_sequence(bootstrap_regimes, include_all=False)
+        if history:
+            return {
+                "stable_regime": history[-1],
+                "regime_evidence": 0.0,
+            }
+
+        fallback = canonicalize_regime_sequence(fallback_regimes, include_all=False)
+        if fallback:
+            return {
+                "stable_regime": fallback[0],
+                "regime_evidence": 0.0,
+            }
+
+        return {}
 
     def _save(self) -> None:
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
