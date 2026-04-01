@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -29,6 +30,7 @@ class V11Conductor:
         regime_data_path: str = "data/v11_poc_phase1_results.csv",
         audit_path: str = "src/engine/v11/resources/regime_audit.json",
         prior_state_path: str = "data/v11_prior_state.json",
+        snapshot_dir: str = "artifacts/v11_runtime_snapshots",
         initial_model: GaussianNB | None = None,
     ):
         # 0. Load Sovereign Calibration (Audit Archive)
@@ -41,6 +43,7 @@ class V11Conductor:
 
         self.macro_data_path = str(macro_data_path)
         self.regime_data_path = str(regime_data_path)
+        self.snapshot_dir = Path(snapshot_dir)
         self.base_betas = self.audit_data["base_betas"]
         self.regime_sharpes = self.audit_data["regime_sharpes"]
         self.regimes = list(self.base_betas.keys())
@@ -180,12 +183,15 @@ class V11Conductor:
         # AC-0: Conductor must see history to calculate Z-scores (v11.20)
         # Load local memory to provide context for the rolling window
         macro_csv = self.macro_data_path
+        previous_raw = None
         if os.path.exists(macro_csv):
             hist_df = pd.read_csv(macro_csv, parse_dates=["observation_date"]).set_index("observation_date")
             # Clear duplicate index if it exists in hist_df and t0
             latest_name = raw_t0_data.iloc[-1].name
             t0_dt = pd.to_datetime(latest_name if latest_name is not None else raw_t0_data.index[-1])
             hist_df = hist_df[hist_df.index < t0_dt]
+            if not hist_df.empty:
+                previous_raw = hist_df.iloc[-1]
             # Use raw_t0_data as a DataFrame to match columns
             t0_df = raw_t0_data.copy()
             # Use observation_date column as index if available to avoid Epoch 0 (1970-01-01)
@@ -208,11 +214,19 @@ class V11Conductor:
         latest_vector = features.iloc[-1:]
         runtime_priors, prior_details = self.prior_book.runtime_priors()
         latest_raw = raw_t0_data.iloc[-1]
-        quality_audit = self._assess_data_quality(latest_raw)
+        quality_audit = self._assess_data_quality(latest_raw, previous_raw=previous_raw)
         feature_weights = self._feature_reliability_weights(
             latest_vector=latest_vector,
             latest_raw=latest_raw,
             quality_audit=quality_audit,
+        )
+        self._write_runtime_snapshot(
+            raw_t0_data=raw_t0_data,
+            latest_vector=latest_vector,
+            runtime_priors=runtime_priors,
+            prior_details=prior_details,
+            quality_audit=quality_audit,
+            feature_weights=feature_weights,
         )
 
         logger.info("Model Inference: Initiating GaussianNB probabilities with current priors...")
@@ -350,13 +364,18 @@ class V11Conductor:
         q = float(np.clip(quality_score, 0.0, 1.0))
         return 1.0 - ((1.0 - h) * q)
 
-    @staticmethod
-    def _assess_data_quality(latest_raw: pd.Series) -> dict[str, object]:
+    def _assess_data_quality(
+        self,
+        latest_raw: pd.Series,
+        *,
+        previous_raw: pd.Series | None = None,
+    ) -> dict[str, object]:
         field_specs = {
             "credit_spread": ("credit_spread_bps", "source_credit_spread", None),
-            "erp": ("erp_pct", None, None),
-            "net_liquidity": ("net_liquidity_usd_bn", None, None),
-            "real_yield": ("real_yield_10y_pct", None, None),
+            "forward_pe": ("forward_pe", "source_forward_pe", None),
+            "erp": ("erp_pct", "source_erp", None),
+            "net_liquidity": ("net_liquidity_usd_bn", "source_net_liquidity", None),
+            "real_yield": ("real_yield_10y_pct", "source_real_yield", None),
             "breadth": ("breadth_proxy", "source_breadth", "breadth_quality_score"),
         }
 
@@ -369,8 +388,10 @@ class V11Conductor:
             raw_value = latest_raw.get(value_key)
             numeric_value = pd.to_numeric(pd.Series([raw_value]), errors="coerce").iloc[0]
             available = bool(pd.notna(numeric_value) and np.isfinite(float(numeric_value)))
-            source = str(latest_raw.get(source_key, "direct")) if source_key else "direct"
-            degraded = source.startswith(("proxy:", "fallback:", "synthetic:", "default:", "unavailable:"))
+            source = self._normalize_source_marker(latest_raw.get(source_key)) if source_key else "direct"
+            degraded = source.startswith(
+                ("proxy:", "fallback:", "synthetic:", "default:", "unavailable:", "missing:")
+            )
             explicit_quality = latest_raw.get(quality_key) if quality_key else None
             explicit_quality_numeric = pd.to_numeric(pd.Series([explicit_quality]), errors="coerce").iloc[0]
             if pd.notna(explicit_quality_numeric):
@@ -388,10 +409,13 @@ class V11Conductor:
             }
 
         quality_score = float(np.mean(quality_values)) if quality_values else 1.0
+        source_switch = self._detect_source_switch(latest_raw, previous_raw=previous_raw)
         if degraded_present:
             reason = "DEGRADED_SOURCE"
         elif missing_present:
             reason = "SENSOR_DEGRADATION"
+        elif source_switch["detected"]:
+            reason = "SOURCE_SWITCH"
         else:
             reason = "V11_PROBABILISTIC_OPTIMAL"
 
@@ -399,6 +423,60 @@ class V11Conductor:
             "quality_score": quality_score,
             "reason": reason,
             "fields": fields,
+            "source_switch": source_switch,
+        }
+
+    @staticmethod
+    def _normalize_source_marker(raw_source: object) -> str:
+        if raw_source is None or pd.isna(raw_source):
+            return "missing:provenance"
+
+        source = str(raw_source).strip()
+        if not source or source.lower() in {"nan", "none", "null"}:
+            return "missing:provenance"
+        return source
+
+    @classmethod
+    def _detect_source_switch(
+        cls,
+        latest_raw: pd.Series,
+        *,
+        previous_raw: pd.Series | None = None,
+    ) -> dict[str, object]:
+        if previous_raw is None:
+            return {
+                "detected": False,
+                "changed_fields": [],
+                "previous_build_version": None,
+                "current_build_version": str(latest_raw.get("build_version", "")) or None,
+            }
+
+        source_fields = {
+            "credit_spread": "source_credit_spread",
+            "forward_pe": "source_forward_pe",
+            "erp": "source_erp",
+            "real_yield": "source_real_yield",
+            "net_liquidity": "source_net_liquidity",
+            "breadth": "source_breadth",
+        }
+
+        changed_fields: list[str] = []
+        for field_name, source_key in source_fields.items():
+            previous_source = cls._normalize_source_marker(previous_raw.get(source_key))
+            current_source = cls._normalize_source_marker(latest_raw.get(source_key))
+            if previous_source and current_source and previous_source != current_source:
+                changed_fields.append(field_name)
+
+        previous_build_version = str(previous_raw.get("build_version", "") or "")
+        current_build_version = str(latest_raw.get("build_version", "") or "")
+        if previous_build_version and current_build_version and previous_build_version != current_build_version:
+            changed_fields.append("build_version")
+
+        return {
+            "detected": bool(changed_fields),
+            "changed_fields": sorted(set(changed_fields)),
+            "previous_build_version": previous_build_version or None,
+            "current_build_version": current_build_version or None,
         }
 
     def _feature_reliability_weights(
@@ -434,6 +512,67 @@ class V11Conductor:
             weights[str(feature_name)] = float(np.clip(field_quality.get(field_name, 1.0), 0.0, 1.0))
 
         return weights
+
+    def _write_runtime_snapshot(
+        self,
+        *,
+        raw_t0_data: pd.DataFrame,
+        latest_vector: pd.DataFrame,
+        runtime_priors: dict[str, float],
+        prior_details: dict[str, object],
+        quality_audit: dict[str, object],
+        feature_weights: dict[str, float],
+    ) -> None:
+        try:
+            serialized_row = self._serialize_frame(raw_t0_data)
+            observation_date = str(serialized_row[0].get("observation_date", "unknown"))
+            payload = {
+                "snapshot_version": "v11_runtime_snapshot.v1",
+                "captured_at_utc": datetime.now(UTC).isoformat(),
+                "observation_date": observation_date,
+                "macro_data_path": self.macro_data_path,
+                "regime_data_path": self.regime_data_path,
+                "audit_path": str(self.audit_path),
+                "feature_contract": self.feature_contract,
+                "runtime_priors": runtime_priors,
+                "prior_details": prior_details,
+                "quality_audit": quality_audit,
+                "feature_weights": feature_weights,
+                "raw_t0_data": serialized_row,
+                "feature_vector": self._serialize_frame(latest_vector),
+                "gaussian_nb": {
+                    "classes": [str(value) for value in getattr(self.gnb, "classes_", [])],
+                    "theta": np.asarray(getattr(self.gnb, "theta_", [])).tolist(),
+                    "var": np.asarray(getattr(self.gnb, "var_", [])).tolist(),
+                    "class_prior": np.asarray(getattr(self.gnb, "class_prior_", [])).tolist(),
+                },
+            }
+
+            self.snapshot_dir.mkdir(parents=True, exist_ok=True)
+            snapshot_path = self.snapshot_dir / f"snapshot_{observation_date}.json"
+            snapshot_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to write v11 runtime snapshot: %s", exc)
+
+    @staticmethod
+    def _serialize_frame(frame: pd.DataFrame) -> list[dict[str, object]]:
+        serializable = frame.copy()
+        if "observation_date" not in serializable.columns:
+            index_name = serializable.index.name or "observation_date"
+            serializable = serializable.reset_index().rename(columns={index_name: "observation_date"})
+
+        for column in serializable.columns:
+            if pd.api.types.is_datetime64_any_dtype(serializable[column]):
+                serializable[column] = pd.to_datetime(serializable[column]).dt.strftime("%Y-%m-%d")
+
+        serializable = serializable.replace({np.nan: None})
+        return [
+            {
+                str(key): (value.item() if hasattr(value, "item") else value)
+                for key, value in row.items()
+            }
+            for row in serializable.to_dict(orient="records")
+        ]
 
     @staticmethod
     def _resolve_erp_percentile(context_df: pd.DataFrame, raw_t0_data: pd.DataFrame) -> float:
