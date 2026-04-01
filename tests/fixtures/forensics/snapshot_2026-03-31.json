@@ -1,0 +1,237 @@
+{
+  "snapshot_version": "v11_runtime_snapshot.v1",
+  "captured_at_utc": "2026-04-01T01:35:48.386736+00:00",
+  "observation_date": "2026-03-31",
+  "macro_data_path": "data/macro_historical_dump.csv",
+  "regime_data_path": "data/v11_poc_phase1_results.csv",
+  "audit_path": "src/engine/v11/resources/regime_audit.json",
+  "feature_contract": {
+    "seeder_config_hash": "sha256:d42fd0cf497529fd8aeec52ebdd93d09083e6d72537e9c4b474415825c5a2143",
+    "feature_names": [
+      "spread_21d",
+      "liquidity_252d",
+      "real_yield_structural_z",
+      "erp_absolute",
+      "spread_absolute",
+      "yield_absolute"
+    ]
+  },
+  "runtime_priors": {
+    "BUST": 0.20390638154571478,
+    "CAPITULATION": 0.00016837851490149856,
+    "RECOVERY": 0.17107257113992255,
+    "LATE_CYCLE": 0.26149183364202727,
+    "MID_CYCLE": 0.3633608351574339
+  },
+  "prior_details": {
+    "base_weight": 1.0,
+    "posterior_weight": 0.0,
+    "transition_weight": 0.0,
+    "base_priors": {
+      "BUST": 0.20390638154571478,
+      "CAPITULATION": 0.00016837851490149856,
+      "RECOVERY": 0.17107257113992255,
+      "LATE_CYCLE": 0.26149183364202727,
+      "MID_CYCLE": 0.3633608351574339
+    },
+    "posterior_prior": {
+      "BUST": 0.20390638154571478,
+      "CAPITULATION": 0.00016837851490149856,
+      "RECOVERY": 0.17107257113992255,
+      "LATE_CYCLE": 0.26149183364202727,
+      "MID_CYCLE": 0.3633608351574339
+    },
+    "transition_prior": {
+      "BUST": 0.20390638154571478,
+      "CAPITULATION": 0.00016837851490149856,
+      "RECOVERY": 0.17107257113992255,
+      "LATE_CYCLE": 0.26149183364202727,
+      "MID_CYCLE": 0.3633608351574339
+    }
+  },
+  "quality_audit": {
+    "quality_score": 0.5,
+    "reason": "DEGRADED_SOURCE",
+    "fields": {
+      "credit_spread": {
+        "available": true,
+        "source": "fred:BAMLH0A0HYM2",
+        "degraded": false,
+        "quality": 1.0
+      },
+      "forward_pe": {
+        "available": true,
+        "source": "fallback:institutional_fallback",
+        "degraded": true,
+        "quality": 0.0
+      },
+      "erp": {
+        "available": true,
+        "source": "proxy:derived:erp[fallback:institutional_fallback|fred:DFII10]",
+        "degraded": true,
+        "quality": 0.0
+      },
+      "net_liquidity": {
+        "available": true,
+        "source": "derived:fred:WALCL-WDTGAL-RRPONTSYD",
+        "degraded": false,
+        "quality": 1.0
+      },
+      "real_yield": {
+        "available": true,
+        "source": "fred:DFII10",
+        "degraded": false,
+        "quality": 1.0
+      },
+      "breadth": {
+        "available": true,
+        "source": "missing:provenance",
+        "degraded": true,
+        "quality": 0.0
+      }
+    },
+    "source_switch": {
+      "detected": true,
+      "changed_fields": [
+        "build_version",
+        "credit_spread",
+        "erp",
+        "forward_pe",
+        "net_liquidity",
+        "real_yield"
+      ],
+      "previous_build_version": "v11.x-dna-bootstrap",
+      "current_build_version": "v11_live_feedback"
+    }
+  },
+  "feature_weights": {
+    "spread_21d": 1.0,
+    "liquidity_252d": 1.0,
+    "real_yield_structural_z": 1.0,
+    "erp_absolute": 0.0,
+    "spread_absolute": 1.0,
+    "yield_absolute": 1.0
+  },
+  "raw_t0_data": [
+    {
+      "observation_date": "2026-03-31",
+      "effective_date": "2026-03-31",
+      "erp_pct": 0.0206172272354388,
+      "real_yield_10y_pct": 0.0204,
+      "credit_spread_bps": 346.0,
+      "net_liquidity_usd_bn": 5818.972,
+      "credit_acceleration_pct_10d": null,
+      "forward_pe": 24.38,
+      "liquidity_roc_pct_4w": 0.7847531108067666,
+      "funding_stress_flag": null,
+      "source_credit_spread": "fred:BAMLH0A0HYM2",
+      "source_forward_pe": "fallback:institutional_fallback",
+      "source_erp": "proxy:derived:erp[fallback:institutional_fallback|fred:DFII10]",
+      "source_real_yield": "fred:DFII10",
+      "source_net_liquidity": "derived:fred:WALCL-WDTGAL-RRPONTSYD",
+      "source_funding_stress": null,
+      "build_version": "v11_live_feedback",
+      "vix": 25.25,
+      "vix3m": 25.549999237060547,
+      "qqq_close": 577.1799926757812,
+      "drawdown_pct": -0.0898401648053811,
+      "breadth_proxy": 0.4,
+      "fear_greed": 15.0,
+      "reference_capital": 100000.0,
+      "current_nav": 100000.0
+    }
+  ],
+  "feature_vector": [
+    {
+      "observation_date": "2026-03-31",
+      "spread_21d": 3.3332509310286293,
+      "liquidity_252d": -5.394643635623224,
+      "real_yield_structural_z": -0.06411681577049086,
+      "erp_absolute": -1.2382933800827076,
+      "spread_absolute": -0.38951301176489717,
+      "yield_absolute": 0.23092063492629306
+    }
+  ],
+  "gaussian_nb": {
+    "classes": [
+      "BUST",
+      "LATE_CYCLE",
+      "MID_CYCLE",
+      "RECOVERY"
+    ],
+    "theta": [
+      [
+        1.0769476133547218,
+        -0.913281395933748,
+        -1.7452322503413424,
+        1.4051075416058314,
+        1.6485485525677317,
+        -1.250064697885881
+      ],
+      [
+        0.6566789834544405,
+        -0.7902550950932741,
+        1.498025540093967,
+        -0.9395075947264031,
+        -0.3781152978905566,
+        1.0706417511121822
+      ],
+      [
+        -0.5949296102890156,
+        -0.14059671200466764,
+        0.5561310888130881,
+        -0.22739172772911215,
+        -0.8927667678229338,
+        -0.18758848389286342
+      ],
+      [
+        -0.6390904439051314,
+        0.930959298843647,
+        1.4087969103369848,
+        0.3273063921525574,
+        -0.41232057714372866,
+        -0.4286982983258515
+      ]
+    ],
+    "var": [
+      [
+        2.7652632228232057,
+        2.0265046884146827,
+        1.8731087000717925,
+        0.6795589932639571,
+        0.7067150004981264,
+        0.3491756508069453
+      ],
+      [
+        1.2579581352679698,
+        1.5504151805787592,
+        2.870218571081515,
+        0.5558799308388775,
+        0.3052387660796291,
+        0.7860534440238265
+      ],
+      [
+        1.0355143355471734,
+        1.7296334284744448,
+        1.770318144451497,
+        0.08121292280287351,
+        0.05186600446384988,
+        0.09787461733034955
+      ],
+      [
+        1.0398873119087324,
+        1.420439155980002,
+        0.46502262632289104,
+        0.1839852902605386,
+        0.11890644821150129,
+        0.08368677488535359
+      ]
+    ],
+    "class_prior": [
+      0.20390967307044153,
+      0.2615436467812605,
+      0.36349848331648127,
+      0.17104819683181666
+    ]
+  }
+}

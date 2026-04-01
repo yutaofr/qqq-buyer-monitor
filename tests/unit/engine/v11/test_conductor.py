@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -273,6 +274,28 @@ def test_conductor_marks_missing_provenance_as_degraded(tmp_path):
     assert erp_quality["source"] == "missing:provenance"
     assert erp_quality["degraded"] is True
     assert erp_quality["quality"] == 0.0
+
+
+def test_2026_03_31_canonical_row_has_forensic_provenance_backfill():
+    row = pd.read_csv("data/macro_historical_dump.csv").query("observation_date == '2026-03-31'").iloc[0]
+
+    assert row["forward_pe"] == pytest.approx(24.38)
+    assert row["source_forward_pe"] == "fallback:institutional_fallback"
+    assert row["source_erp"] == "proxy:derived:erp[fallback:institutional_fallback|fred:DFII10]"
+    assert row["source_real_yield"] == "fred:DFII10"
+    assert row["source_net_liquidity"] == "derived:fred:WALCL-WDTGAL-RRPONTSYD"
+    assert row["breadth_proxy"] == pytest.approx(0.4)
+
+
+def test_2026_03_31_forensics_snapshot_fixture_is_checked_in():
+    snapshot_path = Path("tests/fixtures/forensics/snapshot_2026-03-31.json")
+    assert snapshot_path.exists()
+
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    assert snapshot["observation_date"] == "2026-03-31"
+    assert snapshot["quality_audit"]["reason"] == "DEGRADED_SOURCE"
+    assert snapshot["quality_audit"]["source_switch"]["detected"] is True
+    assert snapshot["raw_t0_data"][0]["source_erp"] == "proxy:derived:erp[fallback:institutional_fallback|fred:DFII10]"
 
 
 def test_conductor_rejects_probability_seeder_hash_drift(tmp_path):
