@@ -1,8 +1,8 @@
 """Independent v11 deployment policy for incremental cash pacing."""
 from __future__ import annotations
 
-from src.regime_topology import ACTIVE_REGIME_ORDER, merge_regime_weights
 from src.models.deployment import DeploymentState, deployment_multiplier_for_state
+from src.regime_topology import ACTIVE_REGIME_ORDER, merge_regime_weights
 
 
 class ProbabilisticDeploymentPolicy:

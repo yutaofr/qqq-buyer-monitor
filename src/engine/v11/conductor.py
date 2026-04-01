@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 from sklearn.naive_bayes import GaussianNB
 
-from src.regime_topology import canonicalize_regime_sequence, merge_regime_weights
 from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
 from src.engine.v11.core.entropy_controller import EntropyController
 from src.engine.v11.core.model_validation import validate_feature_contract, validate_gaussian_nb
@@ -19,6 +18,7 @@ from src.engine.v11.signal.behavioral_guard import BehavioralGuard
 from src.engine.v11.signal.deployment_policy import ProbabilisticDeploymentPolicy
 from src.engine.v11.signal.inertial_beta_mapper import InertialBetaMapper
 from src.engine.v11.signal.regime_stabilizer import RegimeStabilizer
+from src.regime_topology import canonicalize_regime_sequence, merge_regime_weights
 
 logger = logging.getLogger(__name__)
 

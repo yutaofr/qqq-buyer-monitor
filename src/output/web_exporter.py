@@ -9,13 +9,13 @@ from pathlib import Path
 import pandas as pd
 import pytz
 
+from src.models import SignalResult
 from src.regime_topology import (
     ACTIVE_REGIME_ORDER,
     REGIME_DISPLAY_MAP,
     canonicalize_regime_name,
     merge_regime_weights,
 )
-from src.models import SignalResult
 
 try:
     import pandas_market_calendars as mcal
