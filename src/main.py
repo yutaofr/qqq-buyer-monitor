@@ -64,7 +64,7 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
     execution_bucket = str(runtime_result.get("signal", {}).get("target_bucket", "QQQ"))
 
     explanation = (
-        f"v11.5 Bayesian Conductor: beta={runtime_result['target_beta']:.2f}x | "
+        f"v12.0 Orthogonal Bayesian Conductor: beta={runtime_result['target_beta']:.2f}x | "
         f"entropy={runtime_result.get('entropy', 0.0):.3f} | "
         f"stable={stable_regime} | raw={raw_regime} ({ordered_probs[0][1]:.1%}) | "
         f"deploy={deployment_state_key}"
@@ -88,7 +88,7 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
         ],
         explanation=explanation,
         metadata={
-            "engine_version": "v11.5",
+            "engine_version": "v12.0",
             "quality_audit": runtime_result.get("quality_audit", {}),
             "feature_values": runtime_result.get("feature_values", {}),
             "prior_details": runtime_result.get("prior_details", {}),
@@ -103,65 +103,72 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
     )
 
 
-def _build_v11_live_macro_row(
+def _build_v12_live_macro_row(
     *,
     observation_date: pd.Timestamp,
+    effective_date: pd.Timestamp | None = None,
     build_version: str,
     credit_spread: float,
     credit_spread_source: str = "direct",
-    forward_pe: float | None,
-    forward_pe_source: str = "direct",
-    net_liquidity: float | None,
-    net_liquidity_source: str = "direct",
-    liquidity_roc: float,
-    vix: float,
-    vix3m: float | None,
-    price: float,
-    drawdown_pct: float,
-    breadth_proxy: float,
-    breadth_source: str = "direct",
-    breadth_quality_score: float = 1.0,
-    fear_greed: float,
-    fear_greed_source: str = "direct",
-    erp_pct_points: float | None,
-    erp_source: str = "direct",
     real_yield_pct_points: float | None,
     real_yield_source: str = "direct",
+    net_liquidity: float | None,
+    net_liquidity_source: str = "direct",
+    treasury_vol: float | None,
+    treasury_vol_source: str = "direct",
+    copper_gold_ratio: float | None,
+    copper_gold_source: str = "direct",
+    breakeven_pct_points: float | None,
+    breakeven_source: str = "direct",
+    core_capex: float | None,
+    core_capex_source: str = "direct",
+    usdjpy: float | None,
+    usdjpy_source: str = "direct",
+    erp_ttm_pct_points: float | None,
+    erp_ttm_source: str = "direct",
     reference_capital: float,
     current_nav: float,
 ) -> pd.DataFrame:
     observation_ts = pd.Timestamp(observation_date).normalize()
+    effective_ts = pd.Timestamp(effective_date or observation_ts).normalize()
     return pd.DataFrame(
         [
             {
                 "observation_date": observation_ts,
+                "effective_date": effective_ts,
                 "build_version": str(build_version),
                 "credit_spread_bps": float(credit_spread),
                 "source_credit_spread": str(credit_spread_source),
-                "forward_pe": float(forward_pe) if forward_pe is not None else None,
-                "source_forward_pe": str(forward_pe_source),
-                "net_liquidity_usd_bn": float(net_liquidity) if net_liquidity is not None else None,
-                "source_net_liquidity": str(net_liquidity_source),
-                "liquidity_roc_pct_4w": float(liquidity_roc or 0.0),
-                "vix": float(vix),
-                "source_vix": "direct:vol_surface",
-                "vix3m": None if vix3m is None else float(vix3m),
-                "qqq_close": float(price),
-                "drawdown_pct": float(drawdown_pct),
-                "breadth_proxy": float(breadth_proxy),
-                "source_breadth": str(breadth_source),
-                "breadth_quality_score": float(breadth_quality_score),
-                "fear_greed": float(fear_greed),
-                "source_fear_greed": str(fear_greed_source),
-                "erp_pct": (float(erp_pct_points) / 100.0) if erp_pct_points is not None else None,
-                "source_erp": str(erp_source),
                 "real_yield_10y_pct": (float(real_yield_pct_points) / 100.0) if real_yield_pct_points is not None else None,
                 "source_real_yield": str(real_yield_source),
+                "net_liquidity_usd_bn": float(net_liquidity) if net_liquidity is not None else None,
+                "source_net_liquidity": str(net_liquidity_source),
+                "treasury_vol_21d": float(treasury_vol) if treasury_vol is not None else None,
+                "source_treasury_vol": str(treasury_vol_source),
+                "copper_gold_ratio": float(copper_gold_ratio) if copper_gold_ratio is not None else None,
+                "source_copper_gold": str(copper_gold_source),
+                "breakeven_10y": (float(breakeven_pct_points) / 100.0) if breakeven_pct_points is not None else None,
+                "source_breakeven": str(breakeven_source),
+                "core_capex_mm": float(core_capex) if core_capex is not None else None,
+                "source_core_capex": str(core_capex_source),
+                "usdjpy": float(usdjpy) if usdjpy is not None else None,
+                "source_usdjpy": str(usdjpy_source),
+                "erp_ttm_pct": (float(erp_ttm_pct_points) / 100.0) if erp_ttm_pct_points is not None else None,
+                "source_erp_ttm": str(erp_ttm_source),
+                "forward_pe": None,
+                "erp_pct": None,
+                "source_forward_pe": "deprecated:v12",
+                "source_erp": "deprecated:v12",
+                "funding_stress_flag": int(float(credit_spread) >= 500.0),
                 "reference_capital": float(reference_capital),
                 "current_nav": float(current_nav),
             }
         ]
     )
+
+
+def _build_v11_live_macro_row(**kwargs) -> pd.DataFrame:
+    return _build_v12_live_macro_row(**kwargs)
 
 
 def _upsert_v11_macro_feedback(raw_row: pd.DataFrame, macro_csv_path: str) -> None:
@@ -186,7 +193,7 @@ def _upsert_v11_macro_feedback(raw_row: pd.DataFrame, macro_csv_path: str) -> No
     new_row = row.copy()
     new_row["observation_date"] = obs_dt
     new_row["effective_date"] = eff_dt
-    new_row["build_version"] = str(new_row.get("build_version", "v11_live_feedback"))
+    new_row["build_version"] = str(new_row.get("build_version", "v12_live_feedback"))
 
     updated = pd.concat([existing, pd.DataFrame([new_row])], ignore_index=True)
     updated.to_csv(path, index=False)
@@ -194,13 +201,17 @@ def _upsert_v11_macro_feedback(raw_row: pd.DataFrame, macro_csv_path: str) -> No
 
 def run_v11_pipeline(args: argparse.Namespace) -> None:
     """Execute the v11 Bayesian runtime pipeline."""
-    from src.collector.breadth import fetch_breadth
-    from src.collector.fear_greed import fetch_fear_greed
-    from src.collector.fundamentals import fetch_forward_pe
+    from src.collector.global_macro import (
+        fetch_breakeven_inflation,
+        fetch_copper_gold_ratio,
+        fetch_core_capex_momentum,
+        fetch_shiller_ttm_eps,
+        fetch_treasury_realized_vol,
+        fetch_usdjpy_snapshot,
+    )
     from src.collector.macro import fetch_credit_spread_snapshot
     from src.collector.macro_v3 import fetch_net_liquidity_snapshot, fetch_real_yield_snapshot
     from src.collector.price import fetch_price_data
-    from src.collector.vix import fetch_vix_term_structure
     from src.engine.v11.conductor import V11Conductor
     from src.output.cli import print_signal
     from src.output.report import to_json
@@ -218,29 +229,6 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     price_data = fetch_price_data()
 
     try:
-        vix_term = fetch_vix_term_structure()
-    except Exception as exc:
-        logger.warning("VIX fetch failed: %s", exc)
-        vix_term = {"vix": 20.0, "vix3m": None}
-
-    try:
-        fg = fetch_fear_greed()
-        fear_greed_source = "direct:cnn_fear_greed"
-    except Exception as exc:
-        logger.warning("Fear & Greed fetch failed: %s", exc)
-        fg = 50
-        fear_greed_source = "default:fear_greed"
-
-    try:
-        pe_dict = fetch_forward_pe()
-        forward_pe = pe_dict.get("forward_pe")
-        forward_pe_source = str(pe_dict.get("source", "direct:yfinance"))
-    except Exception as exc:
-        logger.warning("Forward PE fetch failed: %s", exc)
-        forward_pe = None
-        forward_pe_source = "unavailable:forward_pe"
-
-    try:
         real_yield_snapshot = fetch_real_yield_snapshot()
         real_yield_pct = real_yield_snapshot.get("value")
         real_yield_source = str(real_yield_snapshot.get("source", "unavailable:real_yield"))
@@ -248,23 +236,6 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         logger.warning("Real Yield fetch failed: %s", exc)
         real_yield_pct = None
         real_yield_source = "unavailable:real_yield"
-
-    erp_pct = None
-    erp_source = "unavailable:erp"
-    if forward_pe and real_yield_pct is not None:
-        erp_pct = (100.0 / forward_pe) - float(real_yield_pct)
-        erp_source = _compose_derived_source("erp", forward_pe_source, real_yield_source)
-
-    try:
-        breadth = fetch_breadth()
-        pct_above_50d = float(breadth.get("pct_above_50d", 0.50))
-        breadth_source = str(breadth.get("source", "direct"))
-        breadth_quality_score = float(breadth.get("quality", 1.0))
-    except Exception as exc:
-        logger.warning("Breadth fetch failed: %s", exc)
-        pct_above_50d = 0.50
-        breadth_source = "unavailable:breadth"
-        breadth_quality_score = 0.0
 
     try:
         credit_spread_snapshot = fetch_credit_spread_snapshot()
@@ -281,40 +252,90 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     try:
         net_liquidity_snapshot = fetch_net_liquidity_snapshot()
         net_liq = net_liquidity_snapshot.get("value")
-        liq_roc = net_liquidity_snapshot.get("roc") or 0.0
         net_liquidity_source = str(net_liquidity_snapshot.get("source", "unavailable:net_liquidity"))
     except Exception as exc:
         logger.warning("Net-liquidity fetch failed: %s", exc)
-        net_liq, liq_roc = None, 0.0
+        net_liq = None
         net_liquidity_source = "unavailable:net_liquidity"
+
+    try:
+        treasury_vol_snapshot = fetch_treasury_realized_vol()
+        treasury_vol = treasury_vol_snapshot.get("value")
+        treasury_vol_source = str(treasury_vol_snapshot.get("source", "unavailable:treasury_vol"))
+    except Exception as exc:
+        logger.warning("Treasury vol fetch failed: %s", exc)
+        treasury_vol = None
+        treasury_vol_source = "unavailable:treasury_vol"
+
+    try:
+        copper_gold_snapshot = fetch_copper_gold_ratio()
+        copper_gold_ratio = copper_gold_snapshot.get("ratio")
+        copper_gold_source = str(copper_gold_snapshot.get("source", "unavailable:copper_gold"))
+    except Exception as exc:
+        logger.warning("Copper/gold fetch failed: %s", exc)
+        copper_gold_ratio = None
+        copper_gold_source = "unavailable:copper_gold"
+
+    try:
+        breakeven_snapshot = fetch_breakeven_inflation()
+        breakeven = breakeven_snapshot.get("value")
+        breakeven_source = str(breakeven_snapshot.get("source", "unavailable:breakeven"))
+    except Exception as exc:
+        logger.warning("Breakeven fetch failed: %s", exc)
+        breakeven = None
+        breakeven_source = "unavailable:breakeven"
+
+    try:
+        capex_snapshot = fetch_core_capex_momentum()
+        core_capex = capex_snapshot.get("delta")
+        core_capex_source = str(capex_snapshot.get("source", "unavailable:core_capex"))
+    except Exception as exc:
+        logger.warning("Core capex fetch failed: %s", exc)
+        core_capex = None
+        core_capex_source = "unavailable:core_capex"
+
+    try:
+        usdjpy_snapshot = fetch_usdjpy_snapshot()
+        usdjpy = usdjpy_snapshot.get("value")
+        usdjpy_source = str(usdjpy_snapshot.get("source", "unavailable:usdjpy"))
+    except Exception as exc:
+        logger.warning("USDJPY fetch failed: %s", exc)
+        usdjpy = None
+        usdjpy_source = "unavailable:usdjpy"
+
+    try:
+        erp_snapshot = fetch_shiller_ttm_eps()
+        erp_ttm = erp_snapshot.get("erp")
+        erp_ttm_source = str(erp_snapshot.get("source", "unavailable:erp_ttm"))
+    except Exception as exc:
+        logger.warning("Shiller ERP fetch failed: %s", exc)
+        erp_ttm = None
+        erp_ttm_source = "unavailable:erp_ttm"
 
     reference_capital = float(os.environ.get("V11_REFERENCE_CAPITAL", "100000"))
     current_nav = float(os.environ.get("V11_CURRENT_NAV", str(reference_capital)))
-    drawdown_pct = float(price_data["price"] / price_data["high_52w"] - 1.0) if price_data["high_52w"] else 0.0
 
-    raw_row = _build_v11_live_macro_row(
+    raw_row = _build_v12_live_macro_row(
         observation_date=pd.Timestamp(price_data["date"]),
-        build_version="v11_live_feedback",
+        build_version="v12_live_feedback",
         credit_spread=float(credit_spread),
         credit_spread_source=credit_spread_source,
-        forward_pe=float(forward_pe) if forward_pe is not None else None,
-        forward_pe_source=forward_pe_source,
-        net_liquidity=net_liq,
-        net_liquidity_source=net_liquidity_source,
-        liquidity_roc=liq_roc,
-        vix=float(vix_term["vix"]),
-        vix3m=vix_term.get("vix3m"),
-        price=float(price_data["price"]),
-        drawdown_pct=drawdown_pct,
-        breadth_proxy=pct_above_50d,
-        breadth_source=breadth_source,
-        breadth_quality_score=breadth_quality_score,
-        fear_greed=float(fg),
-        fear_greed_source=fear_greed_source,
-        erp_pct_points=erp_pct,
-        erp_source=erp_source,
         real_yield_pct_points=real_yield_pct,
         real_yield_source=real_yield_source,
+        net_liquidity=net_liq,
+        net_liquidity_source=net_liquidity_source,
+        treasury_vol=treasury_vol,
+        treasury_vol_source=treasury_vol_source,
+        copper_gold_ratio=copper_gold_ratio,
+        copper_gold_source=copper_gold_source,
+        breakeven_pct_points=(float(breakeven) * 100.0) if breakeven is not None else None,
+        breakeven_source=breakeven_source,
+        core_capex=core_capex,
+        core_capex_source=core_capex_source,
+        usdjpy=usdjpy,
+        usdjpy_source=usdjpy_source,
+        erp_ttm_pct_points=(float(erp_ttm) * 100.0) if erp_ttm is not None else None,
+        erp_ttm_source=erp_ttm_source,
         reference_capital=reference_capital,
         current_nav=current_nav,
     )

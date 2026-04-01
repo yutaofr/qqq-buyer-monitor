@@ -12,7 +12,7 @@ def test_main_routes_v11_engine(monkeypatch, capsys):
 
     def fake_run(args):
         called["engine"] = "v11"
-        print(json.dumps({"engine_version": "v11", "target_beta": 0.83}))
+        print(json.dumps({"engine_version": "v12.0", "target_beta": 0.83}))
 
     monkeypatch.setattr(main_module, "run_v11_pipeline", fake_run)
 
@@ -20,10 +20,10 @@ def test_main_routes_v11_engine(monkeypatch, capsys):
 
     out = json.loads(capsys.readouterr().out)
     assert called["engine"] == "v11"
-    assert out["engine_version"] == "v11"
+    assert out["engine_version"] == "v12.0"
 
 
-def test_build_v11_signal_result_uses_v11_contract():
+def test_build_v11_signal_result_uses_v12_metadata_contract():
     runtime = {
         "date": "2026-03-30",
         "signal": {"target_bucket": "QQQ", "reason": "hold", "lock_active": False},
@@ -36,7 +36,7 @@ def test_build_v11_signal_result_uses_v11_contract():
             "qld_notional_dollars": 0.0,
             "cash_dollars": 9000.0,
         },
-        "feature_values": {"credit_spread": 320.0},
+        "feature_values": {"credit_spread": 320.0, "move_21d_orth_z": 1.2},
         "deployment_readiness": 0.64,
     }
 
@@ -46,48 +46,54 @@ def test_build_v11_signal_result_uses_v11_contract():
     assert result.stable_regime == "MID_CYCLE"
     assert result.metadata["deployment_readiness"] == 0.64
     assert result.target_allocation.target_qqq_pct == 0.91
+    assert result.metadata["engine_version"] == "v12.0"
 
 
-def test_build_v11_live_macro_row_normalizes_units():
-    row = main_module._build_v11_live_macro_row(
+def test_build_v12_live_macro_row_normalizes_units_and_deprecates_v11_fields():
+    row = main_module._build_v12_live_macro_row(
         observation_date=pd.Timestamp("2026-03-30"),
-        build_version="v11_live_feedback",
+        build_version="v12_live_feedback",
         credit_spread=342.0,
         credit_spread_source="proxy:nfci",
-        forward_pe=24.38,
-        forward_pe_source="fallback:institutional_consensus",
-        net_liquidity=5818.9,
-        net_liquidity_source="derived:fred:WALCL-WDTGAL-RRPONTSYD",
-        liquidity_roc=0.78,
-        vix=30.6,
-        vix3m=None,
-        price=558.0,
-        drawdown_pct=-0.02,
-        breadth_proxy=0.51,
-        breadth_source="unavailable:breadth",
-        breadth_quality_score=0.0,
-        fear_greed=50.0,
-        fear_greed_source="default:fear_greed",
-        erp_pct_points=2.0,
-        erp_source="proxy:derived:erp[fallback:institutional_consensus|proxy:treasury_xml]",
         real_yield_pct_points=2.1,
         real_yield_source="proxy:treasury_xml",
+        net_liquidity=5818.9,
+        net_liquidity_source="derived:fred:WALCL-WDTGAL-RRPONTSYD",
+        treasury_vol=0.0081,
+        treasury_vol_source="direct:fred_dgs10",
+        copper_gold_ratio=0.201,
+        copper_gold_source="direct:yfinance",
+        breakeven_pct_points=2.3,
+        breakeven_source="direct:fred_t10yie",
+        core_capex=12.5,
+        core_capex_source="direct:fred_neworder",
+        usdjpy=151.2,
+        usdjpy_source="direct:yfinance",
+        erp_ttm_pct_points=4.2,
+        erp_ttm_source="direct:shiller",
         reference_capital=100000.0,
         current_nav=100000.0,
     ).iloc[0]
 
-    assert row["erp_pct"] == 0.02
-    assert row["real_yield_10y_pct"] == 0.021
-    assert row["forward_pe"] == 24.38
+    assert row["effective_date"] == pd.Timestamp("2026-03-30")
     assert row["credit_spread_bps"] == 342.0
-    assert row["build_version"] == "v11_live_feedback"
-    assert row["source_credit_spread"] == "proxy:nfci"
-    assert row["source_forward_pe"] == "fallback:institutional_consensus"
-    assert row["source_net_liquidity"] == "derived:fred:WALCL-WDTGAL-RRPONTSYD"
-    assert row["source_erp"].startswith("proxy:derived:erp")
-    assert row["source_real_yield"] == "proxy:treasury_xml"
-    assert row["source_breadth"] == "unavailable:breadth"
-    assert row["breadth_quality_score"] == 0.0
+    assert row["real_yield_10y_pct"] == 0.021
+    assert row["breakeven_10y"] == 0.023
+    assert row["erp_ttm_pct"] == 0.042
+    assert row["treasury_vol_21d"] == 0.0081
+    assert row["copper_gold_ratio"] == 0.201
+    assert row["core_capex_mm"] == 12.5
+    assert row["usdjpy"] == 151.2
+    assert pd.isna(row["forward_pe"])
+    assert pd.isna(row["erp_pct"])
+    assert row["source_forward_pe"] == "deprecated:v12"
+    assert row["source_erp"] == "deprecated:v12"
+    assert row["source_treasury_vol"] == "direct:fred_dgs10"
+    assert row["source_copper_gold"] == "direct:yfinance"
+    assert row["source_breakeven"] == "direct:fred_t10yie"
+    assert row["source_core_capex"] == "direct:fred_neworder"
+    assert row["source_usdjpy"] == "direct:yfinance"
+    assert row["source_erp_ttm"] == "direct:shiller"
 
 
 def test_run_v11_pipeline_stops_when_cloud_pull_fails(monkeypatch):

@@ -69,6 +69,11 @@ class HistoricalMacroSeeder:
             "forward_pe": None,
             "net_liquidity": None,
             "liquidity_roc": 0.0,
+            "treasury_vol": None,
+            "copper_gold_ratio": None,
+            "breakeven": None,
+            "core_capex": None,
+            "usdjpy": None,
             "is_funding_stressed": False,
         }
 
@@ -89,12 +94,17 @@ class HistoricalMacroSeeder:
         if self._canonical_mode:
             features["credit_spread"] = self._float_or_default(row.get("credit_spread_bps"))
             features["credit_accel"] = self._float_or_default(row.get("credit_acceleration_pct_10d"), 0.0) or 0.0
-            features["erp"] = self._float_or_default(row.get("erp_pct", row.get("erp")))
+            features["erp"] = self._float_or_default(row.get("erp_ttm_pct", row.get("erp_pct", row.get("erp"))))
             features["forward_pe"] = self._float_or_default(row.get("forward_pe"))
             features["real_yield"] = self._float_or_default(row.get("real_yield_10y_pct"))
             features["net_liquidity"] = self._float_or_default(row.get("net_liquidity_usd_bn"))
             features["liquidity_roc"] = self._float_or_default(row.get("liquidity_roc_pct_4w"), 0.0) or 0.0
-            funding_value = row.get("funding_stress_flag")
+            features["treasury_vol"] = self._float_or_default(row.get("treasury_vol_21d"))
+            features["copper_gold_ratio"] = self._float_or_default(row.get("copper_gold_ratio"))
+            features["breakeven"] = self._float_or_default(row.get("breakeven_10y"))
+            features["core_capex"] = self._float_or_default(row.get("core_capex_mm"))
+            features["usdjpy"] = self._float_or_default(row.get("usdjpy"))
+            funding_value = row.get("funding_stress_flag", 0)
         else:
             features["credit_spread"] = self._float_or_default(row.get("BAMLH0A0HYM2"))
             features["credit_accel"] = self._float_or_default(row.get("credit_acceleration"), 0.0) or 0.0

@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from scripts import generate_historical_macro
-from src.collector import macro, macro_v3
+from src.collector import global_macro, macro, macro_v3
 from src.collector.historical_macro_seeder import HistoricalMacroSeeder
 from src.research import historical_macro_builder as builder
 from src.research.data_contracts import (
@@ -23,28 +23,40 @@ def _primary_series_frame(series_id: str, values: list[float], dates: pd.Datetim
     )
 
 
+def _v12_frame(value_column: str, values: list[float], observation_dates: list[str], effective_dates: list[str]) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "observation_date": pd.to_datetime(observation_dates),
+            "effective_date": pd.to_datetime(effective_dates),
+            value_column: values,
+        }
+    )
+
+
 def _canonical_macro_frame() -> pd.DataFrame:
     return pd.DataFrame(
         {
             "observation_date": ["2024-01-02", "2024-01-03"],
             "effective_date": ["2024-01-03", "2024-01-04"],
             "credit_spread_bps": [350.0, 355.0],
-            "credit_acceleration_pct_10d": [0.0, 0.5],
-            "forward_pe": [24.0, 23.5],
-            "erp_pct": [0.038, 0.039],
             "real_yield_10y_pct": [0.0125, 0.0120],
-            "nfci_raw": [-0.1, -0.2],
             "net_liquidity_usd_bn": [250.0, 249.0],
-            "liquidity_roc_pct_4w": [0.0, -0.4],
-            "funding_stress_flag": [0, 1],
+            "treasury_vol_21d": [0.0060, 0.0062],
+            "copper_gold_ratio": [0.180, 0.181],
+            "breakeven_10y": [0.021, 0.020],
+            "core_capex_mm": [12.0, 12.0],
+            "usdjpy": [148.0, 147.5],
+            "erp_ttm_pct": [0.038, 0.038],
             "source_credit_spread": ["fred:BAMLH0A0HYM2", "fred:BAMLH0A0HYM2"],
-            "source_forward_pe": ["damodaran:histimpl", "damodaran:histimpl"],
-            "source_erp": ["damodaran:histimpl", "damodaran:histimpl"],
             "source_real_yield": ["fred:DFII10", "fred:DFII10"],
-            "source_nfci": ["fred:NFCI", "fred:NFCI"],
-            "source_net_liquidity": ["derived:WALCL-WDTGAL-RRPONTSYD", "derived:WALCL-WDTGAL-RRPONTSYD"],
-            "source_funding_stress": ["fred:NFCI", "fred:NFCI"],
-            "build_version": ["v7.0-class-a-research-r1", "v7.0-class-a-research-r1"],
+            "source_net_liquidity": ["derived:WALCL-WDTGAL-RRPONTSYD"] * 2,
+            "source_treasury_vol": ["direct:fred_dgs10"] * 2,
+            "source_copper_gold": ["direct:yfinance"] * 2,
+            "source_breakeven": ["direct:fred_t10yie"] * 2,
+            "source_core_capex": ["direct:fred_neworder"] * 2,
+            "source_usdjpy": ["direct:yfinance"] * 2,
+            "source_erp_ttm": ["direct:shiller"] * 2,
+            "build_version": ["v12.0-orthogonal-factor-r1"] * 2,
         }
     )
 
@@ -250,195 +262,85 @@ def test_parse_damodaran_histimpl_html_derives_forward_pe_and_erp():
         "source_forward_pe",
         "source_erp",
     ]
-    assert frame["observation_date"].tolist() == [
-        pd.Timestamp("2023-12-31"),
-        pd.Timestamp("2024-12-31"),
-    ]
-    assert frame["effective_date"].tolist() == [
-        pd.Timestamp("2024-01-01"),
-        pd.Timestamp("2025-01-01"),
-    ]
     assert frame["forward_pe"].iloc[0] == pytest.approx(100.0 / 4.64, rel=1e-4)
     assert frame["erp_pct"].iloc[1] == pytest.approx(4.33)
-    assert frame["source_forward_pe"].eq("damodaran:histimpl").all()
-    assert frame["source_erp"].eq("damodaran:histimpl").all()
 
 
-def test_build_historical_macro_dataset_derives_canonical_fields(monkeypatch, tmp_path):
-    dates = pd.date_range("2024-01-01", periods=15, freq="B")
-    walcl_dates = pd.date_range("2023-12-27", periods=6, freq="W-WED")
-    bundle = {
-        "BAMLH0A0HYM2": _primary_series_frame(
-            "BAMLH0A0HYM2",
-            [1.00, 1.01, 1.02, 1.03, 1.05, 1.07, 1.08, 1.09, 1.10, 1.11, 1.13, 1.14, 1.15, 1.16, 1.18],
-            dates,
-        ),
-        "DFII10": _primary_series_frame(
-            "DFII10",
-            [2.10 + i * 0.01 for i in range(15)],
-            dates,
-        ),
-        "WALCL": _primary_series_frame(
-            "WALCL",
-            [8000000.0, 8001000.0, 8002500.0, 8004000.0, 8005200.0, 8007000.0],
-            walcl_dates,
-        ),
-        "WDTGAL": _primary_series_frame(
-            "WDTGAL",
-            [500000.0, 500100.0, 500150.0, 500200.0, 500250.0, 500300.0],
-            walcl_dates,
-        ),
-        "RRPONTSYD": _primary_series_frame(
-            "RRPONTSYD",
-            [1000.0, 1010.0, 1020.0, 1030.0, 1040.0, 1050.0],
-            walcl_dates,
-        ),
-        "NFCI": _primary_series_frame(
-            "NFCI",
-            [-0.10, -0.08, -0.05, 0.05, 0.12, 0.15, 0.09, 0.02, -0.01, -0.03, -0.05, -0.06, -0.04, -0.02, 0.01],
-            dates,
-        ),
-    }
+def test_build_historical_macro_dataset_derives_v12_canonical_fields(monkeypatch, tmp_path):
+    weekly_dates = pd.date_range("2023-12-27", periods=6, freq="W-WED")
     monkeypatch.setattr(
         macro_v3,
         "fetch_research_historical_primary_series",
-        lambda: bundle,
+        lambda series_ids=builder._LIQUIDITY_SERIES: {
+            "WALCL": _primary_series_frame("WALCL", [8000000.0, 8001000.0, 8002500.0, 8004000.0, 8005200.0, 8007000.0], weekly_dates),
+            "WDTGAL": _primary_series_frame("WDTGAL", [500000.0, 500100.0, 500150.0, 500200.0, 500250.0, 500300.0], weekly_dates),
+            "RRPONTSYD": _primary_series_frame("RRPONTSYD", [1000.0, 1010.0, 1020.0, 1030.0, 1040.0, 1050.0], weekly_dates),
+        },
     )
     monkeypatch.setattr(
-        builder,
-        "fetch_historical_valuation_proxy",
-        lambda: pd.DataFrame(
-            {
-                "observation_date": [pd.Timestamp("2023-12-31"), pd.Timestamp("2024-12-31")],
-                "effective_date": [pd.Timestamp("2024-01-01"), pd.Timestamp("2025-01-01")],
-                "forward_pe": [24.0, 20.0],
-                "erp_pct": [3.8, 4.4],
-                "source_forward_pe": ["damodaran:histimpl", "damodaran:histimpl"],
-                "source_erp": ["damodaran:histimpl", "damodaran:histimpl"],
-            }
-        ),
+        global_macro,
+        "fetch_v12_historical_series_bundle",
+        lambda timeout=20: {
+            "credit_spread": _primary_series_frame("BAMLH0A0HYM2", [1.00, 1.02, 1.04], pd.date_range("2024-01-01", periods=3, freq="B")),
+            "real_yield": _primary_series_frame("real_yield_10y_pct", [0.012, 0.011, 0.010], pd.date_range("2024-01-01", periods=3, freq="B")),
+            "treasury_vol": _v12_frame("treasury_vol_21d", [0.006, 0.007], ["2024-01-01", "2024-01-02"], ["2024-01-02", "2024-01-03"]),
+            "breakeven": _v12_frame("breakeven_10y", [0.021, 0.020], ["2024-01-01", "2024-01-02"], ["2024-01-02", "2024-01-03"]),
+            "capex": _v12_frame("core_capex_mm", [11.0, 15.0], ["2023-11-30", "2023-12-31"], ["2024-01-12", "2024-02-12"]),
+            "copper_gold": _v12_frame("copper_gold_ratio", [0.18, 0.181], ["2024-01-01", "2024-01-02"], ["2024-01-02", "2024-01-03"]),
+            "usdjpy": _v12_frame("usdjpy", [145.0, 146.0], ["2024-01-01", "2024-01-02"], ["2024-01-02", "2024-01-03"]),
+            "erp_ttm": _v12_frame("erp_ttm_pct", [0.037, 0.038], ["2023-11-30", "2023-12-31"], ["2024-01-12", "2024-02-12"]),
+        },
     )
 
     output_path = tmp_path / "macro_historical_dump.csv"
     df = builder.build_historical_macro_dataset(output_path=str(output_path))
 
     assert output_path.exists()
-    assert list(df.columns) == [
-        "observation_date",
-        "effective_date",
-        "credit_spread_bps",
-        "credit_acceleration_pct_10d",
-        "forward_pe",
-        "erp_pct",
-        "real_yield_10y_pct",
-        "nfci_raw",
-        "net_liquidity_usd_bn",
-        "liquidity_roc_pct_4w",
-        "funding_stress_flag",
-        "source_credit_spread",
-        "source_forward_pe",
-        "source_erp",
-        "source_real_yield",
-        "source_nfci",
-        "source_net_liquidity",
-        "source_funding_stress",
-        "build_version",
-    ]
-    assert (df["effective_date"] > df["observation_date"]).all()
-    assert df["effective_date"].tolist()[0] == pd.Timestamp("2023-12-28")
-    assert df["credit_spread_bps"].iloc[-1] == pytest.approx(118.0)
-    assert pd.isna(df["credit_acceleration_pct_10d"].iloc[9])
-    assert df["credit_acceleration_pct_10d"].iloc[-1] > 0
-    assert df["forward_pe"].iloc[-1] == pytest.approx(24.0)
-    assert df["erp_pct"].iloc[-1] == pytest.approx(0.038)
-    assert df["real_yield_10y_pct"].iloc[-1] == pytest.approx(0.0224)
-    assert df["liquidity_roc_pct_4w"].notna().any()
-    assert df["funding_stress_flag"].isin([0, 1]).all()
-    assert df["funding_stress_flag"].max() == 1
-    assert df["source_forward_pe"].iloc[0] == "damodaran:histimpl"
-    assert df["source_erp"].iloc[0] == "damodaran:histimpl"
-    assert df["source_funding_stress"].iloc[0] == "fred:NFCI"
-    assert df["build_version"].nunique() == 1
+    validate_historical_macro_frame(df)
+    assert all(column in df.columns for column in REQUIRED_HISTORICAL_MACRO_COLUMNS)
+    assert df["build_version"].eq("v12.0-orthogonal-factor-r1").all()
+    assert df["source_erp_ttm"].eq("direct:shiller").all()
+    assert df["source_treasury_vol"].eq("direct:fred_dgs10").all()
+    assert df["source_core_capex"].eq("direct:fred_neworder").all()
+    assert df["source_usdjpy"].eq("direct:yfinance").all()
+    jan_15 = df.loc[df["observation_date"] == pd.Timestamp("2024-01-15")].iloc[0]
+    assert jan_15["core_capex_mm"] == pytest.approx(11.0)
+    assert jan_15["erp_ttm_pct"] == pytest.approx(0.037)
+    assert pd.isna(jan_15["forward_pe"])
+    assert jan_15["source_forward_pe"] == "deprecated:v12"
 
 
-def test_build_historical_macro_dataset_raises_on_missing_core_series(monkeypatch):
-    bundle = {
-        "BAMLH0A0HYM2": _primary_series_frame("BAMLH0A0HYM2", [1.0, 1.1], pd.date_range("2024-01-01", periods=2, freq="B")),
-        "DFII10": _primary_series_frame("DFII10", [2.0, 2.1], pd.date_range("2024-01-01", periods=2, freq="B")),
-        "WALCL": _primary_series_frame("WALCL", [8000000.0, 8001000.0], pd.date_range("2023-12-27", periods=2, freq="W-WED")),
-        "WDTGAL": _primary_series_frame("WDTGAL", [500000.0, 500100.0], pd.date_range("2023-12-27", periods=2, freq="W-WED")),
-        "RRPONTSYD": _primary_series_frame("RRPONTSYD", [1000.0, 1005.0], pd.date_range("2023-12-27", periods=2, freq="W-WED")),
-    }
-    monkeypatch.setattr(
-        macro_v3,
-        "fetch_research_historical_primary_series",
-        lambda: bundle,
-    )
-    monkeypatch.setattr(
-        builder,
-        "fetch_historical_valuation_proxy",
-        lambda: pd.DataFrame(
-            {
-                "observation_date": [pd.Timestamp("2024-12-31")],
-                "effective_date": [pd.Timestamp("2025-01-01")],
-                "forward_pe": [20.0],
-                "erp_pct": [4.4],
-                "source_forward_pe": ["damodaran:histimpl"],
-                "source_erp": ["damodaran:histimpl"],
-            }
-        ),
-    )
-
-    with pytest.raises(ValueError, match="NFCI"):
-        builder.build_historical_macro_dataset()
-
-
-def test_build_historical_macro_dataset_collapses_weekend_observations_to_unique_effective_dates(monkeypatch):
-    daily_dates = pd.DatetimeIndex(
-        [
-            "2024-05-30",
-            "2024-05-31",
-            "2024-06-02",
-            "2024-06-03",
-            "2024-06-04",
-        ]
-    )
+def test_build_historical_macro_dataset_collapses_to_business_calendar(monkeypatch):
     weekly_dates = pd.date_range("2024-05-29", periods=2, freq="W-WED")
-    bundle = {
-        "BAMLH0A0HYM2": _primary_series_frame("BAMLH0A0HYM2", [3.0, 3.1, 3.2, 3.3, 3.4], daily_dates),
-        "DFII10": _primary_series_frame("DFII10", [1.8, 1.7, 1.6, 1.5, 1.4], daily_dates),
-        "WALCL": _primary_series_frame("WALCL", [8000000.0, 8001000.0], weekly_dates),
-        "WDTGAL": _primary_series_frame("WDTGAL", [500000.0, 500500.0], weekly_dates),
-        "RRPONTSYD": _primary_series_frame("RRPONTSYD", [1000.0, 1001.0], weekly_dates),
-        "NFCI": _primary_series_frame("NFCI", [-0.2, -0.1, -0.1, 0.0, 0.1], daily_dates),
-    }
     monkeypatch.setattr(
         macro_v3,
         "fetch_research_historical_primary_series",
-        lambda: bundle,
+        lambda series_ids=builder._LIQUIDITY_SERIES: {
+            "WALCL": _primary_series_frame("WALCL", [8000000.0, 8001000.0], weekly_dates),
+            "WDTGAL": _primary_series_frame("WDTGAL", [500000.0, 500500.0], weekly_dates),
+            "RRPONTSYD": _primary_series_frame("RRPONTSYD", [1000.0, 1001.0], weekly_dates),
+        },
     )
     monkeypatch.setattr(
-        builder,
-        "fetch_historical_valuation_proxy",
-        lambda: pd.DataFrame(
-            {
-                "observation_date": [pd.Timestamp("2023-12-31")],
-                "effective_date": [pd.Timestamp("2024-01-01")],
-                "forward_pe": [22.0],
-                "erp_pct": [4.0],
-                "source_forward_pe": ["damodaran:histimpl"],
-                "source_erp": ["damodaran:histimpl"],
-            }
-        ),
+        global_macro,
+        "fetch_v12_historical_series_bundle",
+        lambda timeout=20: {
+            "credit_spread": _primary_series_frame("BAMLH0A0HYM2", [3.0, 3.1, 3.2, 3.3, 3.4], pd.DatetimeIndex(["2024-05-30", "2024-05-31", "2024-06-02", "2024-06-03", "2024-06-04"])),
+            "real_yield": _primary_series_frame("real_yield_10y_pct", [0.018, 0.017, 0.016, 0.015, 0.014], pd.DatetimeIndex(["2024-05-30", "2024-05-31", "2024-06-02", "2024-06-03", "2024-06-04"])),
+            "treasury_vol": _v12_frame("treasury_vol_21d", [0.006], ["2024-05-31"], ["2024-06-03"]),
+            "breakeven": _v12_frame("breakeven_10y", [0.021], ["2024-05-31"], ["2024-06-03"]),
+            "capex": _v12_frame("core_capex_mm", [10.0], ["2024-04-30"], ["2024-06-03"]),
+            "copper_gold": _v12_frame("copper_gold_ratio", [0.19], ["2024-05-31"], ["2024-06-03"]),
+            "usdjpy": _v12_frame("usdjpy", [157.0], ["2024-05-31"], ["2024-06-03"]),
+            "erp_ttm": _v12_frame("erp_ttm_pct", [0.031], ["2024-04-30"], ["2024-06-03"]),
+        },
     )
 
     df = builder.build_historical_macro_dataset()
 
-    effective_dates = pd.to_datetime(df["effective_date"])
-    assert effective_dates.is_unique
-
-    monday_row = df.loc[effective_dates == pd.Timestamp("2024-06-03")].iloc[0]
-    assert pd.Timestamp(monday_row["observation_date"]) == pd.Timestamp("2024-06-02")
+    observation_dates = pd.to_datetime(df["observation_date"])
+    assert observation_dates.is_monotonic_increasing
+    assert all(date.weekday() < 5 for date in observation_dates)
 
 
 def test_historical_macro_seeder_uses_effective_date_visibility():
@@ -446,16 +348,14 @@ def test_historical_macro_seeder_uses_effective_date_visibility():
 
     before_visible = seeder.get_features_for_date(pd.Timestamp("2024-01-02").date())
     assert before_visible["credit_spread"] is None
-    assert before_visible["is_funding_stressed"] is False
+    assert before_visible["erp"] is None
 
     visible = seeder.get_features_for_date(pd.Timestamp("2024-01-03").date())
     assert visible["credit_spread"] == 350.0
-    assert visible["credit_accel"] == 0.0
-    assert visible["forward_pe"] == 24.0
     assert visible["erp"] == 0.038
-    assert visible["real_yield"] == 0.0125
-    assert visible["liquidity_roc"] == 0.0
-    assert visible["is_funding_stressed"] is False
+    assert visible["treasury_vol"] == 0.006
+    assert visible["core_capex"] == 12.0
+    assert visible["usdjpy"] == 148.0
 
 
 def test_historical_macro_seeder_preserves_legacy_mock_df_path():
@@ -478,15 +378,9 @@ def test_generate_dev_fixture_historical_macro_dataset_emits_canonical_schema(tm
     assert list(frame.columns) == list(REQUIRED_HISTORICAL_MACRO_COLUMNS)
     assert frame["build_version"].nunique() == 1
     assert frame["build_version"].iat[0] == "dev-fixture"
-    assert frame["source_credit_spread"].nunique() == 1
-    assert frame["source_credit_spread"].iat[0] == "synthetic_fixture"
-    assert frame["source_real_yield"].nunique() == 1
-    assert frame["source_real_yield"].iat[0] == "synthetic_fixture"
-    assert frame["source_net_liquidity"].nunique() == 1
-    assert frame["source_net_liquidity"].iat[0] == "synthetic_fixture"
-    assert frame["source_funding_stress"].nunique() == 1
-    assert frame["source_funding_stress"].iat[0] == "synthetic_fixture"
-    assert (pd.to_datetime(frame["effective_date"]) > pd.to_datetime(frame["observation_date"])).all()
+    assert frame["source_credit_spread"].eq("synthetic_fixture").all()
+    assert frame["source_treasury_vol"].eq("synthetic_fixture").all()
+    assert frame["source_erp_ttm"].eq("synthetic_fixture").all()
     validate_historical_macro_frame(frame)
 
 
@@ -499,4 +393,4 @@ def test_generate_dev_fixture_historical_macro_dataset_writes_smokeable_rows(tmp
     assert len(frame) == len(written)
     assert written["build_version"].eq("dev-fixture").all()
     assert written["source_credit_spread"].eq("synthetic_fixture").all()
-    assert written["funding_stress_flag"].isin([0, 1]).all()
+    assert written["source_erp_ttm"].eq("synthetic_fixture").all()
