@@ -27,8 +27,9 @@
 
 ## 6. Web 分发对齐 (Frontend Distribution)
 - [ ] **URL 绝对对齐**：`index.html` 中的 `PROD_BLOB_URL` 必须包含 `/prod/` 路径前缀。
-- [ ] **契约同步**：前端 JS 消费的 key（如 `data.signal.entropy`）必须与 `web_exporter.py` 输出的 JSON 结构比特级匹配。
+- [ ] **契约同步**：前端 JS 消费的 key（如 `data.signal.entropy`）必须与 `web_exporter.py` 输出的 JSON 结构严格契约对齐，字段路径与语义不得漂移。
 - [ ] **语义解耦**：`raw_regime / stable_regime / deployment_state / execution_bucket` 必须分别导出并按真实语义消费。
+- [ ] **证据下钻**：`logic_trace` 与 `feature_values` 必须在 Web 面板中可展开审计，而不是只停留在 `status.json` 导出层。
 - [ ] **数据源状态**：验证在云端同步成功后，仪表盘显示为 `CLOUD_SYNCED` 而非 `LOCAL_FALLBACK`。
 
 ## 7. 终极实证 (Triple-Run Validation)
