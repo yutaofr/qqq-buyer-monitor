@@ -18,7 +18,12 @@
 
 ## 4. 数据库模式一致性 (Schema Parity)
 - [ ] **破坏性同步**：确认 `src/store/db.py` 中的 `init_db` 包含对旧 Schema 的检测逻辑（若缺失 `target_beta` 列则强制 DROP 并重建）。
+- [ ] **显式版本**：确认 `signals.db` 的 `meta` 表写入 `schema_version=11.5`，避免未来 schema 演进继续依赖隐式探测。
 - [ ] **GHA 兼容性**：确保在无状态的 GitHub Actions 容器中，数据库初始化不会报 `OperationalError`。
+
+## 4.1 Prior 自愈契约
+- [ ] **DNA 指纹**：确认 `v11_prior_state.json` 包含 `bootstrap_fingerprint=sha256(...)`，并在 canonical regime DNA 漂移时触发 fail closed。
+- [ ] **宽容加载**：确认旧版 prior state 缺少 `execution_state / transition_blend / bootstrap_fingerprint` 时，系统会注入默认值并安全升级。
 
 ## 5. 推理逻辑与风险定价 (Inference Logic)
 - [ ] **制度定力**：理解 V11 的“迟到”特质。Regime Stabilizer 会过滤政治嘴炮（如关税噪音），切换制度需要宏观特征的结构性位移。
