@@ -101,6 +101,8 @@ def _build_v11_live_macro_row(
     price: float,
     drawdown_pct: float,
     breadth_proxy: float,
+    breadth_source: str = "direct",
+    breadth_quality_score: float = 1.0,
     fear_greed: float,
     erp_pct_points: float | None,
     real_yield_pct_points: float | None,
@@ -121,6 +123,8 @@ def _build_v11_live_macro_row(
                 "qqq_close": float(price),
                 "drawdown_pct": float(drawdown_pct),
                 "breadth_proxy": float(breadth_proxy),
+                "source_breadth": str(breadth_source),
+                "breadth_quality_score": float(breadth_quality_score),
                 "fear_greed": float(fear_greed),
                 "erp_pct": (float(erp_pct_points) / 100.0) if erp_pct_points is not None else None,
                 "real_yield_10y_pct": (float(real_yield_pct_points) / 100.0) if real_yield_pct_points is not None else None,
@@ -216,9 +220,13 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     try:
         breadth = fetch_breadth()
         pct_above_50d = float(breadth.get("pct_above_50d", 0.50))
+        breadth_source = str(breadth.get("source", "direct"))
+        breadth_quality_score = float(breadth.get("quality", 1.0))
     except Exception as exc:
         logger.warning("Breadth fetch failed: %s", exc)
         pct_above_50d = 0.50
+        breadth_source = "unavailable:breadth"
+        breadth_quality_score = 0.0
 
     try:
         credit_spread_snapshot = fetch_credit_spread_snapshot()
@@ -253,6 +261,8 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         price=float(price_data["price"]),
         drawdown_pct=drawdown_pct,
         breadth_proxy=pct_above_50d,
+        breadth_source=breadth_source,
+        breadth_quality_score=breadth_quality_score,
         fear_greed=float(fg),
         erp_pct_points=erp_pct,
         real_yield_pct_points=real_yield_pct,

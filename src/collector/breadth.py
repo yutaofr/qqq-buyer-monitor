@@ -21,12 +21,15 @@ def fetch_breadth(as_of: date | None = None) -> dict:
 
     Strategy (in priority order):
     1. Try ^ADD (NYSE advance-decline daily net value) to derive adv/dec ratio.
-    2. Fall back to QQQ 5-day return proxy if all breadth tickers fail.
+    2. If all breadth tickers fail, return an explicit unavailable marker.
 
     Returns:
         {
             "adv_dec_ratio": float,    # 0.0-1.0; >0.5 = more advances
-            "pct_above_50d": float,    # proxy: 0.0-1.0
+            "pct_above_50d": float,    # neutral placeholder when breadth is unavailable
+            "source": str,
+            "quality": float,
+            "observed": bool,
         }
     """
     target_date = as_of or date.today()
@@ -34,22 +37,25 @@ def fetch_breadth(as_of: date | None = None) -> dict:
     query_end = target_date + timedelta(days=1)
     query_start = target_date - timedelta(days=10)
 
-    adv_dec_ratio = _fetch_adv_dec_ratio(query_start, query_end)
-    pct_above_50d = _fetch_pct_above_50d_proxy(query_end)
+    adv_dec_ratio, source, quality = _fetch_adv_dec_ratio(query_start, query_end)
+    pct_above_50d = adv_dec_ratio if quality > 0.0 else 0.50
     ndx_concentration = _fetch_ndx_concentration(query_end)
 
     logger.debug(
-        "Breadth: adv_dec_ratio=%.3f pct_above_50d=%.3f ndx_concentration=%.3f as_of=%s",
-        adv_dec_ratio, pct_above_50d, ndx_concentration, target_date
+        "Breadth: adv_dec_ratio=%.3f pct_above_50d=%.3f ndx_concentration=%.3f quality=%.2f source=%s as_of=%s",
+        adv_dec_ratio, pct_above_50d, ndx_concentration, quality, source, target_date
     )
     return {
         "adv_dec_ratio": adv_dec_ratio,
         "pct_above_50d": pct_above_50d,
-        "ndx_concentration": ndx_concentration
+        "ndx_concentration": ndx_concentration,
+        "source": source,
+        "quality": quality,
+        "observed": quality > 0.0,
     }
 
 
-def _fetch_adv_dec_ratio(start: date, end: date) -> float:
+def _fetch_adv_dec_ratio(start: date, end: date) -> tuple[float, str, float]:
     """
     Derive an advance/decline ratio from available breadth tickers.
     """
@@ -71,70 +77,16 @@ def _fetch_adv_dec_ratio(start: date, end: date) -> float:
                 logger.debug(
                     "Breadth ratio from %s: net=%.0f ratio=%.3f", ticker, net, ratio
                 )
-                return ratio
+                return ratio, f"observed:{ticker}", 1.0
         except Exception as exc:  # noqa: BLE001
             yf_logger.setLevel(logging.WARNING)  # restore on exception too
             logger.debug("Ticker %s unavailable: %s", ticker, exc)
 
-    # All tickers failed: derive proxy from QQQ 5-day return
     logger.warning(
-        "All breadth tickers unavailable %s; using QQQ return proxy. query_end=%s",
+        "All breadth tickers unavailable %s; marking breadth unavailable. query_end=%s",
         _BREADTH_CANDIDATES, end
     )
-    # The 'end' passed here is already query_end (target_date + 1).
-    # We want to use target_date for the proxy, which is end - 1.
-    target_date = end - timedelta(days=1)
-    return _proxy_ratio_from_qqq_change(target_date)
-
-
-def _proxy_ratio_from_qqq_change(as_of: date) -> float:
-    """
-    Fallback: use QQQ's 5-day return to infer market direction.
-    """
-    # yfinance end date is exclusive. Query up to target_date + 1.
-    query_end = as_of + timedelta(days=1)
-    start = as_of - timedelta(days=10)
-    try:
-        hist = yf.Ticker("QQQ").history(start=start.isoformat(), end=query_end.isoformat())
-        if len(hist) >= 2:
-            ref_idx = min(5, len(hist) - 1)
-            ret = (float(hist["Close"].iloc[-1]) - float(hist["Close"].iloc[-ref_idx])) / float(
-                hist["Close"].iloc[-ref_idx]
-            )
-            if ret > 0.01:
-                return 0.65
-            elif ret < -0.01:
-                return 0.40
-            return 0.55
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("QQQ proxy ratio failed: %s", exc)
-    return 0.55  # neutral — won't trigger any Tier-1 threshold
-
-
-def _fetch_pct_above_50d_proxy(as_of: date) -> float:
-    """
-    Proxy for % of stocks above 50-day MA.
-    Note: as_of passed here is already query_end (target_date + 1).
-    """
-    # yfinance end date is exclusive. We use query_end (which is already target_date + 1).
-    query_end = as_of
-    start = query_end - timedelta(days=90)
-    try:
-        hist = yf.Ticker("QQQ").history(
-            start=start.isoformat(), end=query_end.isoformat()
-        )
-        if not hist.empty:
-            close = float(hist["Close"].iloc[-1])
-            ma50 = float(hist["Close"].rolling(50, min_periods=40).mean().iloc[-1])
-            deviation = (close - ma50) / ma50
-            if deviation > 0.05:
-                return 0.65
-            elif deviation < -0.05:
-                return 0.20
-            return 0.40
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Could not compute pct_above_50d proxy: %s", exc)
-    return 0.40
+    return 0.50, "unavailable:breadth", 0.0
 
 def _fetch_ndx_concentration(as_of: date) -> float:
     """
