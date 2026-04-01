@@ -141,10 +141,15 @@ $$P(x_i | R) = \frac{1}{\sqrt{2\pi\sigma_R^2}} \exp\left(-\frac{(x_i - \mu_R)^2}
 
 #### 贝叶斯期望值推导
 
-- **贝叶斯期望 Beta (Raw Beta Expectation)**：$$\beta_{raw} = \sum_{r \in \mathcal{R}} P(r | \mathbf{e}) \cdot \beta_{base}(r)$$
-- **贝叶斯期望夏普 (Bayesian Expected Sharpe)**：$$E[S] = \sum_{r \in \mathcal{R}} P(r | \mathbf{e}) \cdot S_r$$
+- **贝叶斯期望 Beta (Raw Beta Expectation)**：
 
-其中，$S_r$ 为各制度在审计历史中的实证收益风险比（夏普比率）。
+$$\beta_{raw} = \sum_{r \in \mathcal{R}} P(r | \mathbf{e}) \cdot \beta_{base}(r)$$
+
+- **贝叶斯期望夏普 (Bayesian Expected Sharpe)**：
+
+$$E[S] = \sum_{r \in \mathcal{R}} P(r | \mathbf{e}) \cdot S_r$$
+
+其中， $S_r$  为各制度在审计历史中的实证收益风险比（夏普比率）。
 
 ### 3.2 Shannon 熵：量化你的“迷茫度”
 
@@ -304,7 +309,7 @@ graph LR
     style B fill:#bbf,stroke:#333
 ```
 
-这种**“历史自标定”**让系统具备了自我演化的能力，无论通缩还是高通胀时代，逻辑坐标系依然精准。
+这种 **“历史自标定”** 让系统具备了自我演化的能力，无论通缩还是高通胀时代，逻辑坐标系依然精准。
 
 ### 6.2 因果自校准标准化 (Causal Self-Calibrating Normalization)
 
@@ -363,7 +368,7 @@ $$\mathbf{v}_t = \nabla F(x_t) \approx F(x_t) - \text{SMA}(F(x), n)$$
 
 $$BS = \frac{1}{N} \sum_{t=1}^N \sum_{k=1}^R (f_{tk} - o_{tk})^2$$
 
-其中，$f_{tk}$ 为预测概率，$o_{ti}$ 为实际观测的独热编码（One-hot）。
+其中，  $f_{tk}$  为预测概率， $o_{ti}$  为实际观测的独热编码（One-hot）。
 
 ### 7.3 关键时点逻辑复盘
 
@@ -446,18 +451,22 @@ $$D_M(\mathbf{x}) = \sqrt{(\mathbf{x} - \mathbf{\mu})^T \mathbf{\Sigma}^{-1} (\m
 ## 9. FAQ：当系统说“慢一点”到底是什么意思？
 
 ### Q: 如果数据源坏了怎么办？
+
 **A:** 系统不会假装“什么都没发生”。当实时输入退化到代理源或部分传感器失效时，**数据质量惩罚 (DQP)** 会自动提高有效熵值。
 这意味着：
-*   系统仍会继续推断，保证生存性。
-*   但会主动承认“今天看得没那么清楚”，从而自动降低 Beta 或放慢增量资金节奏。
-*   你应该把它理解成：雾变浓了，所以车速必须降下来。
+
+- 系统仍会继续推断，保证生存性。
+- 但会主动承认“今天看得没那么清楚”，从而自动降低 Beta 或放慢增量资金节奏。
+- 你应该把它理解成：雾变浓了，所以车速必须降下来。
 
 ### Q: `FAST / BASE / SLOW / PAUSE` 到底该怎么操作？
+
 **A:** 这是对**增量资金**的节奏建议，不是对你全部存量仓位的一刀切指令。
-*   `FAST`：高赔率且高确信度窗口。增量资金可以加速部署。
-*   `BASE`：常规窗口。按原计划稳健买入。
-*   `SLOW`：赔率或确信度一般。先少量试探，把更多现金留给后续窗口。
-*   `PAUSE`：极端风险或极低确信度。增量资金暂停进场，优先保存流动性。
+
+- `FAST`：高赔率且高确信度窗口。增量资金可以加速部署。
+- `BASE`：常规窗口。按原计划稳健买入。
+- `SLOW`：赔率或确信度一般。先少量试探，把更多现金留给后续窗口。
+- `PAUSE`：极端风险或极低确信度。增量资金暂停进场，优先保存流动性。
 
 ---
 
