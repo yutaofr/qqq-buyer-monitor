@@ -73,7 +73,7 @@ $H_{effective} = 1.0 - ((1.0 - H_{posterior}) \cdot Quality\_Score)$。
 
 ### 5.1 自动化调度 (GitHub Actions)
 
-* **审计结论**: 采用精准时区守卫（Paris/Beijing 双窗口）调度，通过 Python 脚本实现动态时间校验。
+* **审计结论**: 采用 GitHub cron 直接调度到目标时段，不再在 job 内做二次时间窗校验。
 * **环境隔离**: 凭据（FRED Key, Vercel Token）仅在运行时按需注入。
 
 ### 5.2 信息分发 (Discord & status.json)

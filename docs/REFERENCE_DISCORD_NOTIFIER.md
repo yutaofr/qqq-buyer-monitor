@@ -45,30 +45,17 @@ if getattr(args, "notify_discord", False):
 
 ## 3. GitHub Actions Workflow (Global Scheduling)
 
-Scheduling triggers for specific local times (Paris/Beijing) requires handling UTC offsets and scheduling variance.
+Scheduling triggers for specific local times (Paris/Beijing) should be expressed directly as GitHub cron entries.
+Do not add an extra wall-clock verification step inside the workflow unless you are explicitly solving a drift or replay problem.
 
 ### 3.1 UTC Cron Mapping
 Since GitHub crons are always UTC, map your local times:
 - **14:47 Beijing (CST, UTC+8)** -> `47 06 * * 1-5`
 - **17:17 Paris (CET/CEST)** -> `17 15,16 * * 1-5` (Handles DST shift).
 
-### 3.2 The Python Time Window Check
-GitHub Actions may trigger +/- 5 minutes off. Use a Python step to check the exact local time using `pytz`.
-
-```yaml
-- name: Check Time Window
-  id: check
-  shell: python
-  run: |
-    import os, pytz
-    from datetime import datetime
-    bj_tz = pytz.timezone('Asia/Shanghai')
-    now_bj = datetime.now(bj_tz)
-    # Check if we are in the target 14:47 window
-    is_target = (now_bj.hour == 14 and 40 <= now_bj.minute <= 55)
-    should_run = "true" if (is_target or os.environ.get('EVENT') == 'workflow_dispatch') else "false"
-    with open(os.environ['GITHUB_OUTPUT'], 'a') as f: f.write(f'should_run={should_run}\n')
-```
+### 3.2 No Secondary Time Gate
+If the workflow is already scheduled with the correct cron expression, let GitHub Actions execute it directly.
+Use `workflow_dispatch` for manual verification, and use `concurrency` to prevent duplicate overlapping runs.
 
 ---
 
