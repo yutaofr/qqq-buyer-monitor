@@ -212,18 +212,18 @@ def build_historical_macro_dataset(
     from src.collector.price import fetch_price_data
     price_data = fetch_price_data()
     price_hist = price_data["history"].copy()
-    
+
     # Force tz-naive and normalized index for alignment
     if price_hist.index.tz is not None:
         price_hist.index = price_hist.index.tz_localize(None)
     price_hist.index = price_hist.index.normalize()
-    
+
     daily["qqq_close"] = _asof_align_from_date_column(
-        price_hist.reset_index().rename(columns={"Date": "effective_date"}), 
+        price_hist.reset_index().rename(columns={"Date": "effective_date"}),
         "effective_date", "Close", calendar
     )
     daily["qqq_volume"] = _asof_align_from_date_column(
-        price_hist.reset_index().rename(columns={"Date": "effective_date"}), 
+        price_hist.reset_index().rename(columns={"Date": "effective_date"}),
         "effective_date", "Volume", calendar
     )
 

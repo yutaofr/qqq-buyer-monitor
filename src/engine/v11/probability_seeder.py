@@ -21,7 +21,7 @@ class ProbabilitySeeder:
         orthogonalization_mode: str = "residualize",
         orthogonalization_strength: float = 1.0,
         orthogonalization_window: int | None = 504,
-        orthogonalization_method: str = "rolling",
+        orthogonalization_method: str = "ewm",
     ):
         self.clip_range = (float(clip_range[0]), float(clip_range[1]))
         self.orthogonalization_mode = str(orthogonalization_mode)

@@ -98,7 +98,7 @@ class SentinelEngine:
         # 5. Combined Multiplier
         # M_edge = exp(Alignment * JSD)
         m_edge = float(np.exp(alignment * jsd))
-        
+
         # v12.2 Momentum Escape Mechanism
         # If price momentum is strongly positive (r_t > 0) but macro is defensive (mu_macro < 0.8),
         # force the multiplier toward 1.0 to prevent "fighting the bull with last month's bad news".
