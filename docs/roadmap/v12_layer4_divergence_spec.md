@@ -1,59 +1,56 @@
-# v12.0 Layer 4: 信息论量价离群检测规格书 (Sentinel)
+# v12.0 Layer 4: 广义凯利微观方差规格书 (Sentinel)
 
-> **状态**: PROPOSED (Information-Theoretic Unification)
-> **版本**: v12.0-L4-SENTINEL-INFORMATION-THEORY
+> **状态**: PROPOSED (Grand Unification - Zero Constant Revision)
+> **版本**: v12.0-L4-SENTINEL-GENERALIZED-KELLY
 > **架构层级**: Layer 4 (Micro-Structure Overlay)
-> **数学核心**: Tikhonov 正则化马氏距离与 Shannon 惊奇度 (Surprisal) 同构
+> **数学核心**: 贝叶斯在线协方差更新、广义逆矩阵与连续凯利方程
 
 ---
 
-## 1. 核心准则：量纲一致性与信息论大一统 (Dimensional Harmony)
+## 1. 核心信仰：绝对的零常数 (Zero-Constant Axiom)
 
-量化工程的最高美学是**量纲一致性**。本模块将微观量价数据严格映射为**信息惊奇度 (Surprisal, 单位 Nats)**，使其在数学物理上与宏观 Shannon 熵 ($H$) 完全同构，从而实现无缝融合。
+量化系统的脆弱性皆源于“魔法数字”。本模块在架构上**严禁**任何形式的时间窗口（如 252 天）、正则化扰动（如 $10^{-6}$）、截断函数（如 `min/max`）以及人为的象限条件（如 `if 涨缩背离`）。
 
-### 1.1 微观惊奇度提取 (Micro Surprisal Extraction)
-- **目标变量**: $X = [r_t, v_t]^T$ 
-  - $r_t = \ln(P_t / P_{t-1})$
-  - $v_t = \ln(V_t / V_{MA21})$
-- **平稳化协方差**: 使用 252 日滚动窗口计算 $\Sigma_{252}$。
-- **正则化与马氏距离**: $\Sigma'_{252} = \Sigma_{252} + 10^{-6} I$
-  $$D_M^2 = (X - \mu)^T (\Sigma'_{252})^{-1} (X - \mu)$$
-- **瞬时惊奇度 (Surprisal)**: 
-  根据二元高斯分布性质，当前量价异动的信息含量为：
-  $$S_{micro} = \frac{1}{2} D_M^2 \quad (\text{单位: Nats})$$
+所有决策必须是连续、可导且由数据自身的概率分布驱动的。
 
 ---
 
-## 2. 双轨制融合方程 (The Dual-Track Unification)
+## 2. 核心数学推导 (The Mathematics)
 
-### 2.1 主线一：增量入场 (Kelly Readiness)
-将微观瞬时惊奇度直接并入 Kelly 公式的系统不确定性分母中。
-$$Kelly\_Readiness = \max\left(0, \frac{\text{Macro\_Expected\_Edge}}{H_{macro} + S_{micro}}\right)$$
-- **物理机制**: 任何破坏微观结构稳态的异动（如天量暴跌、无量空涨），都会产生巨大的 $S_{micro}$。总不确定性飙升，Kelly 分数自动坍缩，停止新增资金暴露。**完全无需人工设定安全阈值。**
+### 2.1 微观分布的无窗在线更新 (Parameter-Free Online Updating)
+废弃固定窗口。量价向量 $X = [r_t, v_t]^T$ 的均值 $\mu_t$ 与协方差 $\Sigma_t$ 采用随时间流逝自适应的逆威沙特分布进行在线贝叶斯更新（Online Bayesian Updating）。
+数据更新的卡尔曼增益由新观测值带来的信息增益自然决定，**时间跨度由数据自身的信噪比定义，而非人工常量。**
 
-### 2.2 主线二：存量防守 (Beta Penalty Multiplier)
-由于 $S_{micro}$ 的理论期望值严格为 $E[S_{micro}] = 1.0 \text{ Nat}$，我们构建无超参的衰减惩罚：
-$$M_{tactical} = \min\left(1.0, \exp(1.0 - S_{micro})\right)$$
-- **物理机制**: 
-  - 当市场量价健康 ($S_{micro} \le 1.0$)，$M_{tactical} = 1.0$，决策 100% 由宏观贝叶斯引擎主导。
-  - 当市场发生罕见异动（如 $S_{micro} = 4.0$），$M_{tactical} = e^{-3} \approx 0.05$。目标 Beta 被极其平滑且剧烈地削减。
-$$Final\_Target\_Beta = Bayesian\_Beta \times M_{tactical}$$
+### 2.2 绝对确定的马氏惊奇度 (Deterministic Surprisal)
+废弃 Tikhonov 扰动。使用摩尔-彭若斯广义逆 (Moore-Penrose Pseudo-Inverse, $\Sigma^+$) 来解决极端无波动日的奇异矩阵问题，利用 IEEE 754 硬件精度实现截断。
+$$D_M^2 = (X_t - \mu_{t-1})^T (\Sigma_{t-1})^+ (X_t - \mu_{t-1})$$
+瞬时微观惊奇度 (Surprisal)：
+$$S_{micro} = \frac{1}{2} D_M^2 \quad (\text{理论期望 } E[S_{micro}] = 1.0)$$
 
 ---
 
-## 3. 工程确定性与防过拟合体系 (Validation Protocols)
+## 3. 决策大一统：广义凯利方程 (Generalized Kelly Pacing)
 
-本模块的上线合并（Merge）必须通过以下苛刻的数学与工程测试：
+所有的战术干预（不接飞刀、不追高、缩量加仓）统一收敛为对凯利方程方差项的连续调制。
 
-### 3.1 零参数检查 (Zero-Hyperparameter Audit)
-代码中严禁出现任何未经第一性原理推导的常数（$\epsilon=10^{-6}$ 的计算机精度扰动除外）。
+### 3.1 有效微观方差 (Effective Variance)
+将瞬时惊奇度作为宏观方差的指数乘数：
+$$\sigma_{eff}^2 = \sigma_{macro}^2 \cdot \exp(S_{micro} - 1.0)$$
 
-### 3.2 白噪声反向证伪 (White Noise Falsification)
-**测试方法**: 将输入历史数据中的成交量 $V_t$ 替换为均值和方差相同的**高斯白噪声**序列，重新运行全量 16 年回测。
-**通过标准**: 白噪声数据注入后的系统 **信息比率 (Information Ratio)** 必须**显著且统计上稳健地**低于真实量价数据。如果白噪声表现更好，说明模型在拟合噪音，必须永久废弃该模块。
+### 3.2 终极目标 Beta (The Ultimate Target Beta)
+$$Final\_Target\_Beta = \frac{\mu_{macro}}{\sigma_{macro}^2 \cdot \exp(S_{micro} - 1.0)}$$
 
-### 3.3 奇异矩阵鲁棒测试 (Singular Matrix Survival)
-注入连续 20 个交易日 $r_t=0, v_t=0$ 的极端死水数据，验证系统能够依靠 Tikhonov 正则化平稳度过，绝不抛出任何 `LinAlgError`。
+#### 物理自洽性推演 (Physical Self-Consistency)
+1. **防范“飞刀” (Anti-Climax)**：放量暴跌引发 $S_{micro} \gg 1.0$。分母指数级膨胀，$Beta \to 0$。凯利判据自动拒绝在高方差局部接盘。
+2. **防范“虚假繁荣” (Anti-Exhaustion)**：高位异动或天量滞涨，同样导致 $S_{micro} \gg 1.0$。分母膨胀迫使系统自动止盈。
+3. **拥抱“静水流深” (Embrace Calmness)**：市场极度平静（如经典的无量慢牛），$S_{micro} < 1.0$。方差缩小，Beta 自动放大，资金利用率达到极致。
 
 ---
-© 2026 QQQ Entropy 统计与架构联合组.
+
+## 4. 验证与证伪标准 (Falsifiability)
+
+- **Test A (白噪声证伪)**：将 $V_t$ 替换为高斯白噪声。由于白噪声无结构性异动，$S_{micro}$ 均值将死锁于 1.0，$Final\_Target\_Beta$ 将退化为纯宏观模型。如果加入真实 $V_t$ 的信息比率 (IR) 不能以 $p < 0.05$ 的显著性击败白噪声退化模型，则本规格书作废。
+- **Test B (拓扑连续性)**：要求目标 Beta 函数在任意市场极端切片下（包括 2020.03 的六次熔断）保持 $C^1$ 连续（一阶可导），严禁出现因 `if/else` 导致的阶跃断层。
+
+---
+© 2026 QQQ Entropy 大一统架构组.
