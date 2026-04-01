@@ -98,6 +98,15 @@ class SentinelEngine:
         # 5. Combined Multiplier
         # M_edge = exp(Alignment * JSD)
         m_edge = float(np.exp(alignment * jsd))
+        
+        # v12.2 Momentum Escape Mechanism
+        # If price momentum is strongly positive (r_t > 0) but macro is defensive (mu_macro < 0.8),
+        # force the multiplier toward 1.0 to prevent "fighting the bull with last month's bad news".
+        if r_t > 0.005 and mu_macro.mean() < 0.8:
+            # Smoothly pull m_edge toward 1.0 based on momentum strength
+            momentum_weight = float(np.tanh(r_t * 100.0)) # Scale up to capture small % moves
+            m_edge = 1.0 + (1.0 - momentum_weight) * (m_edge - 1.0)
+
         # Effective edge with stale decay
         m_effective_edge = 1.0 + effective_stale_decay * (m_edge - 1.0)
 

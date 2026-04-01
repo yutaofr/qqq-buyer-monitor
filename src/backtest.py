@@ -177,7 +177,14 @@ def run_v11_audit(
             raise
     features = seeder.generate_features(macro_df)
     full_df = features.join(regime_df["regime"], how="inner")
-    full_df["qqq_close"] = macro_df["qqq_close"]
+    
+    # v12.2: Ensure price/vol are available for the model fit if needed, 
+    # and also for the execution loop.
+    if "qqq_close" not in full_df.columns:
+        full_df["qqq_close"] = macro_df["qqq_close"]
+    if "qqq_volume" not in full_df.columns:
+        full_df["qqq_volume"] = macro_df["qqq_volume"]
+        
     if "erp_ttm_pct" in macro_df.columns:
         full_df["erp_ttm_pct"] = pd.to_numeric(macro_df["erp_ttm_pct"], errors="coerce")
     full_df = full_df.dropna(subset=["regime"])
@@ -198,7 +205,9 @@ def run_v11_audit(
     feature_cols = [
         c
         for c in train.columns
-        if c not in ["observation_date", "regime", "qqq_close", "erp_ttm_pct", "erp_pct"]
+        if c not in ["observation_date", "regime", "erp_ttm_pct", "erp_pct", "qqq_close", "qqq_volume"]
+        and not c.startswith("source_")
+        and c not in ["build_version", "reference_capital", "current_nav", "funding_stress_flag"]
     ]
     entropy_ctrl = EntropyController()
     last_train_regime = str(train.iloc[-1]["regime"])
@@ -243,8 +252,14 @@ def run_v11_audit(
         print(f"Walk-forward Audit: Re-fitting {len(test)} causal windows...")
         for _, row in test.iterrows():
             dt = row["observation_date"]
-            train_window = full_df[full_df["observation_date"] < dt].copy()
-            if train_window.empty:
+            
+            # v12.1 Embargo Mechanism:
+            # Drop the last 10 days of training data before the evaluation point
+            # to prevent information leakage via serial correlation in financial time series.
+            embargo_dt = dt - pd.DateOffset(days=14) # Approx 10 trading days
+            train_window = full_df[full_df["observation_date"] < embargo_dt].copy()
+            
+            if train_window.empty or len(train_window) < 252: # Ensure min 1 year training
                 continue
 
             gnb = GaussianNB(var_smoothing=float(experiment.get("var_smoothing", default_var_smoothing)))

@@ -20,16 +20,22 @@ class ProbabilitySeeder:
         clip_range: tuple[float, float] = _DEFAULT_CLIP_RANGE,
         orthogonalization_mode: str = "residualize",
         orthogonalization_strength: float = 1.0,
+        orthogonalization_window: int | None = 504,
+        orthogonalization_method: str = "rolling",
     ):
         self.clip_range = (float(clip_range[0]), float(clip_range[1]))
         self.orthogonalization_mode = str(orthogonalization_mode)
         self.orthogonalization_strength = float(orthogonalization_strength)
+        self.orthogonalization_window = orthogonalization_window
+        self.orthogonalization_method = str(orthogonalization_method)
         self.config = self._merge_config(self._default_config(), config_overrides or {})
         self._contract_payload = {
             "config": self.config,
             "clip_range": self.clip_range,
             "orthogonalization_mode": self.orthogonalization_mode,
             "orthogonalization_strength": self.orthogonalization_strength,
+            "orthogonalization_window": self.orthogonalization_window,
+            "orthogonalization_method": self.orthogonalization_method,
         }
         self._validate_runtime_contract()
         self.diagnostics_: pd.DataFrame = pd.DataFrame()
@@ -97,6 +103,20 @@ class ProbabilitySeeder:
                 "src": "credit_spread_bps",
                 "z_method": "expanding",
                 "min_periods": 63,
+            },
+            # v12.2 Hybrid-PIT Fast Features (T+0 price context)
+            "price_momentum_21d": {
+                "src": "qqq_close",
+                "diff": (21,),
+                "z_method": "rolling",
+                "z_window": 252,
+                "min_periods": 21,
+            },
+            "vol_deviation_21d": {
+                "src": "qqq_volume",
+                "z_method": "rolling",
+                "z_window": 63,
+                "min_periods": 21,
             },
         }
 
@@ -198,8 +218,29 @@ class ProbabilitySeeder:
         move_z = out["move_21d"].copy()
         spread_z = out["spread_21d"].copy()
 
-        cov = move_z.expanding(min_periods=63).cov(spread_z)
-        var = spread_z.expanding(min_periods=63).var()
+        # v12.2 Architectural Recommendation: Dynamic Memory Decay
+        # Decouple the memory window from the factor definition to allow sensitivity analysis.
+        method = self.orthogonalization_method
+        window = self.orthogonalization_window
+        min_periods = 63
+
+        if method == "expanding":
+            cov = move_z.expanding(min_periods=min_periods).cov(spread_z)
+            var = spread_z.expanding(min_periods=min_periods).var()
+        elif method == "rolling":
+            if window is None:
+                raise ValueError("rolling orthogonalization requires a window")
+            cov = move_z.rolling(window=int(window), min_periods=min_periods).cov(spread_z)
+            var = spread_z.rolling(window=int(window), min_periods=min_periods).var()
+        elif method == "ewm":
+            if window is None:
+                raise ValueError("ewm orthogonalization requires a halflife/span (passed via window)")
+            # Use span = window for consistency in sweep interface
+            cov = move_z.ewm(span=int(window), min_periods=min_periods).cov(spread_z)
+            var = spread_z.ewm(span=int(window), min_periods=min_periods).var()
+        else:
+            raise ValueError(f"Unknown orthogonalization method: {method}")
+
         beta = (cov / var.replace(0, pd.NA)).fillna(0.0)
         residual = move_z.copy()
         if self.orthogonalization_mode == "residualize":

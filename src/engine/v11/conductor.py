@@ -91,7 +91,8 @@ class V11Conductor:
         self._validate_regime_coverage()
 
         # v11.5 Internal Controllers
-        self.seeder = ProbabilitySeeder()
+        seeder_params = self.audit_data.get("model_hyperparameters", {}).get("probability_seeder", {})
+        self.seeder = ProbabilitySeeder(**seeder_params)
         self.feature_contract = self._validate_feature_contract()
         self.entropy_ctrl = EntropyController()
         self.prior_book = PriorKnowledgeBase(

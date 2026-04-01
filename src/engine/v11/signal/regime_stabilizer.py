@@ -34,6 +34,13 @@ class RegimeStabilizer:
         current_prob = normalized.get(self.current_regime, 0.0)
         challenger_prob = normalized.get(raw_regime, 0.0)
         barrier = self._entropy_barrier(entropy, len(normalized))
+        
+        # v12.2: MID_CYCLE Stickiness Enhancement
+        # In low-vol/structural bull markets, we increase the energy threshold 
+        # to exit MID_CYCLE, preventing defensive whiplash.
+        if self.current_regime == "MID_CYCLE" and entropy < 0.4:
+            barrier *= 1.5 # 50% more evidence required to flip out of MID
+            
         switched = False
 
         if raw_regime != self.current_regime:

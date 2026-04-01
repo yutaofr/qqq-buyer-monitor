@@ -207,6 +207,26 @@ def build_historical_macro_dataset(
         bundle["erp_ttm"], "effective_date", "erp_ttm_pct", calendar
     )
 
+    # v12.2: Add Hybrid-PIT Real-time Features (T+0 price context)
+    # We fetch QQQ history from price collector to ensure T+0 sync
+    from src.collector.price import fetch_price_data
+    price_data = fetch_price_data()
+    price_hist = price_data["history"].copy()
+    
+    # Force tz-naive and normalized index for alignment
+    if price_hist.index.tz is not None:
+        price_hist.index = price_hist.index.tz_localize(None)
+    price_hist.index = price_hist.index.normalize()
+    
+    daily["qqq_close"] = _asof_align_from_date_column(
+        price_hist.reset_index().rename(columns={"Date": "effective_date"}), 
+        "effective_date", "Close", calendar
+    )
+    daily["qqq_volume"] = _asof_align_from_date_column(
+        price_hist.reset_index().rename(columns={"Date": "effective_date"}), 
+        "effective_date", "Volume", calendar
+    )
+
     daily["credit_acceleration_pct_10d"] = daily["credit_spread_bps"].pct_change(periods=10).mul(100.0)
     daily["liquidity_roc_pct_4w"] = daily["net_liquidity_usd_bn"].pct_change(periods=20).mul(100.0)
     daily["forward_pe"] = np.nan
