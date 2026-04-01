@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 import src.backtest as backtest_module
 
@@ -90,8 +91,10 @@ def test_run_v11_audit_refits_model_for_each_evaluation_day(tmp_path, monkeypatc
 
     class FakeGaussianNB:
         fit_calls = 0
+        init_var_smoothing: list[float] = []
 
         def __init__(self, *args, **kwargs):
+            type(self).init_var_smoothing.append(float(kwargs.get("var_smoothing", 0.0)))
             self.classes_ = ["BUST", "LATE_CYCLE", "MID_CYCLE"]
             self.theta_ = np.zeros((3, 10))
             self.var_ = np.ones((3, 10))
@@ -123,7 +126,139 @@ def test_run_v11_audit_refits_model_for_each_evaluation_day(tmp_path, monkeypatc
         dataset_path=str(macro_path),
         regime_path=str(regime_path),
         evaluation_start="2025-01-02",
+        artifact_dir=str(tmp_path / "audit_artifacts"),
+        experiment_config={
+            "var_smoothing": 1e-3,
+            "probability_seeder": {
+                "config_overrides": {
+                    "copper_gold_roc_126d": {"diff": (21,), "min_periods": 21},
+                },
+                "clip_range": (-6.0, 6.0),
+                "orthogonalization_mode": "none",
+            },
+        },
     )
 
     assert FakeGaussianNB.fit_calls >= 3
+    assert FakeGaussianNB.init_var_smoothing[0] == pytest.approx(1e-3)
     assert "top1_accuracy" in summary
+    assert sorted(summary["state_support"]["unsupported_audit_regimes"]) == ["CAPITULATION", "RECOVERY"]
+    assert summary["feature_contract_validation"].startswith("override:")
+
+
+def test_run_v11_audit_accepts_audit_overrides(tmp_path, monkeypatch):
+    dates = pd.bdate_range("2024-01-01", periods=320)
+    macro_path = tmp_path / "macro.csv"
+    regime_path = tmp_path / "regimes.csv"
+
+    _build_v12_macro_frame(dates).to_csv(macro_path, index=False)
+    pd.DataFrame(
+        {
+            "observation_date": dates,
+            "regime": ["MID_CYCLE"] * 160 + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
+        }
+    ).to_csv(regime_path, index=False)
+
+    class FakeGaussianNB:
+        def __init__(self, *args, **kwargs):
+            self.classes_ = ["BUST", "LATE_CYCLE", "MID_CYCLE"]
+            self.theta_ = np.zeros((3, 10))
+            self.var_ = np.ones((3, 10))
+            self.class_prior_ = np.full(3, 1.0 / 3.0)
+
+        def fit(self, X, y):
+            self.classes_ = sorted(set(map(str, y)))
+            feature_count = len(X.columns)
+            class_count = len(self.classes_)
+            self.theta_ = np.zeros((class_count, feature_count))
+            self.var_ = np.ones((class_count, feature_count))
+            self.class_prior_ = np.full(class_count, 1.0 / class_count)
+            return self
+
+        def predict_proba(self, evidence):
+            return [[1.0 / len(self.classes_)] * len(self.classes_)]
+
+    monkeypatch.setattr("sklearn.naive_bayes.GaussianNB", FakeGaussianNB)
+    monkeypatch.setattr(
+        backtest_module,
+        "_load_price_history",
+        lambda _: pd.DataFrame({"Close": np.linspace(100.0, 130.0, len(dates))}, index=dates),
+    )
+    monkeypatch.setattr("src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None)
+    monkeypatch.setattr("src.output.backtest_plots.save_v11_probabilistic_audit_figure", lambda *args, **kwargs: None)
+
+    summary = backtest_module.run_v11_audit(
+        dataset_path=str(macro_path),
+        regime_path=str(regime_path),
+        evaluation_start="2025-01-02",
+        artifact_dir=str(tmp_path / "audit_artifacts"),
+        experiment_config={
+            "audit_overrides": {
+                "base_betas": {
+                    "BUST": 0.5,
+                    "LATE_CYCLE": 0.8,
+                    "MID_CYCLE": 1.0,
+                },
+                "regime_sharpes": {
+                    "BUST": -0.8,
+                    "LATE_CYCLE": 0.2,
+                    "MID_CYCLE": 1.0,
+                },
+            }
+        },
+    )
+
+    assert summary["state_support"]["unsupported_audit_regimes"] == []
+    assert summary["audit_regimes"] == ["BUST", "LATE_CYCLE", "MID_CYCLE"]
+
+
+def test_run_v11_audit_can_use_classifier_posteriors_directly(tmp_path, monkeypatch):
+    dates = pd.bdate_range("2024-01-01", periods=320)
+    macro_path = tmp_path / "macro.csv"
+    regime_path = tmp_path / "regimes.csv"
+
+    _build_v12_macro_frame(dates).to_csv(macro_path, index=False)
+    pd.DataFrame(
+        {
+            "observation_date": dates,
+            "regime": ["MID_CYCLE"] * 160 + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
+        }
+    ).to_csv(regime_path, index=False)
+
+    class FakeGaussianNB:
+        def __init__(self, *args, **kwargs):
+            self.classes_ = ["BUST", "LATE_CYCLE", "MID_CYCLE"]
+            self.theta_ = np.zeros((3, 10))
+            self.var_ = np.ones((3, 10))
+            self.class_prior_ = np.array([0.2, 0.3, 0.5])
+
+        def fit(self, X, y):
+            self.classes_ = sorted(set(map(str, y)))
+            feature_count = len(X.columns)
+            class_count = len(self.classes_)
+            self.theta_ = np.zeros((class_count, feature_count))
+            self.var_ = np.ones((class_count, feature_count))
+            self.class_prior_ = np.full(class_count, 1.0 / class_count)
+            return self
+
+        def predict_proba(self, evidence):
+            return [[0.6, 0.3, 0.1]]
+
+    monkeypatch.setattr("sklearn.naive_bayes.GaussianNB", FakeGaussianNB)
+    monkeypatch.setattr(
+        backtest_module,
+        "_load_price_history",
+        lambda _: pd.DataFrame({"Close": np.linspace(100.0, 130.0, len(dates))}, index=dates),
+    )
+    monkeypatch.setattr("src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None)
+    monkeypatch.setattr("src.output.backtest_plots.save_v11_probabilistic_audit_figure", lambda *args, **kwargs: None)
+
+    summary = backtest_module.run_v11_audit(
+        dataset_path=str(macro_path),
+        regime_path=str(regime_path),
+        evaluation_start="2025-01-02",
+        artifact_dir=str(tmp_path / "audit_artifacts"),
+        experiment_config={"posterior_mode": "classifier_only"},
+    )
+
+    assert summary["posterior_mode"] == "classifier_only"

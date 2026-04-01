@@ -3,7 +3,7 @@ import json
 
 import pandas as pd
 
-_CLIP_RANGE = (-8.0, 8.0)
+_DEFAULT_CLIP_RANGE = (-8.0, 8.0)
 
 
 class ProbabilitySeeder:
@@ -13,8 +13,30 @@ class ProbabilitySeeder:
     used by the GaussianNB regime engine.
     """
 
-    def __init__(self):
-        self.config = {
+    def __init__(
+        self,
+        *,
+        config_overrides: dict[str, dict[str, object]] | None = None,
+        clip_range: tuple[float, float] = _DEFAULT_CLIP_RANGE,
+        orthogonalization_mode: str = "residualize",
+        orthogonalization_strength: float = 1.0,
+    ):
+        self.clip_range = (float(clip_range[0]), float(clip_range[1]))
+        self.orthogonalization_mode = str(orthogonalization_mode)
+        self.orthogonalization_strength = float(orthogonalization_strength)
+        self.config = self._merge_config(self._default_config(), config_overrides or {})
+        self._contract_payload = {
+            "config": self.config,
+            "clip_range": self.clip_range,
+            "orthogonalization_mode": self.orthogonalization_mode,
+            "orthogonalization_strength": self.orthogonalization_strength,
+        }
+        self._validate_runtime_contract()
+        self.diagnostics_: pd.DataFrame = pd.DataFrame()
+
+    @staticmethod
+    def _default_config() -> dict[str, dict[str, object]]:
+        return {
             "real_yield_structural_z": {
                 "src": "real_yield_10y_pct",
                 "ewma_span": 126,
@@ -36,6 +58,7 @@ class ProbabilitySeeder:
             },
             "core_capex_momentum": {
                 "src": "core_capex_mm",
+                "ewma_span": 3,
                 "z_method": "expanding",
                 "min_periods": 6,
             },
@@ -76,10 +99,28 @@ class ProbabilitySeeder:
                 "min_periods": 63,
             },
         }
-        self.diagnostics_: pd.DataFrame = pd.DataFrame()
+
+    @staticmethod
+    def _merge_config(
+        base: dict[str, dict[str, object]],
+        overrides: dict[str, dict[str, object]],
+    ) -> dict[str, dict[str, object]]:
+        merged = {name: dict(cfg) for name, cfg in base.items()}
+        for feature_name, feature_overrides in overrides.items():
+            if feature_name not in merged:
+                raise ValueError(f"Unknown seeder feature override: {feature_name}")
+            merged[feature_name].update(dict(feature_overrides))
+        return merged
+
+    def _validate_runtime_contract(self) -> None:
+        if self.orthogonalization_mode not in {"residualize", "none"}:
+            raise ValueError("orthogonalization_mode must be `residualize` or `none`")
+        if self.clip_range[0] >= self.clip_range[1]:
+            raise ValueError("clip_range must be increasing")
+        self.orthogonalization_strength = float(min(1.0, max(0.0, self.orthogonalization_strength)))
 
     def contract_hash(self) -> str:
-        canonical = json.dumps(self.config, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        canonical = json.dumps(self._contract_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
         digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         return f"sha256:{digest}"
 
@@ -111,7 +152,7 @@ class ProbabilitySeeder:
 
         features = features.ffill().fillna(0.0)
         features = self._orthogonalize_move(features)
-        return features.clip(*_CLIP_RANGE)
+        return features.clip(*self.clip_range)
 
     def _transform_series(self, series: pd.Series, cfg: dict[str, object]) -> pd.Series:
         val = series.copy()
@@ -146,7 +187,7 @@ class ProbabilitySeeder:
 
         std_safe = std.fillna(1e-6).replace(0, 1e-6)
         z = (series - mean) / std_safe
-        return z.clip(*_CLIP_RANGE)
+        return z.clip(*self.clip_range)
 
     def _orthogonalize_move(self, features: pd.DataFrame) -> pd.DataFrame:
         if "move_21d" not in features.columns or "spread_21d" not in features.columns:
@@ -160,7 +201,9 @@ class ProbabilitySeeder:
         cov = move_z.expanding(min_periods=63).cov(spread_z)
         var = spread_z.expanding(min_periods=63).var()
         beta = (cov / var.replace(0, pd.NA)).fillna(0.0)
-        residual = (move_z - beta * spread_z).clip(*_CLIP_RANGE)
+        residual = move_z.copy()
+        if self.orthogonalization_mode == "residualize":
+            residual = (move_z - (self.orthogonalization_strength * beta * spread_z)).clip(*self.clip_range)
         corr_21d = move_z.rolling(21, min_periods=5).corr(spread_z).fillna(0.0)
 
         out["move_21d"] = residual

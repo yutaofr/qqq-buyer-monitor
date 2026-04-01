@@ -84,6 +84,9 @@ def run_v11_audit(
     dataset_path: str = "data/macro_historical_dump.csv",
     regime_path: str = "data/v11_poc_phase1_results.csv",
     evaluation_start: str = "2018-01-01",
+    artifact_dir: str = "artifacts/v12_audit",
+    strict_state_support: bool = False,
+    experiment_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run the unified v12 probabilistic audit with deterministic walk-forward causality."""
     from sklearn.naive_bayes import GaussianNB
@@ -102,6 +105,10 @@ def run_v11_audit(
         save_v11_fidelity_figure,
         save_v11_probabilistic_audit_figure,
     )
+    from src.research.data_contracts import (
+        summarize_regime_state_support,
+        validate_regime_state_support,
+    )
 
     dataset = Path(dataset_path)
     regimes_file = Path(regime_path)
@@ -116,13 +123,31 @@ def run_v11_audit(
 
     macro_df = pd.read_csv(dataset_path, parse_dates=["observation_date"]).set_index("observation_date")
     regime_df = pd.read_csv(regime_path, parse_dates=["observation_date"]).set_index("observation_date")
+    experiment = dict(experiment_config or {})
 
     audit_path = Path("src/engine/v11/resources/regime_audit.json")
     with open(audit_path, encoding="utf-8") as f:
         audit_data = json.load(f)
-    base_betas = audit_data["base_betas"]
-    regime_sharpes = audit_data["regime_sharpes"]
+    audit_overrides = dict(experiment.get("audit_overrides", {}))
+    base_betas = dict(audit_data["base_betas"])
+    regime_sharpes = dict(audit_data["regime_sharpes"])
+    if audit_overrides.get("base_betas"):
+        base_betas = {str(k): float(v) for k, v in dict(audit_overrides["base_betas"]).items()}
+    if audit_overrides.get("regime_sharpes"):
+        regime_sharpes = {str(k): float(v) for k, v in dict(audit_overrides["regime_sharpes"]).items()}
     ordered_regimes = list(base_betas.keys())
+    default_var_smoothing = float(
+        audit_data.get("model_hyperparameters", {}).get("gaussian_nb_var_smoothing", 1e-2)
+    )
+    posterior_mode = str(
+        experiment.get(
+            "posterior_mode",
+            audit_data.get("model_hyperparameters", {}).get("posterior_mode", "runtime_reweight"),
+        )
+    )
+    state_support = summarize_regime_state_support(regime_df, audit_regimes=ordered_regimes)
+    if strict_state_support:
+        validate_regime_state_support(regime_df, audit_regimes=ordered_regimes)
 
     price_df = _load_price_history("data/qqq_history_cache.csv")
     price_df.index = pd.to_datetime(price_df.index, utc=True).tz_localize(None).normalize()
@@ -131,13 +156,20 @@ def run_v11_audit(
     macro_df["qqq_close"] = price_df["Close"]
     macro_df["qqq_close"] = macro_df["qqq_close"].ffill()
 
-    seeder = ProbabilitySeeder()
-    validate_feature_contract(
-        expected_hash=audit_data.get("feature_contract", {}).get("seeder_config_hash"),
-        actual_hash=seeder.contract_hash(),
-        expected_features=audit_data.get("feature_contract", {}).get("feature_names"),
-        actual_features=seeder.feature_names(),
-    )
+    seeder = ProbabilitySeeder(**dict(experiment.get("probability_seeder", {})))
+    feature_contract_validation = "validated"
+    try:
+        validate_feature_contract(
+            expected_hash=audit_data.get("feature_contract", {}).get("seeder_config_hash"),
+            actual_hash=seeder.contract_hash(),
+            expected_features=audit_data.get("feature_contract", {}).get("feature_names"),
+            actual_features=seeder.feature_names(),
+        )
+    except ValueError as exc:
+        if experiment:
+            feature_contract_validation = f"override:{exc}"
+        else:
+            raise
     features = seeder.generate_features(macro_df)
     full_df = features.join(regime_df["regime"], how="inner")
     full_df["qqq_close"] = macro_df["qqq_close"]
@@ -205,7 +237,7 @@ def run_v11_audit(
             if train_window.empty:
                 continue
 
-            gnb = GaussianNB(var_smoothing=1e-2)
+            gnb = GaussianNB(var_smoothing=float(experiment.get("var_smoothing", default_var_smoothing)))
             gnb.fit(train_window[feature_cols], train_window["regime"])
             validate_gaussian_nb(
                 gnb,
@@ -214,10 +246,6 @@ def run_v11_audit(
             )
 
             evidence = pd.DataFrame([row[feature_cols].to_dict()], columns=feature_cols)
-            classifier_posteriors = {
-                str(label): float(probability)
-                for label, probability in zip(gnb.classes_, gnb.predict_proba(evidence)[0], strict=True)
-            }
             class_priors = list(getattr(gnb, "class_prior_", []))
             if len(class_priors) != len(gnb.classes_):
                 class_priors = [1.0 / len(gnb.classes_)] * len(gnb.classes_)
@@ -226,10 +254,17 @@ def run_v11_audit(
                 for label, probability in zip(gnb.classes_, class_priors, strict=True)
             }
             runtime_priors, _ = prior_book.runtime_priors()
-            posteriors = inference_engine.reweight_probabilities(
-                classifier_posteriors=classifier_posteriors,
-                training_priors=training_priors,
-                runtime_priors=runtime_priors,
+            if posterior_mode == "classifier_only":
+                active_priors = training_priors
+            elif posterior_mode == "runtime_reweight":
+                active_priors = runtime_priors
+            else:
+                raise ValueError(f"Unknown posterior_mode: {posterior_mode}")
+            posteriors = inference_engine.infer_gaussian_nb_posterior(
+                classifier=gnb,
+                evidence_frame=evidence,
+                runtime_priors=active_priors,
+                feature_weights=None,
             )
 
             actual_regime = str(row["regime"])
@@ -348,13 +383,19 @@ def run_v11_audit(
         "top1_accuracy": float((probability_df["predicted_regime"] == probability_df["actual_regime"]).mean()),
         "mean_brier": float(probability_df["brier"].mean()),
         "mean_entropy": float(execution_df["entropy"].mean()),
-        "lock_incidence": float(execution_df["lock_active"].mean())
+        "lock_incidence": float(execution_df["lock_active"].mean()),
+        "state_support": state_support,
+        "audit_regimes": ordered_regimes,
+        "feature_contract_validation": feature_contract_validation,
+        "experiment_config": experiment,
+        "gaussian_nb_var_smoothing": float(experiment.get("var_smoothing", default_var_smoothing)),
+        "posterior_mode": posterior_mode,
     }
 
     print("\n--- v12 Unified Probabilistic Performance Audit ---")
     print(f"Accuracy: {summary['top1_accuracy']:.2%} | Brier: {summary['mean_brier']:.4f} | Entropy: {summary['mean_entropy']:.3f} | Lock: {summary['lock_incidence']:.1%}")
 
-    save_dir = Path("artifacts/v12_audit")
+    save_dir = Path(artifact_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
 
     probability_df.to_csv(save_dir / "probability_audit.csv", index=False)
@@ -385,12 +426,24 @@ def main(argv: list[str] | None = None) -> int:
         default="data/v11_poc_phase1_results.csv",
         help="Path to the historical regime label dataset.",
     )
+    parser.add_argument(
+        "--artifact-dir",
+        default="artifacts/v12_audit",
+        help="Directory for backtest artifacts.",
+    )
+    parser.add_argument(
+        "--strict-state-support",
+        action="store_true",
+        help="Fail when the configured audit regimes are absent from the label dataset.",
+    )
     args = parser.parse_args(argv)
 
     run_v11_audit(
         dataset_path=args.dataset_path,
         regime_path=args.regime_path,
-        evaluation_start=args.evaluation_start
+        evaluation_start=args.evaluation_start,
+        artifact_dir=args.artifact_dir,
+        strict_state_support=args.strict_state_support,
     )
     return 0
 
