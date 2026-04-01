@@ -1,6 +1,8 @@
 import json
+from argparse import Namespace
 
 import pandas as pd
+import pytest
 
 import src.main as main_module
 
@@ -69,3 +71,25 @@ def test_build_v11_live_macro_row_normalizes_units():
     assert row["real_yield_10y_pct"] == 0.021
     assert row["credit_spread_bps"] == 342.0
     assert row["source_credit_spread"] == "proxy:nfci"
+
+
+def test_run_v11_pipeline_stops_when_cloud_pull_fails(monkeypatch):
+    class _FatalCloudBridge:
+        def __init__(self):
+            self.is_ci = True
+
+        def pull_state(self, local_files):
+            return False
+
+    monkeypatch.setattr(main_module, "CloudPersistenceBridge", _FatalCloudBridge)
+    monkeypatch.setattr("src.collector.price.fetch_price_data", lambda: (_ for _ in ()).throw(AssertionError("should not fetch")))
+
+    with pytest.raises(RuntimeError, match="Cloud state pull failed"):
+        main_module.run_v11_pipeline(
+            Namespace(
+                json=False,
+                notify_discord=False,
+                no_save=True,
+                no_color=True,
+            )
+        )

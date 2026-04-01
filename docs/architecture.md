@@ -75,7 +75,7 @@ This preserves deterministic behavior while preventing proxy-fed observations fr
 
 ## 5. Persistence & Cloud Bridge (Stateless Resilience)
 The system is designed for **Stateless Execution** (e.g., GitHub Actions):
-1. **Pull**: Retrieve DB, DNA, and Prior State from Vercel Blob.
+1. **Pull**: Retrieve DB, DNA, and Prior State from Vercel Blob. Cold-start object misses may fall back to checked-in canonical seeds, but non-404 storage failures abort the run.
 2. **Run**: Execute JIT inference and update local files.
 3. **Push**: Upload updated state back to Vercel Blob.
 
