@@ -15,49 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check-window:
-    runs-on: ubuntu-latest
-    outputs:
-      should_run: ${{ steps.check.outputs.should_run }}
-      reason: ${{ steps.check.outputs.reason }}
-    permissions:
-      contents: read
-    steps:
-      - name: Check Target Time Window
-        id: check
-        shell: python
-        run: |
-          import os
-          from datetime import UTC, datetime
-          from zoneinfo import ZoneInfo
-          from src.workflows.discord_signal_gate import evaluate_discord_signal_gate
-
-          now_utc = datetime.now(UTC)
-          now_paris = now_utc.astimezone(ZoneInfo("Europe/Paris"))
-          now_beijing = now_utc.astimezone(ZoneInfo("Asia/Shanghai"))
-
-          decision = evaluate_discord_signal_gate(
-              event_name=os.environ.get('EVENT_NAME'),
-              event_schedule=os.environ.get('EVENT_SCHEDULE'),
-          )
-
-          print(f"Current Paris Time: {now_paris.strftime('%H:%M:%S')}")
-          print(f"Current Beijing Time: {now_beijing.strftime('%H:%M:%S')}")
-          print(f"Event Name: {os.environ.get('EVENT_NAME')}")
-          print(f"Event Schedule: {os.environ.get('EVENT_SCHEDULE')}")
-          print(f"Gate Reason: {decision.reason}")
-          print(f"Should Run: {'true' if decision.should_run else 'false'}")
-
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f"should_run={'true' if decision.should_run else 'false'}\n")
-              f.write(f"reason={decision.reason}\n")
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          EVENT_SCHEDULE: ${{ github.event.schedule }}
-
   notify:
-    needs: check-window
-    if: needs.check-window.outputs.should_run == 'true'
     uses: ./.github/workflows/runtime.yml
     with:
       job_name: Discord Daily Signal
