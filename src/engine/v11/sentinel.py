@@ -68,15 +68,25 @@ class SentinelEngine:
         
         if self.previous_mu_macro is not None and self.previous_mu_micro is not None:
             # Directional momentum product
-            delta_macro = mu_macro - self.previous_mu_macro
-            delta_micro = mu_micro - self.previous_mu_micro
+            # Convert to numpy arrays to ensure vector-like behavior even for scalars
+            curr_macro = np.atleast_1d(mu_macro)
+            prev_macro = np.atleast_1d(self.previous_mu_macro)
+            curr_micro = np.atleast_1d(mu_micro)
+            prev_micro = np.atleast_1d(self.previous_mu_micro)
             
-            # Use dot product of change vectors as raw signal
-            raw_alignment_signal = float(np.dot(delta_macro, delta_micro))
+            delta_macro = curr_macro - prev_macro
+            delta_micro = curr_micro - prev_micro
+            
+            # Use only common dimensions for dot product, or first element if mismatched
+            # In QQQ Monitor, delta_macro is typically [delta_beta] (1,) 
+            # and delta_micro is [delta_r, delta_v] (2,)
+            # Alignment is primarily between expected beta change and realized return change
+            common_dim = min(len(delta_macro), len(delta_micro))
+            raw_alignment_signal = float(np.dot(delta_macro[:common_dim], delta_micro[:common_dim]))
             alignment = self.divergence.calculate_alignment_score(raw_alignment_signal)
             
-        self.previous_mu_macro = mu_macro.copy() if mu_macro is not None else None
-        self.previous_mu_micro = mu_micro.copy() if mu_micro is not None else None
+        self.previous_mu_macro = np.atleast_1d(mu_macro).copy() if mu_macro is not None else None
+        self.previous_mu_micro = np.atleast_1d(mu_micro).copy() if mu_micro is not None else None
         
         # 4. Stale Data Decay with Resumption Low-Pass
         from src.utils.stats import calculate_decay, calculate_inertial_recovery
@@ -101,8 +111,37 @@ class SentinelEngine:
         }
         
     def _infer_micro_posterior(self, x: np.ndarray) -> np.ndarray:
-        # Placeholder for micro GNB. Returns uniform for now.
-        return np.array([0.25, 0.25, 0.25, 0.25])
+        """
+        Infer micro-regime probabilities based on distance from regime centroids in [r, v] space.
+        This provides the 'Crowd Sensor' (P_micro) for JSD calculation.
+        """
+        if self.gaussian.mu is None:
+            return np.array([0.25, 0.25, 0.25, 0.25])
+            
+        # Simplified distance-based probabilities:
+        # In a real run, these centroids should be extracted from the training set.
+        # Here we use heuristic centroids for Phase 3 integration:
+        # Index: 0: BOOM, 1: MID, 2: LATE, 3: BUST
+        centroids = {
+            0: np.array([0.001, -0.1]), # BOOM: Positive return, low volume
+            1: np.array([0.0, 0.0]),    # MID: Neutral
+            2: np.array([0.0005, 0.2]), # LATE: Tiny return, high volume (Exhaustion)
+            3: np.array([-0.002, 0.5])  # BUST: Negative return, high volume (Panic)
+        }
+        
+        probs = []
+        inv_cov = self.gaussian.get_inverse_covariance()
+        
+        for i in range(4):
+            diff = x - centroids[i]
+            # Use Mahalanobis distance to each centroid as a proxy for negative log-likelihood
+            dist = float(diff.T @ inv_cov @ diff)
+            probs.append(np.exp(-0.5 * dist))
+            
+        probs = np.array(probs)
+        # Normalize to probability distribution
+        total = probs.sum()
+        return probs / total if total > 0 else np.array([0.25, 0.25, 0.25, 0.25])
 
 
 def calculate_jsd(p: np.ndarray, q: np.ndarray) -> float:
