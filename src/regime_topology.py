@@ -1,8 +1,8 @@
 """Canonical regime topology helpers for the active v12 runtime contract."""
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
 import math
+from collections.abc import Iterable, Mapping
 
 ACTIVE_REGIME_ORDER: tuple[str, ...] = (
     "MID_CYCLE",
