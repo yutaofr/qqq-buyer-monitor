@@ -1,3 +1,7 @@
+> [DEPRECATED: LEGACY PRE-V11 CONTEXT]
+> 本文档记录 v2.0 时代的研发拆解与实现任务，属于历史演进材料，不代表 v11.5 的现行生产规范。
+> 当前架构审计、回测口径与生产验收均不应引用本文作为主标准。
+
 # QQQ Buy-Signal Monitor v2.0 - 敏捷开发规划 (User Stories & Tasks)
 
 本文档基于 `docs/divergence_features.md` (v2.0 PRD)，将宏观基本面过滤与技术背离特性拆解为可执行的敏捷研发 User Stories 与 Technical Tasks。

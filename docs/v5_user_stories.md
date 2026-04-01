@@ -1,3 +1,7 @@
+> [DEPRECATED: LEGACY PRE-V11 CONTEXT]
+> 本文档总结 v5.0 时代的交付与硬约束逻辑，属于历史版本材料，不代表 v11.5 的生产基线。
+> 当前发布与审计应以 v11.5 文档集为准，而非本文中的阈值式叙事。
+
 # QQQ Buy-Signal Monitor v5.0 - User Stories & Progress
 
 This document summarizes the user stories and technical epics delivered in version 5.0. It builds upon the foundations laid in [v2.0 (Divergence)](./v2_user_stories.md) and [v3.0 (Macro/Fundamentals)](./v3_user_stories.md).

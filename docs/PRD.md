@@ -1,3 +1,7 @@
+> [PARALLEL TRACK]
+> 本文档描述 allocator-first 并行产品线，不是 v11.5 Bayesian production baseline，也不是当前生产发布判定依据。
+> 若进行 v11.5 主链架构审计，请以 `V11_5_EXPERT_SPEC.md`、`architecture.md`、`V11_5_ARCHITECT_MANUAL.md` 与 `v11_bayesian_production_baseline_2026-03-30.md` 为准。
+
 # PRD: QQQ Long-Term Allocation Engine
 
 > 版本: 2026-03 allocator-first refactor

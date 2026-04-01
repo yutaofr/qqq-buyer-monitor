@@ -35,6 +35,7 @@ V11.5 核心遵循 **"Logic follows Data"** 准则。
     - **Target Beta**：经过惯性映射与行为守卫后的实际执行目标。
     - **Raw Regime / Stable Regime**：当天后验 Top-1 与稳定状态机输出必须分离。
     - **Deployment State / Execution Bucket**：增量节奏与存量执行桶必须分离。
+    - **分发路径**：`status.json` 必须先落地到本地 `src/web/public/`，再由 `push_payload` 同步到当前 Blob 命名空间根路径，例如生产环境的 `prod/status.json`。
     - **目的**：防止审计者将“惯性观察期”误判为“引擎不响应”。
 
 ## 4. 系统的优缺点分析 (Trade-offs)
