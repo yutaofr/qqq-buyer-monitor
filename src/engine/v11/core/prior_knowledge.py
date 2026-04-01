@@ -1,6 +1,7 @@
 """Deterministic prior knowledge store for the v11 Bayesian regime engine."""
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from collections.abc import Iterable
@@ -24,14 +25,20 @@ class PriorKnowledgeBase:
         self.storage_path = Path(storage_path)
         self.pseudo_count = float(pseudo_count)
         self.transition_blend = float(transition_blend)
-
-        if self.storage_path.exists():
-            self._load()
-            return
-
         resolved_regimes = list(regimes or [])
         if not resolved_regimes and bootstrap_regimes is not None:
             resolved_regimes = sorted({str(regime) for regime in bootstrap_regimes})
+        expected_bootstrap_fingerprint = self._compute_bootstrap_fingerprint(bootstrap_regimes)
+
+        if self.storage_path.exists():
+            backfilled = self._load(
+                fallback_regimes=resolved_regimes,
+                expected_bootstrap_fingerprint=expected_bootstrap_fingerprint,
+            )
+            if backfilled:
+                self._save()
+            return
+
         if not resolved_regimes:
             raise ValueError("PriorKnowledgeBase requires regimes or an existing storage file.")
 
@@ -44,6 +51,7 @@ class PriorKnowledgeBase:
         self.last_posterior: dict[str, float] | None = None
         self.last_observation_date: str | None = None
         self.execution_state: dict[str, float | str | int | bool | None] = {}
+        self.bootstrap_fingerprint = expected_bootstrap_fingerprint
 
         if bootstrap_regimes is not None:
             self._bootstrap_from_regimes(bootstrap_regimes)
@@ -176,23 +184,79 @@ class PriorKnowledgeBase:
         for previous, current in zip(history, history[1:], strict=False):
             self.transition_counts[previous][current] += 1.0
 
-    def _load(self) -> None:
+    def _load(
+        self,
+        *,
+        fallback_regimes: Iterable[str] | None = None,
+        expected_bootstrap_fingerprint: str | None = None,
+    ) -> bool:
+        backfilled = False
         payload = json.loads(self.storage_path.read_text())
-        self.regimes = list(payload["regimes"])
-        self.counts = {str(key): float(value) for key, value in payload["counts"].items()}
-        self.transition_counts = {
-            str(src): {str(dst): float(value) for dst, value in row.items()}
-            for src, row in payload["transition_counts"].items()
+        payload_regimes = payload.get("regimes")
+        if payload_regimes:
+            self.regimes = [str(regime) for regime in payload_regimes]
+        elif fallback_regimes:
+            self.regimes = [str(regime) for regime in fallback_regimes]
+            backfilled = True
+        else:
+            raise ValueError("PriorKnowledgeBase state is missing regimes and no bootstrap fallback is available.")
+
+        self.pseudo_count = float(payload.get("pseudo_count", self.pseudo_count))
+        self.transition_blend = float(payload.get("transition_blend", self.transition_blend))
+
+        counts_payload = payload.get("counts", {})
+        if not isinstance(counts_payload, dict):
+            raise ValueError("PriorKnowledgeBase counts payload must be a mapping.")
+        self.counts = {
+            regime: float(counts_payload.get(regime, self.pseudo_count))
+            for regime in self.regimes
         }
+
+        transition_payload = payload.get("transition_counts", {})
+        if not isinstance(transition_payload, dict):
+            raise ValueError("PriorKnowledgeBase transition payload must be a mapping.")
+        self.transition_counts = {}
+        for src in self.regimes:
+            row_payload = transition_payload.get(src, {})
+            if not isinstance(row_payload, dict):
+                row_payload = {}
+            self.transition_counts[src] = {
+                dst: float(row_payload.get(dst, self.pseudo_count))
+                for dst in self.regimes
+            }
+
         self.last_posterior = (
-            {str(key): float(value) for key, value in payload["last_posterior"].items()}
-            if payload.get("last_posterior")
+            {
+                regime: float(payload.get("last_posterior", {}).get(regime, 0.0))
+                for regime in self.regimes
+            }
+            if isinstance(payload.get("last_posterior"), dict)
             else None
         )
         self.last_observation_date = payload.get("last_observation_date")
-        self.execution_state = dict(payload.get("execution_state", {}))
-        self.pseudo_count = float(payload.get("pseudo_count", 1.0))
-        self.transition_blend = float(payload.get("transition_blend", 0.35))
+        self.execution_state = (
+            dict(payload.get("execution_state", {}))
+            if isinstance(payload.get("execution_state"), dict)
+            else {}
+        )
+        stored_fingerprint = payload.get("bootstrap_fingerprint")
+        if stored_fingerprint is None and expected_bootstrap_fingerprint is not None:
+            self.bootstrap_fingerprint = expected_bootstrap_fingerprint
+            backfilled = True
+        elif stored_fingerprint is not None:
+            self.bootstrap_fingerprint = str(stored_fingerprint)
+        else:
+            self.bootstrap_fingerprint = None
+
+        if (
+            expected_bootstrap_fingerprint is not None
+            and self.bootstrap_fingerprint is not None
+            and self.bootstrap_fingerprint != expected_bootstrap_fingerprint
+        ):
+            raise ValueError(
+                "PriorKnowledgeBase bootstrap fingerprint mismatch. Canonical regime DNA drift detected."
+            )
+        return backfilled
 
     def _save(self) -> None:
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
@@ -206,6 +270,7 @@ class PriorKnowledgeBase:
             "execution_state": self.execution_state,
             "pseudo_count": self.pseudo_count,
             "transition_blend": self.transition_blend,
+            "bootstrap_fingerprint": self.bootstrap_fingerprint,
         }
         self.storage_path.write_text(json.dumps(payload, indent=2, sort_keys=True))
 
@@ -216,3 +281,11 @@ class PriorKnowledgeBase:
             n = max(1, len(weights))
             return {str(key): 1.0 / n for key in weights}
         return {str(key): max(0.0, float(value)) / total for key, value in weights.items()}
+
+    @staticmethod
+    def _compute_bootstrap_fingerprint(bootstrap_regimes: Iterable[str] | None) -> str | None:
+        if bootstrap_regimes is None:
+            return None
+        canonical = json.dumps([str(regime) for regime in bootstrap_regimes], separators=(",", ":"))
+        digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        return f"sha256:{digest}"

@@ -59,6 +59,11 @@
 - `data/macro_historical_dump.csv`
 - `data/v11_prior_state.json`
 
+其中：
+
+- `signals.db` 现在带有 `meta.schema_version=11.5`
+- `v11_prior_state.json` 现在带有 `bootstrap_fingerprint=sha256(...)`
+
 ### Q3. 还有什么 runtime 文件需要同步到 Vercel Storage 读取？
 
 当前 active inference path 不需要更多文件。
@@ -169,6 +174,12 @@ data/v11_prior_state.json
 3. 允许 `data/v11_prior_state.json` 缺失
 4. 首次 GitHub Actions 运行后自动生成并 push `data/v11_prior_state.json`
 
+首跑生成的 `v11_prior_state.json` 必须同时固化：
+
+- 历史计数 / 转移矩阵
+- `execution_state`
+- `bootstrap_fingerprint` (`sha256`)
+
 ### 3.2 不推荐但仍可自愈的场景
 
 如果 canonical baseline 缺失，当前规则是不允许生产/审计继续运行。
@@ -178,6 +189,7 @@ data/v11_prior_state.json
 1. canonical macro/regime seed 才是唯一允许的初始态
 2. synthetic bootstrap 只作为测试或离线灾备工具
 3. 首跑后立即把 runtime state 固化到 blob，避免每天重新从初始态起步
+4. 如果后续加载时发现 `bootstrap_fingerprint` 与当前 canonical regime DNA 不一致，必须 fail closed
 
 ## 4. `MID_CYCLE 100%` 的解释口径
 

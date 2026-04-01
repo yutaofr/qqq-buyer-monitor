@@ -13,6 +13,7 @@ from src.models import SignalResult
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = os.environ.get("QQQ_DB_PATH", "data/signals.db")
+CURRENT_SCHEMA_VERSION = "11.5"
 
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS signals (
@@ -40,6 +41,13 @@ CREATE TABLE IF NOT EXISTS runtime_inputs (
 );
 """
 
+CREATE_META_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+"""
+
 def init_db(path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     """Initialise (or open) the SQLite database and create the table."""
     db_path = Path(path)
@@ -56,6 +64,15 @@ def init_db(path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn.execute(CREATE_TABLE_SQL)
     conn.execute(CREATE_MACRO_TABLE_SQL)
     conn.execute(CREATE_RUNTIME_INPUTS_SQL)
+    conn.execute(CREATE_META_TABLE_SQL)
+    conn.execute(
+        """
+        INSERT INTO meta (key, value)
+        VALUES ('schema_version', ?)
+        ON CONFLICT(key) DO UPDATE SET value=excluded.value
+        """,
+        (CURRENT_SCHEMA_VERSION,),
+    )
     conn.commit()
     return conn
 
