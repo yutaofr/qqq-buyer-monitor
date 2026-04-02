@@ -1,4 +1,4 @@
-"""Unit tests for the v11.5 Bayesian Discord notifier."""
+"""Unit tests for the v12.0 Bayesian Discord notifier."""
 from __future__ import annotations
 
 from datetime import date
@@ -20,7 +20,7 @@ def _v11_result() -> SignalResult:
         logic_trace=[
             {"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QQQ"}}
         ],
-        explanation="v11.5 Bayesian Conductor: beta=0.91x | entropy=0.170 | regime=MID_CYCLE (82.0%)",
+        explanation="v12.0 Bayesian Conductor: beta=0.91x | entropy=0.170 | regime=MID_CYCLE (82.0%)",
         metadata={"deployment_readiness": 0.64}
     )
 
@@ -43,7 +43,7 @@ def test_discord_notification_uses_v11_contract(monkeypatch):
 
     assert ok is True
     embed = captured["json"]["embeds"][0]
-    assert "V11.5" in embed["title"]
+    assert "V12.0" in embed["title"]
     assert "🎯 Target Beta: `0.91x`" in embed["description"]
     assert "Bayesian Regime:** ⚖️ `MID_CYCLE`" in embed["description"]
     assert "Entropy:** `0.170`" in embed["description"]

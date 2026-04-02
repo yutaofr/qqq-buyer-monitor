@@ -1,5 +1,5 @@
 """
-Ultimate Alignment Test for V11.5 Web Frontend.
+Ultimate Alignment Test for V12.0 Web Frontend.
 Verifies that status.json produced by engine matches index.html expectations.
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ def test_web_frontend_contract_alignment():
         stable_regime="LATE_CYCLE",
         target_allocation=TargetAllocationState(0.198, 0.802, 0.0, 0.80),
         logic_trace=[{"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QQQ"}}],
-        explanation="v11.5 test",
+        explanation="v12.0 test",
         metadata={"beta_ceiling": 1.20, "raw_target_beta": 0.85}
     )
 
@@ -42,7 +42,7 @@ def test_web_frontend_contract_alignment():
     html_path = Path("src/web/public/index.html")
     html_content = html_path.read_text(encoding="utf-8")
 
-    # Verified Keys in V11.5 status.json
+    # Verified Keys in V12.0 status.json
     required_json_keys = [
         "data.signal.entropy",
         "data.signal.probabilities",
@@ -71,7 +71,7 @@ def test_web_frontend_contract_alignment():
     assert "logic-trace-container" in html_content
     assert "feature-values-container" in html_content
 
-    print("\nWeb Alignment: SUCCESS. V11.5 Engine and Frontend are in sync.")
+    print("\nWeb Alignment: SUCCESS. V12.0 Engine and Frontend are in sync.")
 
 if __name__ == "__main__":
     test_web_frontend_contract_alignment()

@@ -103,7 +103,7 @@ def test_discord_notification_real_api():
         logic_trace=[
             {"step": "integration_test", "result": {"source": "github_actions_simulation"}}
         ],
-        explanation="[INTEGRATION TEST] v11.5 Architecture Convergence Audit.",
+        explanation="[INTEGRATION TEST] v12.0 Architecture Convergence Audit.",
     )
 
     ok = send_discord_signal(result, webhook_url)

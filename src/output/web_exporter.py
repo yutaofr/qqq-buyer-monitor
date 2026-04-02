@@ -1,4 +1,4 @@
-"""Web exporter for the v11.5 Bayesian probabilistic monitor."""
+"""Web exporter for the v12.0 Bayesian probabilistic monitor."""
 from __future__ import annotations
 
 import json
@@ -88,7 +88,7 @@ class MarketCursor:
 
 
 def export_web_snapshot(result: SignalResult, output_path: str | Path | None = None) -> bool:
-    """Export a v11.5 compliant high-fidelity web snapshot."""
+    """Export a v12.0 compliant high-fidelity web snapshot."""
     try:
         now_utc = datetime.now(UTC)
         cursor = MarketCursor()
@@ -126,7 +126,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
 
         payload = {
             "meta": {
-                "version": "v11.5",
+                "version": "v12.0",
                 "calculated_at_utc": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "observation_date": result.date.isoformat(),
                 "expires_at_utc": cursor.get_expires_at_utc(now_utc).strftime(

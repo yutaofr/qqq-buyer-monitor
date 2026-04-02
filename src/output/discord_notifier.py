@@ -1,4 +1,4 @@
-"""Discord notification logic for QQQ v11.5 Bayesian Monitor."""
+"""Discord notification logic for QQQ v12.0 Bayesian Monitor."""
 from __future__ import annotations
 
 import logging
@@ -93,11 +93,11 @@ def build_discord_payload(result: SignalResult) -> dict:
 
     description = (
         f"{summary_header}\n\n"
-        "> v11.5 概率优先连续建议；后验决定方向，信息熵惩罚控制缩放，行为守卫负责离散执行。\n\n"
+        "> v12.0 概率优先连续建议；后验决定方向，信息熵惩罚控制缩放，行为守卫负责离散执行。\n\n"
         f"**Briefing:** {result.explanation}"
     )
 
-    title = f"QQQ V11.5 | Bayesian Decision - {result.date}"
+    title = f"QQQ V12.0 | Bayesian Decision - {result.date}"
 
     # Probabilities Distribution
     sorted_probs = sorted(probabilities.items(), key=lambda x: x[1], reverse=True)
@@ -142,7 +142,7 @@ def build_discord_payload(result: SignalResult) -> dict:
         "description": description[:4096],
         "color": int(color),
         "fields": fields,
-        "footer": {"text": "Bayesian-Core v11.5 | Numerical Integrity Verified"},
+        "footer": {"text": "Bayesian-Core v12.0 | Numerical Integrity Verified"},
         "timestamp": _discord_timestamp(result.date),
     }
 
@@ -154,7 +154,7 @@ def build_discord_payload(result: SignalResult) -> dict:
 
 
 def send_discord_signal(result: SignalResult, webhook_url: str) -> bool:
-    """Send a Discord embed for the v11.5 Bayesian signal."""
+    """Send a Discord embed for the v12.0 Bayesian signal."""
     if not webhook_url:
         return False
 

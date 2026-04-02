@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 class BayesianInferenceEngine:
     """
-    v11.5 Bayesian Inference Engine
+    v12.0 Bayesian Inference Engine
     Responsibility: Discrete Regime inference from multi-factor evidence.
     Strictly follows Architect B (GaussianNB/KDE) and Architect C (Derivative Momentum) criteria.
     NO hard-coded thresholds or if-else logic.
