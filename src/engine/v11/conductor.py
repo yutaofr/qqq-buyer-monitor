@@ -220,12 +220,6 @@ class V11Conductor:
         previous_raw = None
         if os.path.exists(macro_csv):
             hist_df = pd.read_csv(macro_csv, parse_dates=["observation_date"]).set_index("observation_date")
-            # Clear duplicate index if it exists in hist_df and t0
-            latest_name = raw_t0_data.iloc[-1].name
-            t0_dt = pd.to_datetime(latest_name if latest_name is not None else raw_t0_data.index[-1])
-            hist_df = hist_df[hist_df.index < t0_dt]
-            if not hist_df.empty:
-                previous_raw = hist_df.iloc[-1]
             # Use raw_t0_data as a DataFrame to match columns
             t0_df = raw_t0_data.copy()
             # Use observation_date column as index if available to avoid Epoch 0 (1970-01-01)
@@ -233,6 +227,13 @@ class V11Conductor:
                 t0_df = t0_df.set_index("observation_date")
             elif not isinstance(t0_df.index, pd.DatetimeIndex):
                 t0_df.index = pd.to_datetime(t0_df.index)
+
+            # Clear duplicate index if it exists in hist_df and t0
+            t0_dt = pd.to_datetime(t0_df.index[-1])
+            hist_df = hist_df[hist_df.index < t0_dt]
+            if not hist_df.empty:
+                previous_raw = hist_df.iloc[-1]
+            
             context_df = pd.concat([hist_df, t0_df], sort=False)
         else:
             context_df = raw_t0_data
