@@ -1,9 +1,9 @@
-# V11.5 发布前终极 Checklist (架构收敛与生产基线)
+# V12.0 发布前终极 Checklist (架构收敛与生产基线)
 
 ## 1. 物理层审计 (The Great Purge Audit)
 - [ ] **零挂载依赖**：确认 `src/engine/` 下除 `v11/` 外无任何 Python 文件残留。
-- [ ] **导入闭环**：通过 `ruff check .` 确认所有模块不再引用已删除的 `Tier0/1/2` 或旧模型。
-- [ ] **测试覆盖**：执行 `pytest tests -q`，确认 66+ 项 V11 原生测试 100% 通过。
+- [ ] **导入闭环与规范**：通过 `ruff check .` 确认所有模块不再引用已删除的旧模型，且满足 PEP 8 导入排序规范（无 I001/W293 报错）。
+- [ ] **测试覆盖**：执行 `pytest tests -q`，确认 113+ 项原生测试 100% 通过。
 
 ## 2. 数值一致性铁律 (Numerical Integrity)
 - [ ] **ERP/收益率单位**：`macro_historical_dump.csv` 中的 `erp_pct` 和 `real_yield_10y_pct` 必须为 **小数格式**（例：5% 记为 `0.05`）。
@@ -18,7 +18,7 @@
 
 ## 4. 数据库模式一致性 (Schema Parity)
 - [ ] **破坏性同步**：确认 `src/store/db.py` 中的 `init_db` 包含对旧 Schema 的检测逻辑（若缺失 `target_beta` 列则强制 DROP 并重建）。
-- [ ] **显式版本**：确认 `signals.db` 的 `meta` 表写入 `schema_version=11.5`，避免未来 schema 演进继续依赖隐式探测。
+- [ ] **显式版本**：确认 `signals.db` 的 `meta` 表写入 `schema_version=12.0`，避免未来 schema 演进继续依赖隐式探测。
 - [ ] **GHA 兼容性**：确保在无状态的 GitHub Actions 容器中，数据库初始化不会报 `OperationalError`。
 
 ## 4.1 Prior 自愈契约
@@ -42,5 +42,5 @@
 - [ ] **回测审计**：全样本 `backtest` 必须是 walk-forward causal audit，当前基线约为 `Accuracy 98.71% / Brier 0.0225 / Entropy 0.046 / Lock 0.4%`。
 
 ---
-**架构师评审签字：** `Gemini-CLI-Architect-V11.5`
-**发布日期：** 2026-03-31
+**架构师评审签字：** `Gemini-CLI-Architect-V12.0`
+**发布日期：** 2026-04-02
