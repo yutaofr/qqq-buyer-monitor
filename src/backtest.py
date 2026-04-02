@@ -1,5 +1,5 @@
 """
-QQQ v11.5 Bayesian Backtest & Audit (Bayesian Convergence).
+QQQ v12.0 Bayesian Backtest & Audit (Bayesian Convergence).
 
 This module is the sole entry point for system validation. It enforces causal
 isolation and probabilistic fidelity audits.
@@ -58,7 +58,7 @@ def _load_price_history(cache_path: str) -> pd.DataFrame:
 def _v11_inference_task(
     row_data: tuple[pd.Series, pd.Series, Any, list[str], list[str]],
 ) -> dict[str, Any]:
-    """Independent worker task for v11.5 Bayesian inference."""
+    """Independent worker task for v12.0 Bayesian inference."""
     std_row, source_row, gnb_model, classes, feature_cols = row_data
 
     evidence = pd.DataFrame([std_row[feature_cols].to_dict()], columns=feature_cols)
@@ -414,7 +414,7 @@ def run_v11_audit(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="QQQ v11.5 Bayesian Backtest Audit")
+    parser = argparse.ArgumentParser(description="QQQ v12.0 Bayesian Backtest Audit")
     parser.add_argument(
         "--evaluation-start",
         default="2018-01-01",

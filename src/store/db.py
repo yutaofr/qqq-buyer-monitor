@@ -13,7 +13,7 @@ from src.models import SignalResult
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = os.environ.get("QQQ_DB_PATH", "data/signals.db")
-CURRENT_SCHEMA_VERSION = "11.5"
+CURRENT_SCHEMA_VERSION = "12.0"
 
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS signals (

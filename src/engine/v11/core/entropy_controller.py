@@ -4,7 +4,7 @@ from scipy.stats import entropy
 
 class EntropyController:
     """
-    v11.5 Entropy Controller
+    v12.0 Entropy Controller
     Responsibility: Information-theoretic safety valve.
     Scales Target Beta toward 1.0 (Safe Neutral) as posterior uncertainty (Shannon Entropy) increases.
     """

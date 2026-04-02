@@ -89,7 +89,7 @@ class V11Conductor:
         self.model_regimes = sorted(self.regime_history["regime"].astype(str).unique())
         self._validate_regime_coverage()
 
-        # v11.5 Internal Controllers
+        # v12.0 Internal Controllers
         self.seeder = ProbabilitySeeder()
         self.feature_contract = self._validate_feature_contract()
         self.entropy_ctrl = EntropyController()
@@ -187,7 +187,7 @@ class V11Conductor:
         summary = self._validate_model(gnb, feature_count=len(feature_cols))
 
         logger.info(
-            "V11.5 Conductor: JIT-Model Provenance established. "
+            "V12.0 Conductor: JIT-Model Provenance established. "
             "Classes=%s features=%s theta=[%.4f, %.4f] var=[%.6f, %.6f]",
             summary["classes"],
             summary["feature_count"],
@@ -211,7 +211,7 @@ class V11Conductor:
 
     def daily_run(self, raw_t0_data: pd.DataFrame) -> dict:
         """
-        Main execution loop for v11.5 probabilistic inference.
+        Main execution loop for v12.0 probabilistic inference.
         """
         # 1. Feature Seeding (Epic 1)
         # AC-0: Conductor must see history to calculate Z-scores (v11.20)
@@ -299,7 +299,7 @@ class V11Conductor:
         quality_audit["effective_entropy"] = norm_h
         quality_audit["entropy_penalty"] = max(0.0, norm_h - posterior_entropy)
 
-        # 3. Probabilistic Exposure Mapping (v11.5)
+        # 3. Probabilistic Exposure Mapping (v12.0)
         # AC-0: No constants. Base betas are audit-derived.
         raw_beta_expectation = sum(posteriors.get(regime, 0.0) * self.base_betas.get(regime, 1.0)
                                    for regime in self.base_betas.keys())

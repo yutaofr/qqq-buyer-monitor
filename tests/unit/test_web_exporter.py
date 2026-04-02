@@ -1,4 +1,4 @@
-"""Unit tests for the v11.5 Bayesian web exporter."""
+"""Unit tests for the v12.0 Bayesian web exporter."""
 from __future__ import annotations
 
 import json
@@ -19,7 +19,7 @@ def _v11_result() -> SignalResult:
         stable_regime="MID_CYCLE",
         target_allocation=TargetAllocationState(0.10, 0.90, 0.0, 0.90),
         logic_trace=[{"step": "inference", "result": "MID_CYCLE"}],
-        explanation="v11.5 placeholder",
+        explanation="v12.0 placeholder",
         metadata={"feature_values": {"vix": 20.0}}
     )
 
@@ -36,7 +36,7 @@ def test_export_web_snapshot_v11_contract(tmp_path, monkeypatch):
 
     assert ok is True
     payload = json.loads(output_path.read_text(encoding="utf-8"))
-    assert payload["meta"]["version"] == "v11.5"
+    assert payload["meta"]["version"] == "v12.0"
     assert payload["signal"]["regime"] == "中期平稳 (MID_CYCLE)"
     assert payload["signal"]["target_beta"] == 0.91
     assert payload["signal"]["entropy"] == 0.17
@@ -55,7 +55,7 @@ def test_export_web_snapshot_preserves_dual_surface_semantics(tmp_path, monkeypa
         stable_regime="MID_CYCLE",
         target_allocation=TargetAllocationState(0.20, 0.80, 0.0, 0.80),
         logic_trace=[{"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QQQ"}}],
-        explanation="v11.5 semantic separation test",
+        explanation="v12.0 semantic separation test",
         metadata={
             "raw_regime": "LATE_CYCLE",
             "deployment_state": "DEPLOY_SLOW",

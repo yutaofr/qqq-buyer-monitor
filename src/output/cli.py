@@ -33,7 +33,7 @@ def print_signal(
     probs = result.probabilities or {}
     ordered_probs = sorted(probs.items(), key=lambda item: item[1], reverse=True)
 
-    print(f"\n{c(_BOLD)}=== QQQ PROBABILISTIC MONITOR (v11.5) ==={r}")
+    print(f"\n{c(_BOLD)}=== QQQ PROBABILISTIC MONITOR (v12.0) ==={r}")
     print(f"Date:      {result.date}")
     print(f"Price:     ${result.price:.2f}")
     print(

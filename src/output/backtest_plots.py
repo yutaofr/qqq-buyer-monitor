@@ -310,7 +310,7 @@ def build_v11_fidelity_figure(daily_ts: pd.DataFrame, summary: Any | None = None
     raw_beta = frame["raw_target_beta"].astype(float)
     advised_beta = frame["target_beta"].astype(float)
 
-    # Handle v11.5 where static expectations might be missing
+    # Handle v12.0 where static expectations might be missing
     has_expected = "expected_target_beta" in frame.columns
     expected_beta = frame["expected_target_beta"].astype(float) if has_expected else None
 

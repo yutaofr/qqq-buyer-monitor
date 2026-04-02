@@ -42,7 +42,7 @@ class SovereignMemoryBooster:
         Generates 10+ years of synthetic macro data with distinct regime fingerprints.
         Calibration adjusted for Late Cycle sensitivity (v11.25 DNA edit).
         """
-        # Ensure Deterministic System & Engineering Integrity (v11.51)
+        # Ensure Deterministic System & Engineering Integrity (v12.01)
         np.random.seed(seed)
 
         end_date = datetime.now()
