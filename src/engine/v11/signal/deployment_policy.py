@@ -31,11 +31,19 @@ class ProbabilisticDeploymentPolicy:
         switched = False
 
         if raw_state != self.current_state:
-            self.evidence += max(0.0, scores[raw_state] - scores.get(self.current_state, 0.0))
-            if self.evidence >= barrier:
+            # v12.2 AC-5 Smart Priming:
+            # If we have no accumulated evidence (cold start or post-reset),
+            # we align immediately to avoid pacing lag.
+            if self.evidence <= 0.0:
                 self.current_state = raw_state
                 self.evidence = 0.0
                 switched = True
+            else:
+                self.evidence += max(0.0, scores[raw_state] - scores.get(self.current_state, 0.0))
+                if self.evidence >= barrier:
+                    self.current_state = raw_state
+                    self.evidence = 0.0
+                    switched = True
         else:
             self.evidence = 0.0
 

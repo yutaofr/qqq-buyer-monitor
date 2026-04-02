@@ -44,11 +44,19 @@ class RegimeStabilizer:
         switched = False
 
         if raw_regime != self.current_regime:
-            self.evidence += max(0.0, challenger_prob - current_prob)
-            if self.evidence >= barrier:
+            # v12.2 AC-5 Smart Priming:
+            # If we have no accumulated evidence (cold start or post-reset),
+            # we align immediately to avoid start-up lag.
+            if self.evidence <= 0.0:
                 self.current_regime = raw_regime
                 self.evidence = 0.0
                 switched = True
+            else:
+                self.evidence += max(0.0, challenger_prob - current_prob)
+                if self.evidence >= barrier:
+                    self.current_regime = raw_regime
+                    self.evidence = 0.0
+                    switched = True
         else:
             self.evidence = 0.0
 
