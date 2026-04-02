@@ -323,13 +323,6 @@ class PriorKnowledgeBase:
                 "regime_evidence": 0.0,
             }
 
-        fallback = canonicalize_regime_sequence(fallback_regimes, include_all=False)
-        if fallback:
-            return {
-                "stable_regime": fallback[0],
-                "regime_evidence": 0.0,
-            }
-
         return {}
 
     def _save(self) -> None:

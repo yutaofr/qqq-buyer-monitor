@@ -174,3 +174,20 @@ def test_prior_knowledge_migrates_legacy_capitulation_payload_into_recovery(tmp_
     payload = json.loads(storage_path.read_text())
     assert payload["regimes"] == ["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"]
     assert "CAPITULATION" not in payload["counts"]
+
+
+def test_prior_knowledge_cold_start_does_not_use_default_regime(tmp_path):
+    """
+    Test that a cold start without a bootstrap history does not use the default
+    regime for execution state. stable_regime should be None so the first
+    inference can correctly anchor it instead of being pulled by an arbitrary default.
+    """
+    storage_path = tmp_path / "v11_prior_state.json"
+    library = PriorKnowledgeBase(
+        storage_path=storage_path,
+        regimes=["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"],
+        bootstrap_regimes=None,
+    )
+
+    # Before the fix, this would default to "MID_CYCLE" (fallback[0])
+    assert library.execution_state.get("stable_regime") is None
