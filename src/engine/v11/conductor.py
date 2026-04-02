@@ -18,7 +18,11 @@ from src.engine.v11.signal.behavioral_guard import BehavioralGuard
 from src.engine.v11.signal.deployment_policy import ProbabilisticDeploymentPolicy
 from src.engine.v11.signal.inertial_beta_mapper import InertialBetaMapper
 from src.engine.v11.signal.regime_stabilizer import RegimeStabilizer
-from src.regime_topology import canonicalize_regime_name, canonicalize_regime_sequence, merge_regime_weights
+from src.regime_topology import (
+    canonicalize_regime_name,
+    canonicalize_regime_sequence,
+    merge_regime_weights,
+)
 
 logger = logging.getLogger(__name__)
 
