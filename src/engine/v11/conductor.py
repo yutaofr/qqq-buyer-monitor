@@ -18,7 +18,7 @@ from src.engine.v11.signal.behavioral_guard import BehavioralGuard
 from src.engine.v11.signal.deployment_policy import ProbabilisticDeploymentPolicy
 from src.engine.v11.signal.inertial_beta_mapper import InertialBetaMapper
 from src.engine.v11.signal.regime_stabilizer import RegimeStabilizer
-from src.regime_topology import canonicalize_regime_sequence, merge_regime_weights
+from src.regime_topology import canonicalize_regime_name, canonicalize_regime_sequence, merge_regime_weights
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,8 @@ class V11Conductor:
             self.regime_data_path,
             parse_dates=["observation_date"],
         ).set_index("observation_date")
-        self.model_regimes = sorted(self.regime_history["regime"].astype(str).unique())
+        self.regime_history["regime"] = self.regime_history["regime"].apply(canonicalize_regime_name)
+        self.model_regimes = sorted(self.regime_history["regime"].dropna().astype(str).unique())
         self._validate_regime_coverage()
 
         # v12.0 Internal Controllers
