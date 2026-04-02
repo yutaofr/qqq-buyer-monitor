@@ -15,9 +15,11 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import yfinance as yf
 
+from src.engine.v13.execution_overlay import ExecutionOverlayEngine
 from src.regime_topology import canonicalize_regime_sequence, merge_regime_weights
 
 logger = logging.getLogger(__name__)
@@ -26,8 +28,13 @@ START_DATE = "1999-03-10"
 END_DATE = date.today().isoformat()
 
 
-def _load_price_history(cache_path: str) -> pd.DataFrame:
-    """Load cached QQQ history, downloading only when the cache is unavailable."""
+def _load_price_history(
+    cache_path: str,
+    *,
+    allow_download: bool = True,
+    end_date: str | None = None,
+) -> pd.DataFrame:
+    """Load cached QQQ history, downloading only when explicitly allowed."""
     print(f"Loading QQQ history from {cache_path}...")
 
     qqq = pd.DataFrame()
@@ -41,13 +48,24 @@ def _load_price_history(cache_path: str) -> pd.DataFrame:
         except Exception as exc:
             print(f"Cache read failed: {exc}")
 
+    if qqq.empty and not allow_download:
+        raise FileNotFoundError(
+            f"Frozen QQQ history missing at {cache_path}. Acceptance mode refuses live downloads."
+        )
+
     if qqq.empty:
         print(f"Downloading fresh data from yfinance since {cache_path} was missing or empty...")
-        qqq = yf.Ticker("QQQ").history(start=START_DATE, end=END_DATE)
+        qqq = yf.Ticker("QQQ").history(start=START_DATE, end=(end_date or END_DATE))
         if not qqq.empty:
             os.makedirs("data", exist_ok=True)
             qqq.to_csv(cache_path)
             print(f"Cache updated: {cache_path}")
+
+    if end_date:
+        cutoff = pd.to_datetime(end_date, utc=True).normalize()
+        if not qqq.empty:
+            qqq.index = pd.to_datetime(qqq.index, utc=True)
+            qqq = qqq[qqq.index <= cutoff]
 
     if qqq.empty:
         raise ValueError("No price data available.")
@@ -149,16 +167,31 @@ def run_v11_audit(
             audit_data.get("model_hyperparameters", {}).get("posterior_mode", "runtime_reweight"),
         )
     )
+    overlay_mode = experiment.get("overlay_mode")
+    price_cache_path = str(experiment.get("price_cache_path", "data/qqq_history_cache.csv"))
+    allow_price_download = bool(experiment.get("allow_price_download", True))
+    price_end_date = experiment.get("price_end_date")
     state_support = summarize_regime_state_support(regime_df, audit_regimes=ordered_regimes)
     if strict_state_support:
         validate_regime_state_support(regime_df, audit_regimes=ordered_regimes)
 
-    price_df = _load_price_history("data/qqq_history_cache.csv")
+    price_df = _load_price_history(
+        price_cache_path,
+        allow_download=allow_price_download,
+        end_date=price_end_date,
+    )
     price_df.index = pd.to_datetime(price_df.index, utc=True).tz_localize(None).normalize()
 
     macro_df.index = pd.to_datetime(macro_df.index).tz_localize(None).normalize()
     macro_df["qqq_close"] = price_df["Close"]
     macro_df["qqq_close"] = macro_df["qqq_close"].ffill()
+    if "Volume" in price_df.columns:
+        macro_df["qqq_volume"] = pd.to_numeric(price_df["Volume"], errors="coerce")
+        macro_df["qqq_volume"] = macro_df["qqq_volume"].ffill()
+        macro_df["source_qqq_volume"] = "direct:yfinance"
+        macro_df["qqq_volume_quality_score"] = 1.0
+    macro_df["source_qqq_close"] = "direct:yfinance"
+    macro_df["qqq_close_quality_score"] = 1.0
 
     seeder = ProbabilitySeeder(**dict(experiment.get("probability_seeder", {})))
     feature_contract_validation = "validated"
@@ -177,6 +210,22 @@ def run_v11_audit(
     features = seeder.generate_features(macro_df)
     full_df = features.join(regime_df["regime"], how="inner")
     full_df["qqq_close"] = macro_df["qqq_close"]
+    if "qqq_volume" in macro_df.columns:
+        full_df["qqq_volume"] = macro_df["qqq_volume"]
+        full_df["source_qqq_volume"] = macro_df.get("source_qqq_volume", "direct:yfinance")
+        full_df["qqq_volume_quality_score"] = macro_df.get("qqq_volume_quality_score", 1.0)
+    full_df["source_qqq_close"] = macro_df.get("source_qqq_close", "direct:yfinance")
+    full_df["qqq_close_quality_score"] = macro_df.get("qqq_close_quality_score", 1.0)
+    for overlay_col in [
+        "adv_dec_ratio",
+        "source_breadth_proxy",
+        "breadth_quality_score",
+        "ndx_concentration",
+        "source_ndx_concentration",
+        "ndx_concentration_quality_score",
+    ]:
+        if overlay_col in macro_df.columns:
+            full_df[overlay_col] = macro_df[overlay_col]
     if "erp_ttm_pct" in macro_df.columns:
         full_df["erp_ttm_pct"] = pd.to_numeric(macro_df["erp_ttm_pct"], errors="coerce")
     full_df = full_df.dropna(subset=["regime"])
@@ -194,11 +243,7 @@ def run_v11_audit(
 
     logger.info(f"v12 Audit: Training on {len(train)} days (pre-{evaluation_start}), testing on {len(test)} days.")
 
-    feature_cols = [
-        c
-        for c in train.columns
-        if c not in ["observation_date", "regime", "qqq_close", "erp_ttm_pct", "erp_pct"]
-    ]
+    feature_cols = [c for c in seeder.feature_names() if c in train.columns]
     entropy_ctrl = EntropyController()
     last_train_regime = str(train.iloc[-1]["regime"])
     initial_beta = float(base_betas.get(last_train_regime, 1.0))
@@ -219,6 +264,7 @@ def run_v11_audit(
     deployment_policy = ProbabilisticDeploymentPolicy(
         initial_state=_initial_deployment_state(last_train_regime)
     )
+    overlay_engine = ExecutionOverlayEngine()
 
     with tempfile.TemporaryDirectory(prefix="v12_audit_") as tmp_dir:
         prior_book = PriorKnowledgeBase(
@@ -289,7 +335,29 @@ def run_v11_audit(
                 norm_h,
                 state_count=len(posteriors),
             )
-            final_beta = beta_mapper.calculate_inertial_beta(protected_beta, norm_h)
+            overlay_cols = [
+                "observation_date",
+                "adv_dec_ratio",
+                "source_breadth_proxy",
+                "breadth_quality_score",
+                "ndx_concentration",
+                "source_ndx_concentration",
+                "ndx_concentration_quality_score",
+                "qqq_close",
+                "source_qqq_close",
+                "qqq_close_quality_score",
+                "qqq_volume",
+                "source_qqq_volume",
+                "qqq_volume_quality_score",
+            ]
+            overlay_cols = [col for col in overlay_cols if col in train_window.columns and col in row.index]
+            overlay_context = pd.concat(
+                [train_window[overlay_cols], pd.DataFrame([row[overlay_cols]])],
+                ignore_index=True,
+            )
+            overlay = overlay_engine.evaluate(overlay_context, mode=overlay_mode)
+            overlay_beta = protected_beta * float(overlay["beta_overlay_multiplier"])
+            final_beta = beta_mapper.calculate_inertial_beta(overlay_beta, norm_h)
 
             if final_beta > 1.0:
                 qld = (final_beta - 1.0) * 100_000.0
@@ -327,10 +395,17 @@ def run_v11_audit(
             deployment_readiness = float(
                 max(0.0, min(1.0, (1.0 - norm_h) * max(0.0, e_sharpe) * erp_percentile))
             )
+            overlay_readiness = float(
+                np.clip(
+                    deployment_readiness * float(overlay["deployment_overlay_multiplier"]),
+                    0.0,
+                    1.0,
+                )
+            )
             deployment_decision = deployment_policy.decide(
                 posteriors=posteriors,
                 entropy=norm_h,
-                readiness_score=deployment_readiness,
+                readiness_score=overlay_readiness,
                 value_score=erp_percentile,
             )
 
@@ -348,6 +423,11 @@ def run_v11_audit(
             execution_rows.append(
                 {
                     "date": dt,
+                    "protected_beta": protected_beta,
+                    "overlay_beta": overlay_beta,
+                    "beta_overlay_multiplier": float(overlay["beta_overlay_multiplier"]),
+                    "deployment_overlay_multiplier": float(overlay["deployment_overlay_multiplier"]),
+                    "overlay_state": str(overlay["overlay_state"]),
                     "target_beta": final_beta,
                     "raw_target_beta": raw_beta,
                     "entropy": norm_h,
@@ -394,6 +474,7 @@ def run_v11_audit(
         "experiment_config": experiment,
         "gaussian_nb_var_smoothing": float(experiment.get("var_smoothing", default_var_smoothing)),
         "posterior_mode": posterior_mode,
+        "overlay_mode": str(overlay_mode or overlay_engine.default_mode),
     }
 
     print("\n--- v12 Unified Probabilistic Performance Audit ---")
@@ -440,7 +521,43 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Fail when the configured audit regimes are absent from the label dataset.",
     )
+    parser.add_argument(
+        "--overlay-mode",
+        choices=["DISABLED", "SHADOW", "NEGATIVE_ONLY", "FULL"],
+        help="v13 execution overlay operating mode.",
+    )
+    parser.add_argument(
+        "--price-cache-path",
+        help="Pinned QQQ history cache path for deterministic backtests.",
+    )
+    parser.add_argument(
+        "--price-end-date",
+        help="Pinned inclusive end date for QQQ history in YYYY-MM-DD format.",
+    )
+    parser.add_argument(
+        "--no-price-download",
+        action="store_true",
+        help="Fail closed instead of downloading QQQ history when the cache is missing.",
+    )
+    parser.add_argument(
+        "--acceptance",
+        action="store_true",
+        help="Force frozen-artifact acceptance mode. Requires --price-cache-path and --price-end-date.",
+    )
     args = parser.parse_args(argv)
+
+    if args.acceptance and (not args.price_cache_path or not args.price_end_date):
+        parser.error("--acceptance requires --price-cache-path and --price-end-date")
+
+    experiment_config: dict[str, Any] = {}
+    if args.overlay_mode:
+        experiment_config["overlay_mode"] = args.overlay_mode
+    if args.price_cache_path:
+        experiment_config["price_cache_path"] = args.price_cache_path
+    if args.price_end_date:
+        experiment_config["price_end_date"] = args.price_end_date
+    if args.no_price_download or args.acceptance:
+        experiment_config["allow_price_download"] = False
 
     run_v11_audit(
         dataset_path=args.dataset_path,
@@ -448,6 +565,7 @@ def main(argv: list[str] | None = None) -> int:
         evaluation_start=args.evaluation_start,
         artifact_dir=args.artifact_dir,
         strict_state_support=args.strict_state_support,
+        experiment_config=experiment_config or None,
     )
     return 0
 

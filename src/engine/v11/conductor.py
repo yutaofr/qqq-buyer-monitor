@@ -18,6 +18,7 @@ from src.engine.v11.signal.behavioral_guard import BehavioralGuard
 from src.engine.v11.signal.deployment_policy import ProbabilisticDeploymentPolicy
 from src.engine.v11.signal.inertial_beta_mapper import InertialBetaMapper
 from src.engine.v11.signal.regime_stabilizer import RegimeStabilizer
+from src.engine.v13.execution_overlay import ExecutionOverlayEngine
 from src.regime_topology import (
     canonicalize_regime_name,
     canonicalize_regime_sequence,
@@ -52,6 +53,7 @@ class V11Conductor:
         prior_state_path: str = "data/v11_prior_state.json",
         snapshot_dir: str = "artifacts/v12_runtime_snapshots",
         initial_model: GaussianNB | None = None,
+        overlay_mode: str | None = None,
     ):
         # 0. Load Sovereign Calibration (Audit Archive)
         self.audit_path = Path(audit_path)
@@ -122,6 +124,8 @@ class V11Conductor:
             else None,
             evidence=float(execution_state.get("regime_evidence", 0.0) or 0.0),
         )
+        self.overlay_engine = ExecutionOverlayEngine()
+        self.overlay_mode = overlay_mode
         self.deployment_policy = ProbabilisticDeploymentPolicy(
             initial_state=str(execution_state.get("deployment_state", "DEPLOY_BASE") or "DEPLOY_BASE"),
             evidence=float(execution_state.get("deployment_evidence", 0.0) or 0.0),
@@ -257,14 +261,6 @@ class V11Conductor:
             latest_raw=latest_raw,
             quality_audit=quality_audit,
         )
-        self._write_runtime_snapshot(
-            raw_t0_data=raw_t0_data,
-            latest_vector=latest_vector,
-            runtime_priors=runtime_priors,
-            prior_details=prior_details,
-            quality_audit=quality_audit,
-            feature_weights=feature_weights,
-        )
 
         logger.info("Model Inference: Initiating GaussianNB probabilities with current priors...")
         # AC-3: Numerical Resilience (v11.21)
@@ -317,8 +313,11 @@ class V11Conductor:
             state_count=len(posteriors),
         )
 
+        overlay = self.overlay_engine.evaluate(context_df.reset_index(), mode=self.overlay_mode)
+        overlay_beta = protected_beta * float(overlay["beta_overlay_multiplier"])
+
         # 4. Continuous Beta Surface with cross-run inertia
-        final_beta = self.beta_mapper.calculate_inertial_beta(protected_beta, norm_h)
+        final_beta = self.beta_mapper.calculate_inertial_beta(overlay_beta, norm_h)
 
         # 5. Bayesian Kelly Entry (v11.14 -> v11.15)
         # Goal: Optimize for Risk-Adjusted Expectation.
@@ -333,12 +332,26 @@ class V11Conductor:
         deployment_readiness = float(
             np.clip((1.0 - norm_h) * max(0.0, e_sharpe) * erp_percentile, 0.0, 1.0)
         )
+        overlay_deployment_readiness = float(
+            np.clip(
+                deployment_readiness * float(overlay["deployment_overlay_multiplier"]),
+                0.0,
+                1.0,
+            )
+        )
         deployment_decision = self.deployment_policy.decide(
             posteriors=posteriors,
             entropy=norm_h,
-            readiness_score=deployment_readiness,
+            readiness_score=overlay_deployment_readiness,
             value_score=erp_percentile,
         )
+
+        deployment_decision = {
+            **deployment_decision,
+            "base_readiness_score": deployment_readiness,
+            "overlay_readiness_score": overlay_deployment_readiness,
+            "overlay_multiplier": float(overlay["deployment_overlay_multiplier"]),
+        }
 
         # 6. UI/Main Alignment Data
         def _safe_float(value: object, default: float = 0.0) -> float:
@@ -381,6 +394,25 @@ class V11Conductor:
         bucket = execution.target_bucket
 
         quality = float(quality_audit["quality_score"])
+        self._write_runtime_snapshot(
+            raw_t0_data=raw_t0_data,
+            latest_vector=latest_vector,
+            runtime_priors=runtime_priors,
+            prior_details=prior_details,
+            quality_audit=quality_audit,
+            feature_weights=feature_weights,
+            execution_overlay=overlay,
+            final_execution={
+                "protected_beta_pre_overlay": round(float(protected_beta), 6),
+                "overlay_beta": round(float(overlay_beta), 6),
+                "raw_target_beta": round(float(raw_beta_expectation), 6),
+                "deployment_state_pre_overlay": "derived_from_readiness",
+                "deployment_state_post_overlay": str(deployment_decision["deployment_state"]),
+                "behavioral_guard_input_beta": round(float(final_beta), 6),
+                "behavioral_guard_output_bucket": bucket,
+                "final_target_beta": round(float(final_beta), 6),
+            },
+        )
 
         # 6. Legacy Signal Formatting
         resurrection = (regime_decision["stable_regime"] == "RECOVERY")
@@ -415,9 +447,13 @@ class V11Conductor:
             "raw_regime": regime_decision["raw_regime"],
             "stable_regime": regime_decision["stable_regime"],
             "entropy": norm_h,
+            "protected_beta": protected_beta,
+            "overlay_beta": overlay_beta,
+            "overlay": overlay,
             "target_beta": final_beta,
             "raw_target_beta": raw_beta_expectation,
             "deployment_readiness": deployment_readiness,
+            "deployment_readiness_overlay": overlay_deployment_readiness,
             "cdr_sharpe": e_sharpe,
             "erp_percentile": erp_percentile,
             "target_allocation": self._calculate_dollars(final_beta),
@@ -587,17 +623,20 @@ class V11Conductor:
         prior_details: dict[str, object],
         quality_audit: dict[str, object],
         feature_weights: dict[str, float],
+        execution_overlay: dict[str, object],
+        final_execution: dict[str, object],
     ) -> None:
         try:
             serialized_row = self._serialize_frame(raw_t0_data)
             observation_date = str(serialized_row[0].get("observation_date", "unknown"))
             payload = {
-                "snapshot_version": "v12_runtime_snapshot.v1",
+                "snapshot_version": "v13_runtime_snapshot.v1",
                 "captured_at_utc": datetime.now(UTC).isoformat(),
                 "observation_date": observation_date,
                 "macro_data_path": self.macro_data_path,
                 "regime_data_path": self.regime_data_path,
                 "audit_path": str(self.audit_path),
+                "overlay_audit_path": str(self.overlay_engine.audit_path),
                 "feature_contract": self.feature_contract,
                 "runtime_priors": runtime_priors,
                 "prior_details": prior_details,
@@ -611,6 +650,8 @@ class V11Conductor:
                     "var": np.asarray(getattr(self.gnb, "var_", [])).tolist(),
                     "class_prior": np.asarray(getattr(self.gnb, "class_prior_", [])).tolist(),
                 },
+                "execution_overlay": execution_overlay,
+                "final_execution": final_execution,
             }
 
             self.snapshot_dir.mkdir(parents=True, exist_ok=True)

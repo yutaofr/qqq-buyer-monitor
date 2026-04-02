@@ -1,4 +1,4 @@
-"""Discord notification logic for QQQ v12.0 Bayesian Monitor."""
+"""Discord notification logic for QQQ v13.0 Bayesian Monitor."""
 from __future__ import annotations
 
 import logging
@@ -58,7 +58,7 @@ def _discord_timestamp(value: object) -> str:
 
 
 def build_discord_payload(result: SignalResult) -> dict:
-    """Build a Discord payload for v11 probabilistic signals."""
+    """Build a Discord payload for v13 probabilistic signals."""
     display_regime = canonicalize_regime_name(result.stable_regime) or result.stable_regime
     color = REGIME_COLORS.get(display_regime, COLOR_DEFAULT)
     macro_emoji = _get_regime_emoji(display_regime)
@@ -68,6 +68,12 @@ def build_discord_payload(result: SignalResult) -> dict:
     deployment_state = str(metadata.get("deployment_state", "DEPLOY_BASE"))
     execution_bucket = str(metadata.get("execution_bucket", "n/a"))
     raw_regime = canonicalize_regime_name(metadata.get("raw_regime", display_regime)) or display_regime
+    protected_beta = metadata.get("protected_beta", result.target_beta)
+    overlay_beta = metadata.get("overlay_beta", result.target_beta)
+    overlay_mode = str(metadata.get("overlay_mode", "FULL"))
+    beta_overlay_multiplier = metadata.get("beta_overlay_multiplier", 1.0)
+    deployment_overlay_multiplier = metadata.get("deployment_overlay_multiplier", 1.0)
+    overlay_state = str(metadata.get("overlay_state", "NEUTRAL"))
     probabilities = merge_regime_weights(
         result.probabilities,
         regimes=ACTIVE_REGIME_ORDER,
@@ -93,11 +99,11 @@ def build_discord_payload(result: SignalResult) -> dict:
 
     description = (
         f"{summary_header}\n\n"
-        "> v12.0 概率优先连续建议；后验决定方向，信息熵惩罚控制缩放，行为守卫负责离散执行。\n\n"
+        "> v13.0 概率核心决定方向；执行 overlay 只条件化动作，不改写后验。\n\n"
         f"**Briefing:** {result.explanation}"
     )
 
-    title = f"QQQ V12.0 | Bayesian Decision - {result.date}"
+    title = f"QQQ V13.0 | Bayesian Decision - {result.date}"
 
     # Probabilities Distribution
     sorted_probs = sorted(probabilities.items(), key=lambda x: x[1], reverse=True)
@@ -117,7 +123,13 @@ def build_discord_payload(result: SignalResult) -> dict:
                 f"**Bucket:** `{execution_bucket}`\n"
                 f"**Deployment:** `{deployment_state}`\n"
                 f"**Readiness:** `{deployment_readiness:.1%}`\n"
-                f"**Entropy Penalty:** `{result.entropy:.3f}`"
+                f"**Entropy Penalty:** `{result.entropy:.3f}`\n"
+                f"**Protected Beta:** `{_format_beta(protected_beta)}`\n"
+                f"**Overlay Beta:** `{_format_beta(overlay_beta)}`\n"
+                f"**Overlay Mode:** `{overlay_mode}`\n"
+                f"**Beta Multiplier:** `{float(beta_overlay_multiplier):.2f}x`\n"
+                f"**Pace Multiplier:** `{float(deployment_overlay_multiplier):.2f}x`\n"
+                f"**Overlay State:** `{overlay_state}`"
             ),
             "inline": False,
         },
@@ -142,7 +154,7 @@ def build_discord_payload(result: SignalResult) -> dict:
         "description": description[:4096],
         "color": int(color),
         "fields": fields,
-        "footer": {"text": "Bayesian-Core v12.0 | Numerical Integrity Verified"},
+        "footer": {"text": f"Bayesian-Core v13.0 | Overlay {overlay_mode}"},
         "timestamp": _discord_timestamp(result.date),
     }
 

@@ -65,7 +65,7 @@
                 <div id="indicator" class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.5)]"></div>
                 <span id="market-label" class="text-[10px] sm:text-[11px] font-black opacity-60 uppercase tracking-widest">--</span>
             </div>
-            <p class="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase">v12.0 Probabilistic</p>
+            <p class="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase">v13.0 Probabilistic</p>
         </div>
 
         <div class="mt-12 sm:mt-14 mb-8 sm:mb-12">
@@ -114,6 +114,16 @@
             <div class="flex justify-between text-[10px] sm:text-[11px] font-black text-slate-500">
                 <div class="flex flex-col"><span>上限 Ceiling</span><span id="beta-ceiling" class="text-slate-200">--</span></div>
                 <div class="flex flex-col text-right"><span>原始 Raw</span><span id="raw-beta" class="text-emerald-500/80">--</span></div>
+            </div>
+            <div class="grid grid-cols-2 gap-3 mt-5 text-[10px] sm:text-[11px] font-black text-slate-500">
+                <div class="flex flex-col"><span>Protected</span><span id="protected-beta" class="text-slate-200">--</span></div>
+                <div class="flex flex-col text-right"><span>Overlay</span><span id="overlay-beta" class="text-slate-200">--</span></div>
+                <div class="flex flex-col"><span>Beta Mult</span><span id="beta-overlay-multiplier" class="text-emerald-400/80">--</span></div>
+                <div class="flex flex-col text-right"><span>Pace Mult</span><span id="deployment-overlay-multiplier" class="text-emerald-400/80">--</span></div>
+            </div>
+            <div class="flex justify-between mt-3 text-[10px] sm:text-[11px] font-black text-slate-500">
+                <span>Overlay Mode</span>
+                <span id="overlay-mode" class="text-slate-200">--</span>
             </div>
         </div>
 
@@ -173,6 +183,11 @@
                 </div>
 
                 <div class="space-y-6">
+                    <p class="text-[11px] font-black uppercase opacity-40 tracking-widest">执行 Overlay</p>
+                    <div id="execution-overlay-container" class="space-y-3 px-2 sm:px-4"></div>
+                </div>
+
+                <div class="space-y-6">
                     <p class="text-[11px] font-black uppercase opacity-40 tracking-widest">原始特征输入 (Feature Values)</p>
                     <div id="feature-values-container" class="feature-grid px-2 sm:px-4"></div>
                 </div>
@@ -210,6 +225,7 @@
         const STEP_LABELS = {
             'probabilistic_inference': '后验推断',
             'entropy_haircut': '熵值惩罚',
+            'execution_overlay': '执行 Overlay',
             'position_sizing': '连续仓位映射',
             'deployment_policy': '入场节奏',
             'behavioral_guard': '行为守卫'
@@ -307,6 +323,27 @@
             });
         }
 
+        function renderExecutionOverlay(executionOverlay) {
+            const container = document.getElementById('execution-overlay-container');
+            container.innerHTML = '';
+            const overlay = executionOverlay || {};
+            const entries = [
+                ['Mode', overlay.overlay_mode || 'FULL'],
+                ['State', overlay.overlay_state || 'NEUTRAL'],
+                ['Negative Score', overlay.negative_score],
+                ['Positive Score', overlay.positive_score],
+                ['Diag Beta', overlay.diagnostic_beta_overlay_multiplier],
+                ['Diag Pace', overlay.diagnostic_deployment_overlay_multiplier],
+                ['Fallback', overlay.neutral_fallback_triggered],
+            ];
+            container.innerHTML = entries.map(([key, value]) => `
+                <div class="feature-chip">
+                    <p class="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">${escapeHtml(String(key))}</p>
+                    <p class="text-base sm:text-lg font-black text-white mt-2 break-all">${escapeHtml(formatScalar(value))}</p>
+                </div>
+            `).join('');
+        }
+
         function renderDistribution(containerId, distribution, fallbackText) {
             const container = document.getElementById(containerId);
             container.innerHTML = '';
@@ -368,6 +405,11 @@
                 document.getElementById('calc-at').textContent = data.meta.calculated_at_utc.replace('T',' ').replace('Z','');
                 document.getElementById('beta-ceiling').textContent = (data.signal.beta_ceiling || 1.20).toFixed(2) + 'x';
                 document.getElementById('raw-beta').textContent = (data.signal.raw_target_beta || data.signal.target_beta).toFixed(2) + 'x';
+                document.getElementById('protected-beta').textContent = (data.signal.protected_beta || data.signal.target_beta).toFixed(2) + 'x';
+                document.getElementById('overlay-beta').textContent = (data.signal.overlay_beta || data.signal.target_beta).toFixed(2) + 'x';
+                document.getElementById('overlay-mode').textContent = data.signal.overlay_mode || 'FULL';
+                document.getElementById('beta-overlay-multiplier').textContent = (data.signal.beta_overlay_multiplier || 1.0).toFixed(2) + 'x';
+                document.getElementById('deployment-overlay-multiplier').textContent = (data.signal.deployment_overlay_multiplier || 1.0).toFixed(2) + 'x';
                 document.getElementById('market-label').textContent = mkt;
 
                 const bar = document.getElementById('exposure-bar'); const beta = data.signal.target_beta;
@@ -385,6 +427,7 @@
                 renderDistribution('prob-container', data.signal.probabilities, '暂无后验分布');
                 renderDistribution('prior-container', data.signal.priors, '当前未透传运行时先验');
                 renderLogicTrace(data.evidence.logic_trace);
+                renderExecutionOverlay(data.evidence.execution_overlay);
                 renderFeatureValues(data.evidence.feature_values);
             } catch (e) { console.error(e); sourceLabel.textContent = "SYNC_ERROR"; body.className = 'state-stale min-h-screen flex items-center justify-center p-3 sm:p-4'; }
         }

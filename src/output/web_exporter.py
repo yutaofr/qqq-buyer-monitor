@@ -1,4 +1,4 @@
-"""Web exporter for the v12.0 Bayesian probabilistic monitor."""
+"""Web exporter for the v13.0 Bayesian probabilistic monitor."""
 from __future__ import annotations
 
 import json
@@ -88,7 +88,7 @@ class MarketCursor:
 
 
 def export_web_snapshot(result: SignalResult, output_path: str | Path | None = None) -> bool:
-    """Export a v12.0 compliant high-fidelity web snapshot."""
+    """Export a v13.0 compliant high-fidelity web snapshot."""
     try:
         now_utc = datetime.now(UTC)
         cursor = MarketCursor()
@@ -108,6 +108,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
             stable_regime, {"label": stable_regime, "desc": "Unknown"}
         )
         metadata = result.metadata or {}
+        execution_overlay = metadata.get("execution_overlay", {})
 
         # Extract lock state from logic trace
         lock_active = False
@@ -126,7 +127,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
 
         payload = {
             "meta": {
-                "version": "v12.0",
+                "version": "v13.0",
                 "calculated_at_utc": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "observation_date": result.date.isoformat(),
                 "expires_at_utc": cursor.get_expires_at_utc(now_utc).strftime(
@@ -141,6 +142,13 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "raw_regime": raw_regime,
                 "target_beta": result.target_beta,
                 "raw_target_beta": metadata.get("raw_target_beta", result.target_beta),
+                "protected_beta": metadata.get("protected_beta", metadata.get("raw_target_beta", result.target_beta)),
+                "overlay_beta": metadata.get("overlay_beta", result.target_beta),
+                "overlay_mode": metadata.get("overlay_mode", execution_overlay.get("overlay_mode", "FULL")),
+                "beta_overlay_multiplier": metadata.get("beta_overlay_multiplier", 1.0),
+                "deployment_overlay_multiplier": metadata.get("deployment_overlay_multiplier", 1.0),
+                "overlay_state": metadata.get("overlay_state", "NEUTRAL"),
+                "overlay_summary": metadata.get("overlay_summary", "NEUTRAL"),
                 "beta_ceiling": metadata.get("beta_ceiling", 1.20),
                 "entropy": result.entropy,
                 "lock_active": lock_active,
@@ -149,6 +157,10 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "priors": priors,
                 "prior_breakdown": metadata.get("prior_details", {}),
                 "deployment_readiness": metadata.get("deployment_readiness", 0.0),
+                "deployment_readiness_overlay": metadata.get(
+                    "deployment_readiness_overlay",
+                    metadata.get("deployment_readiness", 0.0),
+                ),
                 "deployment_state": deployment_state,
                 "deployment_state_key": deployment_state_key,
                 "execution_bucket": execution_bucket,
@@ -161,6 +173,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
             "evidence": {
                 "logic_trace": result.logic_trace,
                 "feature_values": metadata.get("feature_values", {}),
+                "execution_overlay": execution_overlay,
             },
         }
         path = Path(output_path) if output_path else Path("src/web/public/status.json")
