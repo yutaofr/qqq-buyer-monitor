@@ -233,7 +233,7 @@ class V11Conductor:
             hist_df = hist_df[hist_df.index < t0_dt]
             if not hist_df.empty:
                 previous_raw = hist_df.iloc[-1]
-            
+
             context_df = pd.concat([hist_df, t0_df], sort=False)
         else:
             context_df = raw_t0_data
