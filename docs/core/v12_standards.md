@@ -14,5 +14,6 @@ Every PR must strictly adhere to:
 
 ## Code Quality
 - **Python 3.12+**.
+- **Ruff Compliance**: 0 warnings or errors from `ruff check .`. Must pass CI linting.
 - **Functional Logic**: Favor pure functions for Bayesian cores.
 - **Numerical Integrity**: Maintain bit-identical parity between research and production.
