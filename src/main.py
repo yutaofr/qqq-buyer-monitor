@@ -64,7 +64,7 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
     execution_bucket = str(runtime_result.get("signal", {}).get("target_bucket", "QQQ"))
 
     explanation = (
-        f"v12.0 Orthogonal Bayesian Conductor: beta={runtime_result['target_beta']:.2f}x | "
+        f"v13.0 Orthogonal Bayesian Conductor: beta={runtime_result['target_beta']:.2f}x | "
         f"entropy={runtime_result.get('entropy', 0.0):.3f} | "
         f"stable={stable_regime} | raw={raw_regime} ({ordered_probs[0][1]:.1%}) | "
         f"deploy={deployment_state_key}"
@@ -82,18 +82,28 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
         logic_trace=[
             {"step": "probabilistic_inference", "result": runtime_result["probabilities"]},
             {"step": "entropy_haircut", "result": {"entropy": runtime_result.get("entropy", 0.0)}},
+            {"step": "execution_overlay", "result": runtime_result.get("overlay", {})},
             {"step": "position_sizing", "result": runtime_result["target_allocation"]},
             {"step": "deployment_policy", "result": deployment},
             {"step": "behavioral_guard", "result": runtime_result["signal"]},
         ],
         explanation=explanation,
         metadata={
-            "engine_version": "v12.0",
+            "engine_version": "v13.0",
             "quality_audit": runtime_result.get("quality_audit", {}),
             "feature_values": runtime_result.get("feature_values", {}),
             "prior_details": runtime_result.get("prior_details", {}),
             "deployment_readiness": float(runtime_result.get("deployment_readiness", 0.0)),
+            "deployment_readiness_overlay": float(runtime_result.get("deployment_readiness_overlay", runtime_result.get("deployment_readiness", 0.0))),
             "raw_target_beta": float(runtime_result.get("raw_target_beta", runtime_result["target_beta"])),
+            "protected_beta": float(runtime_result.get("protected_beta", runtime_result.get("raw_target_beta", runtime_result["target_beta"]))),
+            "overlay_beta": float(runtime_result.get("overlay_beta", runtime_result["target_beta"])),
+            "overlay_mode": str(runtime_result.get("overlay", {}).get("overlay_mode", "FULL")),
+            "beta_overlay_multiplier": float(runtime_result.get("overlay", {}).get("beta_overlay_multiplier", 1.0)),
+            "deployment_overlay_multiplier": float(runtime_result.get("overlay", {}).get("deployment_overlay_multiplier", 1.0)),
+            "overlay_state": str(runtime_result.get("overlay", {}).get("overlay_state", "NEUTRAL")),
+            "overlay_summary": str(runtime_result.get("overlay", {}).get("overlay_summary", "NEUTRAL")),
+            "execution_overlay": runtime_result.get("overlay", {}),
             "raw_regime": raw_regime,
             "deployment_state": deployment_state,
             "deployment_state_key": deployment_state_key,
@@ -126,6 +136,18 @@ def _build_v12_live_macro_row(
     usdjpy_source: str = "direct",
     erp_ttm_pct_points: float | None,
     erp_ttm_source: str = "direct",
+    qqq_close: float | None = None,
+    qqq_close_source: str = "unavailable:qqq_close",
+    qqq_close_quality_score: float | None = None,
+    qqq_volume: float | None = None,
+    qqq_volume_source: str = "unavailable:qqq_volume",
+    qqq_volume_quality_score: float | None = None,
+    adv_dec_ratio: float | None = None,
+    breadth_source: str = "unavailable:breadth",
+    breadth_quality_score: float | None = None,
+    ndx_concentration: float | None = None,
+    ndx_concentration_source: str = "unavailable:ndx_concentration",
+    ndx_concentration_quality_score: float | None = None,
     reference_capital: float,
     current_nav: float,
 ) -> pd.DataFrame:
@@ -155,6 +177,18 @@ def _build_v12_live_macro_row(
                 "source_usdjpy": str(usdjpy_source),
                 "erp_ttm_pct": (float(erp_ttm_pct_points) / 100.0) if erp_ttm_pct_points is not None else None,
                 "source_erp_ttm": str(erp_ttm_source),
+                "qqq_close": float(qqq_close) if qqq_close is not None else None,
+                "source_qqq_close": str(qqq_close_source),
+                "qqq_close_quality_score": float(qqq_close_quality_score) if qqq_close_quality_score is not None else None,
+                "qqq_volume": float(qqq_volume) if qqq_volume is not None else None,
+                "source_qqq_volume": str(qqq_volume_source),
+                "qqq_volume_quality_score": float(qqq_volume_quality_score) if qqq_volume_quality_score is not None else None,
+                "adv_dec_ratio": float(adv_dec_ratio) if adv_dec_ratio is not None else None,
+                "source_breadth_proxy": str(breadth_source),
+                "breadth_quality_score": float(breadth_quality_score) if breadth_quality_score is not None else None,
+                "ndx_concentration": float(ndx_concentration) if ndx_concentration is not None else None,
+                "source_ndx_concentration": str(ndx_concentration_source),
+                "ndx_concentration_quality_score": float(ndx_concentration_quality_score) if ndx_concentration_quality_score is not None else None,
                 "forward_pe": None,
                 "erp_pct": None,
                 "source_forward_pe": "deprecated:v12",
@@ -201,6 +235,7 @@ def _upsert_v11_macro_feedback(raw_row: pd.DataFrame, macro_csv_path: str) -> No
 
 def run_v11_pipeline(args: argparse.Namespace) -> None:
     """Execute the v11 Bayesian runtime pipeline."""
+    from src.collector.breadth import fetch_breadth
     from src.collector.global_macro import (
         fetch_breakeven_inflation,
         fetch_copper_gold_ratio,
@@ -227,6 +262,38 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 
     logger.info("Fetching market data…")
     price_data = fetch_price_data()
+    price_history = price_data.get("history")
+    qqq_close = float(price_data["price"])
+    qqq_volume = None
+    qqq_volume_source = "unavailable:qqq_volume"
+    qqq_volume_quality = 0.0
+    if isinstance(price_history, pd.DataFrame) and not price_history.empty and "Volume" in price_history.columns:
+        latest_volume = pd.to_numeric(price_history["Volume"].iloc[-1], errors="coerce")
+        if pd.notna(latest_volume):
+            qqq_volume = float(latest_volume)
+            qqq_volume_source = "direct:yfinance"
+            qqq_volume_quality = 1.0
+
+    try:
+        breadth_snapshot = fetch_breadth(as_of=price_data["date"])
+        adv_dec_ratio = breadth_snapshot.get("adv_dec_ratio")
+        breadth_source = str(breadth_snapshot.get("source", "unavailable:breadth"))
+        breadth_quality = float(breadth_snapshot.get("quality", 0.0) or 0.0)
+        ndx_concentration = breadth_snapshot.get("ndx_concentration")
+        ndx_concentration_source = str(
+            breadth_snapshot.get("ndx_concentration_source", "unavailable:ndx_concentration")
+        )
+        ndx_concentration_quality = float(
+            breadth_snapshot.get("ndx_concentration_quality", 0.0) or 0.0
+        )
+    except Exception as exc:
+        logger.warning("Breadth fetch failed: %s", exc)
+        adv_dec_ratio = None
+        breadth_source = "unavailable:breadth"
+        breadth_quality = 0.0
+        ndx_concentration = None
+        ndx_concentration_source = "unavailable:ndx_concentration"
+        ndx_concentration_quality = 0.0
 
     try:
         real_yield_snapshot = fetch_real_yield_snapshot()
@@ -336,6 +403,18 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         usdjpy_source=usdjpy_source,
         erp_ttm_pct_points=(float(erp_ttm) * 100.0) if erp_ttm is not None else None,
         erp_ttm_source=erp_ttm_source,
+        qqq_close=qqq_close,
+        qqq_close_source="direct:yfinance",
+        qqq_close_quality_score=1.0,
+        qqq_volume=qqq_volume,
+        qqq_volume_source=qqq_volume_source,
+        qqq_volume_quality_score=qqq_volume_quality,
+        adv_dec_ratio=adv_dec_ratio,
+        breadth_source=breadth_source,
+        breadth_quality_score=breadth_quality,
+        ndx_concentration=ndx_concentration,
+        ndx_concentration_source=ndx_concentration_source,
+        ndx_concentration_quality_score=ndx_concentration_quality,
         reference_capital=reference_capital,
         current_nav=current_nav,
     )

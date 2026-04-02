@@ -30,6 +30,17 @@ def test_build_v11_signal_result_uses_v12_metadata_contract():
         "probabilities": {"MID_CYCLE": 0.8, "LATE_CYCLE": 0.2},
         "stable_regime": "MID_CYCLE",
         "entropy": 0.25,
+        "protected_beta": 0.84,
+        "overlay_beta": 0.79,
+        "overlay": {
+            "overlay_mode": "NEGATIVE_ONLY",
+            "beta_overlay_multiplier": 0.94,
+            "deployment_overlay_multiplier": 1.05,
+            "diagnostic_beta_overlay_multiplier": 0.94,
+            "diagnostic_deployment_overlay_multiplier": 1.05,
+            "overlay_state": "MIXED",
+            "overlay_summary": "MIXED: neg=0.200 pos=0.150",
+        },
         "target_beta": 0.91,
         "target_allocation": {
             "qqq_dollars": 91000.0,
@@ -45,8 +56,15 @@ def test_build_v11_signal_result_uses_v12_metadata_contract():
     assert result.target_beta == 0.91
     assert result.stable_regime == "MID_CYCLE"
     assert result.metadata["deployment_readiness"] == 0.64
+    assert result.metadata["protected_beta"] == 0.84
+    assert result.metadata["overlay_beta"] == 0.79
+    assert result.metadata["beta_overlay_multiplier"] == 0.94
+    assert result.metadata["deployment_overlay_multiplier"] == 1.05
+    assert result.metadata["overlay_mode"] == "NEGATIVE_ONLY"
+    assert result.metadata["overlay_state"] == "MIXED"
     assert result.target_allocation.target_qqq_pct == 0.91
-    assert result.metadata["engine_version"] == "v12.0"
+    assert result.metadata["engine_version"] == "v13.0"
+    assert any(step["step"] == "execution_overlay" for step in result.logic_trace)
 
 
 def test_build_v12_live_macro_row_normalizes_units_and_deprecates_v11_fields():
@@ -94,6 +112,45 @@ def test_build_v12_live_macro_row_normalizes_units_and_deprecates_v11_fields():
     assert row["source_core_capex"] == "direct:fred_neworder"
     assert row["source_usdjpy"] == "direct:yfinance"
     assert row["source_erp_ttm"] == "direct:shiller"
+
+
+def test_build_v12_live_macro_row_carries_v13_overlay_inputs():
+    row = main_module._build_v12_live_macro_row(
+        observation_date=pd.Timestamp("2026-03-30"),
+        build_version="v12_live_feedback",
+        credit_spread=342.0,
+        real_yield_pct_points=2.1,
+        net_liquidity=5818.9,
+        treasury_vol=0.0081,
+        copper_gold_ratio=0.201,
+        breakeven_pct_points=2.3,
+        core_capex=12.5,
+        usdjpy=151.2,
+        erp_ttm_pct_points=4.2,
+        reference_capital=100000.0,
+        current_nav=100000.0,
+        qqq_close=512.34,
+        qqq_close_source="direct:yfinance",
+        qqq_close_quality_score=1.0,
+        qqq_volume=123456789.0,
+        qqq_volume_source="direct:yfinance",
+        qqq_volume_quality_score=1.0,
+        adv_dec_ratio=0.58,
+        breadth_source="observed:^ADD",
+        breadth_quality_score=1.0,
+        ndx_concentration=0.034,
+        ndx_concentration_source="derived:qqq-qqew",
+        ndx_concentration_quality_score=1.0,
+    ).iloc[0]
+
+    assert row["qqq_close"] == 512.34
+    assert row["source_qqq_close"] == "direct:yfinance"
+    assert row["qqq_close_quality_score"] == 1.0
+    assert row["qqq_volume"] == 123456789.0
+    assert row["source_qqq_volume"] == "direct:yfinance"
+    assert row["adv_dec_ratio"] == 0.58
+    assert row["source_breadth_proxy"] == "observed:^ADD"
+    assert row["ndx_concentration"] == 0.034
 
 
 def test_run_v11_pipeline_stops_when_cloud_pull_fails(monkeypatch):

@@ -20,7 +20,29 @@ def _v11_result() -> SignalResult:
         target_allocation=TargetAllocationState(0.10, 0.90, 0.0, 0.90),
         logic_trace=[{"step": "inference", "result": "MID_CYCLE"}],
         explanation="v12.0 placeholder",
-        metadata={"feature_values": {"vix": 20.0}}
+        metadata={
+            "feature_values": {"vix": 20.0},
+            "protected_beta": 0.93,
+            "overlay_beta": 0.91,
+            "overlay_mode": "NEGATIVE_ONLY",
+            "beta_overlay_multiplier": 0.98,
+            "deployment_overlay_multiplier": 1.04,
+            "overlay_state": "REWARD",
+            "overlay_summary": "REWARD: neg=0.050 pos=0.220",
+            "execution_overlay": {
+                "overlay_mode": "NEGATIVE_ONLY",
+                "negative_score": 0.05,
+                "positive_score": 0.22,
+                "diagnostic_beta_overlay_multiplier": 0.98,
+                "diagnostic_deployment_overlay_multiplier": 1.04,
+                "raw_inputs": {"qqq_volume": 1000000},
+                "input_quality": {"qqq_volume": 1.0},
+                "derived_features": {"volume_repair": 0.22},
+                "signal_contributions": {"positive": {"volume_repair": 0.22}},
+                "admission_decisions": {"qqq_tape": {"admitted": True, "reason": "admitted"}},
+                "neutral_fallback_triggered": False,
+            },
+        }
     )
 
 
@@ -36,12 +58,18 @@ def test_export_web_snapshot_v11_contract(tmp_path, monkeypatch):
 
     assert ok is True
     payload = json.loads(output_path.read_text(encoding="utf-8"))
-    assert payload["meta"]["version"] == "v12.0"
+    assert payload["meta"]["version"] == "v13.0"
     assert payload["signal"]["regime"] == "中期平稳 (MID_CYCLE)"
     assert payload["signal"]["target_beta"] == 0.91
     assert payload["signal"]["entropy"] == 0.17
     assert payload["signal"]["probabilities"]["MID_CYCLE"] == 0.82
+    assert payload["signal"]["protected_beta"] == 0.93
+    assert payload["signal"]["overlay_beta"] == 0.91
+    assert payload["signal"]["overlay_mode"] == "NEGATIVE_ONLY"
+    assert payload["signal"]["beta_overlay_multiplier"] == 0.98
+    assert payload["signal"]["deployment_overlay_multiplier"] == 1.04
     assert payload["evidence"]["feature_values"]["vix"] == 20.0
+    assert payload["evidence"]["execution_overlay"]["positive_score"] == 0.22
 
 
 def test_export_web_snapshot_preserves_dual_surface_semantics(tmp_path, monkeypatch):

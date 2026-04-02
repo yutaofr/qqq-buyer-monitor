@@ -117,7 +117,7 @@ def test_run_v11_audit_refits_model_for_each_evaluation_day(tmp_path, monkeypatc
     monkeypatch.setattr(
         backtest_module,
         "_load_price_history",
-        lambda _: pd.DataFrame({"Close": np.linspace(100.0, 130.0, len(dates))}, index=dates),
+        lambda *args, **kwargs: pd.DataFrame({"Close": np.linspace(100.0, 130.0, len(dates))}, index=dates),
     )
     monkeypatch.setattr("src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None)
     monkeypatch.setattr("src.output.backtest_plots.save_v11_probabilistic_audit_figure", lambda *args, **kwargs: None)
@@ -183,7 +183,7 @@ def test_run_v11_audit_accepts_audit_overrides(tmp_path, monkeypatch):
     monkeypatch.setattr(
         backtest_module,
         "_load_price_history",
-        lambda _: pd.DataFrame({"Close": np.linspace(100.0, 130.0, len(dates))}, index=dates),
+        lambda *args, **kwargs: pd.DataFrame({"Close": np.linspace(100.0, 130.0, len(dates))}, index=dates),
     )
     monkeypatch.setattr("src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None)
     monkeypatch.setattr("src.output.backtest_plots.save_v11_probabilistic_audit_figure", lambda *args, **kwargs: None)
@@ -249,7 +249,7 @@ def test_run_v11_audit_can_use_classifier_posteriors_directly(tmp_path, monkeypa
     monkeypatch.setattr(
         backtest_module,
         "_load_price_history",
-        lambda _: pd.DataFrame({"Close": np.linspace(100.0, 130.0, len(dates))}, index=dates),
+        lambda *args, **kwargs: pd.DataFrame({"Close": np.linspace(100.0, 130.0, len(dates))}, index=dates),
     )
     monkeypatch.setattr("src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None)
     monkeypatch.setattr("src.output.backtest_plots.save_v11_probabilistic_audit_figure", lambda *args, **kwargs: None)

@@ -36,3 +36,27 @@ def test_fetch_breadth_marks_unavailable_when_breadth_tickers_fail(monkeypatch):
     assert payload["observed"] is False
     assert payload["adv_dec_ratio"] == 0.50
     assert payload["pct_above_50d"] == 0.50
+
+
+def test_fetch_breadth_tracks_ndx_concentration_provenance_independently(monkeypatch):
+    idx = pd.date_range("2026-03-20", periods=60, freq="D")
+
+    def fake_ticker(symbol: str):
+        if symbol == "^ADD":
+            return _TickerStub(pd.DataFrame({"Close": [250.0] * len(idx)}, index=idx))
+        if symbol == "QQQ":
+            qqq = pd.Series([100.0 + (i * 0.4) for i in range(len(idx))], index=idx)
+            return _TickerStub(pd.DataFrame({"Close": qqq.values}, index=idx))
+        if symbol == "QQEW":
+            return _TickerStub(pd.DataFrame())
+        return _TickerStub(pd.DataFrame())
+
+    monkeypatch.setattr(breadth_module.yf, "Ticker", fake_ticker)
+
+    payload = breadth_module.fetch_breadth(as_of=date(2026, 3, 30))
+
+    assert payload["source"] == "observed:^ADD"
+    assert payload["quality"] == 1.0
+    assert payload["ndx_concentration"] is None
+    assert payload["ndx_concentration_source"] == "unavailable:ndx_concentration"
+    assert payload["ndx_concentration_quality"] == 0.0

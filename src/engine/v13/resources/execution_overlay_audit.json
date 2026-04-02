@@ -1,0 +1,51 @@
+{
+  "version": "v13.0",
+  "mode_policy": {
+    "default_mode": "SHADOW",
+    "allowed_modes": [
+      "DISABLED",
+      "SHADOW",
+      "NEGATIVE_ONLY",
+      "FULL"
+    ]
+  },
+  "beta_overlay": {
+    "lambda_beta": 0.35,
+    "beta_floor": 0.65
+  },
+  "deployment_overlay": {
+    "lambda_pace_neg": 0.45,
+    "lambda_pace_pos": 0.2,
+    "pace_floor": 0.5,
+    "pace_ceiling": 1.2
+  },
+  "signal_weights": {
+    "negative": {
+      "breadth_stress": 0.35,
+      "concentration_stress": 0.3,
+      "non_confirmation": 0.35
+    },
+    "positive": {
+      "volume_repair": 1.0
+    }
+  },
+  "source_policy": {
+    "minimum_quality": 0.5,
+    "minimum_history": 40,
+    "reject_prefixes": [
+      "proxy:",
+      "fallback:",
+      "synthetic:",
+      "default:",
+      "unavailable:",
+      "missing:",
+      "placeholder:"
+    ],
+    "repurposed_proxy_fields": [
+      "pct_above_50d"
+    ]
+  },
+  "collector_policy": {
+    "breadth_sigmoid_scale": 1500.0
+  }
+}
