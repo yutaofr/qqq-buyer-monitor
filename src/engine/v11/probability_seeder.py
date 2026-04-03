@@ -98,6 +98,22 @@ class ProbabilitySeeder:
                 "z_method": "expanding",
                 "min_periods": 63,
             },
+            # SRD-v13.5-RC1: Real-Economy Temporal Smoothing
+            "pmi_momentum": {
+                "src": "pmi_proxy_manemp",
+                "ewma_span": 21,
+                "diff": (21, 21),
+                "z_method": "rolling",
+                "z_window": 252,
+                "min_periods": 63,
+            },
+            "labor_slack": {
+                "src": "job_openings",
+                "ewma_span": 21,
+                "z_method": "rolling",
+                "z_window": 252,
+                "min_periods": 63,
+            }
         }
 
     @staticmethod

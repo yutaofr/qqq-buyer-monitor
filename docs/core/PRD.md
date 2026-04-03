@@ -1,74 +1,64 @@
-# PRD: QQQ Bayesian Orthogonal Allocation Engine (v12.0)
+# PRD: QQQ Bayesian Orthogonal Allocation Engine (v13.7-ULTIMA)
 
-> **Status**: Production Baseline (Locked)
-> **Version**: v12.0-ORTHOGONAL-CORE
-> **Date**: 2026-04-01
+> **Status**: Production Baseline (Sealed)
+> **Version**: v13.7-ULTIMA
+> **Date**: 2026-04-03
 
 ## 1. 产品定义
 
-`qqq-monitor` 已进化为基于**贝叶斯全概率推断**的资产配置决策中枢。它不再依赖人工定义的硬阈值（Hard Thresholds），而是通过对 25 年以上宏观 DNA 的实时学习，利用信息论模型量化市场不确定性，自动生成 `目标 Beta` 建议。
+`qqq-monitor` 已进化为基于**实体增强型贝叶斯推断**的资产配置决策中枢。它通过对 8 年以上（2018-2026）宏观 DNA 的深度预热（Deep Hydration），利用 12 因子正交矩阵量化市场重力与流动性，自动生成 `目标 Beta` 建议。
 
 核心原则：
-- **正交推断优先**：决策必须基于相互独立的宏观物理维度（贴现、实体、情绪）。
-- **信息诚实性**：系统必须诚实地通过 Shannon 熵反映模型不确定性，在高不确定性下自动执行敞口惩罚（Haircut）。
-- **PIT (Point-in-Time) 绝对合规**：回测与生产必须严格对齐数据发布滞后，严禁使用任何形式的“未来函数”或事后修正数据。
-- **意志与行动分离**：系统必须同时输出 `raw_target_beta` (原始推断) 与 `target_beta` (经过惯性平滑与熵惩罚后的执行目标)。
+- **物理传导优先**：因子权重由霍华德·马克斯周期论驱动，而非统计最优化。
+- **历史自洽性**：通过 2000+ 样本的回演确保先验知识的稳健性。
+- **生存红线高于一切**：业务底线（0.5 Beta Floor）具有最高执行优先级。
+- **全息透明度**：所有决策环节（包括物理底线拦截、先验锚定点）必须全量透传至用户。
 
-## 2. 核心目标
+## 2. 核心目标 (v13.7 演进)
 
-| 编号 | 目标 | v12.0 实现路径 |
+| 编号 | 目标 | v13.7 实现路径 |
 | :--- | :--- | :--- |
-| **G1** | **消除信息近亲繁殖** | 引入 10 因子三层正交体系，替换 v11.5 的共线性因子。 |
-| **G2** | **量化模型怀疑度** | 利用 Shannon 熵计算后验分布的混沌度，自动执行 Beta Haircut。 |
-| **G3** | **确保回测零水分** | 建立 PIT 合规协议，强制模拟月频实体数据（Capex/EPS）的物理发布滞后。 |
-| **G4** | **实现协方差自发现** | 弃用人工权重，由 GaussianNB 根据历史 DNA 的协方差矩阵自动发现因子解释力。 |
+| **G1** | **消除实体盲视** | 注入 PMI 动量与劳动力市场松弛度，捕捉宏观重力。 |
+| **G2** | **根治冷启动混沌** | 实施 2018 深度注水协议，消除新实例启动时的高熵死锁。 |
+| **G3** | **建立理性防御** | 引入二阶非线性熵值惩罚 ($\exp(-0.6 \cdot H^2)$)，防止自杀式减仓。 |
+| **G4** | **实现认知自愈** | 引入 ULTIMA 熔断机制，在持续认知冲突下自动回归信贷基本盘。 |
 
-## 3. 正交因子矩阵 (10 因子 · 三层体系)
+## 3. 正交因子矩阵 (12 因子 · 三层体系)
 
-### Layer 1: 贴现层 (Discount) — 货币与通胀周期
+### Layer 1: 金融生命线 (Financial Core) — 2.5x 权重
+- **Credit Spread**: 金融系统的“痛感神经”。
+- **ERP (TTM-based)**: 极致估值作为风险放大器。
+
+### Layer 2: 定价引力 (Valuation Gravity) — 2.0x 权重
 - **Real Yield**: 真实融资成本的结构趋势。
-- **Treasury Realized Vol (MOVE Proxy)**: 贴现率假设的恐慌度（先行哨兵）。
-- **Breakeven Accel**: 通胀预期的变化速度（Fed Put 失效探测）。
+- **Net Liquidity**: 货币供应总量。
 
-### Layer 2: 实体层 (Real Economy) — 资本开支与跨境融资
-- **Core Capex Momentum**: 实体经济动能（资本支出幅度）。
-- **Copper/Gold ROC**: 全球制造业需求 vs 恐慌。
-- **USD/JPY (Carry Trade)**: 全球融资压力与去杠杆信号。
-
-### Layer 3: 情绪层 (Sentiment) — 信用与流动性
-- **Credit Spread (Level & Pulse)**: 金融系统的“痛感神经”。
-- **Net Liquidity**: 美联储资产负债表的现金流。
-- **ERP (TTM-based)**: 基于已实现盈利（Shiller EPS）的股权风险溢价。
+### Layer 3: 实体与动能 (Real Economy & Momentum) — 1.5x 权重
+- **PMI Momentum**: 制造业扩张速度的边际衰减（EWMA 平滑）。
+- **Labor Slack**: 劳动力市场从极热转向松动的拐点（EWMA 平滑）。
+- **Treasury Vol (MOVE)**: 系统性压力哨兵。
+- **Price Momentum (Orthogonal)**: 排除信用风险后的价格动能。
 
 ---
 
-## 4. 决策流水线 (The Bayesian Loop)
+## 4. 防御与安全规格 (The Safety Shield)
 
-1.  **Ingestion & PIT Alignment**: 采集多源数据，执行物理发布滞后对齐（Tier 1-4）。
-2.  **Orthogonalization Engine**: 对 `move_21d` 等共线性因子执行 **Gram-Schmidt 正交化**。
-3.  **JIT GaussianNB Training**: 基于 16 年+ PIT 历史 DNA 实时训练模型。
-4.  **Posterior Inference**: 计算当前观测值的后验概率分布（Regime Posterior）。
-5.  **Entropy Controller**: 计算 Shannon 熵，根据模型不确定性执行 **Beta Haircut**。
-6.  **Inertial Beta Mapper**: 在物理可行性约束下，通过惯性机制平滑执行目标。
+### 4.1 业务红线 (User Redline)
+- **Beta Floor**: 最终推荐 Beta 严禁低于 0.5。系统必须确保在极端噪音下仍持有基本的多头参与度。
+
+### 4.2 级联熔断 (Cascading Breaker)
+- **High Entropy Streak**: 记录持续高熵天数。
+- **ULTIMA Cut**: 持续 > 21 天则强制切除非核心因子感官，直至认知冲突解除。
+
+---
 
 ## 5. 输出面规格 (The Interface)
 
 ### 核心输出 (The Signal)
-- **`stable_regime`**: 经过惯性平滑后的当前市场制度（BOOM, MID, LATE, BUST）。
-- **`target_beta`**: 最终执行目标（已包含熵惩罚与惯性平滑）。
-- **`raw_target_beta`**: 原始贝叶斯期望值（用于透明度审计）。
-- **`entropy`**: 当前模型的不确定性量化值。
-
-### 质量审计 (Data Quality)
-- **`quality_score`**: 基于数据来源（Canonical vs Proxy）的调和平均分。
-- **`is_pit_compliant`**: 显式标记当前运行是否符合 PIT 滞后契约。
-
-## 6. 验收标准 (Gate 3)
-
-1.  **极端 Regime 召回率 >= 90%**：确保 2020 COVID 与 2022 通胀紧缩被准确捕捉。
-2.  **2018 Q4 无 BUST 误报**：验证实体层正交性对纯情绪波动的免疫力。
-3.  **Brier Score <= 0.15**：确保后验概率分布具备极高的预测校准度。
-4.  **PIT 测试全绿**：通过自动化测试验证历史数据构建器无“未来函数”泄漏。
+- **`stable_regime`**: 经过状态锚定同步后的当前市场制度。
+- **`target_beta`**: 受 0.5 底线保护的最终执行目标。
+- **`is_floor_active`**: 显式标记当前是否处于物理保护状态。
+- **`hydration_anchor`**: 展示系统先验数据的起始锚点（2018-01-01）。
 
 ---
 © 2026 QQQ Entropy 决策系统开发组.

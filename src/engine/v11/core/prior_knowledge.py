@@ -110,12 +110,22 @@ class PriorKnowledgeBase:
             for target, target_weight in normalized_row.items():
                 transition_prior[target] += weight * target_weight
 
+        # v13.6-EX: Adaptive Blending Weights
+        # If total counts are high (hydrated), we decrease the weight of Source 1 (long-term average)
+        # and increase the weight of recent memory/transition shift.
+        total_counts = sum(self.counts.values())
+        if total_counts > 1000:
+            # EXPERT: Hydrated state. Shift more confidence to recent transitions.
+            active_blend = min(0.60, 0.35 + (total_counts - 1000) / 2000.0)
+        else:
+            active_blend = self.transition_blend
+
         # Blending logic constants
-        posterior_weight = self.transition_blend * 0.5
-        transition_weight = self.transition_blend * 0.5
+        posterior_weight = active_blend * 0.5
+        transition_weight = active_blend * 0.5
         base_weight = 1.0 - posterior_weight - transition_weight
 
-        logger.info(f"  Blending weights: {base_weight:.1%} history | {posterior_weight:.1%} last-seen | {transition_weight:.1%} predicted-shift")
+        logger.info(f"  v13.6-EX Blending: {base_weight:.1%} history | {posterior_weight:.1%} last-seen | {transition_weight:.1%} predicted-shift")
 
         blended = {}
         for regime in self.regimes:

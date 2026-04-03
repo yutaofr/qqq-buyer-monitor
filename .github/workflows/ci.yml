@@ -10,48 +10,44 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    permissions:
-      contents: read
+    timeout-minutes: 30
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4.2.2
 
-      - name: Set up Python
-        uses: actions/setup-python@v5.3.0
-        with:
-          python-version: "3.12"
-          cache: "pip"
-
-      - name: Install Dependencies
+      - name: Build v13.7 Production Image
         run: |
-          python -m pip install --upgrade pip
-          pip install -e .[dev]
+          docker build -t qqq-monitor:v13.7-ci .
 
-      - name: Lint Codebase
+      - name: Lint Codebase (Ruff)
         run: |
-          ruff check .
+          docker run --rm qqq-monitor:v13.7-ci ruff check .
 
-      - name: Run Test Suite
+      - name: Run Full Test Suite (v13.7-ULTIMA)
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
         run: |
-          pytest tests -q
+          docker run --rm \
+            -e FRED_API_KEY=$FRED_API_KEY \
+            qqq-monitor:v13.7-ci pytest tests -q
 
-      - name: Run Audit Backtest
+      - name: Run ULTIMA Structural Audit
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
         run: |
-          python -m src.backtest
+          docker run --rm \
+            -e FRED_API_KEY=$FRED_API_KEY \
+            qqq-monitor:v13.7-ci python scripts/verify_v13_4_hydration.py
 
-      - name: Upload Audit Artifacts
+      - name: Upload v13.7 Audit Artifacts
         if: always()
         uses: actions/upload-artifact@v4.4.3
         with:
-          name: audit-${{ github.run_id }}
+          name: v13-7-audit-${{ github.run_id }}
           if-no-files-found: ignore
           path: |
-            artifacts/v12_audit/v12_probabilistic_audit.png
-            artifacts/v12_audit/v12_target_beta_fidelity.png
+            artifacts/v13_audit/
+            artifacts/v12_audit/

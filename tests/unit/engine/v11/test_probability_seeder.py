@@ -40,6 +40,8 @@ def test_seeder_factor_generation(sample_macro_df):
         "liquidity_252d",
         "erp_absolute",
         "spread_absolute",
+        "pmi_momentum",
+        "labor_slack",
     ]
 
     assert list(features_df.columns) == expected_cols

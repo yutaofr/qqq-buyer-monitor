@@ -310,13 +310,14 @@ def run_v11_audit(
                 active_priors = runtime_priors
             else:
                 raise ValueError(f"Unknown posterior_mode: {posterior_mode}")
-            posteriors = inference_engine.infer_gaussian_nb_posterior(
+
+            # v13.7-ULTIMA: Adapt to new weighted inference signature
+            posteriors, _ = inference_engine.infer_gaussian_nb_posterior(
                 classifier=gnb,
                 evidence_frame=evidence,
                 runtime_priors=active_priors,
-                feature_weights=None,
+                weight_registry=None, # Use defaults in audit
             )
-
             actual_regime = str(row["regime"])
             predicted_regime = max(posteriors, key=posteriors.get)
             brier = sum(

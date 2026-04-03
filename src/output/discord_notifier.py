@@ -58,29 +58,31 @@ def _discord_timestamp(value: object) -> str:
 
 
 def build_discord_payload(result: SignalResult) -> dict:
-    """Build a Discord payload for v13 probabilistic signals."""
+    """Build a Discord payload for v13.4 probabilistic signals with full transparency."""
     display_regime = canonicalize_regime_name(result.stable_regime) or result.stable_regime
     color = REGIME_COLORS.get(display_regime, COLOR_DEFAULT)
     macro_emoji = _get_regime_emoji(display_regime)
 
     metadata = result.metadata or {}
+    is_floor_active = bool(metadata.get("is_floor_active", False))
+    hydration_anchor = str(metadata.get("hydration_anchor", "2018-01-01"))
+    raw_beta_pre_floor = metadata.get("raw_target_beta_pre_floor", result.target_beta)
+
     deployment_readiness = metadata.get("deployment_readiness", 0.0)
     deployment_state = str(metadata.get("deployment_state", "DEPLOY_BASE"))
     execution_bucket = str(metadata.get("execution_bucket", "n/a"))
     raw_regime = canonicalize_regime_name(metadata.get("raw_regime", display_regime)) or display_regime
-    protected_beta = metadata.get("protected_beta", result.target_beta)
-    overlay_beta = metadata.get("overlay_beta", result.target_beta)
-    overlay_mode = str(metadata.get("overlay_mode", "FULL"))
-    beta_overlay_multiplier = metadata.get("beta_overlay_multiplier", 1.0)
-    deployment_overlay_multiplier = metadata.get("deployment_overlay_multiplier", 1.0)
-    overlay_state = str(metadata.get("overlay_state", "NEUTRAL"))
+
+    if is_floor_active:
+        color = COLOR_STRESS # Amber/Orange for Floor trigger
+
     probabilities = merge_regime_weights(
         result.probabilities,
         regimes=ACTIVE_REGIME_ORDER,
         include_zeros=False,
     )
 
-    # Check behavioral guard lock in logic trace or metadata if available
+    # Check behavioral guard lock
     lock_active = False
     for trace in result.logic_trace:
         if trace.get("step") == "behavioral_guard":
@@ -91,19 +93,29 @@ def build_discord_payload(result: SignalResult) -> dict:
     if lock_active:
         color = COLOR_LOCKED
 
+    protected_beta = metadata.get("protected_beta", result.target_beta)
+    overlay_beta = metadata.get("overlay_beta", result.target_beta)
+    overlay_mode = str(metadata.get("overlay_mode", "FULL"))
+    beta_overlay_multiplier = metadata.get("beta_overlay_multiplier", 1.0)
+    deployment_overlay_multiplier = metadata.get("deployment_overlay_multiplier", 1.0)
+    overlay_state = str(metadata.get("overlay_state", "NEUTRAL"))
+
+    title_prefix = "[BETA FLOOR TRIGGERED] " if is_floor_active else ""
     summary_header = (
-        f"### 🎯 Target Beta: `{_format_beta(result.target_beta)}`\n"
+        f"### {title_prefix}🎯 Target Beta: `{_format_beta(result.target_beta)}`\n"
         f"**Bayesian Regime:** {macro_emoji} `{display_regime}`\n"
         f"**Entropy:** `{result.entropy:.3f}` | **Lock:** `{'🔒 LOCKED' if lock_active else '🔓 ACTIVE'}`"
     )
 
+    if is_floor_active:
+        summary_header += f"\n> ⚠️ **Physical Protection Active:** Raw Beta was `{_format_beta(raw_beta_pre_floor)}`"
+
     description = (
         f"{summary_header}\n\n"
-        "> v13.0 概率核心决定方向；执行 overlay 只条件化动作，不改写后验。\n\n"
+        "> v13.7 概率核心决定方向；执行 overlay 只条件化动作，不改写后验。\n\n"
         f"**Briefing:** {result.explanation}"
     )
-
-    title = f"QQQ V13.0 | Bayesian Decision - {result.date}"
+    title = f"QQQ v13.7-ULTIMA | Bayesian Decision - {result.date}"
 
     # Probabilities Distribution
     sorted_probs = sorted(probabilities.items(), key=lambda x: x[1], reverse=True)
@@ -154,7 +166,7 @@ def build_discord_payload(result: SignalResult) -> dict:
         "description": description[:4096],
         "color": int(color),
         "fields": fields,
-        "footer": {"text": f"Bayesian-Core v13.0 | Overlay {overlay_mode}"},
+        "footer": {"text": f"v13.7 Neural-Orthogonal | Prior Anchor: {hydration_anchor}"},
         "timestamp": _discord_timestamp(result.date),
     }
 

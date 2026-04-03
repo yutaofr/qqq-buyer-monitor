@@ -6,13 +6,22 @@
 - **Three-Layer Matrix**: Discount, Real Economy, Sentiment.
 - **Factor Independence**: No information inbreeding. Collinear factors must be decoupled.
 
-## 2. Information Honesty
+## 2. Information Honesty (v13.7-ULTIMA)
 - **Entropy-First**: Quantify model doubt via Shannon Entropy.
-- **Haircut Logic**: `target_beta = raw_target_beta * exp(-H)`. High uncertainty results in automatic de-risking.
+- **Gaussian Haircut (Non-linear)**: `target_beta = raw_beta * exp(-0.6 * H^2)`. Accelerated de-risking in conflict zones (H > 0.7) to protect capital while preventing suicidal cuts.
 
-## 3. PIT (Point-in-Time) Compliance
-- **Zero Future Leakage**: Backtests must simulate historical data availability.
-- **Lag Alignment**: Financial (T+1), Real Economy (Release+30d), Earnings (MonthEnd+30d).
+## 3. Real-Economy Gravity
+- **Physical Sensing**: 12-factor augmented space (including PMI Mom, Labor Slack). 
+- **Rational Damping**: 21d EWMA smoothing for monthly macro signals to prevent daily decision jitters.
+
+## 4. Cascading Defense & Redlines
+- **Tiered Quality (Veto)**: Level 1 (Credit) sensor failure results in immediate entropy spike.
+- **ULTIMA Circuit Breaker**: 21-day cognitive deadlock triggers sensor surgical cut (back to core credit).
+- **User Redline**: Final target_beta is floor-locked at 0.5. Business survival precedes statistical inference.
+
+## 5. PIT (Point-in-Time) Compliance
+- **8-Year Hydration**: Minimum 2000+ sample memory required for prior self-consistency.
+- **Zero Future Leakage**: Sequential replay strictly mimics T+0 observability.
 
 ## 4. Orthogonalization Engine
 - **Gram-Schmidt Process**: Online residual extraction for MOVE and Credit Spreads to satisfy Bayesian conditional independence.

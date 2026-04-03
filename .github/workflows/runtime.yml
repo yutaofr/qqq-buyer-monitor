@@ -21,38 +21,36 @@ on:
       VERCEL_BLOB_READ_WRITE_TOKEN:
         required: false
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   run:
     name: ${{ inputs.job_name }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout_minutes }}
-    permissions:
-      contents: read
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4.2.2
 
-      - name: Set up Python
-        uses: actions/setup-python@v5.3.0
-        with:
-          python-version: "3.12"
-          cache: "pip"
-
-      - name: Install Dependencies
+      - name: Set up Production Environment (Docker)
         run: |
-          python -m pip install --upgrade pip
-          pip install -e .[dev]
+          docker build -t qqq-monitor:latest .
 
-      - name: Execute Runtime
+      - name: Execute Runtime (v13.7-ULTIMA)
         env:
           ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
-          GITHUB_ACTIONS: "true"
           VERCEL_BLOB_READ_WRITE_TOKEN: ${{ secrets.VERCEL_BLOB_READ_WRITE_TOKEN }}
-        run: ${{ inputs.command }}
+          # v13.7-ULTIMA Mandatory Prior Anchoring
+          PRIOR_STATE_PATH: "data/v13_6_ex_hydrated_prior.json"
+          ULTIMA_MODE: "GOLD-FINAL"
+        run: |
+          docker run --rm \
+            -e ALERT_WEBHOOK_URL=$ALERT_WEBHOOK_URL \
+            -e FRED_API_KEY=$FRED_API_KEY \
+            -e VERCEL_BLOB_READ_WRITE_TOKEN=$VERCEL_BLOB_READ_WRITE_TOKEN \
+            -e PRIOR_STATE_PATH=$PRIOR_STATE_PATH \
+            -e ULTIMA_MODE=$ULTIMA_MODE \
+            -v $(pwd)/artifacts:/app/artifacts \
+            qqq-monitor:latest ${{ inputs.command }}
 
       - name: Notify on Failure
         if: failure()
@@ -64,5 +62,5 @@ jobs:
             exit 0
           fi
           curl -sS -X POST -H "Content-Type: application/json" \
-            -d "{\"content\": \"🚨 **QQQ-Monitor Runtime Failure**\n**Workflow:** ${{ github.workflow }}\n**Run ID:** ${{ github.run_id }}\n**Ref:** ${{ github.ref_name }}\"}" \
+            -d "{\"content\": \"🚨 **v13.7-ULTIMA Runtime Failure**\n**Workflow:** ${{ github.workflow }}\n**Job:** ${{ inputs.job_name }}\n**Ref:** ${{ github.ref_name }}\"}" \
             "${ALERT_WEBHOOK_URL}"

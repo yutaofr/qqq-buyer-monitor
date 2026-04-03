@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>QQQ 晴雨表 - Probabilistic Target-Beta 仪表盘</title>
+    <title>QQQ 氣象觀測站 - Probabilistic Target-Beta 儀表板</title>
     <script>
         window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
     </script>
@@ -55,6 +55,9 @@
             .tag { font-size: 10px !important; padding: 0.4rem 0.6rem !important; }
             .feature-grid { grid-template-columns: 1fr; }
         }
+
+        .lang-toggle { cursor: pointer; transition: all 0.3s; }
+        .lang-toggle.active { color: var(--emerald); opacity: 1; border-bottom: 2px solid var(--emerald); }
     </style>
 </head>
 <body id="body" class="min-h-screen flex items-center justify-center p-3 sm:p-4">
@@ -65,17 +68,24 @@
                 <div id="indicator" class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.5)]"></div>
                 <span id="market-label" class="text-[10px] sm:text-[11px] font-black opacity-60 uppercase tracking-widest">--</span>
             </div>
-            <p class="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase">v13.0 Probabilistic</p>
+            <div class="flex items-center space-x-4">
+                <div class="flex space-x-2 text-[10px] font-black uppercase tracking-widest opacity-40">
+                    <span onclick="setLanguage('en')" id="lang-en" class="lang-toggle">EN</span>
+                    <span>/</span>
+                    <span onclick="setLanguage('zh-TW')" id="lang-tw" class="lang-toggle active">繁中</span>
+                </div>
+                <p id="ui-subtitle" class="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase">v13.0 Probabilistic</p>
+            </div>
         </div>
 
         <div class="mt-12 sm:mt-14 mb-8 sm:mb-12">
-            <h1 class="text-3xl sm:text-4xl font-black tracking-tighter text-white">晴雨表</h1>
+            <h1 id="ui-title" class="text-3xl sm:text-4xl font-black tracking-tighter text-white">趨勢氣象站</h1>
         </div>
 
         <!-- Main State Section -->
         <div class="space-y-8 sm:space-y-10 text-center mb-10 sm:mb-12">
             <div class="space-y-3">
-                <p class="text-[11px] font-black uppercase opacity-50 text-slate-500 tracking-wider">稳定制度 (Stable Regime)</p>
+                <p id="ui-regime-label" class="text-[11px] font-black uppercase opacity-50 text-slate-500 tracking-wider">穩定體制 (Stable Regime)</p>
                 <div class="flex items-center justify-center space-x-4">
                     <div id="regime-lumiere" class="lumiere bg-slate-500"></div>
                     <p id="regime" class="text-4xl sm:text-5xl font-black tracking-tighter text-white break-words transition-colors duration-1000">--</p>
@@ -85,11 +95,11 @@
             
             <div class="grid grid-cols-2 gap-4 sm:gap-5">
                 <div class="factor-card p-5 sm:p-6 rounded-[1.8rem] sm:rounded-[2.5rem] flex flex-col items-start bg-white/[0.03]">
-                    <p class="text-[10px] font-black text-slate-500 uppercase mb-2">信息熵</p>
+                    <p id="ui-entropy-label" class="text-[10px] font-black text-slate-500 uppercase mb-2">資訊熵</p>
                     <p id="entropy" class="text-2xl sm:text-3xl font-black text-emerald-400/90">--</p>
                 </div>
                 <div class="factor-card p-5 sm:p-6 rounded-[1.8rem] sm:rounded-[2.5rem] flex flex-col items-start bg-white/[0.03]">
-                    <p class="text-[10px] font-black text-slate-500 uppercase mb-2">入场节奏</p>
+                    <p id="ui-deploy-label" class="text-[10px] font-black text-slate-500 uppercase mb-2">佈局節奏</p>
                     <p id="deploy" class="text-xl sm:text-2xl font-black transition-colors duration-1000">--</p>
                     <p id="deploy-readiness" class="text-[11px] font-bold text-slate-400 mt-2">--</p>
                 </div>
@@ -100,11 +110,11 @@
         <div class="factor-card p-8 sm:p-10 rounded-[2.5rem] sm:rounded-[3.5rem] border-t border-white/10 mb-8 sm:mb-10 bg-gradient-to-br from-white/[0.05] to-transparent">
             <div class="flex justify-between items-end mb-6 sm:mb-8">
                 <div>
-                    <p class="text-[11px] font-black uppercase text-emerald-400/80 mb-2">Beta 建议</p>
+                    <p id="ui-beta-rec" class="text-[11px] font-black uppercase text-emerald-400/80 mb-2">Beta 建議</p>
                     <p id="exposure" class="text-6xl sm:text-7xl font-black text-white leading-none">--</p>
                 </div>
                 <div class="text-right pb-1">
-                    <p class="text-[10px] font-bold text-slate-500 uppercase mb-1">Confidence</p>
+                    <p id="ui-confidence" class="text-[10px] font-bold text-slate-500 uppercase mb-1">信心度</p>
                     <p class="text-[10px] sm:text-[11px] font-black text-white bg-emerald-500/20 px-2 py-0.5 rounded text-center">BAYESIAN</p>
                 </div>
             </div>
@@ -112,12 +122,12 @@
                 <div id="exposure-bar" class="h-full rounded-full transition-all duration-2000 ease-out" style="width: 0%"></div>
             </div>
             <div class="flex justify-between text-[10px] sm:text-[11px] font-black text-slate-500">
-                <div class="flex flex-col"><span>上限 Ceiling</span><span id="beta-ceiling" class="text-slate-200">--</span></div>
-                <div class="flex flex-col text-right"><span>原始 Raw</span><span id="raw-beta" class="text-emerald-500/80">--</span></div>
+                <div class="flex flex-col"><span id="ui-ceiling">上限 Ceiling</span><span id="beta-ceiling" class="text-slate-200">--</span></div>
+                <div class="flex flex-col text-right"><span id="ui-raw">原始 Raw</span><span id="raw-beta" class="text-emerald-500/80">--</span></div>
             </div>
             <div class="grid grid-cols-2 gap-3 mt-5 text-[10px] sm:text-[11px] font-black text-slate-500">
-                <div class="flex flex-col"><span>Protected</span><span id="protected-beta" class="text-slate-200">--</span></div>
-                <div class="flex flex-col text-right"><span>Overlay</span><span id="overlay-beta" class="text-slate-200">--</span></div>
+                <div class="flex flex-col"><span id="ui-protected">Protected</span><span id="protected-beta" class="text-slate-200">--</span></div>
+                <div class="flex flex-col text-right"><span id="ui-overlay">Overlay</span><span id="overlay-beta" class="text-slate-200">--</span></div>
                 <div class="flex flex-col"><span>Beta Mult</span><span id="beta-overlay-multiplier" class="text-emerald-400/80">--</span></div>
                 <div class="flex flex-col text-right"><span>Pace Mult</span><span id="deployment-overlay-multiplier" class="text-emerald-400/80">--</span></div>
             </div>
@@ -129,13 +139,13 @@
 
         <!-- Actions -->
         <div class="grid grid-cols-2 gap-3 sm:gap-4 mb-4">
-            <button onclick="toggleInsights()" class="bg-white/5 flex items-center justify-center py-4 sm:py-5 rounded-2xl sm:rounded-3xl text-[11px] font-black uppercase text-white hover:bg-white/10 transition-all active:scale-95">
+            <button id="ui-btn-insights" onclick="toggleInsights()" class="bg-white/5 flex items-center justify-center py-4 sm:py-5 rounded-2xl sm:rounded-3xl text-[11px] font-black uppercase text-white hover:bg-white/10 transition-all active:scale-95">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="mr-2 opacity-70"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                逻辑详情
+                邏輯詳情
             </button>
-            <a href="https://github.com/yutaofr/qqq-buyer-monitor/wiki/%E9%80%BB%E8%BE%91%E7%94%9F%E5%AD%98%EF%BC%9AQQQ-%E5%86%B3%E7%AD%96%E7%B3%BB%E7%BB%9F%E7%9A%84%E5%91%A8%E6%9C%9F%E5%93%B2%E5%AD%A6%E4%B8%8E%E5%8F%AF%E8%A7%86%E5%8C%96%E6%8C%87%E6%8C%A5%E6%89%8B%E5%86%8C" target="_blank" class="bg-white/5 flex items-center justify-center py-4 sm:py-5 rounded-2xl sm:rounded-3xl text-[11px] font-black uppercase text-white no-underline hover:bg-white/10 transition-all active:scale-95">
+            <a id="ui-btn-docs" href="https://github.com/yutaofr/qqq-buyer-monitor/wiki/%E9%80%BB%E8%BE%91%E7%94%9F%E5%AD%98%EF%BC%9AQQQ-%E5%86%B3%E7%AD%96%E7%B3%BB%E7%BB%9F%E7%9A%84%E5%91%A8%E6%9C%9F%E5%93%B2%E5%AD%A6%E4%B8%8E%E5%8F%AF%E8%A7%86%E5%8C%96%E6%8C%87%E6%8C%A5%E6%89%8B%E5%86%8C" target="_blank" class="bg-white/5 flex items-center justify-center py-4 sm:py-5 rounded-2xl sm:rounded-3xl text-[11px] font-black uppercase text-white no-underline hover:bg-white/10 transition-all active:scale-95">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="mr-2 opacity-70"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                说明文档
+                說明文件
             </a>
         </div>
 
@@ -143,58 +153,60 @@
         <div id="insights-panel">
             <div class="space-y-12 sm:space-y-16 py-8 sm:py-10 border-t border-white/10 text-center">
                 <div class="space-y-6">
-                    <p class="text-[11px] font-black uppercase opacity-40 tracking-widest">后验概率分布 (Posterior)</p>
+                    <p id="ui-posterior-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">後驗機率分佈 (Posterior)</p>
                     <div id="prob-container" class="space-y-4 px-4 sm:px-6"></div>
                 </div>
 
                 <div class="space-y-6">
-                    <p class="text-[11px] font-black uppercase opacity-40 tracking-widest">运行时先验 (Runtime Prior)</p>
+                    <p id="ui-prior-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">運行時先驗 (Runtime Prior)</p>
                     <div id="prior-container" class="space-y-4 px-4 sm:px-6"></div>
                 </div>
                 
                 <div class="flex flex-col items-center">
-                    <p class="text-[11px] font-black uppercase opacity-40 mb-10 tracking-widest">联动决策树 (Logic Tree)</p>
+                    <p id="ui-logic-tree-label" class="text-[11px] font-black uppercase opacity-40 mb-10 tracking-widest">聯動決策樹 (Logic Tree)</p>
                     <div class="w-full max-w-xs space-y-4">
                         <div class="flex flex-wrap justify-center gap-2">
-                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="CRISIS">危机 <span class="opacity-30">CRS</span></span>
-                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="STRESS">压力 <span class="opacity-30">STR</span></span>
-                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="NEUTRAL">中性 <span class="opacity-30">NEU</span></span>
-                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="EUPHORIC">过热 <span class="opacity-30">EUP</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="CRISIS"><span class="ui-tag-crisis">危機</span> <span class="opacity-30">CRS</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="STRESS"><span class="ui-tag-stress">壓力</span> <span class="opacity-30">STR</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="NEUTRAL"><span class="ui-tag-neutral">中性</span> <span class="opacity-30">NEU</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="EUPHORIC"><span class="ui-tag-euphoric">過熱</span> <span class="opacity-30">EUP</span></span>
                         </div>
                         <div class="tree-line active mx-auto"></div>
                         <div class="flex flex-wrap justify-center gap-2">
-                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="BUST">萧条 <span class="opacity-30">BST</span></span>
-                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="RECOVERY">修复 <span class="opacity-30">RCV</span></span>
-                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="MID_CYCLE">中期 <span class="opacity-30">MID</span></span>
-                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="LATE_CYCLE">后期 <span class="opacity-30">LAT</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="BUST"><span class="ui-tag-bust">蕭條</span> <span class="opacity-30">BST</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="RECOVERY"><span class="ui-tag-recovery">修復</span> <span class="opacity-30">RCV</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="MID_CYCLE"><span class="ui-tag-mid">中期</span> <span class="opacity-30">MID</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="LATE_CYCLE"><span class="ui-tag-late">後期</span> <span class="opacity-30">LAT</span></span>
                         </div>
                         <div class="tree-line active mx-auto"></div>
                         <div class="flex justify-center gap-4">
-                            <span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl" data-key="CASH">现金 <span class="opacity-30">0X</span></span>
-                            <span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl" data-key="QQQ">仓位 <span class="opacity-30">1X</span></span>
-                            <span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl" data-key="QLD">杠杆 <span class="opacity-30">2X</span></span>
+                            <span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl" data-key="CASH"><span class="ui-tag-cash">現金</span> <span class="opacity-30">0X</span></span>
+                            <span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl" data-key="QQQ"><span class="ui-tag-qqq">倉位</span> <span class="opacity-30">1X</span></span>
+                            <span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl" data-key="QLD"><span class="ui-tag-qld">槓桿</span> <span class="opacity-30">2X</span></span>
                         </div>
                     </div>
                 </div>
 
                 <div class="space-y-6">
-                    <p class="text-[11px] font-black uppercase opacity-40 tracking-widest">证据下钻 (Logic Trace)</p>
+                    <p id="ui-logic-trace-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">邏輯下鑽 (Logic Trace)</p>
                     <div id="logic-trace-container" class="space-y-3 px-2 sm:px-4"></div>
                 </div>
 
                 <div class="space-y-6">
-                    <p class="text-[11px] font-black uppercase opacity-40 tracking-widest">执行 Overlay</p>
+                    <p id="ui-execution-overlay-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">執行 Overlay</p>
                     <div id="execution-overlay-container" class="space-y-3 px-2 sm:px-4"></div>
                 </div>
 
                 <div class="space-y-6">
-                    <p class="text-[11px] font-black uppercase opacity-40 tracking-widest">原始特征输入 (Feature Values)</p>
+                    <p id="ui-feature-values-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">特徵數值 (Feature Values)</p>
                     <div id="feature-values-container" class="feature-grid px-2 sm:px-4"></div>
                 </div>
                 
                 <div class="pt-10 border-t border-white/5 text-[10px] font-black text-slate-600 uppercase text-left">
-                    <div class="flex justify-between"><span>数据源 Data Source</span><span id="data-source" class="text-emerald-500">INIT...</span></div>
-                    <div class="flex justify-between"><span>更新时间 Generated (UTC)</span><span id="calc-at" class="text-slate-400">--</span></div>
+                    <div class="flex justify-between"><span id="ui-engine-label">核心引擎 Engine</span><span class="text-slate-400">v13.7-ULTIMA</span></div>
+                    <div class="flex justify-between"><span id="ui-anchor-label">資料血緣 Prior Anchor</span><span id="hydration-anchor" class="text-slate-400">2018-01-01</span></div>
+                    <div class="flex justify-between"><span id="ui-generated-label">更新時間 Generated (UTC)</span><span id="calc-at" class="text-slate-400">--</span></div>
+                    <div class="flex justify-between"><span>Data Status</span><span id="data-source" class="text-slate-400">--</span></div>
                 </div>
             </div>
         </div>
@@ -203,16 +215,95 @@
     <script>
         const PROD_BLOB_URL = 'https://rtmr1b9ayzxiugfu.public.blob.vercel-storage.com/prod/status.json';
         const LOCAL_JSON = './status.json';
-        const MAPPING = {
-            'CRISIS': '危机 (CRISIS)', 'STRESS': '压力 (STRESS)', 'NEUTRAL': '中性 (NEUTRAL)', 'EUPHORIC': '过热 (EUPHORIC)',
-            'BUST': '萧条 (BUST)', 'MID_CYCLE': '中期 (MID_CYCLE)', 'LATE_CYCLE': '后期 (LATE_CYCLE)', 'RECOVERY': '修复 (RECOVERY)',
-            'CASH': '现金 (CASH)', 'QQQ': '仓位 (QQQ)', 'QLD': '杠杆 (QLD)'
+        
+        const TRANSLATIONS = {
+            'en': {
+                'ui-title': 'QQQ Barometer', 'ui-subtitle': 'v13.0 Probabilistic', 'ui-regime-label': 'Stable Regime',
+                'ui-entropy-label': 'Entropy', 'ui-deploy-label': 'Entry Pacing', 'ui-beta-rec': 'Beta Rec',
+                'ui-confidence': 'Confidence', 'ui-ceiling': 'Ceiling', 'ui-raw': 'Raw', 'ui-protected': 'Protected',
+                'ui-overlay': 'Overlay', 'ui-btn-insights': 'Logic Details', 'ui-btn-docs': 'Docs',
+                'ui-posterior-label': 'Posterior Probability', 'ui-prior-label': 'Runtime Prior',
+                'ui-logic-tree-label': 'Logic Tree', 'ui-logic-trace-label': 'Logic Trace',
+                'ui-execution-overlay-label': 'Execution Overlay', 'ui-feature-values-label': 'Feature Values',
+                'ui-engine-label': 'Engine', 'ui-anchor-label': 'Prior Anchor', 'ui-generated-label': 'Generated (UTC)',
+                'tags': {
+                    'crisis': 'Crisis', 'stress': 'Stress', 'neutral': 'Neutral', 'euphoric': 'Euphoric',
+                    'bust': 'Bust', 'recovery': 'Recovery', 'mid': 'Mid', 'late': 'Late',
+                    'cash': 'Cash', 'qqq': 'Pos', 'qld': 'Lev'
+                },
+                'mapping': {
+                    'CRISIS': 'Crisis', 'STRESS': 'Stress', 'NEUTRAL': 'Neutral', 'EUPHORIC': 'Euphoric',
+                    'BUST': 'Bust', 'MID_CYCLE': 'Mid Cycle', 'LATE_CYCLE': 'Late Cycle', 'RECOVERY': 'Recovery',
+                    'CASH': 'Cash', 'QQQ': '1x Pos', 'QLD': '2x Lev'
+                },
+                'steps': {
+                    'probabilistic_inference': 'Inference', 'entropy_haircut': 'Entropy Haircut',
+                    'execution_overlay': 'Execution Overlay', 'position_sizing': 'Sizing Map',
+                    'deployment_policy': 'Entry Pacing', 'behavioral_guard': 'Guard'
+                }
+            },
+            'zh-TW': {
+                'ui-title': '趨勢氣象站', 'ui-subtitle': 'v13.0 機率推論版', 'ui-regime-label': '穩定體制 (Stable Regime)',
+                'ui-entropy-label': '資訊熵', 'ui-deploy-label': '佈局節奏', 'ui-beta-rec': 'Beta 建議',
+                'ui-confidence': '信心度', 'ui-ceiling': '上限 Ceiling', 'ui-raw': '原始 Raw', 'ui-protected': '受保護 Protected',
+                'ui-overlay': '疊加層 Overlay', 'ui-btn-insights': '邏輯詳情', 'ui-btn-docs': '說明文件',
+                'ui-posterior-label': '後驗機率分佈 (Posterior)', 'ui-prior-label': '運行時先驗 (Runtime Prior)',
+                'ui-logic-tree-label': '聯動決策樹 (Logic Tree)', 'ui-logic-trace-label': '邏輯下鑽 (Logic Trace)',
+                'ui-execution-overlay-label': '執行 Overlay', 'ui-feature-values-label': '特徵數值 (Feature Values)',
+                'ui-engine-label': '核心引擎 Engine', 'ui-anchor-label': '資料血緣 Prior Anchor', 'ui-generated-label': '更新時間 Generated',
+                'tags': {
+                    'crisis': '危機', 'stress': '壓力', 'neutral': '中性', 'euphoric': '過熱',
+                    'bust': '蕭條', 'recovery': '修復', 'mid': '中期', 'late': '後期',
+                    'cash': '現金', 'qqq': '倉位', 'qld': '槓桿'
+                },
+                'mapping': {
+                    'CRISIS': '危機 (CRISIS)', 'STRESS': '壓力 (STRESS)', 'NEUTRAL': '中性 (NEUTRAL)', 'EUPHORIC': '過熱 (EUPHORIC)',
+                    'BUST': '蕭條 (BUST)', 'MID_CYCLE': '中期 (MID_CYCLE)', 'LATE_CYCLE': '後期 (LATE_CYCLE)', 'RECOVERY': '修復 (RECOVERY)',
+                    'CASH': '現金 (CASH)', 'QQQ': '1x 倉位', 'QLD': '2x 槓桿'
+                },
+                'steps': {
+                    'probabilistic_inference': '後驗推斷', 'entropy_haircut': '資訊熵懲罰',
+                    'execution_overlay': '執行 Overlay', 'position_sizing': '連續倉位對照',
+                    'deployment_policy': '佈局節奏', 'behavioral_guard': '行為守衛'
+                }
+            }
         };
-        const SIMPLE_MAPPING = {
-            'CRISIS': '危机', 'STRESS': '压力', 'NEUTRAL': '中性', 'EUPHORIC': '过热',
-            'BUST': '萧条', 'MID_CYCLE': '中期', 'LATE_CYCLE': '后期', 'RECOVERY': '修复',
-            'CASH': '现金', 'QQQ': '1x仓位', 'QLD': '2x杠杆'
-        };
+
+        let currentLang = 'zh-TW';
+        let lastData = null;
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            document.documentElement.lang = lang === 'zh-TW' ? 'zh-TW' : 'en';
+            document.getElementById('lang-en').classList.toggle('active', lang === 'en');
+            document.getElementById('lang-tw').classList.toggle('active', lang === 'zh-TW');
+            
+            // Update static UI text
+            const t = TRANSLATIONS[lang];
+            for (const [id, text] of Object.entries(t)) {
+                if (typeof text === 'string') {
+                    const el = document.getElementById(id);
+                    if (el) {
+                        if (id.startsWith('ui-btn-')) {
+                            // Keep SVG icon if exists
+                            const svg = el.querySelector('svg');
+                            el.innerHTML = svg ? svg.outerHTML + ' ' + text : text;
+                        } else {
+                            el.textContent = text;
+                        }
+                    }
+                }
+            }
+            
+            // Update tags
+            for (const [key, text] of Object.entries(t.tags)) {
+                const el = document.querySelector(`.ui-tag-${key}`);
+                if (el) el.textContent = text;
+            }
+
+            if (lastData) renderDashboard(lastData);
+        }
+
         const REGIME_COLORS = {
             'MID_CYCLE': 'bg-blue-500', 'LATE_CYCLE': 'bg-yellow-500', 'BUST': 'bg-red-500', 'RECOVERY': 'bg-emerald-500'
         };
@@ -222,56 +313,36 @@
         const DEPLOY_COLORS = {
             'FAST': 'text-emerald-400', 'BASE': 'text-blue-400', 'SLOW': 'text-yellow-400', 'PAUSE': 'text-red-400', 'RECOVER': 'text-emerald-300'
         };
-        const STEP_LABELS = {
-            'probabilistic_inference': '后验推断',
-            'entropy_haircut': '熵值惩罚',
-            'execution_overlay': '执行 Overlay',
-            'position_sizing': '连续仓位映射',
-            'deployment_policy': '入场节奏',
-            'behavioral_guard': '行为守卫'
-        };
 
         function extractRegimeKey(value) {
             const upper = String(value || '').toUpperCase();
-            for (const key of Object.keys(MAPPING)) {
+            const keys = Object.keys(TRANSLATIONS['en'].mapping);
+            for (const key of keys) {
                 if (upper.includes(key)) return key;
             }
             return '--';
         }
 
         function escapeHtml(value) {
-            return String(value)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
+            return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
         function formatScalar(value) {
-            if (typeof value === 'number') {
-                return Number.isInteger(value) ? String(value) : value.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
-            }
+            if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
             if (typeof value === 'boolean') return value ? 'true' : 'false';
-            if (value == null) return 'null';
-            return String(value);
+            return value == null ? 'null' : String(value);
         }
 
         function summarizeResult(result) {
-            if (result == null) return '无输出';
+            if (result == null) return currentLang === 'en' ? 'No Output' : '無輸出';
             if (typeof result !== 'object') return formatScalar(result);
             const entries = Object.entries(result);
-            if (!entries.length) return '空对象';
-            return entries
-                .slice(0, 3)
-                .map(([key, value]) => `${key}: ${formatScalar(value)}`)
-                .join(' · ');
+            if (!entries.length) return currentLang === 'en' ? 'Empty' : '空對象';
+            return entries.slice(0, 3).map(([key, value]) => `${key}: ${formatScalar(value)}`).join(' · ');
         }
 
         function humanizeKey(value) {
-            return String(value || '')
-                .replace(/_/g, ' ')
-                .replace(/\b\w/g, char => char.toUpperCase());
+            return String(value || '').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
         }
 
         function renderLogicTrace(logicTrace) {
@@ -279,13 +350,13 @@
             container.innerHTML = '';
             const steps = Array.isArray(logicTrace) ? logicTrace : [];
             if (!steps.length) {
-                container.innerHTML = '<p class="text-[11px] font-bold text-slate-500">当前没有透传决策步骤。</p>';
+                container.innerHTML = `<p class="text-[11px] font-bold text-slate-500">${currentLang === 'en' ? 'No logic trace available.' : '當前沒有透傳決策步驟。'}</p>`;
                 return;
             }
 
             steps.forEach((entry, index) => {
                 const stepKey = String(entry.step || `step_${index + 1}`);
-                const stepLabel = STEP_LABELS[stepKey] || humanizeKey(stepKey);
+                const stepLabel = TRANSLATIONS[currentLang].steps[stepKey] || humanizeKey(stepKey);
                 const summary = summarizeResult(entry.result);
                 const body = escapeHtml(JSON.stringify(entry.result ?? null, null, 2));
                 container.innerHTML += `
@@ -308,10 +379,9 @@
             container.innerHTML = '';
             const entries = Object.entries(featureValues || {});
             if (!entries.length) {
-                container.innerHTML = '<p class="text-[11px] font-bold text-slate-500 col-span-full">当前没有透传原始特征。</p>';
+                container.innerHTML = `<p class="text-[11px] font-bold text-slate-500 col-span-full">${currentLang === 'en' ? 'No feature values available.' : '當前沒有透傳原始特徵。'}</p>`;
                 return;
             }
-
             entries.sort((a, b) => a[0].localeCompare(b[0]));
             entries.forEach(([key, value]) => {
                 container.innerHTML += `
@@ -327,15 +397,7 @@
             const container = document.getElementById('execution-overlay-container');
             container.innerHTML = '';
             const overlay = executionOverlay || {};
-            const entries = [
-                ['Mode', overlay.overlay_mode || 'FULL'],
-                ['State', overlay.overlay_state || 'NEUTRAL'],
-                ['Negative Score', overlay.negative_score],
-                ['Positive Score', overlay.positive_score],
-                ['Diag Beta', overlay.diagnostic_beta_overlay_multiplier],
-                ['Diag Pace', overlay.diagnostic_deployment_overlay_multiplier],
-                ['Fallback', overlay.neutral_fallback_triggered],
-            ];
+            const entries = [['Mode', overlay.overlay_mode || 'FULL'], ['State', overlay.overlay_state || 'NEUTRAL'], ['Negative Score', overlay.negative_score], ['Positive Score', overlay.positive_score], ['Diag Beta', overlay.diagnostic_beta_overlay_multiplier], ['Diag Pace', overlay.diagnostic_deployment_overlay_multiplier], ['Fallback', overlay.neutral_fallback_triggered]];
             container.innerHTML = entries.map(([key, value]) => `
                 <div class="feature-chip">
                     <p class="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">${escapeHtml(String(key))}</p>
@@ -354,81 +416,96 @@
             }
             entries.forEach(([name, val]) => {
                 const pct = (val * 100).toFixed(1) + '%';
-                const cnName = MAPPING[name] || name;
-                container.innerHTML += `<div class="space-y-1.5"><div class="flex justify-between text-[10px] font-black opacity-50 uppercase tracking-tighter"><span>${cnName}</span><span class="text-white">${pct}</span></div><div class="w-full h-2 bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5"><div class="prob-bar" style="width: ${pct}"></div></div></div>`;
+                const localizedName = TRANSLATIONS[currentLang].mapping[name] || name;
+                container.innerHTML += `<div class="space-y-1.5"><div class="flex justify-between text-[10px] font-black opacity-50 uppercase tracking-tighter"><span>${localizedName}</span><span class="text-white">${pct}</span></div><div class="w-full h-2 bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5"><div class="prob-bar" style="width: ${pct}"></div></div></div>`;
             });
         }
 
         function toggleInsights() { document.getElementById('insights-panel').classList.toggle('open'); }
+        
+        function renderDashboard(data) {
+            const body = document.getElementById('body');
+            const isLocked = data.signal.lock_active; const mkt = data.meta.market_state;
+            body.className = isLocked ? 'state-locked min-h-screen flex items-center justify-center p-3 sm:p-4' : (mkt === 'ACTIVE' ? 'state-active min-h-screen flex items-center justify-center p-3 sm:p-4' : 'state-frozen min-h-screen flex items-center justify-center p-3 sm:p-4');
+            document.getElementById('indicator').className = `w-2.5 h-2.5 rounded-full ${isLocked ? 'bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.8)]' : (mkt === 'ACTIVE' ? 'bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.8)]' : 'bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.8)]')}`;
+            
+            const stableRegimeKey = extractRegimeKey(data.signal.stable_regime || data.signal.regime);
+            const rawRegimeKey = extractRegimeKey(data.signal.raw_regime || data.signal.regime);
+            const mapping = TRANSLATIONS[currentLang].mapping;
+            const displayRegime = mapping[stableRegimeKey] || stableRegimeKey;
+            const activeRegimeKey = stableRegimeKey !== '--' ? stableRegimeKey : 'MID_CYCLE';
+            
+            const rText = document.getElementById('regime');
+            rText.textContent = displayRegime;
+            rText.className = `text-4xl sm:text-5xl font-black tracking-tighter break-words ${REGIME_TEXT_COLORS[activeRegimeKey] || 'text-white'}`;
+            
+            const auditEl = document.getElementById('regime-audit');
+            const stableLabel = mapping[stableRegimeKey] || stableRegimeKey;
+            const rawLabel = mapping[rawRegimeKey] || rawRegimeKey;
+            if (currentLang === 'en') {
+                auditEl.textContent = rawRegimeKey === stableRegimeKey ? `Today's top posterior matches stable: ${rawLabel}` : `Stable: ${stableLabel} | Today's Top: ${rawLabel}`;
+            } else {
+                auditEl.textContent = rawRegimeKey === stableRegimeKey ? `當日後驗 Top-1 與穩定態一致: ${rawLabel}` : `穩定態: ${stableLabel} | 當日後驗 Top-1: ${rawLabel}`;
+            }
+            
+            document.getElementById('regime-lumiere').className = `lumiere ${REGIME_COLORS[activeRegimeKey] || 'bg-slate-500'}`;
+            
+            const exposureEl = document.getElementById('exposure');
+            exposureEl.textContent = data.signal.target_beta.toFixed(2) + 'x';
+            exposureEl.className = (data.signal.is_floor_active || (data.meta && data.meta.is_floor_active)) ? 'text-6xl sm:text-7xl font-black text-amber-400 leading-none' : 'text-6xl sm:text-7xl font-black text-white leading-none';
+            
+            document.getElementById('entropy').textContent = data.signal.entropy.toFixed(3);
+            const deployStateKey = data.signal.deployment_state_key || (String(data.signal.deployment_state || 'DEPLOY_BASE').replace('DEPLOY_', '')) || 'BASE';
+            document.getElementById('deploy').textContent = String(data.signal.deployment_state || '--').replace('DEPLOY_', '').replace('入場', '').trim();
+            document.getElementById('deploy').className = `text-xl sm:text-2xl font-black ${DEPLOY_COLORS[deployStateKey] || 'text-blue-400'}`;
+            document.getElementById('deploy-readiness').textContent = data.signal.deployment_readiness != null ? (currentLang === 'en' ? `Kelly Readiness ${(data.signal.deployment_readiness * 100).toFixed(1)}%` : `Kelly 就緒度 ${(data.signal.deployment_readiness * 100).toFixed(1)}%`) : '--';
+            
+            document.getElementById('calc-at').textContent = data.meta.calculated_at_utc.replace('T',' ').replace('Z','');
+            document.getElementById('hydration-anchor').textContent = data.signal.hydration_anchor || data.meta.hydration_anchor || '2018-01-01';
+            document.getElementById('beta-ceiling').textContent = (data.signal.beta_ceiling || 1.20).toFixed(2) + 'x';
+            document.getElementById('raw-beta').textContent = (data.signal.raw_target_beta || data.signal.target_beta).toFixed(2) + 'x';
+            document.getElementById('protected-beta').textContent = (data.signal.protected_beta || data.signal.target_beta).toFixed(2) + 'x';
+            document.getElementById('overlay-beta').textContent = (data.signal.overlay_beta || data.signal.target_beta).toFixed(2) + 'x';
+            document.getElementById('overlay-mode').textContent = data.signal.overlay_mode || 'FULL';
+            document.getElementById('beta-overlay-multiplier').textContent = (data.signal.beta_overlay_multiplier || 1.0).toFixed(2) + 'x';
+            document.getElementById('deployment-overlay-multiplier').textContent = (data.signal.deployment_overlay_multiplier || 1.0).toFixed(2) + 'x';
+            document.getElementById('market-label').textContent = mkt;
+
+            const bar = document.getElementById('exposure-bar'); const beta = data.signal.target_beta;
+            bar.style.width = Math.min(100, beta * 83.33) + '%'; bar.className = beta > 1.0 ? 'h-full overclock' : 'h-full bg-emerald-500';
+            
+            const bucket = data.signal.execution_bucket || (data.signal.reference_path.qld_pct > 0 ? "QLD" : (data.signal.reference_path.qqq_pct > 0.1 ? "QQQ" : "CASH"));
+            document.querySelectorAll('.tag').forEach(t => {
+                const key = t.getAttribute('data-key');
+                if (key === stableRegimeKey || key === rawRegimeKey || key === bucket || (data.signal.probabilities && data.signal.probabilities[key] > 0.4)) {
+                    t.className = 'tag node-active text-[10px] px-3 py-2 border border-emerald-500/50 rounded-2xl transition-all duration-1000';
+                } else { t.className = 'tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl'; }
+            });
+
+            renderDistribution('prob-container', data.signal.probabilities, currentLang === 'en' ? 'No posterior distribution' : '暫無後驗分佈');
+            renderDistribution('prior-container', data.signal.priors, currentLang === 'en' ? 'No runtime prior' : '當前未透傳運行時先驗');
+            renderLogicTrace(data.evidence.logic_trace);
+            renderExecutionOverlay(data.evidence.execution_overlay);
+            renderFeatureValues(data.evidence.feature_values);
+        }
+
         async function updateDashboard() {
             const body = document.getElementById('body');
             const sourceLabel = document.getElementById('data-source');
-            let data = null;
             try {
+                let data = null;
                 try {
                     const res = await fetch(PROD_BLOB_URL + '?t=' + Date.now(), { method: 'GET', mode: 'cors', cache: 'no-store' });
                     if (res.ok) { data = await res.json(); sourceLabel.textContent = "CLOUD_SYNCED"; sourceLabel.className = "text-emerald-500"; }
-                } catch (e) { console.warn("Cloud failed:", e); }
+                } catch (e) {}
                 if (!data) {
                     const res = await fetch(LOCAL_JSON + '?t=' + Date.now(), { cache: 'no-store' });
                     if (res.ok) { data = await res.json(); sourceLabel.textContent = "LOCAL_FALLBACK"; sourceLabel.className = "text-orange-500"; }
                 }
                 if (!data) throw new Error("Offline");
-                
+                lastData = data;
                 body.classList.remove('state-stale');
-                const isLocked = data.signal.lock_active; const mkt = data.meta.market_state;
-                body.className = isLocked ? 'state-locked min-h-screen flex items-center justify-center p-3 sm:p-4' : (mkt === 'ACTIVE' ? 'state-active min-h-screen flex items-center justify-center p-3 sm:p-4' : 'state-frozen min-h-screen flex items-center justify-center p-3 sm:p-4');
-                document.getElementById('indicator').className = `w-2.5 h-2.5 rounded-full ${isLocked ? 'bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.8)]' : (mkt === 'ACTIVE' ? 'bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.8)]' : 'bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.8)]')}`;
-                
-                const stableRegimeKey = extractRegimeKey(data.signal.stable_regime || data.signal.regime);
-                const rawRegimeKey = extractRegimeKey(data.signal.raw_regime || data.signal.regime);
-                const displayRegime = SIMPLE_MAPPING[stableRegimeKey] || stableRegimeKey;
-                const activeRegimeKey = stableRegimeKey !== '--' ? stableRegimeKey : 'MID_CYCLE';
-                const rText = document.getElementById('regime');
-                rText.textContent = displayRegime;
-                rText.className = `text-4xl sm:text-5xl font-black tracking-tighter break-words ${REGIME_TEXT_COLORS[activeRegimeKey] || 'text-white'}`;
-                document.getElementById('regime-audit').textContent = rawRegimeKey === stableRegimeKey ? `当日后验 Top-1 与稳定态一致: ${SIMPLE_MAPPING[rawRegimeKey] || rawRegimeKey}` : `稳定态: ${SIMPLE_MAPPING[stableRegimeKey] || stableRegimeKey} | 当日后验 Top-1: ${SIMPLE_MAPPING[rawRegimeKey] || rawRegimeKey}`;
-                
-                const lumiere = document.getElementById('regime-lumiere');
-                lumiere.className = `lumiere ${REGIME_COLORS[activeRegimeKey] || 'bg-slate-500'}`;
-
-                document.getElementById('exposure').textContent = data.signal.target_beta.toFixed(2) + 'x';
-                document.getElementById('entropy').textContent = data.signal.entropy.toFixed(3);
-                
-                const deployStateKey = data.signal.deployment_state_key || (String(data.signal.deployment_state || 'DEPLOY_BASE').replace('DEPLOY_', '')) || 'BASE';
-                const dRhythm = String(data.signal.deployment_state || '--').replace('DEPLOY_', '').replace('入场', '').trim();
-                const dText = document.getElementById('deploy');
-                dText.textContent = dRhythm;
-                dText.className = `text-xl sm:text-2xl font-black ${DEPLOY_COLORS[deployStateKey] || 'text-blue-400'}`;
-                document.getElementById('deploy-readiness').textContent = data.signal.deployment_readiness != null ? `Kelly 就绪度 ${(data.signal.deployment_readiness * 100).toFixed(1)}%` : '--';
-                
-                document.getElementById('calc-at').textContent = data.meta.calculated_at_utc.replace('T',' ').replace('Z','');
-                document.getElementById('beta-ceiling').textContent = (data.signal.beta_ceiling || 1.20).toFixed(2) + 'x';
-                document.getElementById('raw-beta').textContent = (data.signal.raw_target_beta || data.signal.target_beta).toFixed(2) + 'x';
-                document.getElementById('protected-beta').textContent = (data.signal.protected_beta || data.signal.target_beta).toFixed(2) + 'x';
-                document.getElementById('overlay-beta').textContent = (data.signal.overlay_beta || data.signal.target_beta).toFixed(2) + 'x';
-                document.getElementById('overlay-mode').textContent = data.signal.overlay_mode || 'FULL';
-                document.getElementById('beta-overlay-multiplier').textContent = (data.signal.beta_overlay_multiplier || 1.0).toFixed(2) + 'x';
-                document.getElementById('deployment-overlay-multiplier').textContent = (data.signal.deployment_overlay_multiplier || 1.0).toFixed(2) + 'x';
-                document.getElementById('market-label').textContent = mkt;
-
-                const bar = document.getElementById('exposure-bar'); const beta = data.signal.target_beta;
-                bar.style.width = Math.min(100, beta * 83.33) + '%'; bar.className = beta > 1.0 ? 'h-full overclock' : 'h-full bg-emerald-500';
-                
-                const bucket = data.signal.execution_bucket || (data.signal.reference_path.qld_pct > 0 ? "QLD" : (data.signal.reference_path.qqq_pct > 0.1 ? "QQQ" : "CASH"));
-                
-                document.querySelectorAll('.tag').forEach(t => {
-                    const key = t.getAttribute('data-key');
-                    if (key === stableRegimeKey || key === rawRegimeKey || key === bucket || (data.signal.probabilities && data.signal.probabilities[key] > 0.4)) {
-                        t.className = 'tag node-active text-[10px] px-3 py-2 border border-emerald-500/50 rounded-2xl transition-all duration-1000';
-                    } else { t.className = 'tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl'; }
-                });
-
-                renderDistribution('prob-container', data.signal.probabilities, '暂无后验分布');
-                renderDistribution('prior-container', data.signal.priors, '当前未透传运行时先验');
-                renderLogicTrace(data.evidence.logic_trace);
-                renderExecutionOverlay(data.evidence.execution_overlay);
-                renderFeatureValues(data.evidence.feature_values);
+                renderDashboard(data);
             } catch (e) { console.error(e); sourceLabel.textContent = "SYNC_ERROR"; body.className = 'state-stale min-h-screen flex items-center justify-center p-3 sm:p-4'; }
         }
         updateDashboard(); setInterval(updateDashboard, 60000);
