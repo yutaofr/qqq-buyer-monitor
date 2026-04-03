@@ -88,17 +88,17 @@ def test_gaussian_nb_feature_weights_can_silence_unreliable_dimensions():
     engine = BayesianInferenceEngine({}, {"MID_CYCLE": 0.5, "BUST": 0.5})
     evidence = np.array([[0.0, 0.0]])
 
-    full_weight = engine.infer_gaussian_nb_posterior(
+    full_weight, _ = engine.infer_gaussian_nb_posterior(
         classifier=StubGaussianNB(),
         evidence_frame=__import__("pandas").DataFrame(evidence, columns=["signal", "breadth"]),
         runtime_priors={"MID_CYCLE": 0.5, "BUST": 0.5},
-        feature_weights={"signal": 1.0, "breadth": 1.0},
+        weight_registry={"feature_weight_matrix": {"signal": 1.0, "breadth": 1.0}},
     )
-    muted_breadth = engine.infer_gaussian_nb_posterior(
+    muted_breadth, _ = engine.infer_gaussian_nb_posterior(
         classifier=StubGaussianNB(),
         evidence_frame=__import__("pandas").DataFrame(evidence, columns=["signal", "breadth"]),
         runtime_priors={"MID_CYCLE": 0.5, "BUST": 0.5},
-        feature_weights={"signal": 1.0, "breadth": 0.0},
+        weight_registry={"feature_weight_matrix": {"signal": 1.0, "breadth": 0.0}},
     )
 
     assert full_weight["BUST"] > full_weight["MID_CYCLE"]

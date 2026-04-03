@@ -44,13 +44,18 @@ class EntropyController:
         """
         Applies a threshold-free probabilistic haircut derived from Shannon entropy.
 
-        The multiplier is the inverse effective state count:
-        confidence = exp(-H) = N^(-H_norm)
+        The multiplier is the inverse effective state count with damped non-linear squaring:
+        confidence = exp(-0.6 * (H_norm * log(states))^2)  # v13.5-GOLD Damping
 
-        This preserves determinism, removes arbitrary thresholds, and guarantees
-        that uncertainty never increases portfolio risk.
+        This preserves determinism, removes arbitrary thresholds, and ensures
+        rational de-risking in high-conflict states (H > 0.7).
         """
-        h = float(np.clip(norm_entropy, 0.0, 1.0))
+        h_norm = float(np.clip(norm_entropy, 0.0, 1.0))
         states = max(2, int(state_count or 2))
-        confidence = float(np.exp(-h * np.log(states)))
+
+        # SRD-v13.5-GOLD: Damped Gaussian Confidence Mapping (k=0.6)
+        # Rationalized by ML Expert to prevent "Suicidal De-risking".
+        base_h = h_norm * np.log(states)
+        confidence = float(np.exp(-0.6 * (base_h ** 2)))
+
         return float(base_beta) * confidence

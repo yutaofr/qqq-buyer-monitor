@@ -63,7 +63,7 @@ def test_build_v11_signal_result_uses_v12_metadata_contract():
     assert result.metadata["overlay_mode"] == "NEGATIVE_ONLY"
     assert result.metadata["overlay_state"] == "MIXED"
     assert result.target_allocation.target_qqq_pct == 0.91
-    assert result.metadata["engine_version"] == "v13.0"
+    assert result.metadata["engine_version"] == "v13.4"
     assert any(step["step"] == "execution_overlay" for step in result.logic_trace)
 
 

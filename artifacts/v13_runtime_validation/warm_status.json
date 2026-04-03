@@ -1,0 +1,256 @@
+{
+  "meta": {
+    "version": "v13.0",
+    "calculated_at_utc": "2026-04-03T19:25:19Z",
+    "observation_date": "2026-03-27",
+    "expires_at_utc": "2026-04-06T17:30:00Z",
+    "market_state": "FROZEN"
+  },
+  "signal": {
+    "regime": "中期平稳 (MID_CYCLE)",
+    "regime_desc": "周期中性平稳期，穿越波动的基准轨道。",
+    "stable_regime": "MID_CYCLE",
+    "raw_regime": "MID_CYCLE",
+    "target_beta": 0.9763415168299704,
+    "raw_target_beta": 0.8602084529260451,
+    "protected_beta": 0.5,
+    "overlay_beta": 0.5,
+    "overlay_mode": "SHADOW",
+    "beta_overlay_multiplier": 1.0,
+    "deployment_overlay_multiplier": 1.0,
+    "overlay_state": "NEUTRAL",
+    "overlay_summary": "SHADOW | NEUTRAL: neg=0.000 pos=0.000",
+    "beta_ceiling": 1.2,
+    "entropy": 0.9738433351339768,
+    "lock_active": false,
+    "exposure_band": "90-100% (满仓)",
+    "probabilities": {
+      "MID_CYCLE": 0.35866501981465654,
+      "LATE_CYCLE": 0.2600712395437893,
+      "BUST": 0.20983945538225407,
+      "RECOVERY": 0.17142428525930004
+    },
+    "priors": {
+      "MID_CYCLE": 0.36186095410823843,
+      "LATE_CYCLE": 0.26096580632940997,
+      "BUST": 0.2059748529025002,
+      "RECOVERY": 0.1711983866598515
+    },
+    "prior_breakdown": {
+      "base_weight": 0.6499999999999999,
+      "posterior_weight": 0.175,
+      "transition_weight": 0.175,
+      "base_priors": {
+        "MID_CYCLE": 0.36352870815551547,
+        "LATE_CYCLE": 0.26149213635028273,
+        "BUST": 0.20390650432289462,
+        "RECOVERY": 0.1710726511713072
+      },
+      "posterior_prior": {
+        "MID_CYCLE": 0.35866501981465654,
+        "LATE_CYCLE": 0.2600712395437893,
+        "BUST": 0.20983945538225407,
+        "RECOVERY": 0.17142428525930004
+      },
+      "transition_prior": {
+        "MID_CYCLE": 0.35886237336907695,
+        "LATE_CYCLE": 0.2599054330375031,
+        "BUST": 0.20979268800413844,
+        "RECOVERY": 0.17143950558928162
+      }
+    },
+    "deployment_readiness": 0.001474839346219196,
+    "deployment_readiness_overlay": 0.001474839346219196,
+    "deployment_state": "DEPLOY_BASE",
+    "deployment_state_key": "BASE",
+    "execution_bucket": "QQQ",
+    "reference_path": {
+      "qqq_pct": 0.9763415168299704,
+      "qld_pct": 0.0,
+      "cash_pct": 0.023658483170029648
+    }
+  },
+  "evidence": {
+    "logic_trace": [
+      {
+        "step": "probabilistic_inference",
+        "result": {
+          "BUST": 0.20983945538225407,
+          "LATE_CYCLE": 0.2600712395437893,
+          "MID_CYCLE": 0.35866501981465654,
+          "RECOVERY": 0.17142428525930004
+        }
+      },
+      {
+        "step": "entropy_haircut",
+        "result": {
+          "entropy": 0.9738433351339768
+        }
+      },
+      {
+        "step": "execution_overlay",
+        "result": {
+          "overlay_mode": "SHADOW",
+          "beta_overlay_multiplier": 1.0,
+          "deployment_overlay_multiplier": 1.0,
+          "diagnostic_beta_overlay_multiplier": 1.0,
+          "diagnostic_deployment_overlay_multiplier": 1.0,
+          "negative_score": 0.0,
+          "positive_score": 0.0,
+          "overlay_state": "NEUTRAL",
+          "overlay_summary": "SHADOW | NEUTRAL: neg=0.000 pos=0.000",
+          "neutral_fallback_triggered": true,
+          "raw_inputs": {
+            "adv_dec_ratio": NaN,
+            "ndx_concentration": NaN,
+            "qqq_close": 562.5800170898438,
+            "qqq_volume": 82497000.0
+          },
+          "input_quality": {
+            "breadth_proxy": 0.0,
+            "ndx_concentration": 0.0,
+            "qqq_close": 1.0,
+            "qqq_volume": 1.0
+          },
+          "derived_features": {
+            "breadth_stress": null,
+            "concentration_stress": null,
+            "non_confirmation": null,
+            "volume_repair": null
+          },
+          "signal_contributions": {
+            "negative": {},
+            "positive": {}
+          },
+          "admission_decisions": {
+            "breadth_proxy": {
+              "admitted": false,
+              "reason": "missing_or_low_quality",
+              "quality": 0.0
+            },
+            "ndx_concentration": {
+              "admitted": false,
+              "reason": "missing_or_low_quality",
+              "quality": 0.0
+            },
+            "qqq_tape": {
+              "admitted": false,
+              "reason": "missing_or_low_quality",
+              "quality": 1.0
+            }
+          }
+        }
+      },
+      {
+        "step": "position_sizing",
+        "result": {
+          "qqq_dollars": 97634.15168299704,
+          "qld_notional_dollars": 0.0,
+          "cash_dollars": 2365.848317002965
+        }
+      },
+      {
+        "step": "deployment_policy",
+        "result": {
+          "deployment_state": "DEPLOY_BASE",
+          "raw_state": "DEPLOY_SLOW",
+          "deployment_multiplier": 1.0,
+          "readiness_score": 0.001474839346219196,
+          "value_score": 0.12571398349904803,
+          "action_required": false,
+          "reason": "PACE_HOLD",
+          "scores": {
+            "DEPLOY_PAUSE": 0.36378206379631095,
+            "DEPLOY_SLOW": 0.39416523377130713,
+            "DEPLOY_BASE": 0.22771889558468048,
+            "DEPLOY_FAST": 0.014333806847701455
+          },
+          "barrier": 9.307793445017651,
+          "evidence": 0.3328926763732533,
+          "base_readiness_score": 0.001474839346219196,
+          "overlay_readiness_score": 0.001474839346219196,
+          "overlay_multiplier": 1.0
+        }
+      },
+      {
+        "step": "behavioral_guard",
+        "result": {
+          "target_bucket": "QQQ",
+          "reason": "BUCKET_HOLD",
+          "lock_active": false,
+          "action_required": false,
+          "is_floor_active": true,
+          "hydration_anchor": "2018-01-01"
+        }
+      }
+    ],
+    "feature_values": {
+      "credit_spread": 321.0,
+      "real_yield": 0.0208,
+      "net_liquidity": 6172.609860890885,
+      "treasury_vol": 0.0012859311986387,
+      "copper_gold": 0.0012509811319998,
+      "breakeven": 0.0233999999999999,
+      "core_capex": 62.0,
+      "usdjpy": 159.84100341796875,
+      "erp_ttm": 0.0267926247657195,
+      "entropy": 0.9738433351339768,
+      "deployment_readiness": 0.001474839346219196,
+      "move_21d_raw_z": 0.6912214685254676,
+      "move_21d_orth_z": 0.6203131215935083,
+      "move_spread_beta": 0.13222074166398026,
+      "move_spread_corr_21d": 0.5679764685469743
+    },
+    "execution_overlay": {
+      "overlay_mode": "SHADOW",
+      "beta_overlay_multiplier": 1.0,
+      "deployment_overlay_multiplier": 1.0,
+      "diagnostic_beta_overlay_multiplier": 1.0,
+      "diagnostic_deployment_overlay_multiplier": 1.0,
+      "negative_score": 0.0,
+      "positive_score": 0.0,
+      "overlay_state": "NEUTRAL",
+      "overlay_summary": "SHADOW | NEUTRAL: neg=0.000 pos=0.000",
+      "neutral_fallback_triggered": true,
+      "raw_inputs": {
+        "adv_dec_ratio": NaN,
+        "ndx_concentration": NaN,
+        "qqq_close": 562.5800170898438,
+        "qqq_volume": 82497000.0
+      },
+      "input_quality": {
+        "breadth_proxy": 0.0,
+        "ndx_concentration": 0.0,
+        "qqq_close": 1.0,
+        "qqq_volume": 1.0
+      },
+      "derived_features": {
+        "breadth_stress": null,
+        "concentration_stress": null,
+        "non_confirmation": null,
+        "volume_repair": null
+      },
+      "signal_contributions": {
+        "negative": {},
+        "positive": {}
+      },
+      "admission_decisions": {
+        "breadth_proxy": {
+          "admitted": false,
+          "reason": "missing_or_low_quality",
+          "quality": 0.0
+        },
+        "ndx_concentration": {
+          "admitted": false,
+          "reason": "missing_or_low_quality",
+          "quality": 0.0
+        },
+        "qqq_tape": {
+          "admitted": false,
+          "reason": "missing_or_low_quality",
+          "quality": 1.0
+        }
+      }
+    }
+  }
+}

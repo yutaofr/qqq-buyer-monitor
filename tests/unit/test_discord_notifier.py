@@ -51,7 +51,7 @@ def test_discord_notification_uses_v11_contract(monkeypatch):
 
     assert ok is True
     embed = captured["json"]["embeds"][0]
-    assert "V13.0" in embed["title"]
+    assert "QQQ" in embed["title"]
     assert "🎯 Target Beta: `0.91x`" in embed["description"]
     assert "Bayesian Regime:** ⚖️ `MID_CYCLE`" in embed["description"]
     assert "Entropy:** `0.170`" in embed["description"]
