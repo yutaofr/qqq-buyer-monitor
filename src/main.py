@@ -256,15 +256,29 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     from src.output.report import to_json
 
     cloud = CloudPersistenceBridge()
+    import os
+    from pathlib import Path
+    
+    prior_file_path = os.environ.get("PRIOR_STATE_PATH", "data/v13_6_ex_hydrated_prior.json")
     sync_files = [
         "data/signals.db",
         "data/macro_historical_dump.csv",
-        "data/v11_prior_state.json",
+        prior_file_path,
     ]
     if not cloud.pull_state(sync_files):
         raise RuntimeError("Cloud state pull failed; refusing to continue with potentially stale runtime memory.")
 
-    logger.info("Fetching market data…")
+    # v13.7-ULTIMA Cold Start Architecture:
+    # If the prior state file is missing after cloud pull (e.g. true cold start / 404),
+    # we trigger the 8-year deep hydration replay to generate a self-consistent state.
+    if not Path(prior_file_path).exists():
+        logger.warning(f"Prior state {prior_file_path} is missing. Initiating True Cold Start Replay (8-Year Hydration)...")
+        from scripts.v13_sequential_replay import run_replay
+        # Assuming macro data exists locally or was pulled
+        run_replay("data/macro_historical_dump.csv", prior_file_path, "2018-01-01")
+        logger.info("Cold Start Replay complete. Resuming daily pipeline.")
+
+    logger.info("Fetching market data...")
     price_data = fetch_price_data()
     price_history = price_data.get("history")
     qqq_close = float(price_data["price"])
