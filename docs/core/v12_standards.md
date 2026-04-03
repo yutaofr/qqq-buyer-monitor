@@ -1,19 +1,27 @@
-# v12.0 Coding Standards & AC Criteria
+# v13.7-ULTIMA Coding Standards & AC Criteria
 
-> **The "How" - Mandate & Guardrails**
+> **The "How" - Production Mandate & Guardrails**
 
 ## Mandatory AC (Acceptance Criteria)
-Every PR must strictly adhere to:
-- **AC-0 No Hardcoding**: Parameters from `regime_audit.json` only.
-- **AC-1 Causal Isolation**: No look-ahead bias.
-- **AC-2 Decimal Normalize**: Macro levels must be decimal units (0.05, not 5.0).
-- **AC-4 Intent-Action Separation**: Return both `raw_target_beta` and `target_beta`.
-- **AC-6 PIT Compliance**: Manual publication lag simulation for Tier 1-4 data.
-- **AC-8 Factor Orthogonality**: Assign each factor to a specific orthogonal layer.
-- **AC-10 Gram-Schmidt Engine**: Use expanding-window residuals for collinear pairs.
+Every PR must strictly adhere to the following v13.7-ULTIMA standards:
+
+- **AC-0 No Hardcoding**: All weights and parameters must reside in `v13_4_weights_registry.json`.
+- **AC-1 Causal Isolation**: Sequential Causality. T+0 observability only.
+- **AC-4 Intent-Action Separation**: Return `raw_target_beta_pre_floor` vs `target_beta`.
+- **AC-11 Feature Lineage Norm**: Redundant features must share root factor weights (Lineage Partitioning).
+- **AC-12 Physical Redline**: 0.5 Beta Floor is the absolute business boundary.
+- **AC-13 Deep Hydration**: Systems must not initialize with less than 2000 PIT samples.
+- **AC-14 Asymmetric Sharpening**: Use factor-specific Tau mappings defined in the registry.
+
+## Numerical Integrity
+- **Log-Sum-Exp Compliance**: Probabilities must be calculated using log-likelihood summation to prevent overflow.
+- **Epsilon Smoothing**: Harmonic means for quality scoring must include $\epsilon=0.01$ to prevent hard-crashes.
+- **Anti-Drift**: All inputs must pass through PIT-aligned Rolling Z-Score pre-processors.
 
 ## Code Quality
-- **Python 3.12+**.
-- **Ruff Compliance**: 0 warnings or errors from `ruff check .`. Must pass CI linting.
-- **Functional Logic**: Favor pure functions for Bayesian cores.
-- **Numerical Integrity**: Maintain bit-identical parity between research and production.
+- **Docker-Locked**: Compilations and tests must exclusively run via `docker run`.
+- **Ruff Strictness**: 0 warnings allowed for `F (Logic)` and `B (Bugs)` categories.
+- **Spec-to-Code Parity**: Code changes without corresponding SRD updates will be rejected.
+
+---
+© 2026 QQQ Entropy AI Governance.

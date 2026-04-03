@@ -1,103 +1,28 @@
-# v13 Rollout Checklist
+# v13.7-ULTIMA Rollout & Implementation Checklist
 
-**Status**: LOCKED FOR IMPLEMENTATION  
-**Version**: v13.0  
-**Date**: 2026-04-03  
-**Parent Spec**: `V13_EXECUTION_OVERLAY_SRD.md`
+> **Final Verification before Production Merge**
 
----
+## 1. 数值内核对齐 (Numerical Core)
+- [ ] **8-Year Hydration**: 确认已生成 `data/v13_6_ex_hydrated_prior.json` 并包含 2000+ 样本。
+- [ ] **Asymmetric Tau**: 验证 registry 中的 `inference_tau` 设定为 0.5 (Financial) / 0.35 (Macro)。
+- [ ] **Lineage Norm**: 通过 `test_v13_4_inference.py` 验证衍生特征未产生权重溢出。
+- [ ] **Z-Score Warm-up**: 确认回演已使用 2017 年数据预热窗口。
 
-## 1. Pre-Implementation Gate
+## 2. 安全红线校验 (Safety Redlines)
+- [ ] **User Redline**: 验证代码中 `target_beta = max(0.5, ...)` 的硬拦截。
+- [ ] **ULTIMA Breaker**: 模拟 21 天高熵死锁，确认传感器自动切除逻辑触发。
+- [ ] **PIT Check**: 运行 `test_pit_compliance.py` 确保特征工程无未来泄漏。
 
-- confirm v13 scope remains execution-layer only
-- confirm no posterior feature additions
-- confirm all new parameters will live in `src/engine/v13/resources/execution_overlay_audit.json`
-- confirm inherited `BehavioralGuard` boundaries and deployment multipliers remain frozen
+## 3. 全息透明度验证 (Transparency)
+- [ ] **Discord**: 触发 `is_floor_active` 场景，确认标题变色 (#FFA500) 且 Footer 显示 2018 锚点。
+- [ ] **Web UI**: 确认页脚显示 `v13.7-ULTIMA` 且 Beta 数字在锁定态显示为 Amber-400。
+- [ ] **Diagnostics**: 确认 snapshot.json 包含 `v13_4_diagnostics` 贡献度数据。
 
----
-
-## 2. Data Gate
-
-- source admission matrix reviewed and signed off
-- placeholder helpers and proxy fields explicitly excluded
-- frozen archive plan defined for any weekly source
-- provenance and quality fields defined for every admitted raw input
-
----
-
-## 3. Test Gate
-
-- unit tests exist for neutral fallback
-- unit tests exist for monotonic penalty behavior
-- PIT tests exist for weekly publication lag
-- backtest tests exist for `raw_target_beta` invariance
-- snapshot tests exist for overlay decision trace
-
-No production enablement before all test files exist.
+## 4. 基础设施合规 (Infrastructure)
+- [ ] **Docker-Ready**: 全量 `pytest` 在容器内 100% 通过。
+- [ ] **Ruff**: 源码通过逻辑完整性扫描，无未定义引用。
+- [ ] **Registry**: `v13_4_weights_registry.json` 已正确放置在 `resources/` 目录下。
 
 ---
-
-## 4. Shadow Mode Gate
-
-- overlay runs in diagnostics-only mode
-- runtime snapshot exports full overlay block
-- UI exposes overlay diagnostics without action impact
-- `index.html` preserves existing page style while rendering overlay audit data
-- Discord notification remains compact and execution-audit oriented
-- shadow-mode replay matches frozen artifacts
-
----
-
-## 5. Negative-Only Enablement Gate
-
-- holdout confirms non-regression
-- left-tail execution behavior is neutral or improved
-- no inherited v12.1 interface was retuned
-- rollback switch verified
-
----
-
-## 6. Positive Reward Enablement Gate
-
-- negative-only phase completed successfully
-- positive reward remains limited to incremental deployment pace
-- reward effect is smaller and rarer than penalty effect
-- holdout confirmation repeated after reward enablement
-
----
-
-## 7. Release Gate
-
-- all SRD acceptance criteria passed
-- source matrix, backtest protocol, runtime schema, change log, and test mapping are present
-- acceptance backtests ran with frozen artifacts and no live download path
-- changelog reviewed against v12.1 champion contract
-
----
-
-## 8. Rollback Rule
-
-Immediate rollback is mandatory if any of the following occurs:
-
-- posterior or `raw_target_beta` changes unexpectedly
-- overlay uses a rejected source
-- replay from runtime snapshot fails
-- holdout or live shadow diagnostics contradict acceptance evidence
-
-Rollback action:
-
-1. disable overlay
-2. preserve v12.1 execution path
-3. keep diagnostics enabled only if replay remains valid
-
----
-
-## 9. Test Mapping
-
-| Test ID | Purpose |
-| :--- | :--- |
-| `AC-1` | neutral overlay returns neutral multipliers |
-| `AC-2` | v12.1 posterior and `raw_target_beta` remain unchanged |
-| `AC-10` | diagnostics exist before action enablement |
-| `AC-12` | required document set exists |
-| `AC-16` | inherited interfaces remain frozen |
+**核准**: Gemini CLI (Architect)
+**日期**: 2026-04-03
