@@ -58,9 +58,10 @@ def run_replay(macro_path: str, output_path: str, start_date: str = "2018-01-01"
             pit_data_full["qqq_volume_quality_score"] = 1.0
 
         try:
-            # We pass the full context, daily_run internally uses tail(1) for inference
-            # but needs the preceding rows for Seeder's rolling/expanding Z-calculations.
-            conductor.daily_run(pit_data_full)
+            # daily_run internally loads history from macro_data_path and filters up to current_date.
+            # Passing the full context duplicates rows, breaking rolling/expanding Z-scores.
+            # We must pass ONLY the T0 row.
+            conductor.daily_run(pit_data_full.tail(1))
         except Exception as e:
             logger.error(f"Failed at {current_date}: {e}")
             continue
