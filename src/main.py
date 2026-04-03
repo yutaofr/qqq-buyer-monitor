@@ -437,7 +437,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         current_nav=current_nav,
     )
 
-    runtime = V11Conductor().daily_run(raw_row)
+    runtime = V11Conductor(prior_state_path=prior_file_path).daily_run(raw_row)
     result = _build_v11_signal_result(runtime, price=float(price_data["price"]))
 
     # 1. Export Web Snapshot Locally (Production Baseline)
