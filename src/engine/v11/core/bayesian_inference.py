@@ -128,7 +128,7 @@ class BayesianInferenceEngine:
             posteriors = {k: (1 - m) * runtime.get(k, 0.0) + m * v for k, v in raw_evidence_dist.items()}
 
             diagnostics = {
-                "effective_weights": dict(zip(feature_names, effective_weights.tolist())),
+                "effective_weights": dict(zip(feature_names, effective_weights.tolist(), strict=True)),
                 "total_weight": total_weight_sum,
                 "tau_applied": base_tau,
                 "m_applied": m,
