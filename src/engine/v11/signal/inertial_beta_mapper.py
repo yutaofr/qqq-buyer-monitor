@@ -3,7 +3,7 @@ class InertialBetaMapper:
     """
     v13.6-EX Second-Order Kinetic Smoothing.
     Responsibility: Information-Theoretic Path Stabilization.
-    Eliminates "Sawtooth" oscillations near physical floors using 
+    Eliminates "Sawtooth" oscillations near physical floors using
     entropy-damped velocity and momentum.
     """
     def __init__(self, initial_beta: float | None = 1.0, initial_evidence: float = 0.0):
