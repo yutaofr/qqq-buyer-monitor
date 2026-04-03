@@ -283,7 +283,6 @@ class V11Conductor:
                 evidence_frame=latest_vector,
                 runtime_priors=active_priors,
                 feature_weights=feature_weights,
-                is_cold_start=(prior_details.get("posterior_weight", 1.0) == 0.0),
             )
             if any(np.isnan(list(posteriors.values()))):
                 logger.warning("Bayesian Inference produced NaNs after attenuation. Falling back to priors.")

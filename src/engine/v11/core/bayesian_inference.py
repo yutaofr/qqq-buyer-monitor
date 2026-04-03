@@ -21,7 +21,7 @@ class BayesianInferenceEngine:
                 try:
                     log_lh = self.kde_models[regime].score_samples(X)[0]
                     likelihood = np.exp(log_lh)
-                except Exception as e:
+                except Exception:
                     likelihood = 1e-9
             else:
                 likelihood = 1e-9
@@ -49,7 +49,8 @@ class BayesianInferenceEngine:
         x = np.asarray(evidence_frame.iloc[0], dtype=float)
         weights = np.array([float((feature_weights or {}).get(name, 1.0)) for name in feature_names], dtype=float)
         runtime = self._normalize(runtime_priors or self.base_priors)
-        if not runtime: runtime = self._normalize(self.base_priors)
+        if not runtime:
+            runtime = self._normalize(self.base_priors)
 
         eps = 1e-12
         raw_log_lhs = {}
@@ -72,7 +73,8 @@ class BayesianInferenceEngine:
         runtime = self._normalize(runtime_priors or self.base_priors)
         posterior = self._normalize(classifier_posteriors)
         train = self._normalize(training_priors)
-        if not posterior: return runtime
+        if not posterior:
+            return runtime
         regimes = sorted(set(runtime) | set(posterior) | set(train))
         eps = 1e-12
         adjusted = {r: posterior.get(r, 0.0) * runtime.get(r, 0.0) / max(train.get(r, 0.0), eps) for r in regimes}
@@ -80,8 +82,10 @@ class BayesianInferenceEngine:
 
     @staticmethod
     def _normalize(weights: dict[str, float] | None) -> dict[str, float]:
-        if not weights: return {}
+        if not weights:
+            return {}
         sanitized = {str(k): max(0.0, float(v)) for k, v in weights.items()}
         total = float(sum(sanitized.values()))
-        if total <= 0: return {k: 1.0 / len(sanitized) for k in sanitized}
+        if total <= 0:
+            return {k: 1.0 / len(sanitized) for k in sanitized}
         return {k: v / total for k, v in sanitized.items()}
