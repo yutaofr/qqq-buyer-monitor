@@ -256,8 +256,6 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     from src.output.report import to_json
 
     cloud = CloudPersistenceBridge()
-    import os
-    from pathlib import Path
     
     prior_file_path = os.environ.get("PRIOR_STATE_PATH", "data/v13_6_ex_hydrated_prior.json")
     sync_files = [
