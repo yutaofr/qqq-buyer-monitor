@@ -51,7 +51,7 @@ class V11Conductor:
         macro_data_path: str = "data/macro_historical_dump.csv",
         regime_data_path: str = "data/v11_poc_phase1_results.csv",
         audit_path: str = "src/engine/v11/resources/regime_audit.json",
-        prior_state_path: str = "data/v11_prior_state.json",
+        prior_state_path: str = "data/v13_6_ex_hydrated_prior.json",
         snapshot_dir: str = "artifacts/v12_runtime_snapshots",
         initial_model: GaussianNB | None = None,
         overlay_mode: str | None = None,

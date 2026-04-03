@@ -42,6 +42,8 @@ jobs:
           # v13.7-ULTIMA Mandatory Prior Anchoring
           PRIOR_STATE_PATH: "data/v13_6_ex_hydrated_prior.json"
           ULTIMA_MODE: "GOLD-FINAL"
+          GITHUB_ACTIONS: "true"
+          GITHUB_REF_NAME: ${{ github.ref_name }}
         run: |
           docker run --rm \
             -e ALERT_WEBHOOK_URL=$ALERT_WEBHOOK_URL \
@@ -49,7 +51,10 @@ jobs:
             -e VERCEL_BLOB_READ_WRITE_TOKEN=$VERCEL_BLOB_READ_WRITE_TOKEN \
             -e PRIOR_STATE_PATH=$PRIOR_STATE_PATH \
             -e ULTIMA_MODE=$ULTIMA_MODE \
+            -e GITHUB_ACTIONS=$GITHUB_ACTIONS \
+            -e GITHUB_REF_NAME=$GITHUB_REF_NAME \
             -v $(pwd)/artifacts:/app/artifacts \
+            -v $(pwd)/data:/app/data \
             qqq-monitor:latest ${{ inputs.command }}
 
       - name: Notify on Failure
