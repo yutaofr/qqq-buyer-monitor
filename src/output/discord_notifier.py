@@ -58,7 +58,7 @@ def _discord_timestamp(value: object) -> str:
 
 
 def build_discord_payload(result: SignalResult) -> dict:
-    """Build a Discord payload for v13.4 probabilistic signals with full transparency."""
+    """Build a Discord payload for v13.7-ULTIMA signals with full transparency."""
     display_regime = canonicalize_regime_name(result.stable_regime) or result.stable_regime
     color = REGIME_COLORS.get(display_regime, COLOR_DEFAULT)
     macro_emoji = _get_regime_emoji(display_regime)
@@ -74,7 +74,7 @@ def build_discord_payload(result: SignalResult) -> dict:
     raw_regime = canonicalize_regime_name(metadata.get("raw_regime", display_regime)) or display_regime
 
     if is_floor_active:
-        color = COLOR_STRESS # Amber/Orange for Floor trigger
+        color = COLOR_STRESS
 
     probabilities = merge_regime_weights(
         result.probabilities,
@@ -93,6 +93,7 @@ def build_discord_payload(result: SignalResult) -> dict:
     if lock_active:
         color = COLOR_LOCKED
 
+    # Local definitions for fields to satisfy Ruff F821
     protected_beta = metadata.get("protected_beta", result.target_beta)
     overlay_beta = metadata.get("overlay_beta", result.target_beta)
     overlay_mode = str(metadata.get("overlay_mode", "FULL"))

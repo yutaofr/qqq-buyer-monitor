@@ -104,7 +104,7 @@ class V11Conductor:
         # SRD-v13.4: Load Weight Registry and Quality Transfer Function
         registry_path = Path(__file__).parent / "resources" / "v13_4_weights_registry.json"
         if registry_path.exists():
-            with open(registry_path, "r") as f:
+            with open(registry_path) as f:
                 self.v13_4_registry = json.load(f)
             logger.info("V13.4 Weight Registry established.")
         else:
@@ -590,7 +590,7 @@ class V11Conductor:
         degraded_present = False
         missing_present = False
 
-        for field_name, (value_key, source_key, quality_key) in field_specs.items():
+        for field_name, (value_key, source_key, _quality_key) in field_specs.items():
             raw_value = latest_raw.get(value_key)
             numeric_value = pd.to_numeric(pd.Series([raw_value]), errors="coerce").iloc[0]
             available = bool(pd.notna(numeric_value) and np.isfinite(float(numeric_value)))
