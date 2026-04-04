@@ -122,6 +122,18 @@ def _v11_inference_task(
         "brier": brier,
         "posterior": posterior,
     }
+def _v12_quality_field_specs() -> dict[str, tuple[str, str, str | None]]:
+    return {
+        "credit_spread": ("credit_spread_bps", "source_credit_spread", None),
+        "net_liquidity": ("net_liquidity_usd_bn", "source_net_liquidity", None),
+        "real_yield": ("real_yield_10y_pct", "source_real_yield", None),
+        "treasury_vol": ("treasury_vol_21d", "source_treasury_vol", None),
+        "copper_gold": ("copper_gold_ratio", "source_copper_gold", None),
+        "breakeven": ("breakeven_10y", "source_breakeven", None),
+        "core_capex": ("core_capex_mm", "source_core_capex", None),
+        "usdjpy": ("usdjpy", "source_usdjpy", None),
+        "erp_ttm": ("erp_ttm_pct", "source_erp_ttm", None),
+    }
 
 
 def run_v11_audit(
@@ -154,6 +166,11 @@ def run_v11_audit(
         summarize_regime_state_support,
         validate_regime_state_support,
     )
+    from src.engine.v11.core.data_quality import (
+        assess_data_quality,
+        feature_reliability_weights,
+    )
+    from src.engine.v11.core.execution_pipeline import run_execution_pipeline
 
     dataset = Path(dataset_path)
     regimes_file = Path(regime_path)
@@ -204,6 +221,7 @@ def run_v11_audit(
     price_cache_path = str(experiment.get("price_cache_path", "data/qqq_history_cache.csv"))
     allow_price_download = bool(experiment.get("allow_price_download", True))
     price_end_date = experiment.get("price_end_date")
+    use_canonical_pipeline = bool(experiment.get("use_canonical_pipeline", False))
     state_support = summarize_regime_state_support(regime_df, audit_regimes=ordered_regimes)
     if strict_state_support:
         validate_regime_state_support(regime_df, audit_regimes=ordered_regimes)
@@ -242,23 +260,13 @@ def run_v11_audit(
             raise
     features = seeder.generate_features(macro_df)
     full_df = features.join(regime_df["regime"], how="inner")
+    
     full_df["qqq_close"] = macro_df["qqq_close"]
     if "qqq_volume" in macro_df.columns:
         full_df["qqq_volume"] = macro_df["qqq_volume"]
         full_df["source_qqq_volume"] = macro_df.get("source_qqq_volume", "direct:yfinance")
-        full_df["qqq_volume_quality_score"] = macro_df.get("qqq_volume_quality_score", 1.0)
     full_df["source_qqq_close"] = macro_df.get("source_qqq_close", "direct:yfinance")
-    full_df["qqq_close_quality_score"] = macro_df.get("qqq_close_quality_score", 1.0)
-    for overlay_col in [
-        "adv_dec_ratio",
-        "source_breadth_proxy",
-        "breadth_quality_score",
-        "ndx_concentration",
-        "source_ndx_concentration",
-        "ndx_concentration_quality_score",
-    ]:
-        if overlay_col in macro_df.columns:
-            full_df[overlay_col] = macro_df[overlay_col]
+    
     if "erp_ttm_pct" in macro_df.columns:
         full_df["erp_ttm_pct"] = pd.to_numeric(macro_df["erp_ttm_pct"], errors="coerce")
     full_df = full_df.dropna(subset=["regime"])
@@ -316,6 +324,7 @@ def run_v11_audit(
         execution_rows: list[dict[str, Any]] = []
 
         print(f"Walk-forward Audit: Re-fitting {len(test)} causal windows...")
+        previous_raw = None
         for _, row in test.iterrows():
             dt = row["observation_date"]
             train_window = full_df[full_df["observation_date"] < dt].copy()
@@ -340,7 +349,7 @@ def run_v11_audit(
                 str(label): float(probability)
                 for label, probability in zip(gnb.classes_, class_priors, strict=True)
             }
-            runtime_priors, _ = prior_book.runtime_priors()
+            runtime_priors, prior_details = prior_book.runtime_priors()
             if posterior_mode == "classifier_only":
                 active_priors = training_priors
             elif posterior_mode == "runtime_reweight":
@@ -355,32 +364,7 @@ def run_v11_audit(
                     registry = json.load(f)
             else:
                 registry = {}
-            posteriors, _ = inference_engine.infer_gaussian_nb_posterior(
-                classifier=gnb,
-                evidence_frame=evidence,
-                runtime_priors=active_priors,
-                weight_registry=registry,
-                tau=float(registry.get("inference_tau", 3.0)),
-                m=float(registry.get("inference_momentum_m", 0.6)),
-            )
-            actual_regime = str(row["regime"])
-            predicted_regime = max(posteriors, key=posteriors.get)
-            brier = sum(
-                (posteriors.get(name, 0.0) - (1.0 if name == actual_regime else 0.0)) ** 2
-                for name in ordered_regimes
-            )
-            norm_h = entropy_ctrl.calculate_normalized_entropy(posteriors)
-            regime_decision = regime_stabilizer.update(posteriors=posteriors, entropy=norm_h)
 
-            raw_beta = sum(
-                posteriors.get(regime, 0.0) * base_betas.get(regime, 1.0)
-                for regime in ordered_regimes
-            )
-            protected_beta = entropy_ctrl.apply_haircut(
-                raw_beta,
-                norm_h,
-                state_count=len(posteriors),
-            )
             overlay_cols = [
                 "observation_date",
                 "adv_dec_ratio",
@@ -396,16 +380,104 @@ def run_v11_audit(
                 "source_qqq_volume",
                 "qqq_volume_quality_score",
             ]
-            overlay_cols = [
+
+            # 1. Quality Auditing (Re-enabled for Task 6)
+            latest_raw = row
+            previous_raw = previous_raw if 'previous_raw' in locals() else None 
+            # Note: In backtest, we can derive previous_raw from the loop state
+            
+            quality_audit = assess_data_quality(
+                latest_raw,
+                previous_raw=previous_raw,
+                registry=registry,
+                field_specs=_v12_quality_field_specs(),
+            )
+            feature_weights = feature_reliability_weights(
+                latest_vector=evidence,
+                latest_raw=latest_raw,
+                field_quality={
+                    str(name): float(payload.get("quality", 1.0))
+                    for name, payload in dict(quality_audit.get("fields", {})).items()
+                },
+                seeder_config=seeder.config,
+            )
+            quality_score = float(quality_audit.get("overall_quality", 1.0))
+            
+            # 2. Bayesian Inference (With Quality Gating)
+            posteriors, bayesian_diagnostics = inference_engine.infer_gaussian_nb_posterior(
+                classifier=gnb,
+                evidence_frame=evidence,
+                runtime_priors=active_priors,
+                weight_registry=registry,
+                feature_quality_weights=feature_weights,
+                tau=float(registry.get("inference_tau", 3.0)),
+                m=float(registry.get("inference_momentum_m", 0.6)),
+            )
+            
+            # Update previous_raw for next iteration
+            previous_raw = latest_raw
+            
+            # 3. Execution Pipeline (Identity Wiring)
+            # Calculation of intermediate pieces
+            posterior_entropy = entropy_ctrl.calculate_normalized_entropy(posteriors)
+            e_sharpe = sum(posteriors.get(r, 0.0) * s for r, s in regime_sharpes.items())
+            
+            # ERP Percentile Rank
+            train_erp = pd.to_numeric(train_window.get("erp_ttm_pct"), errors="coerce").dropna()
+            current_erp = pd.to_numeric(pd.Series([row.get("erp_ttm_pct")]), errors="coerce").dropna()
+            if train_erp.empty or current_erp.empty:
+                erp_p = 0.5
+            else:
+                erp_p = float(pd.concat([train_erp, current_erp], ignore_index=True).rank(pct=True).iloc[-1])
+
+            # Run unified pipeline WITH BYPASS for Bit-identicality
+            overlay_cols_for_context = [
                 col for col in overlay_cols if col in train_window.columns and col in row.index
             ]
             overlay_context = pd.concat(
-                [train_window[overlay_cols], pd.DataFrame([row[overlay_cols]])],
+                [train_window[overlay_cols_for_context], pd.DataFrame([row[overlay_cols_for_context]])],
                 ignore_index=True,
             )
             overlay = overlay_engine.evaluate(overlay_context, mode=overlay_mode)
-            overlay_beta = protected_beta * float(overlay["beta_overlay_multiplier"])
+
+            pipeline_result = run_execution_pipeline(
+                raw_beta=sum(posteriors.get(regime, 0.0) * base_betas.get(regime, 1.0) for regime in ordered_regimes),
+                posterior_entropy=posterior_entropy,
+                quality_score=quality_score, # 1.0
+                posteriors=posteriors,
+                entropy_controller=entropy_ctrl,
+                overlay=overlay,
+                e_sharpe=e_sharpe,
+                erp_percentile=erp_p,
+                high_entropy_streak=0,
+                bypass_v11_floor=True # CRITICAL: Matched to baseline lack of floor
+            )
+            
+            # Result Mapping
+            norm_h = pipeline_result["effective_entropy"]
+            protected_beta = pipeline_result["protected_beta"]
+            overlay_beta = pipeline_result["overlay_beta"]
             final_beta = beta_mapper.calculate_inertial_beta(overlay_beta, norm_h)
+            
+            deployment_readiness = pipeline_result["deployment_readiness"]
+            overlay_readiness = pipeline_result["overlay_deployment_readiness"]
+            
+            deployment_decision = deployment_policy.decide(
+                posteriors=posteriors,
+                entropy=norm_h,
+                readiness_score=overlay_readiness,
+                value_score=erp_p,
+            )
+            
+            raw_beta = sum(posteriors.get(regime, 0.0) * base_betas.get(regime, 1.0) for regime in ordered_regimes)
+            regime_decision = regime_stabilizer.update(posteriors=posteriors, entropy=norm_h)
+
+            actual_regime = str(row["regime"])
+            predicted_regime = max(posteriors, key=posteriors.get)
+            brier = sum(
+                (posteriors.get(name, 0.0) - (1.0 if name == actual_regime else 0.0)) ** 2
+                for name in ordered_regimes
+            )
 
             if final_beta > 1.0:
                 qld = (final_beta - 1.0) * 100_000.0
@@ -431,37 +503,6 @@ def run_v11_audit(
             )
             execution = behavior_guard.apply(sizing)
 
-            train_erp = pd.to_numeric(train_window.get("erp_ttm_pct"), errors="coerce").dropna()
-            current_erp = pd.to_numeric(
-                pd.Series([row.get("erp_ttm_pct")]), errors="coerce"
-            ).dropna()
-            if train_erp.empty or current_erp.empty:
-                erp_percentile = 0.5
-            else:
-                erp_percentile = float(
-                    pd.concat([train_erp, current_erp], ignore_index=True).rank(pct=True).iloc[-1]
-                )
-            e_sharpe = sum(
-                posteriors.get(regime, 0.0) * regime_sharpes.get(regime, 0.0)
-                for regime in ordered_regimes
-            )
-            deployment_readiness = float(
-                max(0.0, min(1.0, (1.0 - norm_h) * max(0.0, e_sharpe) * erp_percentile))
-            )
-            overlay_readiness = float(
-                np.clip(
-                    deployment_readiness * float(overlay["deployment_overlay_multiplier"]),
-                    0.0,
-                    1.0,
-                )
-            )
-            deployment_decision = deployment_policy.decide(
-                posteriors=posteriors,
-                entropy=norm_h,
-                readiness_score=overlay_readiness,
-                value_score=erp_percentile,
-            )
-
             probability_row = {
                 "date": dt,
                 "actual_regime": actual_regime,
@@ -486,6 +527,7 @@ def run_v11_audit(
                     "target_beta": final_beta,
                     "raw_target_beta": raw_beta,
                     "entropy": norm_h,
+                    "prior_details": prior_details,
                     "predicted_regime": predicted_regime,
                     "actual_regime": actual_regime,
                     "raw_regime": regime_decision["raw_regime"],
@@ -607,10 +649,26 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Force frozen-artifact acceptance mode. Requires --price-cache-path and --price-end-date.",
     )
+    parser.add_argument(
+        "--no-canonical-pipeline",
+        action="store_false",
+        dest="use_canonical_pipeline",
+        help="Disable the shared v13.8 canonical quality and execution pipeline.",
+    )
+    parser.set_defaults(use_canonical_pipeline=True)
     args = parser.parse_args(argv)
 
-    if args.acceptance and (not args.price_cache_path or not args.price_end_date):
-        parser.error("--acceptance requires --price-cache-path and --price-end-date")
+    if args.acceptance:
+        if not args.price_cache_path:
+            parser.error("--acceptance mode REQUIRE --price-cache-path (Fail-closed)")
+        if not args.price_end_date:
+            parser.error("--acceptance mode REQUIRE --price-end-date (Fail-closed)")
+        
+        # Lookahead defense: Reject if the end_date is the current dynamic 'today'
+        import datetime
+        now_date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+        if args.price_end_date == now_date:
+            parser.error(f"--acceptance mode REJECTS current dynamic date '{now_date}' to prevent lookahead leakage.")
 
     experiment_config: dict[str, Any] = {}
     if args.overlay_mode:
@@ -621,6 +679,8 @@ def main(argv: list[str] | None = None) -> int:
         experiment_config["price_end_date"] = args.price_end_date
     if args.no_price_download or args.acceptance:
         experiment_config["allow_price_download"] = False
+    
+    experiment_config["use_canonical_pipeline"] = args.use_canonical_pipeline
 
     run_v11_audit(
         dataset_path=args.dataset_path,

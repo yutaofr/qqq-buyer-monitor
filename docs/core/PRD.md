@@ -1,12 +1,13 @@
-# PRD: QQQ Bayesian Orthogonal Allocation Engine (v13.7-ULTIMA)
+# PRD: QQQ Bayesian Orthogonal Allocation Engine (v13.8-ULTIMA)
 
-> **Status**: Production Baseline (Sealed)
-> **Version**: v13.7-ULTIMA
-> **Date**: 2026-04-03
+> **Status**: v13.8 Industrial Acceptance State (Sealed)
+> **Disclaimer**: Real-money deployment is strictly contingent on the empirical verification results in `calibration_report.json`.
+> **Version**: v13.8-ULTIMA
+> **Date**: 2026-04-04
 
 ## 1. 产品定义
 
-`qqq-monitor` 已进化为基于**实体增强型贝叶斯推断**的资产配置决策中枢。它通过对 8 年以上（2018-2026）宏观 DNA 的深度预热（Deep Hydration），利用 12 因子正交矩阵量化市场重力与流动性，自动生成 `目标 Beta` 建议。
+`qqq-monitor` 已进化为基于**实体增强型贝叶斯推断**的资产配置决策模型。它通过对 8 年以上（2018-2026）宏观 DNA 的深度预热（Deep Hydration），利用 12 因子正交矩阵量化市场重力与流动性，自动生成 `目标 Beta` 建议。其有效性仅限于 `calibration_report.json` 所校验的特定正交空间。
 
 核心原则：
 - **物理传导优先**：因子权重由霍华德·马克斯周期论驱动，而非统计最优化。

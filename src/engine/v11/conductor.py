@@ -25,6 +25,12 @@ from src.regime_topology import (
     canonicalize_regime_sequence,
     merge_regime_weights,
 )
+from src.engine.v11.core.data_quality import (
+    apply_data_quality_penalty,
+    assess_data_quality,
+    feature_reliability_weights,
+)
+from src.engine.v11.core.execution_pipeline import run_execution_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -293,11 +299,20 @@ class V11Conductor:
         latest_vector = features.iloc[-1:]
         runtime_priors, prior_details = self.prior_book.runtime_priors()
         latest_raw = raw_t0_data.iloc[-1]
-        quality_audit = self._assess_data_quality(latest_raw, previous_raw=previous_raw)
-        feature_weights = self._feature_reliability_weights(
+        quality_audit = assess_data_quality(
+            latest_raw,
+            previous_raw=previous_raw,
+            registry=self.v13_4_registry,
+            field_specs=_v12_quality_field_specs(),
+        )
+        feature_weights = feature_reliability_weights(
             latest_vector=latest_vector,
             latest_raw=latest_raw,
-            quality_audit=quality_audit,
+            field_quality={
+                str(name): float(payload.get("quality", 1.0))
+                for name, payload in dict(quality_audit.get("fields", {})).items()
+            },
+            seeder_config=self.seeder.config,
         )
 
         logger.info("Model Inference: Initiating GaussianNB probabilities with current priors...")
@@ -359,6 +374,7 @@ class V11Conductor:
                 evidence_frame=latest_vector,
                 runtime_priors=active_priors,
                 weight_registry=active_registry,
+                feature_quality_weights=feature_weights, # Task 6: External quality signals
                 tau=registry_tau,
                 m=registry_m,
             )
@@ -372,10 +388,45 @@ class V11Conductor:
             bayesian_diagnostics = {"level_contributions": {}}
 
         posterior_entropy = self.entropy_ctrl.calculate_normalized_entropy(posteriors)
-        norm_h = self._apply_data_quality_penalty(
+        
+        # 3. Execution Pipeline (v13.8 Unified)
+        # Goal: Decouple risk-haircut, floor/overlay logic, and deployment readiness.
+        # Parameters derived from self.audit_data (Structural Consistency).
+        e_sharpe = sum(posteriors.get(r, 0.0) * s for r, s in self.regime_sharpes.items())
+        erp_percentile = self._resolve_erp_percentile(context_df, raw_t0_data)
+        
+        # Use canonical sorting for probabilities to prevent index shift hallucinations
+        posteriors = {r: float(posteriors[r]) for r in ACTIVE_REGIME_ORDER if r in posteriors}
+
+        raw_beta_expectation = sum(
+            posteriors.get(regime, 0.0) * self.base_betas.get(regime, 1.0)
+            for regime in self.base_betas.keys()
+        )
+
+        # SRD-v13.4: Evaluate Overlay BEFORE Pipeline to support Conditional Floor
+        overlay = self.overlay_engine.evaluate(context_df.reset_index(), mode=self.overlay_mode)
+
+        pipeline_result = run_execution_pipeline(
+            raw_beta=raw_beta_expectation,
             posterior_entropy=posterior_entropy,
             quality_score=float(quality_audit["quality_score"]),
+            posteriors=posteriors,
+            entropy_controller=self.entropy_ctrl,
+            overlay=overlay,
+            e_sharpe=e_sharpe,
+            erp_percentile=erp_percentile,
+            high_entropy_streak=self.high_entropy_streak
         )
+        
+        norm_h = pipeline_result["effective_entropy"]
+        pre_floor_beta = pipeline_result["pre_floor_beta"]
+        protected_beta = pipeline_result["protected_beta"]
+        is_floor_active = pipeline_result["is_floor_active"]
+        overlay_beta = pipeline_result["overlay_beta"]
+        deployment_readiness = pipeline_result["deployment_readiness"]
+        overlay_deployment_readiness = pipeline_result["overlay_deployment_readiness"]
+        self.high_entropy_streak = pipeline_result["high_entropy_streak"]
+
         quality_audit["posterior_entropy"] = posterior_entropy
         quality_audit["effective_entropy"] = norm_h
         quality_audit["entropy_penalty"] = max(0.0, norm_h - posterior_entropy)
@@ -386,14 +437,6 @@ class V11Conductor:
         quality_audit["v13_4_diagnostics"] = bayesian_diagnostics
 
         # 3. Probabilistic Exposure Mapping (v13.5-GOLD)
-        # Use canonical sorting for probabilities to prevent index shift hallucinations
-        posteriors = {r: float(posteriors[r]) for r in ACTIVE_REGIME_ORDER if r in posteriors}
-
-        raw_beta_expectation = sum(
-            posteriors.get(regime, 0.0) * self.base_betas.get(regime, 1.0)
-            for regime in self.base_betas.keys()
-        )
-
         # SRD-v13.5-GOLD: Precision Stabilizer Update
         regime_decision = self.regime_stabilizer.update(posteriors=posteriors, entropy=norm_h)
 
@@ -406,51 +449,11 @@ class V11Conductor:
                 f"High Entropy Conflict Audit (Top Regime={top_regime}): Lowest Contribs: {sorted_contribs[:3]}"
             )
 
-        # Apply Information-Theoretic Haircut (v13.5-GOLD: Damped exp(-0.6*H^2))
-        pre_floor_beta = self.entropy_ctrl.apply_haircut(
-            raw_beta_expectation,
-            norm_h,
-            state_count=len(posteriors),
-        )
-
-        # SRD-v13.4: Evaluate Overlay BEFORE Floor to support Conditional Floor (FR-4.1)
-        overlay = self.overlay_engine.evaluate(context_df.reset_index(), mode=self.overlay_mode)
-
-        # SRD-v13.4+: Beta Floor Protection (FR-4)
-        # USER REDLINE: Minimum recommended target beta MUST NOT fall below 0.5.
-        beta_floor = 0.5
-
-        if overlay.get("overlay_state") in ("CRASH", "LIQUIDITY_SHOCK"):
-            beta_floor = 0.0
-
-        protected_beta = max(beta_floor, pre_floor_beta)
-        is_floor_active = bool(protected_beta > pre_floor_beta and protected_beta == beta_floor)
-
-        overlay_beta = protected_beta * float(overlay["beta_overlay_multiplier"])
-
         # 4. Continuous Beta Surface with cross-run inertia (SRD: Floor is input to smoothing)
         final_beta = self.beta_mapper.calculate_inertial_beta(overlay_beta, norm_h)
 
         # 5. Bayesian Kelly Entry (v11.14 -> v11.15)
-        # Goal: Optimize for Risk-Adjusted Expectation.
-        # Uses Audit-Derived Regime Sharpe Ratios (Win Rate * Odds).
-        erp_percentile = self._resolve_erp_percentile(context_df, raw_t0_data)
-
-        # Bayesian Expected Sharpe (Win-Rate * Odds)
-        # Parameters derived from self.audit_data (Structural Consistency).
-        e_sharpe = sum(posteriors.get(r, 0.0) * s for r, s in self.regime_sharpes.items())
-
         # CDR = Information Clarity * Positive Expectation * Structural Value
-        deployment_readiness = float(
-            np.clip((1.0 - norm_h) * max(0.0, e_sharpe) * erp_percentile, 0.0, 1.0)
-        )
-        overlay_deployment_readiness = float(
-            np.clip(
-                deployment_readiness * float(overlay["deployment_overlay_multiplier"]),
-                0.0,
-                1.0,
-            )
-        )
         deployment_decision = self.deployment_policy.decide(
             posteriors=posteriors,
             entropy=norm_h,
@@ -598,210 +601,6 @@ class V11Conductor:
 
         return runtime_result
 
-    @staticmethod
-    def _apply_data_quality_penalty(*, posterior_entropy: float, quality_score: float) -> float:
-        h = float(np.clip(posterior_entropy, 0.0, 1.0))
-        q = float(np.clip(quality_score, 0.0, 1.0))
-        return 1.0 - ((1.0 - h) * q)
-
-    def _assess_data_quality(
-        self,
-        latest_raw: pd.Series,
-        *,
-        previous_raw: pd.Series | None = None,
-    ) -> dict[str, object]:
-        """v13.4 Tiered Quality Scoring: Core Veto + Support Robustness."""
-        field_specs = _v12_quality_field_specs()
-
-        # SRD-v13.4: Technical Registry from config
-        weights_matrix = self.v13_4_registry.get("feature_weight_matrix", {})
-        q_transfer = self.v13_4_registry.get("quality_transfer_function", {})
-
-        # AC-0 Fix: Load Core (Veto) fields from registry, fallback to credit_spread
-        core_fields = set(self.v13_4_registry.get("core_fields", ["credit_spread"]))
-
-        fields: dict[str, dict[str, object]] = {}
-        quality_values: dict[str, float] = {}
-        degraded_present = False
-        missing_present = False
-
-        for field_name, (value_key, source_key, _quality_key) in field_specs.items():
-            raw_value = latest_raw.get(value_key)
-            numeric_value = pd.to_numeric(pd.Series([raw_value]), errors="coerce").iloc[0]
-            available = bool(pd.notna(numeric_value) and np.isfinite(float(numeric_value)))
-            source = (
-                self._normalize_source_marker(latest_raw.get(source_key))
-                if source_key
-                else "direct"
-            )
-
-            # SRD-v13.4: Quality Transfer Function Implementation
-            if not available:
-                field_quality = 0.0
-            elif source == "direct":
-                field_quality = float(q_transfer.get("direct", 1.0))
-            else:
-                # Find best matching prefix in q_transfer
-                matched_q = 1.0
-                found = False
-                for prefix, q_val in q_transfer.items():
-                    if prefix.endswith(":") and source.startswith(prefix):
-                        matched_q = float(q_val)
-                        found = True
-                        break
-                if not found:
-                    # Fallback for generic sources
-                    matched_q = float(q_transfer.get(source, 1.0))
-                field_quality = matched_q
-
-            degraded = field_quality < 1.0 and available
-            degraded_present = degraded_present or degraded
-            missing_present = missing_present or not available
-            quality_values[field_name] = field_quality
-
-            fields[field_name] = {
-                "available": available,
-                "source": source,
-                "degraded": degraded,
-                "quality": field_quality,
-            }
-
-        # SRD-v13.4: FR-3.1 Tiered Calculation
-        # 1. Level 1 (Core) - Smoothed Harmonic Mean
-        epsilon = 0.01
-        core_qs = [quality_values[f] for f in core_fields if f in quality_values]
-        if core_qs:
-            q_core = len(core_qs) / sum(1.0 / (max(0.0, q) + epsilon) for q in core_qs)
-        else:
-            q_core = 1.0
-
-        # 2. Level 2-5 (Support) - Weighted Arithmetic Mean
-        support_q_pairs = []
-        for f, q in quality_values.items():
-            if f not in core_fields:
-                w = float(weights_matrix.get(f, 1.0))
-                support_q_pairs.append((q, w))
-
-        if support_q_pairs:
-            total_w = sum(w for _, w in support_q_pairs)
-            q_support = sum(q * w for q, w in support_q_pairs) / total_w
-        else:
-            q_support = 1.0
-
-        quality_score = float(np.clip(q_core * q_support, 0.0, 1.0))
-
-        source_switch = self._detect_source_switch(latest_raw, previous_raw=previous_raw)
-        if source_switch["detected"]:
-            reason = "SOURCE_SWITCH"
-        elif q_core < 0.15:  # SRD: Significant Core Degradation
-            reason = "CORE_SENSOR_FAILURE"
-        elif degraded_present:
-            reason = "DEGRADED_SOURCE"
-        elif missing_present:
-            reason = "SENSOR_DEGRADATION"
-        else:
-            reason = "V13_PROBABILISTIC_OPTIMAL"
-
-        return {
-            "quality_score": quality_score,
-            "reason": reason,
-            "fields": fields,
-            "source_switch": source_switch,
-            "q_core": q_core,
-            "q_support": q_support,
-        }
-
-    @staticmethod
-    def _normalize_source_marker(raw_source: object) -> str:
-        if raw_source is None or pd.isna(raw_source):
-            return "missing:provenance"
-
-        source = str(raw_source).strip()
-        if not source or source.lower() in {"nan", "none", "null"}:
-            return "missing:provenance"
-        return source
-
-    @classmethod
-    def _detect_source_switch(
-        cls,
-        latest_raw: pd.Series,
-        *,
-        previous_raw: pd.Series | None = None,
-    ) -> dict[str, object]:
-        if previous_raw is None:
-            return {
-                "detected": False,
-                "changed_fields": [],
-                "previous_build_version": None,
-                "current_build_version": str(latest_raw.get("build_version", "")) or None,
-            }
-
-        source_fields = {
-            field: source_key for field, (_, source_key, _) in _v12_quality_field_specs().items()
-        }
-
-        changed_fields: list[str] = []
-        for field_name, source_key in source_fields.items():
-            previous_source = cls._normalize_source_marker(previous_raw.get(source_key))
-            current_source = cls._normalize_source_marker(latest_raw.get(source_key))
-            if previous_source and current_source and previous_source != current_source:
-                changed_fields.append(field_name)
-
-        previous_build_version = str(previous_raw.get("build_version", "") or "")
-        current_build_version = str(latest_raw.get("build_version", "") or "")
-        if (
-            previous_build_version
-            and current_build_version
-            and previous_build_version != current_build_version
-        ):
-            changed_fields.append("build_version")
-
-        return {
-            "detected": bool(changed_fields),
-            "changed_fields": sorted(set(changed_fields)),
-            "previous_build_version": previous_build_version or None,
-            "current_build_version": current_build_version or None,
-        }
-
-    def _feature_reliability_weights(
-        self,
-        *,
-        latest_vector: pd.DataFrame,
-        latest_raw: pd.Series,
-        quality_audit: dict[str, object],
-    ) -> dict[str, float]:
-        field_quality = {
-            str(name): float(payload.get("quality", 1.0))
-            for name, payload in dict(quality_audit.get("fields", {})).items()
-        }
-
-        source_to_field = {
-            "credit_spread_bps": "credit_spread",
-            "net_liquidity_usd_bn": "net_liquidity",
-            "real_yield_10y_pct": "real_yield",
-            "treasury_vol_21d": "treasury_vol",
-            "copper_gold_ratio": "copper_gold",
-            "breakeven_10y": "breakeven",
-            "core_capex_mm": "core_capex",
-            "usdjpy": "usdjpy",
-            "erp_ttm_pct": "erp_ttm",
-        }
-
-        weights: dict[str, float] = {}
-        for feature_name in latest_vector.columns:
-            src = self.seeder.config.get(feature_name, {}).get("src")
-            raw_value = latest_raw.get(src)
-            numeric_value = pd.to_numeric(pd.Series([raw_value]), errors="coerce").iloc[0]
-            if pd.isna(numeric_value) or not np.isfinite(float(numeric_value)):
-                weights[str(feature_name)] = 0.0
-                continue
-
-            field_name = source_to_field.get(str(src))
-            weights[str(feature_name)] = float(
-                np.clip(field_quality.get(field_name, 1.0), 0.0, 1.0)
-            )
-
-        return weights
 
     def _write_runtime_snapshot(
         self,

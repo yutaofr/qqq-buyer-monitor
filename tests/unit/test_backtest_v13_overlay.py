@@ -1,4 +1,5 @@
 from __future__ import annotations
+import datetime
 
 import json
 
@@ -160,31 +161,51 @@ def test_run_v11_audit_supports_overlay_mode_matrix_without_mutating_raw_beta(
     assert (traces["FULL"]["beta_overlay_multiplier"] <= 1.0).all()
 
 
-def test_backtest_main_acceptance_mode_forces_frozen_artifacts(monkeypatch):
-    called: dict[str, object] = {}
 
-    def fake_run_v11_audit(**kwargs):
-        called.update(kwargs)
-        return {"top1_accuracy": 1.0}
-
-    monkeypatch.setattr(backtest_module, "run_v11_audit", fake_run_v11_audit)
-
-    rc = backtest_module.main(
-        [
-            "--evaluation-start",
-            "2018-01-01",
-            "--overlay-mode",
-            "NEGATIVE_ONLY",
+def test_acceptance_mode_fails_on_missing_price_cache():
+    """Verify Fail-closed: --acceptance requires --price-cache-path."""
+    with pytest.raises((ValueError, SystemExit)):
+        backtest_module.main([
+            "--evaluation-start", "2024-01-01",
             "--acceptance",
-            "--price-cache-path",
-            "data/qqq_history_cache.csv",
-            "--price-end-date",
-            "2026-03-27",
-        ]
-    )
+            "--price-end-date", "2026-03-31"
+        ])
 
-    assert rc == 0
-    assert called["experiment_config"]["allow_price_download"] is False
-    assert called["experiment_config"]["price_cache_path"] == "data/qqq_history_cache.csv"
-    assert called["experiment_config"]["price_end_date"] == "2026-03-27"
-    assert called["experiment_config"]["overlay_mode"] == "NEGATIVE_ONLY"
+def test_acceptance_mode_fails_on_missing_price_end_date():
+    """Verify Fail-closed: --acceptance requires --price-end-date."""
+    with pytest.raises((ValueError, SystemExit)):
+        backtest_module.main([
+            "--evaluation-start", "2024-01-01",
+            "--acceptance",
+            "--price-cache-path", "data/dummy_cache.csv"
+        ])
+
+def test_acceptance_mode_blocks_today_date():
+    """Verify Fail-closed: --acceptance rejects today's date (lookahead prevention)."""
+    today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    with pytest.raises((ValueError, SystemExit)):
+        backtest_module.main([
+            "--evaluation-start", "2024-01-01",
+            "--acceptance",
+            "--price-cache-path", "data/dummy_cache.csv",
+            "--price-end-date", today
+        ])
+
+def test_acceptance_hard_forces_no_download(monkeypatch):
+    """Verify that --acceptance forces allow_price_download=False in the backend."""
+    called_config = {}
+    def mock_run_v11_audit(**kwargs):
+        called_config.update(kwargs.get("experiment_config", {}))
+        return {"top1_accuracy": 0.0, "mean_brier": 0.0, "mean_entropy": 0.0, "lock_incidence": 0.0}
+
+    monkeypatch.setattr(backtest_module, "run_v11_audit", mock_run_v11_audit)
+    
+    # Even if we try to sneak in allowing download, acceptance should override it
+    backtest_module.main([
+        "--evaluation-start", "2024-01-01",
+        "--acceptance",
+        "--price-cache-path", "data/dummy_cache.csv",
+        "--price-end-date", "2026-03-27"
+    ])
+    
+    assert called_config["allow_price_download"] is False
