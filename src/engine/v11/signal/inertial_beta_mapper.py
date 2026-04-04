@@ -1,4 +1,3 @@
-
 class InertialBetaMapper:
     """
     v13.6-EX Second-Order Kinetic Smoothing.
@@ -6,6 +5,7 @@ class InertialBetaMapper:
     Eliminates "Sawtooth" oscillations near physical floors using
     entropy-damped velocity and momentum.
     """
+
     def __init__(self, initial_beta: float | None = 1.0, initial_evidence: float = 0.0):
         self.current_beta = initial_beta
         self.evidence = initial_evidence
@@ -30,7 +30,7 @@ class InertialBetaMapper:
         # 2. Update Kinetic Evidence
         # Delta acts as "Force", Entropy acts as "Friction"
         delta = target_beta_raw - self.current_beta
-        friction = 1.0 - h # Higher entropy -> Higher friction (Lower responsiveness)
+        friction = 1.0 - h  # Higher entropy -> Higher friction (Lower responsiveness)
 
         # Acceleration term (Force / Friction)
         self.velocity = (self.velocity * 0.5) + (delta * friction)

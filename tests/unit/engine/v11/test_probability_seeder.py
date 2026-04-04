@@ -15,9 +15,13 @@ def sample_macro_df():
     df["treasury_vol_21d"] = 0.004 + np.linspace(0.0, 0.006, len(dates))
     df["breakeven_10y"] = 0.018 + np.sin(np.linspace(0.0, 18.0, len(dates))) * 0.004
     df["core_capex_mm"] = monthly_block
-    df["copper_gold_ratio"] = 0.16 + np.linspace(0.0, 0.05, len(dates)) + rng.normal(0.0, 0.001, len(dates))
+    df["copper_gold_ratio"] = (
+        0.16 + np.linspace(0.0, 0.05, len(dates)) + rng.normal(0.0, 0.001, len(dates))
+    )
     df["usdjpy"] = 110.0 + np.linspace(0.0, 25.0, len(dates)) + rng.normal(0.0, 0.3, len(dates))
-    df["credit_spread_bps"] = 300.0 + np.linspace(0.0, 180.0, len(dates)) + rng.normal(0.0, 4.0, len(dates))
+    df["credit_spread_bps"] = (
+        300.0 + np.linspace(0.0, 180.0, len(dates)) + rng.normal(0.0, 4.0, len(dates))
+    )
     df["net_liquidity_usd_bn"] = 4000.0 + np.linspace(0.0, 250.0, len(dates))
     df["erp_ttm_pct"] = 0.035 + np.sin(np.linspace(0.0, 12.0, len(dates))) * 0.004
     df.index.name = "date"
@@ -141,7 +145,9 @@ def test_seeder_accepts_window_and_clip_overrides(sample_macro_df):
     variant_features = variant.generate_features(sample_macro_df)
 
     assert variant_features.abs().max().max() <= 4.0
-    assert not baseline_features["copper_gold_roc_126d"].equals(variant_features["copper_gold_roc_126d"])
+    assert not baseline_features["copper_gold_roc_126d"].equals(
+        variant_features["copper_gold_roc_126d"]
+    )
     assert baseline.contract_hash() != variant.contract_hash()
 
 

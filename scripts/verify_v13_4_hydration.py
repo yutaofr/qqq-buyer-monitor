@@ -1,4 +1,5 @@
 """Final Verification Script for SRD-v13.4. Checks Entropy and UI metadata."""
+
 import pandas as pd
 
 from src.engine.v11.conductor import V11Conductor
@@ -14,7 +15,7 @@ def verify():
     conductor = V11Conductor(
         macro_data_path=macro_path,
         prior_state_path=hydrated_prior_path,
-        snapshot_dir="/tmp/v13_verification"
+        snapshot_dir="/tmp/v13_verification",
     )
 
     # 2. Get latest market row
@@ -43,7 +44,7 @@ def verify():
 
     # KPI 2: UI Metadata check
     print(f"Hydration Anchor: {runtime['signal'].get('hydration_anchor')}")
-    if runtime['signal'].get('hydration_anchor') == "2018-01-01":
+    if runtime["signal"].get("hydration_anchor") == "2018-01-01":
         print("[PASS] UI Metadata: hydration_anchor is correctly透传.")
     else:
         print("[FAIL] UI Metadata: hydration_anchor missing or incorrect.")
@@ -52,7 +53,7 @@ def verify():
     # target_beta is final_beta (smoothed)
     # protected_beta is pre-smoothing intercept
     print(f"Protected Beta: {runtime['protected_beta']:.2f}")
-    if runtime['protected_beta'] >= 0.5:
+    if runtime["protected_beta"] >= 0.5:
         print("[PASS] Beta Floor (0.5) is enforced.")
     else:
         print("[FAIL] Beta Floor failed to intercept.")
@@ -62,6 +63,7 @@ def verify():
         print("[PASS] Full-Stack Transparency: Contribution data captured.")
     else:
         print("[FAIL] Diagnostics payload missing.")
+
 
 if __name__ == "__main__":
     verify()

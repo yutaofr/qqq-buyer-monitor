@@ -1,4 +1,5 @@
 """Deployment state models for v11 Bayesian Monitor."""
+
 from __future__ import annotations
 
 from enum import StrEnum
@@ -6,10 +7,12 @@ from enum import StrEnum
 
 class DeploymentState(StrEnum):
     """Incremental cash deployment pacing states."""
+
     DEPLOY_FAST = "DEPLOY_FAST"
     DEPLOY_BASE = "DEPLOY_BASE"
     DEPLOY_SLOW = "DEPLOY_SLOW"
     DEPLOY_PAUSE = "DEPLOY_PAUSE"
+
 
 def deployment_multiplier_for_state(state: str | DeploymentState) -> float:
     """Map deployment state to a numerical pacing multiplier."""

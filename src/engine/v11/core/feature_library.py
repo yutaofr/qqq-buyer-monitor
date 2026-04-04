@@ -1,6 +1,7 @@
 """v11 Core: Feature Library Manager.
 Maintains the 25-year historical dataset required for consistent EWMA ranking.
 """
+
 from __future__ import annotations
 
 import logging
@@ -29,7 +30,7 @@ class FeatureLibraryManager:
         self.df = pd.concat([self.df, new_row_df]).drop_duplicates(subset=["observation_date"])
         self.df = self.df.sort_values("observation_date").reset_index(drop=True)
 
-    def get_standardized_features(self, lookback_window: int = 252*20) -> pd.DataFrame:
+    def get_standardized_features(self, lookback_window: int = 252 * 20) -> pd.DataFrame:
         """
         计算所有特征的自适应 EWMA 分位数排名。
         """
@@ -59,7 +60,9 @@ class FeatureLibraryManager:
                     df[feat], lambdas, window=lookback_window
                 )
                 rolling_mean = standardized[f"{feat}_pct"].rolling(60, min_periods=10).mean()
-                rolling_std = standardized[f"{feat}_pct"].rolling(60, min_periods=10).std().replace(0, pd.NA)
+                rolling_std = (
+                    standardized[f"{feat}_pct"].rolling(60, min_periods=10).std().replace(0, pd.NA)
+                )
                 standardized[f"{feat}_momentum"] = (
                     (standardized[f"{feat}_pct"] - rolling_mean) / rolling_std
                 ).fillna(0.0)
@@ -101,9 +104,11 @@ class FeatureLibraryManager:
             pe = pd.to_numeric(df["forward_pe"], errors="coerce")
             yield10y = pd.to_numeric(df["real_yield_10y_pct"], errors="coerce")
             erp = (100.0 / pe) - yield10y
-            df["erp_stress"] = (-erp).fillna(0.0) # Lower ERP = Higher Stress
+            df["erp_stress"] = (-erp).fillna(0.0)  # Lower ERP = Higher Stress
 
         if "funding_stress_flag" in df.columns:
-            df["funding_stress"] = pd.to_numeric(df["funding_stress_flag"], errors="coerce").fillna(0.0)
+            df["funding_stress"] = pd.to_numeric(df["funding_stress_flag"], errors="coerce").fillna(
+                0.0
+            )
 
         return df

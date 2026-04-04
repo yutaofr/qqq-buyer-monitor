@@ -1,4 +1,5 @@
 """Data models for QQQ signal monitor (v11 Bayesian Convergence)."""
+
 from __future__ import annotations
 
 import os
@@ -11,6 +12,7 @@ import numpy as np
 @dataclass(frozen=True)
 class CurrentPortfolioState:
     """Current asset allocation and leverage auditing (Reality)."""
+
     current_cash_pct: float = 1.0
     qqq_pct: float = 0.0
     qld_pct: float = 0.0
@@ -27,6 +29,7 @@ class CurrentPortfolioState:
         """
         Parses CASH_LEVEL, QQQ_LEVEL, QLD_LEVEL from env with normalization.
         """
+
         def _env_float(name: str, default: float | None = None) -> float | None:
             raw = os.environ.get(name)
             if raw is None:
@@ -53,7 +56,7 @@ class CurrentPortfolioState:
                 qqq_pct=0.0,
                 qld_pct=0.0,
                 rolling_drawdown=raw_drawdown,
-                gross_exposure_pct=0.0
+                gross_exposure_pct=0.0,
             )
 
         norm_vals = vals / s
@@ -67,8 +70,9 @@ class CurrentPortfolioState:
             rolling_drawdown=raw_drawdown,
             gross_exposure_pct=float(exposure),
             net_exposure_pct=float(exposure),
-            leverage_ratio=float(exposure) if exposure > 1.0 else 1.0
+            leverage_ratio=float(exposure) if exposure > 1.0 else 1.0,
         )
+
 
 # Backward Compatibility Alias
 PortfolioState = CurrentPortfolioState
@@ -77,6 +81,7 @@ PortfolioState = CurrentPortfolioState
 @dataclass(frozen=True)
 class TargetAllocationState:
     """Ideal asset allocation model (Target)."""
+
     target_cash_pct: float = 0.10
     target_qqq_pct: float = 0.90
     target_qld_pct: float = 0.0
@@ -87,7 +92,7 @@ class TargetAllocationState:
             "target_cash_pct": self.target_cash_pct,
             "target_qqq_pct": self.target_qqq_pct,
             "target_qld_pct": self.target_qld_pct,
-            "target_beta": self.target_beta
+            "target_beta": self.target_beta,
         }
 
     @staticmethod
@@ -96,13 +101,14 @@ class TargetAllocationState:
             target_cash_pct=data.get("target_cash_pct", 0.10),
             target_qqq_pct=data.get("target_qqq_pct", 0.90),
             target_qld_pct=data.get("target_qld_pct", 0.0),
-            target_beta=data.get("target_beta", 0.90)
+            target_beta=data.get("target_beta", 0.90),
         )
 
 
 @dataclass(frozen=True)
 class SignalResult:
     """Final v11 probabilistic signal result."""
+
     date: date
     price: float
     target_beta: float

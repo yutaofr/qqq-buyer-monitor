@@ -1,4 +1,5 @@
 """JSON report generator for v11 Bayesian Monitor."""
+
 from __future__ import annotations
 
 import json

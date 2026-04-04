@@ -75,8 +75,13 @@ def test_run_v11_audit_emits_v13_overlay_execution_trace(tmp_path, monkeypatch):
         index=dates,
     ).to_csv(cache_path)
 
-    monkeypatch.setattr("src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None)
-    monkeypatch.setattr("src.output.backtest_plots.save_v11_probabilistic_audit_figure", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        "src.output.backtest_plots.save_v11_probabilistic_audit_figure",
+        lambda *args, **kwargs: None,
+    )
 
     summary = backtest_module.run_v11_audit(
         dataset_path=str(macro_path),
@@ -101,7 +106,9 @@ def test_run_v11_audit_emits_v13_overlay_execution_trace(tmp_path, monkeypatch):
     assert summary_payload["experiment_config"]["allow_price_download"] is False
 
 
-def test_run_v11_audit_supports_overlay_mode_matrix_without_mutating_raw_beta(tmp_path, monkeypatch):
+def test_run_v11_audit_supports_overlay_mode_matrix_without_mutating_raw_beta(
+    tmp_path, monkeypatch
+):
     dates = pd.bdate_range("2024-01-01", periods=320)
     macro_path = tmp_path / "macro.csv"
     regime_path = tmp_path / "regimes.csv"
@@ -122,8 +129,13 @@ def test_run_v11_audit_supports_overlay_mode_matrix_without_mutating_raw_beta(tm
         index=dates,
     ).to_csv(cache_path)
 
-    monkeypatch.setattr("src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None)
-    monkeypatch.setattr("src.output.backtest_plots.save_v11_probabilistic_audit_figure", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        "src.output.backtest_plots.save_v11_probabilistic_audit_figure",
+        lambda *args, **kwargs: None,
+    )
 
     traces: dict[str, pd.DataFrame] = {}
     for mode in ["DISABLED", "SHADOW", "NEGATIVE_ONLY", "FULL"]:

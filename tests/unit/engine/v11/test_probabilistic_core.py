@@ -11,22 +11,26 @@ def mock_kde_models():
         def score_samples(self, X):
             # Return some fake log-likelihood
             return np.array([-5.0])
+
     return {"MID_CYCLE": MockKDE(), "BUST": MockKDE()}
+
 
 @pytest.fixture
 def base_priors():
     return {"MID_CYCLE": 0.8, "BUST": 0.2}
 
+
 def test_bayesian_inference_priors(mock_kde_models, base_priors):
     """验证推断引擎能够输出归一化的后验概率"""
     engine = BayesianInferenceEngine(mock_kde_models, base_priors)
-    evidence = np.array([0.1, -0.2, 0.5, 0.1, -0.1, 0.0]) # 6-factor vector
+    evidence = np.array([0.1, -0.2, 0.5, 0.1, -0.1, 0.0])  # 6-factor vector
 
     probs = engine.infer_posterior(evidence)
 
     assert sum(probs.values()) == pytest.approx(1.0)
     assert "MID_CYCLE" in probs
     assert "BUST" in probs
+
 
 def test_entropy_calculation():
     """验证信息熵计算准确性"""
@@ -39,6 +43,7 @@ def test_entropy_calculation():
     # 极度不确定的状态 (Entropy 应当接近 1)
     uncertain_probs = {"A": 0.5, "B": 0.5}
     assert controller.calculate_normalized_entropy(uncertain_probs) == pytest.approx(1.0)
+
 
 def test_entropy_beta_haircut():
     """高熵只能持续减仓，绝不能把任何 beta 拉回更高风险。"""

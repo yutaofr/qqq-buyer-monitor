@@ -1,4 +1,5 @@
 """v7.0 Research Certifier — offline candidate certification pipeline."""
+
 from __future__ import annotations
 
 import json
@@ -67,11 +68,15 @@ def _validate_macro_history(macro_history: pd.DataFrame | None) -> pd.DataFrame:
     if macro_history is None or macro_history.empty:
         raise ValueError("macro_history is required for certifier validation")
 
-    has_canonical_contract = all(column in macro_history.columns for column in REQUIRED_HISTORICAL_MACRO_COLUMNS)
+    has_canonical_contract = all(
+        column in macro_history.columns for column in REQUIRED_HISTORICAL_MACRO_COLUMNS
+    )
     if has_canonical_contract:
         validate_historical_macro_frame(macro_history)
     else:
-        missing_subset = [column for column in _CERTIFIER_SUBSET_COLUMNS if column not in macro_history.columns]
+        missing_subset = [
+            column for column in _CERTIFIER_SUBSET_COLUMNS if column not in macro_history.columns
+        ]
         if missing_subset:
             raise ValueError(f"Missing certifier macro columns: {', '.join(missing_subset)}")
         observation_date = pd.to_datetime(macro_history["observation_date"], errors="coerce")
@@ -102,7 +107,9 @@ def _validate_macro_history(macro_history: pd.DataFrame | None) -> pd.DataFrame:
 
     macro_history = _normalize_macro_history(macro_history)
 
-    missing_audit = [column for column in _CERTIFIER_AUDIT_COLUMNS if column not in macro_history.columns]
+    missing_audit = [
+        column for column in _CERTIFIER_AUDIT_COLUMNS if column not in macro_history.columns
+    ]
     if missing_audit:
         raise ValueError(f"Missing certifier audit columns: {', '.join(missing_audit)}")
 
@@ -158,7 +165,7 @@ def _compute_metrics(
     cagr = float(cum_ret.iloc[-1] ** (1 / n_years) - 1) if n_years > 0 else 0.0
 
     # Ulcer Index (RMS of drawdown)
-    ulcer_index = float((drawdown ** 2).mean() ** 0.5) * 100
+    ulcer_index = float((drawdown**2).mean() ** 0.5) * 100
 
     # Expected Shortfall (CVaR at 5%)
     tail = portfolio_ret[portfolio_ret <= portfolio_ret.quantile(0.05)]
@@ -169,11 +176,17 @@ def _compute_metrics(
     turnover = abs(effective_exposure - (qqq_pct + qld_pct)) * 0.01  # simplified proxy
 
     # Beta fidelity against external benchmark series
-    benchmark_ret = pd.to_numeric(macro_history["benchmark_ret"], errors="coerce").reindex(portfolio_ret.index).dropna()
+    benchmark_ret = (
+        pd.to_numeric(macro_history["benchmark_ret"], errors="coerce")
+        .reindex(portfolio_ret.index)
+        .dropna()
+    )
     aligned_portfolio = portfolio_ret.reindex(benchmark_ret.index).dropna()
     aligned_benchmark = benchmark_ret.reindex(aligned_portfolio.index).dropna()
     if len(aligned_portfolio) > 1 and len(aligned_benchmark) > 1 and aligned_benchmark.std() > 0:
-        beta = aligned_portfolio.corr(aligned_benchmark) * (aligned_portfolio.std() / aligned_benchmark.std())
+        beta = aligned_portfolio.corr(aligned_benchmark) * (
+            aligned_portfolio.std() / aligned_benchmark.std()
+        )
         mean_interval_beta_deviation = abs(beta - effective_exposure)
     else:
         mean_interval_beta_deviation = float("inf")
@@ -209,7 +222,11 @@ def _certify_status(metrics: dict[str, float], drawdown_budget: float = 0.30) ->
 
     if mdd <= drawdown_budget and nav >= 0.99 and beta_dev <= _BETA_DEVIATION_CERTIFIED_LIMIT:
         return "CERTIFIED"
-    if mdd <= _MDD_CONDITIONAL_LIMIT and nav >= 0.95 and beta_dev <= _BETA_DEVIATION_CONDITIONAL_LIMIT:
+    if (
+        mdd <= _MDD_CONDITIONAL_LIMIT
+        and nav >= 0.95
+        and beta_dev <= _BETA_DEVIATION_CONDITIONAL_LIMIT
+    ):
         return "CONDITIONAL"
     return "REJECTED"
 

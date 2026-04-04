@@ -4,6 +4,7 @@ QQQ Monitor Main Entry Point (v11 Bayesian Convergence).
 Only the v11 probabilistic engine is supported. All v10 and legacy logic
 has been removed for architecture sanity.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,7 +43,11 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
     allocation = runtime_result["target_allocation"]
     nav = max(
         1.0,
-        float(allocation["qqq_dollars"] + allocation["qld_notional_dollars"] + allocation["cash_dollars"]),
+        float(
+            allocation["qqq_dollars"]
+            + allocation["qld_notional_dollars"]
+            + allocation["cash_dollars"]
+        ),
     )
     target_allocation = TargetAllocationState(
         target_cash_pct=float(allocation["cash_dollars"] / nav),
@@ -94,26 +99,49 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
             "feature_values": runtime_result.get("feature_values", {}),
             "prior_details": runtime_result.get("prior_details", {}),
             "deployment_readiness": float(runtime_result.get("deployment_readiness", 0.0)),
-            "deployment_readiness_overlay": float(runtime_result.get("deployment_readiness_overlay", runtime_result.get("deployment_readiness", 0.0))),
-            "raw_target_beta": float(runtime_result.get("raw_target_beta", runtime_result["target_beta"])),
-            "protected_beta": float(runtime_result.get("protected_beta", runtime_result.get("raw_target_beta", runtime_result["target_beta"]))),
-            "raw_target_beta_pre_floor": float(runtime_result.get("raw_target_beta_pre_floor", runtime_result["target_beta"])),
+            "deployment_readiness_overlay": float(
+                runtime_result.get(
+                    "deployment_readiness_overlay", runtime_result.get("deployment_readiness", 0.0)
+                )
+            ),
+            "raw_target_beta": float(
+                runtime_result.get("raw_target_beta", runtime_result["target_beta"])
+            ),
+            "protected_beta": float(
+                runtime_result.get(
+                    "protected_beta",
+                    runtime_result.get("raw_target_beta", runtime_result["target_beta"]),
+                )
+            ),
+            "raw_target_beta_pre_floor": float(
+                runtime_result.get("raw_target_beta_pre_floor", runtime_result["target_beta"])
+            ),
             "is_floor_active": bool(runtime_result.get("is_floor_active", False)),
-            "hydration_anchor": str(runtime_result.get("signal", {}).get("hydration_anchor", "2018-01-01")),
+            "hydration_anchor": str(
+                runtime_result.get("signal", {}).get("hydration_anchor", "2018-01-01")
+            ),
             "v13_4_diagnostics": runtime_result.get("v13_4_diagnostics", {}),
-            "overlay_beta": float(runtime_result.get("overlay_beta", runtime_result["target_beta"])),
+            "overlay_beta": float(
+                runtime_result.get("overlay_beta", runtime_result["target_beta"])
+            ),
             "overlay_mode": str(runtime_result.get("overlay", {}).get("overlay_mode", "FULL")),
-            "beta_overlay_multiplier": float(runtime_result.get("overlay", {}).get("beta_overlay_multiplier", 1.0)),
-            "deployment_overlay_multiplier": float(runtime_result.get("overlay", {}).get("deployment_overlay_multiplier", 1.0)),
+            "beta_overlay_multiplier": float(
+                runtime_result.get("overlay", {}).get("beta_overlay_multiplier", 1.0)
+            ),
+            "deployment_overlay_multiplier": float(
+                runtime_result.get("overlay", {}).get("deployment_overlay_multiplier", 1.0)
+            ),
             "overlay_state": str(runtime_result.get("overlay", {}).get("overlay_state", "NEUTRAL")),
-            "overlay_summary": str(runtime_result.get("overlay", {}).get("overlay_summary", "NEUTRAL")),
+            "overlay_summary": str(
+                runtime_result.get("overlay", {}).get("overlay_summary", "NEUTRAL")
+            ),
             "execution_overlay": runtime_result.get("overlay", {}),
             "raw_regime": raw_regime,
             "deployment_state": deployment_state,
             "deployment_state_key": deployment_state_key,
             "execution_bucket": execution_bucket,
             "beta_ceiling": 1.2,
-        }
+        },
     )
 
 
@@ -165,34 +193,52 @@ def _build_v12_live_macro_row(
                 "build_version": str(build_version),
                 "credit_spread_bps": float(credit_spread),
                 "source_credit_spread": str(credit_spread_source),
-                "real_yield_10y_pct": (float(real_yield_pct_points) / 100.0) if real_yield_pct_points is not None else None,
+                "real_yield_10y_pct": (float(real_yield_pct_points) / 100.0)
+                if real_yield_pct_points is not None
+                else None,
                 "source_real_yield": str(real_yield_source),
                 "net_liquidity_usd_bn": float(net_liquidity) if net_liquidity is not None else None,
                 "source_net_liquidity": str(net_liquidity_source),
                 "treasury_vol_21d": float(treasury_vol) if treasury_vol is not None else None,
                 "source_treasury_vol": str(treasury_vol_source),
-                "copper_gold_ratio": float(copper_gold_ratio) if copper_gold_ratio is not None else None,
+                "copper_gold_ratio": float(copper_gold_ratio)
+                if copper_gold_ratio is not None
+                else None,
                 "source_copper_gold": str(copper_gold_source),
-                "breakeven_10y": (float(breakeven_pct_points) / 100.0) if breakeven_pct_points is not None else None,
+                "breakeven_10y": (float(breakeven_pct_points) / 100.0)
+                if breakeven_pct_points is not None
+                else None,
                 "source_breakeven": str(breakeven_source),
                 "core_capex_mm": float(core_capex) if core_capex is not None else None,
                 "source_core_capex": str(core_capex_source),
                 "usdjpy": float(usdjpy) if usdjpy is not None else None,
                 "source_usdjpy": str(usdjpy_source),
-                "erp_ttm_pct": (float(erp_ttm_pct_points) / 100.0) if erp_ttm_pct_points is not None else None,
+                "erp_ttm_pct": (float(erp_ttm_pct_points) / 100.0)
+                if erp_ttm_pct_points is not None
+                else None,
                 "source_erp_ttm": str(erp_ttm_source),
                 "qqq_close": float(qqq_close) if qqq_close is not None else None,
                 "source_qqq_close": str(qqq_close_source),
-                "qqq_close_quality_score": float(qqq_close_quality_score) if qqq_close_quality_score is not None else None,
+                "qqq_close_quality_score": float(qqq_close_quality_score)
+                if qqq_close_quality_score is not None
+                else None,
                 "qqq_volume": float(qqq_volume) if qqq_volume is not None else None,
                 "source_qqq_volume": str(qqq_volume_source),
-                "qqq_volume_quality_score": float(qqq_volume_quality_score) if qqq_volume_quality_score is not None else None,
+                "qqq_volume_quality_score": float(qqq_volume_quality_score)
+                if qqq_volume_quality_score is not None
+                else None,
                 "adv_dec_ratio": float(adv_dec_ratio) if adv_dec_ratio is not None else None,
                 "source_breadth_proxy": str(breadth_source),
-                "breadth_quality_score": float(breadth_quality_score) if breadth_quality_score is not None else None,
-                "ndx_concentration": float(ndx_concentration) if ndx_concentration is not None else None,
+                "breadth_quality_score": float(breadth_quality_score)
+                if breadth_quality_score is not None
+                else None,
+                "ndx_concentration": float(ndx_concentration)
+                if ndx_concentration is not None
+                else None,
                 "source_ndx_concentration": str(ndx_concentration_source),
-                "ndx_concentration_quality_score": float(ndx_concentration_quality_score) if ndx_concentration_quality_score is not None else None,
+                "ndx_concentration_quality_score": float(ndx_concentration_quality_score)
+                if ndx_concentration_quality_score is not None
+                else None,
                 "forward_pe": None,
                 "erp_pct": None,
                 "source_forward_pe": "deprecated:v12",
@@ -223,7 +269,9 @@ def _upsert_v11_macro_feedback(raw_row: pd.DataFrame, macro_csv_path: str) -> No
         existing = pd.read_csv(path)
         # Ensure we filter using string comparison on standardized dates
         if "observation_date" in existing.columns:
-            existing["observation_date"] = pd.to_datetime(existing["observation_date"]).dt.date.astype(str)
+            existing["observation_date"] = pd.to_datetime(
+                existing["observation_date"]
+            ).dt.date.astype(str)
             existing = existing[existing["observation_date"] != obs_dt]
     else:
         existing = pd.DataFrame()
@@ -264,14 +312,19 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         prior_file_path,
     ]
     if not cloud.pull_state(sync_files):
-        raise RuntimeError("Cloud state pull failed; refusing to continue with potentially stale runtime memory.")
+        raise RuntimeError(
+            "Cloud state pull failed; refusing to continue with potentially stale runtime memory."
+        )
 
     # v13.7-ULTIMA Cold Start Architecture:
     # If the prior state file is missing after cloud pull (e.g. true cold start / 404),
     # we trigger the 8-year deep hydration replay to generate a self-consistent state.
     if not Path(prior_file_path).exists():
-        logger.warning(f"Prior state {prior_file_path} is missing. Initiating True Cold Start Replay (8-Year Hydration)...")
+        logger.warning(
+            f"Prior state {prior_file_path} is missing. Initiating True Cold Start Replay (8-Year Hydration)..."
+        )
         from scripts.v13_sequential_replay import run_replay
+
         # Assuming macro data exists locally or was pulled
         run_replay("data/macro_historical_dump.csv", prior_file_path, "2018-01-01")
         logger.info("Cold Start Replay complete. Resuming daily pipeline.")
@@ -283,7 +336,11 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     qqq_volume = None
     qqq_volume_source = "unavailable:qqq_volume"
     qqq_volume_quality = 0.0
-    if isinstance(price_history, pd.DataFrame) and not price_history.empty and "Volume" in price_history.columns:
+    if (
+        isinstance(price_history, pd.DataFrame)
+        and not price_history.empty
+        and "Volume" in price_history.columns
+    ):
         latest_volume = pd.to_numeric(price_history["Volume"].iloc[-1], errors="coerce")
         if pd.notna(latest_volume):
             qqq_volume = float(latest_volume)
@@ -335,7 +392,9 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     try:
         net_liquidity_snapshot = fetch_net_liquidity_snapshot()
         net_liq = net_liquidity_snapshot.get("value")
-        net_liquidity_source = str(net_liquidity_snapshot.get("source", "unavailable:net_liquidity"))
+        net_liquidity_source = str(
+            net_liquidity_snapshot.get("source", "unavailable:net_liquidity")
+        )
     except Exception as exc:
         logger.warning("Net-liquidity fetch failed: %s", exc)
         net_liq = None
@@ -440,6 +499,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 
     # 1. Export Web Snapshot Locally (Production Baseline)
     from src.output.web_exporter import export_web_snapshot
+
     web_json_path = "src/web/public/status.json"
     export_web_snapshot(result, output_path=web_json_path)
 
@@ -455,6 +515,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
             logger.warning("ALERT_WEBHOOK_URL not set; skipping Discord notification.")
         else:
             from src.output.discord_notifier import send_discord_signal
+
             ok = send_discord_signal(result, webhook_url)
             if ok:
                 logger.info("Discord signal notification sent successfully.")
@@ -463,6 +524,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 
     if not args.no_save:
         from src.store.db import save_signal
+
         save_signal(result)
         _upsert_v11_macro_feedback(raw_row, "data/macro_historical_dump.csv")
 
@@ -478,7 +540,9 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="QQQ Monitor Entry Point (v11 Bayesian Convergence)")
+    parser = argparse.ArgumentParser(
+        description="QQQ Monitor Entry Point (v11 Bayesian Convergence)"
+    )
     # Deprecated engine param for CLI compatibility, but always forces v11
     parser.add_argument("--engine", choices=["v11"], default="v11", help="Always v11.")
     parser.add_argument("--json", action="store_true", help="Output JSON report")

@@ -1,4 +1,5 @@
 """Generate the v12 diagnostic protocol report from existing audit artifacts."""
+
 from __future__ import annotations
 
 import argparse
@@ -21,17 +22,23 @@ def _load_audit_regimes(audit_contract_path: Path) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run the v12 diagnostic protocol on backtest artifacts.")
+    parser = argparse.ArgumentParser(
+        description="Run the v12 diagnostic protocol on backtest artifacts."
+    )
     parser.add_argument("--audit-path", default="artifacts/v12_audit/full_audit.csv")
     parser.add_argument("--regime-path", default="data/v11_poc_phase1_results.csv")
     parser.add_argument("--dataset-path", default="data/macro_historical_dump.csv")
-    parser.add_argument("--audit-contract-path", default="src/engine/v11/resources/regime_audit.json")
+    parser.add_argument(
+        "--audit-contract-path", default="src/engine/v11/resources/regime_audit.json"
+    )
     parser.add_argument("--output-dir", default="artifacts/v12_diagnostics")
     args = parser.parse_args(argv)
 
     audit_frame = pd.read_csv(args.audit_path, parse_dates=["date"])
     label_frame = pd.read_csv(args.regime_path, parse_dates=["observation_date"])
-    macro_frame = pd.read_csv(args.dataset_path, parse_dates=["observation_date"]).set_index("observation_date")
+    macro_frame = pd.read_csv(args.dataset_path, parse_dates=["observation_date"]).set_index(
+        "observation_date"
+    )
 
     seeder = ProbabilitySeeder()
     seeder.generate_features(macro_frame)

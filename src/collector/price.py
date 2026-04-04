@@ -1,4 +1,5 @@
 """Price data collector: QQQ close, MA200, 52-week high."""
+
 from __future__ import annotations
 
 import logging
@@ -61,7 +62,11 @@ def fetch_price_data(ticker: str = "QQQ", as_of: date | None = None) -> dict:
 
     logger.debug(
         "Price data: price=%.2f ma200=%.2f high_52w=%.2f (days ago: %d) date=%s",
-        price, ma200, high_52w, days_since_high, record_date,
+        price,
+        ma200,
+        high_52w,
+        days_since_high,
+        record_date,
     )
     return {
         "price": price,
@@ -69,5 +74,5 @@ def fetch_price_data(ticker: str = "QQQ", as_of: date | None = None) -> dict:
         "high_52w": high_52w,
         "days_since_high": days_since_high,
         "date": record_date,
-        "history": hist # Return full history for indicator calculations
+        "history": hist,  # Return full history for indicator calculations
     }

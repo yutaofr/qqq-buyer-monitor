@@ -4,6 +4,7 @@ QQQ v12.0 Bayesian Backtest & Audit (Bayesian Convergence).
 This module is the sole entry point for system validation. It enforces causal
 isolation and probabilistic fidelity audits.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -77,17 +78,41 @@ def _v11_inference_task(
     row_data: tuple[pd.Series, pd.Series, Any, list[str], list[str]],
 ) -> dict[str, Any]:
     """Independent worker task for v12.0 Bayesian inference."""
+    from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
+
     std_row, source_row, gnb_model, classes, feature_cols = row_data
 
     evidence = pd.DataFrame([std_row[feature_cols].to_dict()], columns=feature_cols)
 
-    probs_array = gnb_model.predict_proba(evidence)[0]
-    posterior = dict(zip(classes, probs_array, strict=True))
+    # Use BayesianInferenceEngine for correct Bayesian evaluation
+    engine = BayesianInferenceEngine(kde_models={}, base_priors={})
+
+    # To pass down active priors, we assume base priors initially if runtime is not available
+    base_priors = {str(c): 1.0 / len(classes) for c in classes}
+
+    registry_path = Path("src/engine/v11/resources/v13_4_weights_registry.json")
+    if registry_path.exists():
+        with open(registry_path) as f:
+            registry = json.load(f)
+    else:
+        registry = {}
+
+    posterior, _ = engine.infer_gaussian_nb_posterior(
+        classifier=gnb_model,
+        evidence_frame=evidence,
+        runtime_priors=base_priors,
+        weight_registry=registry,
+        tau=float(registry.get("inference_tau", 3.0)),
+        m=float(registry.get("inference_momentum_m", 0.6)),
+    )
 
     actual_regime = str(std_row.get("regime", source_row.get("regime", "MID_CYCLE")))
     predicted_regime = max(posterior, key=posterior.get)
 
-    brier = sum((posterior.get(name, 0.0) - (1.0 if name == actual_regime else 0.0)) ** 2 for name in classes)
+    brier = sum(
+        (posterior.get(name, 0.0) - (1.0 if name == actual_regime else 0.0)) ** 2
+        for name in classes
+    )
 
     return {
         "date": std_row["observation_date"],
@@ -95,7 +120,7 @@ def _v11_inference_task(
         "actual_regime_probability": float(posterior.get(actual_regime, 0.0)),
         "predicted_regime": predicted_regime,
         "brier": brier,
-        "posterior": posterior
+        "posterior": posterior,
     }
 
 
@@ -141,8 +166,12 @@ def run_v11_audit(
             f"Canonical regime DNA missing at {regimes_file}. Walk-forward audit requires checked-in baseline labels."
         )
 
-    macro_df = pd.read_csv(dataset_path, parse_dates=["observation_date"]).set_index("observation_date")
-    regime_df = pd.read_csv(regime_path, parse_dates=["observation_date"]).set_index("observation_date")
+    macro_df = pd.read_csv(dataset_path, parse_dates=["observation_date"]).set_index(
+        "observation_date"
+    )
+    regime_df = pd.read_csv(regime_path, parse_dates=["observation_date"]).set_index(
+        "observation_date"
+    )
     experiment = dict(experiment_config or {})
 
     audit_path = Path("src/engine/v11/resources/regime_audit.json")
@@ -154,10 +183,14 @@ def run_v11_audit(
     if audit_overrides.get("base_betas"):
         base_betas = {str(k): float(v) for k, v in dict(audit_overrides["base_betas"]).items()}
     if audit_overrides.get("regime_sharpes"):
-        regime_sharpes = {str(k): float(v) for k, v in dict(audit_overrides["regime_sharpes"]).items()}
+        regime_sharpes = {
+            str(k): float(v) for k, v in dict(audit_overrides["regime_sharpes"]).items()
+        }
     ordered_regimes = canonicalize_regime_sequence(base_betas.keys(), include_all=False)
     base_betas = merge_regime_weights(base_betas, regimes=ordered_regimes, include_zeros=True)
-    regime_sharpes = merge_regime_weights(regime_sharpes, regimes=ordered_regimes, include_zeros=True)
+    regime_sharpes = merge_regime_weights(
+        regime_sharpes, regimes=ordered_regimes, include_zeros=True
+    )
     default_var_smoothing = float(
         audit_data.get("model_hyperparameters", {}).get("gaussian_nb_var_smoothing", 1e-2)
     )
@@ -241,7 +274,9 @@ def run_v11_audit(
     if test.empty:
         raise ValueError(f"No evaluation rows available on or after {evaluation_start}.")
 
-    logger.info(f"v12 Audit: Training on {len(train)} days (pre-{evaluation_start}), testing on {len(test)} days.")
+    logger.info(
+        f"v12 Audit: Training on {len(train)} days (pre-{evaluation_start}), testing on {len(test)} days."
+    )
 
     feature_cols = [c for c in seeder.feature_names() if c in train.columns]
     entropy_ctrl = EntropyController()
@@ -287,7 +322,9 @@ def run_v11_audit(
             if train_window.empty:
                 continue
 
-            gnb = GaussianNB(var_smoothing=float(experiment.get("var_smoothing", default_var_smoothing)))
+            gnb = GaussianNB(
+                var_smoothing=float(experiment.get("var_smoothing", default_var_smoothing))
+            )
             gnb.fit(train_window[feature_cols], train_window["regime"])
             validate_gaussian_nb(
                 gnb,
@@ -312,11 +349,19 @@ def run_v11_audit(
                 raise ValueError(f"Unknown posterior_mode: {posterior_mode}")
 
             # v13.7-ULTIMA: Adapt to new weighted inference signature
+            registry_path = Path("src/engine/v11/resources/v13_4_weights_registry.json")
+            if registry_path.exists():
+                with open(registry_path) as f:
+                    registry = json.load(f)
+            else:
+                registry = {}
             posteriors, _ = inference_engine.infer_gaussian_nb_posterior(
                 classifier=gnb,
                 evidence_frame=evidence,
                 runtime_priors=active_priors,
-                weight_registry=None, # Use defaults in audit
+                weight_registry=registry,
+                tau=float(registry.get("inference_tau", 3.0)),
+                m=float(registry.get("inference_momentum_m", 0.6)),
             )
             actual_regime = str(row["regime"])
             predicted_regime = max(posteriors, key=posteriors.get)
@@ -351,7 +396,9 @@ def run_v11_audit(
                 "source_qqq_volume",
                 "qqq_volume_quality_score",
             ]
-            overlay_cols = [col for col in overlay_cols if col in train_window.columns and col in row.index]
+            overlay_cols = [
+                col for col in overlay_cols if col in train_window.columns and col in row.index
+            ]
             overlay_context = pd.concat(
                 [train_window[overlay_cols], pd.DataFrame([row[overlay_cols]])],
                 ignore_index=True,
@@ -385,14 +432,19 @@ def run_v11_audit(
             execution = behavior_guard.apply(sizing)
 
             train_erp = pd.to_numeric(train_window.get("erp_ttm_pct"), errors="coerce").dropna()
-            current_erp = pd.to_numeric(pd.Series([row.get("erp_ttm_pct")]), errors="coerce").dropna()
+            current_erp = pd.to_numeric(
+                pd.Series([row.get("erp_ttm_pct")]), errors="coerce"
+            ).dropna()
             if train_erp.empty or current_erp.empty:
                 erp_percentile = 0.5
             else:
                 erp_percentile = float(
                     pd.concat([train_erp, current_erp], ignore_index=True).rank(pct=True).iloc[-1]
                 )
-            e_sharpe = sum(posteriors.get(regime, 0.0) * regime_sharpes.get(regime, 0.0) for regime in ordered_regimes)
+            e_sharpe = sum(
+                posteriors.get(regime, 0.0) * regime_sharpes.get(regime, 0.0)
+                for regime in ordered_regimes
+            )
             deployment_readiness = float(
                 max(0.0, min(1.0, (1.0 - norm_h) * max(0.0, e_sharpe) * erp_percentile))
             )
@@ -427,7 +479,9 @@ def run_v11_audit(
                     "protected_beta": protected_beta,
                     "overlay_beta": overlay_beta,
                     "beta_overlay_multiplier": float(overlay["beta_overlay_multiplier"]),
-                    "deployment_overlay_multiplier": float(overlay["deployment_overlay_multiplier"]),
+                    "deployment_overlay_multiplier": float(
+                        overlay["deployment_overlay_multiplier"]
+                    ),
                     "overlay_state": str(overlay["overlay_state"]),
                     "target_beta": final_beta,
                     "raw_target_beta": raw_beta,
@@ -461,11 +515,15 @@ def run_v11_audit(
 
     probability_df = pd.DataFrame(probability_rows).sort_values("date")
     execution_df = pd.DataFrame(execution_rows).sort_values("date")
-    full_audit_df = pd.merge(execution_df, probability_df, on=["date", "predicted_regime", "actual_regime"], how="left")
+    full_audit_df = pd.merge(
+        execution_df, probability_df, on=["date", "predicted_regime", "actual_regime"], how="left"
+    )
 
     summary = {
         "compared_points": int(len(probability_df)),
-        "top1_accuracy": float((probability_df["predicted_regime"] == probability_df["actual_regime"]).mean()),
+        "top1_accuracy": float(
+            (probability_df["predicted_regime"] == probability_df["actual_regime"]).mean()
+        ),
         "mean_brier": float(probability_df["brier"].mean()),
         "mean_entropy": float(execution_df["entropy"].mean()),
         "lock_incidence": float(execution_df["lock_active"].mean()),
@@ -479,7 +537,9 @@ def run_v11_audit(
     }
 
     print("\n--- v12 Unified Probabilistic Performance Audit ---")
-    print(f"Accuracy: {summary['top1_accuracy']:.2%} | Brier: {summary['mean_brier']:.4f} | Entropy: {summary['mean_entropy']:.3f} | Lock: {summary['lock_incidence']:.1%}")
+    print(
+        f"Accuracy: {summary['top1_accuracy']:.2%} | Brier: {summary['mean_brier']:.4f} | Entropy: {summary['mean_entropy']:.3f} | Lock: {summary['lock_incidence']:.1%}"
+    )
 
     save_dir = Path(artifact_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -490,7 +550,9 @@ def run_v11_audit(
     (save_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     save_v11_fidelity_figure(execution_df, summary, [save_dir / "v12_target_beta_fidelity.png"])
-    save_v11_probabilistic_audit_figure(full_audit_df, summary, [save_dir / "v12_probabilistic_audit.png"])
+    save_v11_probabilistic_audit_figure(
+        full_audit_df, summary, [save_dir / "v12_probabilistic_audit.png"]
+    )
 
     return summary
 

@@ -1,4 +1,5 @@
 """Stateful regime stabilizer for v11 probabilistic output."""
+
 from __future__ import annotations
 
 from src.regime_topology import ACTIVE_REGIME_ORDER, canonicalize_regime_name, merge_regime_weights
@@ -18,7 +19,11 @@ class RegimeStabilizer:
             include_zeros=False,
             normalize=True,
         )
-        raw_regime = max(normalized, key=normalized.get) if normalized else (self.current_regime or "MID_CYCLE")
+        raw_regime = (
+            max(normalized, key=normalized.get)
+            if normalized
+            else (self.current_regime or "MID_CYCLE")
+        )
 
         if self.current_regime is None:
             self.current_regime = raw_regime

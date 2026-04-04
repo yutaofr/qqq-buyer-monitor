@@ -19,6 +19,7 @@ FRED_CSV_URL = (
     "&fq=Daily&fam=avg&transformation=lin"
 )
 
+
 def fetch_fred_api(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
     """Fetch FRED data using the official API (JSON format)."""
     api_key = os.getenv("FRED_API_KEY", "").strip()
@@ -39,11 +40,12 @@ def fetch_fred_api(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
         df = pd.DataFrame(observations)
         df = df.rename(columns={"date": "observation_date", "value": series_id})
         # Ensure numeric conversion
-        df[series_id] = pd.to_numeric(df[series_id], errors='coerce')
+        df[series_id] = pd.to_numeric(df[series_id], errors="coerce")
         return df[["observation_date", series_id]]
     except Exception as exc:
         logger.warning("FRED API fetch failed for %s: %s", series_id, exc)
         return None
+
 
 def fetch_fred_data(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
     """Unified FRED fetcher: API first, then CSV fallback."""
@@ -53,7 +55,9 @@ def fetch_fred_data(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
         return df
 
     # 2. CSV Fallback
-    logger.info("Official FRED API failed or no key; falling back to CSV scraping for %s...", series_id)
+    logger.info(
+        "Official FRED API failed or no key; falling back to CSV scraping for %s...", series_id
+    )
     return fetch_fred_csv(series_id, timeout)
 
 
@@ -94,7 +98,9 @@ def fetch_historical_fred_series(series_id: str, timeout: int = 15) -> pd.DataFr
     return normalized if not normalized.empty else None
 
 
-def fetch_historical_fred_series_bundle(series_ids: Sequence[str], timeout: int = 15) -> dict[str, pd.DataFrame]:
+def fetch_historical_fred_series_bundle(
+    series_ids: Sequence[str], timeout: int = 15
+) -> dict[str, pd.DataFrame]:
     """Fetch multiple historical FRED series and return normalized frames keyed by series id."""
     frames: dict[str, pd.DataFrame] = {}
     missing: list[str] = []
@@ -134,7 +140,7 @@ def fetch_fred_csv(series_id: str, timeout: int = 15, retries: int = 3) -> pd.Da
         "Accept-Language": "en-US,en;q=0.9",
         "Accept-Encoding": "gzip, deflate, br",
         "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1"
+        "Upgrade-Insecure-Requests": "1",
     }
 
     for attempt in range(retries + 1):
@@ -148,11 +154,19 @@ def fetch_fred_csv(series_id: str, timeout: int = 15, retries: int = 3) -> pd.Da
             if curl_frame is not None:
                 return curl_frame
             if attempt < retries:
-                logger.debug("FRED %s fetch attempt %d failed: %s. Retrying in 2s...", series_id, attempt + 1, exc)
-                time.sleep(2) # Shorter wait between retries
+                logger.debug(
+                    "FRED %s fetch attempt %d failed: %s. Retrying in 2s...",
+                    series_id,
+                    attempt + 1,
+                    exc,
+                )
+                time.sleep(2)  # Shorter wait between retries
             else:
-                logger.warning("Failed to fetch FRED %s after %d retries: %s", series_id, retries + 1, exc)
+                logger.warning(
+                    "Failed to fetch FRED %s after %d retries: %s", series_id, retries + 1, exc
+                )
     return None
+
 
 def fetch_chicago_fed_nfci() -> float | None:
     """
@@ -197,12 +211,14 @@ def fetch_chicago_fed_nfci() -> float | None:
         logger.debug("Chicago Fed NFCI fetch failed: %s", exc)
         return None
 
+
 def fetch_hyg_proxy() -> float | None:
     """
     Fallback: Use HYG (High Yield ETF) as a proxy for credit spreads.
     Lower HYG relative to its 200d MA implies widening spreads.
     """
     import yfinance as yf
+
     try:
         hyg = yf.Ticker("HYG")
         hist = hyg.history(period="1y")
@@ -218,14 +234,20 @@ def fetch_hyg_proxy() -> float | None:
         # price == 0.95 * ma200 -> 500 bps
         deviation = (ma200 - price) / ma200
         synthetic_spread = 350.0 + (deviation * 3000.0)
-        logger.info("Fetched HYG proxy spread: %.0f bps (deviation from MA200: %.2f%%)",
-                    synthetic_spread, deviation * 100)
+        logger.info(
+            "Fetched HYG proxy spread: %.0f bps (deviation from MA200: %.2f%%)",
+            synthetic_spread,
+            deviation * 100,
+        )
         return synthetic_spread
     except Exception as exc:
         logger.debug("HYG proxy fetch failed: %s", exc)
         return None
 
-def fetch_credit_spread_snapshot(series_id: str = "BAMLH0A0HYM2") -> dict[str, float | str | bool | None]:
+
+def fetch_credit_spread_snapshot(
+    series_id: str = "BAMLH0A0HYM2",
+) -> dict[str, float | str | bool | None]:
     """
     Fetch the latest Ice BofA US High Yield Index Option-Adjusted Spread.
     1. Primary: FRED
@@ -269,8 +291,11 @@ def fetch_credit_spread_snapshot(series_id: str = "BAMLH0A0HYM2") -> dict[str, f
             # Map Normal (100) -> 350 bps credit spread, Inverted (-100) -> 600 bps.
             yc_spread = yields["10Y"] - yields["3M"]
             synthetic_spread = 350.0 + (1.0 - yc_spread) * 125.0
-            logger.info("Fetched Treasury proxy spread: %.0f bps (YC Spread: %.2f%%)",
-                        synthetic_spread, yc_spread)
+            logger.info(
+                "Fetched Treasury proxy spread: %.0f bps (YC Spread: %.2f%%)",
+                synthetic_spread,
+                yc_spread,
+            )
             return {
                 "value": synthetic_spread,
                 "source": "proxy:treasury_curve",

@@ -32,7 +32,9 @@ def _month_end(series: pd.Series) -> pd.Series:
     return pd.to_datetime(series, errors="coerce") + pd.offsets.MonthEnd(0)
 
 
-def _history_from_yfinance(symbol: str, *, auto_adjust: bool = False, period: str = "max") -> pd.DataFrame:
+def _history_from_yfinance(
+    symbol: str, *, auto_adjust: bool = False, period: str = "max"
+) -> pd.DataFrame:
     chart_url = (
         f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(symbol, safe='')}"
         f"?range={period}&interval=1d&includeAdjustedClose=true"
@@ -50,7 +52,7 @@ def _history_from_yfinance(symbol: str, *, auto_adjust: bool = False, period: st
             quote_block = (indicators.get("quote") or [{}])[0]
             closes = quote_block.get("close") or []
             if auto_adjust:
-                closes = ((indicators.get("adjclose") or [{}])[0].get("adjclose") or closes)
+                closes = (indicators.get("adjclose") or [{}])[0].get("adjclose") or closes
 
             frame = pd.DataFrame(
                 {
@@ -76,7 +78,9 @@ def _history_from_yfinance(symbol: str, *, auto_adjust: bool = False, period: st
     frame = history.reset_index()
     date_column = "Date" if "Date" in frame.columns else frame.columns[0]
     frame = frame.rename(columns={date_column: "observation_date", close_column: "close"})
-    frame["observation_date"] = pd.to_datetime(frame["observation_date"], errors="coerce").dt.normalize()
+    frame["observation_date"] = pd.to_datetime(
+        frame["observation_date"], errors="coerce"
+    ).dt.normalize()
     frame["close"] = pd.to_numeric(frame["close"], errors="coerce")
     frame = frame.dropna(subset=["observation_date", "close"])
     return frame.loc[:, ["observation_date", "close"]]
@@ -241,11 +245,15 @@ def fetch_historical_shiller_erp_series(
         raw = _load_shiller_sheet(timeout=timeout)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Shiller sheet fetch failed: %s", exc)
-        return pd.DataFrame(columns=["observation_date", "effective_date", "erp_ttm_pct", "eps_ttm", "spx_price"])
+        return pd.DataFrame(
+            columns=["observation_date", "effective_date", "erp_ttm_pct", "eps_ttm", "spx_price"]
+        )
 
     frame = raw.rename(columns={"Date": "date", "P": "price", "E": "eps"})
     if "date" not in frame.columns or "price" not in frame.columns or "eps" not in frame.columns:
-        return pd.DataFrame(columns=["observation_date", "effective_date", "erp_ttm_pct", "eps_ttm", "spx_price"])
+        return pd.DataFrame(
+            columns=["observation_date", "effective_date", "erp_ttm_pct", "eps_ttm", "spx_price"]
+        )
 
     date_values = pd.to_numeric(frame["date"], errors="coerce")
     year = date_values.fillna(0).astype(int)
@@ -325,5 +333,7 @@ def fetch_v12_historical_series_bundle(timeout: int = 20) -> dict[str, pd.DataFr
         "capex": fetch_historical_core_capex_series(timeout=timeout),
         "copper_gold": fetch_historical_copper_gold_ratio_series(),
         "usdjpy": fetch_historical_usdjpy_series(),
-        "erp_ttm": fetch_historical_shiller_erp_series(real_yield_frame=real_yield_frame, timeout=timeout),
+        "erp_ttm": fetch_historical_shiller_erp_series(
+            real_yield_frame=real_yield_frame, timeout=timeout
+        ),
     }

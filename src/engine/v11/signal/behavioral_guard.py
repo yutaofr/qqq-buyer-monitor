@@ -1,4 +1,5 @@
 """v11 Signal: downstream behavior constraints for execution stability."""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -99,7 +100,9 @@ class BehavioralGuard:
 
         desired_bucket = self._bucket_from_beta(sizing.target_beta)
         if desired_bucket != previous_bucket:
-            self.evidence += self._switch_margin(previous_bucket, desired_bucket, sizing.target_beta)
+            self.evidence += self._switch_margin(
+                previous_bucket, desired_bucket, sizing.target_beta
+            )
             barrier = self._entropy_barrier(
                 sizing.entropy,
                 bucket_count=len(self._BUCKET_ORDER),
@@ -126,7 +129,9 @@ class BehavioralGuard:
         return self._decision(
             previous_bucket,
             sizing,
-            reason=self._reason_for_transition(previous_bucket, self.current_bucket, sizing.target_beta),
+            reason=self._reason_for_transition(
+                previous_bucket, self.current_bucket, sizing.target_beta
+            ),
             lock_active=False,
         )
 

@@ -9,7 +9,9 @@ from src.store.cloud_manager import CloudPersistenceBridge
 
 
 class _FakeResponse:
-    def __init__(self, *, json_data: dict | None = None, content: bytes = b"", status_code: int = 200):
+    def __init__(
+        self, *, json_data: dict | None = None, content: bytes = b"", status_code: int = 200
+    ):
         self._json_data = json_data or {}
         self.content = content
         self.status_code = status_code

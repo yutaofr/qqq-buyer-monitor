@@ -13,7 +13,9 @@ def get_v13_4_feature_weight(feature_name: str, registry: dict[str, Any]) -> flo
     fallback = matrix.get("DEFAULT_FALLBACK", 1.0)
 
     # Sort keys by length (descending) to ensure longest prefix match
-    sorted_keys = sorted([k for k in matrix.keys() if k != "DEFAULT_FALLBACK"], key=len, reverse=True)
+    sorted_keys = sorted(
+        [k for k in matrix.keys() if k != "DEFAULT_FALLBACK"], key=len, reverse=True
+    )
 
     for key in sorted_keys:
         if feature_name.startswith(key):
@@ -54,7 +56,9 @@ class TestV13_4Config(unittest.TestCase):
         self.assertEqual(get_v13_4_feature_weight("net_liquidity_usd_bn", self.registry), 2.0)
 
         # 2. Lineage inheritance (Longest prefix match)
-        self.assertEqual(get_v13_4_feature_weight("credit_spread_bps_21d_accel", self.registry), 2.5)
+        self.assertEqual(
+            get_v13_4_feature_weight("credit_spread_bps_21d_accel", self.registry), 2.5
+        )
         self.assertEqual(get_v13_4_feature_weight("move_21d_orth", self.registry), 1.5)
 
         # 3. Fallback

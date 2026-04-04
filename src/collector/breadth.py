@@ -1,4 +1,5 @@
 """NYSE market breadth data collector."""
+
 from __future__ import annotations
 
 import json
@@ -20,7 +21,13 @@ _BREADTH_CANDIDATES = ["^ADD", "^ADDN"]
 
 @lru_cache(maxsize=1)
 def _load_v13_collector_policy() -> dict:
-    audit_path = Path(__file__).resolve().parents[1] / "engine" / "v13" / "resources" / "execution_overlay_audit.json"
+    audit_path = (
+        Path(__file__).resolve().parents[1]
+        / "engine"
+        / "v13"
+        / "resources"
+        / "execution_overlay_audit.json"
+    )
     if not audit_path.exists():
         return {"breadth_sigmoid_scale": 1500.0}
     try:
@@ -58,12 +65,20 @@ def fetch_breadth(as_of: date | None = None) -> dict:
 
     adv_dec_ratio, source, quality, transform = _fetch_adv_dec_ratio(query_start, query_end)
     pct_above_50d = adv_dec_ratio if quality > 0.0 else 0.50
-    ndx_concentration, ndx_concentration_source, ndx_concentration_quality = _fetch_ndx_concentration(query_end)
+    ndx_concentration, ndx_concentration_source, ndx_concentration_quality = (
+        _fetch_ndx_concentration(query_end)
+    )
 
     logger.debug(
         "Breadth: adv_dec_ratio=%.3f pct_above_50d=%.3f ndx_concentration=%s breadth_quality=%.2f ndx_quality=%.2f source=%s ndx_source=%s as_of=%s",
-        adv_dec_ratio, pct_above_50d, f"{ndx_concentration:.3f}" if ndx_concentration is not None else "None",
-        quality, ndx_concentration_quality, source, ndx_concentration_source, target_date
+        adv_dec_ratio,
+        pct_above_50d,
+        f"{ndx_concentration:.3f}" if ndx_concentration is not None else "None",
+        quality,
+        ndx_concentration_quality,
+        source,
+        ndx_concentration_source,
+        target_date,
     )
     return {
         "adv_dec_ratio": adv_dec_ratio,
@@ -91,17 +106,13 @@ def _fetch_adv_dec_ratio(start: date, end: date) -> tuple[float, str, float, str
             # Silence yfinance's own ERROR/WARNING for known-bad tickers
             prev_level = yf_logger.level
             yf_logger.setLevel(logging.CRITICAL)
-            hist = yf.Ticker(ticker).history(
-                start=start.isoformat(), end=end.isoformat()
-            )
+            hist = yf.Ticker(ticker).history(start=start.isoformat(), end=end.isoformat())
             yf_logger.setLevel(prev_level)
 
             if not hist.empty:
                 net = float(hist["Close"].iloc[-1])
                 ratio = 1.0 / (1.0 + math.exp(-net / sigmoid_scale))
-                logger.debug(
-                    "Breadth ratio from %s: net=%.0f ratio=%.3f", ticker, net, ratio
-                )
+                logger.debug("Breadth ratio from %s: net=%.0f ratio=%.3f", ticker, net, ratio)
                 return ratio, f"observed:{ticker}", 1.0, f"sigmoid(scale={sigmoid_scale:.1f})"
         except Exception as exc:  # noqa: BLE001
             yf_logger.setLevel(logging.WARNING)  # restore on exception too
@@ -109,7 +120,8 @@ def _fetch_adv_dec_ratio(start: date, end: date) -> tuple[float, str, float, str
 
     logger.warning(
         "All breadth tickers unavailable %s; marking breadth unavailable. query_end=%s",
-        _BREADTH_CANDIDATES, end
+        _BREADTH_CANDIDATES,
+        end,
     )
     return 0.50, "unavailable:breadth", 0.0, "neutral_fallback"
 
@@ -123,6 +135,7 @@ def _fetch_ndx_concentration(as_of: date) -> tuple[float | None, str, float]:
     query_end = as_of
     start = query_end - timedelta(days=90)
     try:
+
         def get_dev(ticker: str) -> float | None:
             hist = yf.Ticker(ticker).history(start=start.isoformat(), end=query_end.isoformat())
             if not hist.empty:

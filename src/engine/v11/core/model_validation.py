@@ -1,4 +1,5 @@
 """Deterministic validation for fitted GaussianNB regime models."""
+
 from __future__ import annotations
 
 from collections.abc import Sequence

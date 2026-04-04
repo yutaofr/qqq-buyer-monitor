@@ -24,7 +24,9 @@ def _build_v12_macro_frame_with_overlay(dates: pd.DatetimeIndex) -> pd.DataFrame
             "real_yield_10y_pct": 0.008 + np.linspace(0.0, 0.018, len(dates)),
             "net_liquidity_usd_bn": 5200.0 + np.linspace(0.0, 250.0, len(dates)),
             "treasury_vol_21d": 0.004 + np.linspace(0.0, 0.006, len(dates)),
-            "copper_gold_ratio": 0.18 + np.linspace(0.0, 0.04, len(dates)) + rng.normal(0.0, 0.001, len(dates)),
+            "copper_gold_ratio": 0.18
+            + np.linspace(0.0, 0.04, len(dates))
+            + rng.normal(0.0, 0.001, len(dates)),
             "breakeven_10y": 0.018 + np.linspace(0.0, 0.01, len(dates)),
             "core_capex_mm": monthly_block,
             "usdjpy": 120.0 + np.linspace(0.0, 18.0, len(dates)) + rng.normal(0.0, 0.2, len(dates)),
@@ -139,5 +141,7 @@ def test_conductor_overlay_preserves_raw_beta_and_penalizes_only_execution_surfa
     stressed_result = stressed_conductor.daily_run(stressed)
 
     assert stressed_result["raw_target_beta"] == pytest.approx(benign_result["raw_target_beta"])
-    assert stressed_result["overlay"]["negative_score"] >= benign_result["overlay"]["negative_score"]
+    assert (
+        stressed_result["overlay"]["negative_score"] >= benign_result["overlay"]["negative_score"]
+    )
     assert stressed_result["overlay_beta"] <= benign_result["overlay_beta"]

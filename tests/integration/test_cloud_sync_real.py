@@ -2,6 +2,7 @@
 Standardized On-Demand Integration Test for Vercel Blob Sync.
 Usage: pytest tests/integration/test_cloud_sync_real.py -m external_service
 """
+
 from __future__ import annotations
 
 import os
@@ -37,11 +38,7 @@ def test_cloud_sync_full_lifecycle_real_api(tmp_path):
     bridge.namespace = "testing/integration"
 
     # 2. Act - Push
-    push_ok = bridge.push_payload(
-        local_path.read_bytes(),
-        test_filename,
-        is_binary=True
-    )
+    push_ok = bridge.push_payload(local_path.read_bytes(), test_filename, is_binary=True)
     assert push_ok is True, "Cloud push failed."
 
     # 3. Act - Pull
@@ -49,7 +46,9 @@ def test_cloud_sync_full_lifecycle_real_api(tmp_path):
     restore_path = tmp_path / f"restored_{test_filename}"
     # We must mock pull_state's target or use bridge internals
     # For simplicity, we leverage bridge._get_remote_path and requests directly
-    list_resp = requests.get(f"{bridge.base_api_url}?limit=1000&prefix={bridge.namespace}/", headers=bridge.headers)
+    list_resp = requests.get(
+        f"{bridge.base_api_url}?limit=1000&prefix={bridge.namespace}/", headers=bridge.headers
+    )
     list_resp.raise_for_status()
     blobs = list_resp.json().get("blobs", [])
 

@@ -1,4 +1,5 @@
 """CNN Fear & Greed Index collector."""
+
 from __future__ import annotations
 
 import logging
@@ -7,9 +8,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-CNN_FG_URL = (
-    "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
-)
+CNN_FG_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
 TIMEOUT = 10
 
 

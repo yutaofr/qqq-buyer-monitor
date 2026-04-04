@@ -1,4 +1,5 @@
 """Canonical regime topology helpers for the active v12 runtime contract."""
+
 from __future__ import annotations
 
 import math
@@ -125,9 +126,9 @@ def merge_transition_matrix(
             canonical_target = canonicalize_regime_name(target)
             if canonical_target not in regime_order:
                 continue
-            merged[canonical_source][canonical_target] = (
-                merged[canonical_source].get(canonical_target, 0.0) + _coerce_finite_float(value)
-            )
+            merged[canonical_source][canonical_target] = merged[canonical_source].get(
+                canonical_target, 0.0
+            ) + _coerce_finite_float(value)
     return merged
 
 

@@ -1,4 +1,5 @@
 """v11 Core: shared sizing payload for downstream execution controls."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

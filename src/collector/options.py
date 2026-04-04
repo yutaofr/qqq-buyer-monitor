@@ -6,6 +6,7 @@ expiration dates. Implements a dual-source strategy for gamma:
   1. Primary: use gamma values returned directly by yfinance
   2. Fallback: compute gamma via Black-Scholes if yfinance value is missing
 """
+
 from __future__ import annotations
 
 import logging
@@ -22,7 +23,9 @@ logger = logging.getLogger(__name__)
 RISK_FREE_TICKER = "^IRX"  # 13-week T-bill yield
 
 
-def fetch_options_chain(ticker: str = "QQQ", as_of: date | None = None, spot_price: float | None = None) -> pd.DataFrame:
+def fetch_options_chain(
+    ticker: str = "QQQ", as_of: date | None = None, spot_price: float | None = None
+) -> pd.DataFrame:
     """
     Fetch options chain for the nearest two expiration dates.
 
@@ -46,15 +49,10 @@ def fetch_options_chain(ticker: str = "QQQ", as_of: date | None = None, spot_pri
         raise RuntimeError(f"No options expiration dates found for {ticker}")
 
     # Take at most the 2 nearest expirations after target_date
-    future_exps = [
-        e for e in expirations
-        if date.fromisoformat(e) >= target_date
-    ][:2]
+    future_exps = [e for e in expirations if date.fromisoformat(e) >= target_date][:2]
 
     if not future_exps:
-        raise RuntimeError(
-            f"No future expiration dates found for {ticker} after {target_date}"
-        )
+        raise RuntimeError(f"No future expiration dates found for {ticker} after {target_date}")
 
     frames: list[pd.DataFrame] = []
     for exp in future_exps:
@@ -64,9 +62,7 @@ def fetch_options_chain(ticker: str = "QQQ", as_of: date | None = None, spot_pri
         frames.extend([calls, puts])
 
     result = pd.concat(frames, ignore_index=True)
-    logger.debug(
-        "Options chain: %d rows across %d expirations", len(result), len(future_exps)
-    )
+    logger.debug("Options chain: %d rows across %d expirations", len(result), len(future_exps))
     return result
 
 
@@ -122,7 +118,8 @@ def _process_side(
     if oi_zero_mask.any():
         logger.warning(
             "Found %d strikes with 0 Open Interest but positive Volume for expiration %s. Using Volume as fallback.",
-            oi_zero_mask.sum(), expiration
+            oi_zero_mask.sum(),
+            expiration,
         )
 
     out["openInterest"] = np.where(oi > 0, oi, vol)
@@ -143,7 +140,9 @@ def _process_side(
         exp_date = date.fromisoformat(expiration)
         T = max((exp_date - as_of).days, 1) / 365.0
         bs_gammas = out.loc[mask, "strike"].apply(
-            lambda k: _bs_gamma(spot, k, risk_free, out.loc[out["strike"] == k, "impliedVolatility"].iloc[0], T)
+            lambda k: _bs_gamma(
+                spot, k, risk_free, out.loc[out["strike"] == k, "impliedVolatility"].iloc[0], T
+            )
         )
         out.loc[mask, "gamma"] = bs_gammas.values
         out.loc[mask, "gamma_source"] = "bs"

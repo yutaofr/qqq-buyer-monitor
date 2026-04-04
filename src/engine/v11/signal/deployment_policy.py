@@ -1,4 +1,5 @@
 """Independent v11 deployment policy for incremental cash pacing."""
+
 from __future__ import annotations
 
 from src.models.deployment import DeploymentState, deployment_multiplier_for_state
@@ -80,7 +81,8 @@ class ProbabilisticDeploymentPolicy:
         raw_scores = {
             DeploymentState.DEPLOY_PAUSE.value: bust * (1.0 - readiness + h) + late * h,
             DeploymentState.DEPLOY_SLOW.value: late * (1.0 + h) + bust * (1.0 - readiness),
-            DeploymentState.DEPLOY_BASE.value: mid * (1.0 + value) + conviction * max(0.0, 1.0 - bust - late),
+            DeploymentState.DEPLOY_BASE.value: mid * (1.0 + value)
+            + conviction * max(0.0, 1.0 - bust - late),
             DeploymentState.DEPLOY_FAST.value: reversal * (readiness + value + conviction),
         }
         return ProbabilisticDeploymentPolicy._normalize(raw_scores)

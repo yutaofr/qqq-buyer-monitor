@@ -10,6 +10,7 @@ class MahalanobisGuard:
     Measures the distance of the current macro state from the historical bull-market core.
     Provides a continuous risk multiplier for the Entropy Controller.
     """
+
     def __init__(self):
         self.mean = None
         self.inv_cov = None

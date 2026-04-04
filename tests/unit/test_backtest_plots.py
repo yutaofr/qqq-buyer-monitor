@@ -49,7 +49,9 @@ def _daily_timeseries(use_signal_beta: bool = False) -> pd.DataFrame:
 
 def test_build_beta_backtest_figure_uses_target_beta_and_close():
     daily_ts = _daily_timeseries()
-    summary = SimpleNamespace(signal_beta=0.78, realized_beta=0.61, mean_interval_beta_deviation=0.0432)
+    summary = SimpleNamespace(
+        signal_beta=0.78, realized_beta=0.61, mean_interval_beta_deviation=0.0432
+    )
 
     fig = build_beta_backtest_figure(daily_ts, summary=summary)
     try:
@@ -62,7 +64,10 @@ def test_build_beta_backtest_figure_uses_target_beta_and_close():
         assert any(line.get_label() == "QQQ Close" for line in top_price_axis.lines)
         assert any(line.get_label() == "Raw Target Beta" for line in top_beta_axis.lines)
         assert any(line.get_label() == "Advised Target Beta" for line in top_beta_axis.lines)
-        assert any(collection.get_label() == "Beta Change Point" for collection in top_beta_axis.collections)
+        assert any(
+            collection.get_label() == "Beta Change Point"
+            for collection in top_beta_axis.collections
+        )
         assert "Average Signal Beta: 0.78" in top_price_axis.get_title()
     finally:
         plt.close(fig)
@@ -77,14 +82,19 @@ def test_build_beta_backtest_figure_supports_signal_beta_fallback():
         top_beta_axis = next(ax for ax in fig.axes if ax.get_ylabel() == "Target Beta")
         assert any(line.get_label() == "QQQ Close" for line in top_price_axis.lines)
         assert any(line.get_label() == "Target Beta" for line in top_beta_axis.lines)
-        assert any(collection.get_label() == "Beta Change Point" for collection in top_beta_axis.collections)
+        assert any(
+            collection.get_label() == "Beta Change Point"
+            for collection in top_beta_axis.collections
+        )
     finally:
         plt.close(fig)
 
 
 def test_save_beta_backtest_figure_writes_all_paths(tmp_path):
     daily_ts = _daily_timeseries()
-    summary = SimpleNamespace(signal_beta=0.78, realized_beta=0.61, mean_interval_beta_deviation=0.0432)
+    summary = SimpleNamespace(
+        signal_beta=0.78, realized_beta=0.61, mean_interval_beta_deviation=0.0432
+    )
     out_a = tmp_path / "artifacts" / "beta.png"
     out_b = tmp_path / "docs" / "images" / "beta.png"
 

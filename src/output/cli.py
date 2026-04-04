@@ -1,4 +1,5 @@
 """CLI output formatting for QQQ v11 Bayesian Monitor."""
+
 from __future__ import annotations
 
 import logging
@@ -36,18 +37,14 @@ def print_signal(
     print(f"\n{c(_BOLD)}=== QQQ PROBABILISTIC MONITOR (v12.0) ==={r}")
     print(f"Date:      {result.date}")
     print(f"Price:     ${result.price:.2f}")
-    print(
-        "Target:    "
-        f"beta={result.target_beta:.2f}x | "
-        f"regime={result.stable_regime}"
-    )
+    print(f"Target:    beta={result.target_beta:.2f}x | regime={result.stable_regime}")
 
     t = result.target_allocation
     print(
         "Reference: "
-        f"Cash={t.target_cash_pct*100:.1f}%, "
-        f"QQQ={t.target_qqq_pct*100:.1f}%, "
-        f"QLD={t.target_qld_pct*100:.1f}% | "
+        f"Cash={t.target_cash_pct * 100:.1f}%, "
+        f"QQQ={t.target_qqq_pct * 100:.1f}%, "
+        f"QLD={t.target_qld_pct * 100:.1f}% | "
         f"Entropy={result.entropy:.3f}"
     )
 

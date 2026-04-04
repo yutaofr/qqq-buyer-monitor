@@ -29,7 +29,10 @@ def fetch_forward_pe(ticker: str = "QQQ") -> dict:
     # 2. Institutional Check / Sanitization
     # If yfinance is outlier (>31 when consensus is ~25), we flag it or provide institutional overlay
     if result["forward_pe"] and result["forward_pe"] > 31.0:
-        logger.info("yfinance PE (%s) seems like an outlier compared to institutional consensus (~25x). Using institutional override.", result["forward_pe"])
+        logger.info(
+            "yfinance PE (%s) seems like an outlier compared to institutional consensus (~25x). Using institutional override.",
+            result["forward_pe"],
+        )
         result["forward_pe_raw"] = result["forward_pe"]
         result["forward_pe"] = INSTITUTIONAL_PE_ESTIMATE
         result["source"] = "fallback:institutional_consensus"

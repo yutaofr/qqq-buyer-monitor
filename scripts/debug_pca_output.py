@@ -1,4 +1,3 @@
-
 import pandas as pd
 
 from src.engine.v11.core.calibration_service import CalibrationService
@@ -15,7 +14,14 @@ def debug():
     standardized = library.get_standardized_features()
 
     calibrator = CalibrationService()
-    baseline_features = ["spread_stress_pct", "liquidity_stress_pct", "vix_stress_pct", "drawdown_stress_pct", "breadth_stress_pct", "term_structure_stress_pct"]
+    baseline_features = [
+        "spread_stress_pct",
+        "liquidity_stress_pct",
+        "vix_stress_pct",
+        "drawdown_stress_pct",
+        "breadth_stress_pct",
+        "term_structure_stress_pct",
+    ]
 
     # Use a small subset for calibration
     train = df.head(1000)
@@ -37,6 +43,7 @@ def debug():
         print(f"Flat Access [1]: {packet['pca_coords'][1]}")
     except Exception as e:
         print(f"Flat Access Error: {e}")
+
 
 if __name__ == "__main__":
     debug()

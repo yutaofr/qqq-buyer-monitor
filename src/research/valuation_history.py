@@ -1,4 +1,5 @@
 """Historical valuation proxy ingestion for v10 research datasets."""
+
 from __future__ import annotations
 
 import re
@@ -7,7 +8,9 @@ import subprocess
 import pandas as pd
 from bs4 import BeautifulSoup
 
-DAMODARAN_HISTIMPL_URL = "https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/histimpl.html"
+DAMODARAN_HISTIMPL_URL = (
+    "https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/histimpl.html"
+)
 DAMODARAN_SOURCE_TAG = "damodaran:histimpl"
 _TARGET_HEADERS = {"year", "earnings yield", "implied erp (fcfe)"}
 
@@ -83,7 +86,9 @@ def parse_damodaran_histimpl_html(html: str) -> pd.DataFrame:
         )
 
     if not rows:
-        raise ValueError("No usable valuation rows parsed from Damodaran historical implied ERP table")
+        raise ValueError(
+            "No usable valuation rows parsed from Damodaran historical implied ERP table"
+        )
 
     frame = pd.DataFrame(rows)
     frame = frame.sort_values("observation_date").drop_duplicates(
@@ -91,14 +96,17 @@ def parse_damodaran_histimpl_html(html: str) -> pd.DataFrame:
         keep="last",
     )
     frame = frame.reset_index(drop=True)
-    return frame.loc[:, [
-        "observation_date",
-        "effective_date",
-        "forward_pe",
-        "erp_pct",
-        "source_forward_pe",
-        "source_erp",
-    ]]
+    return frame.loc[
+        :,
+        [
+            "observation_date",
+            "effective_date",
+            "forward_pe",
+            "erp_pct",
+            "source_forward_pe",
+            "source_erp",
+        ],
+    ]
 
 
 def fetch_historical_valuation_proxy(timeout: int = 20) -> pd.DataFrame:

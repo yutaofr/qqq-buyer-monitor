@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """v11 POC Phase 1: Feature Engineering & Likelihood Calibration."""
+
 import logging
 from pathlib import Path
 
@@ -9,8 +10,9 @@ from sklearn.decomposition import PCA
 from sklearn.model_selection import GridSearchCV
 from sklearn.neighbors import KernelDensity
 
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
+
 
 def run_phase1():
     # 1. Load Data
@@ -50,11 +52,13 @@ def run_phase1():
 
     # 1.5 PROXY DEGRADATION: Fill missing macro with neutral proxies for 1999-2008
     df["credit_spread_bps"] = df["credit_spread_bps"].ffill().fillna(400.0)
-    df["erp_pct"] = df["erp_pct"].ffill().fillna(3.5) # Generic healthy ERP
+    df["erp_pct"] = df["erp_pct"].ffill().fillna(3.5)  # Generic healthy ERP
     df["liquidity_roc_pct_4w"] = df["liquidity_roc_pct_4w"].ffill().fillna(0.0)
     df["funding_stress_flag"] = df["funding_stress_flag"].ffill().fillna(0.0)
 
-    logger.info(f"Augmented dataset: {len(df)} rows from {df['observation_date'].min()} to {df['observation_date'].max()}")
+    logger.info(
+        f"Augmented dataset: {len(df)} rows from {df['observation_date'].min()} to {df['observation_date'].max()}"
+    )
 
     # 2. Calculate Percentile Ranks (1yr Rolling for early availability)
     window = 252 * 1
@@ -83,7 +87,11 @@ def run_phase1():
         if row["spread_pct"] >= 0.90:
             return "BUST"
         # 2. CAPITULATION: Spread_pct >= 0.80 AND Accel <= 0 AND Liquidity_ROC > 0
-        if row["spread_pct"] >= 0.80 and row["credit_acceleration_pct_10d"] <= 0 and row["liquidity_roc_pct_4w"] > 0:
+        if (
+            row["spread_pct"] >= 0.80
+            and row["credit_acceleration_pct_10d"] <= 0
+            and row["liquidity_roc_pct_4w"] > 0
+        ):
             return "CAPITULATION"
         # 3. LATE_CYCLE: ERP_pct <= 0.15 AND Spread_pct > 0.65
         if row["erp_pct"] <= 0.15 and row["spread_pct"] > 0.65:
@@ -98,7 +106,11 @@ def run_phase1():
     def label_regime_final(row):
         if row["spread_pct"] >= 0.90:
             return "BUST"
-        if row["spread_pct"] >= 0.80 and row["spread_accel"] <= 0 and row["liquidity_roc_pct_4w"] > 0:
+        if (
+            row["spread_pct"] >= 0.80
+            and row["spread_accel"] <= 0
+            and row["liquidity_roc_pct_4w"] > 0
+        ):
             return "CAPITULATION"
         if row["erp_pct_rank"] <= 0.15 and row["spread_pct"] > 0.65:
             return "LATE_CYCLE"
@@ -146,6 +158,7 @@ def run_phase1():
     output_path = "data/v11_poc_phase1_results.csv"
     df.to_csv(output_path, index=False)
     logger.info(f"POC Phase 1 results saved to {output_path}")
+
 
 if __name__ == "__main__":
     run_phase1()

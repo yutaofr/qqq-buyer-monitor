@@ -1,6 +1,7 @@
 """v11 Core: Term Structure Kill-Switch with Dynamic Z-Score.
 Weaponized resurrection operator using dynamic volatility breakout bounds.
 """
+
 from __future__ import annotations
 
 import pandas as pd
@@ -10,25 +11,22 @@ class DynamicZScoreKillSwitch:
     """
     v11 终极猎杀逆转算子：废除绝对参数，通过自适应 Z-Score 捕捉波动率结构的瞬间断裂。
     """
+
     def __init__(self, rolling_window: int = 60, z_threshold: float = 2.5):
         self.window = rolling_window
-        self.z_threshold = z_threshold # 统计学意义上的尾部突破阈值
+        self.z_threshold = z_threshold  # 统计学意义上的尾部突破阈值
 
     def evaluate_resurrection(
-        self,
-        is_blackout: bool,
-        ts_series: pd.Series,
-        vix_1m: pd.Series,
-        current_idx: int
+        self, is_blackout: bool, ts_series: pd.Series, vix_1m: pd.Series, current_idx: int
     ) -> bool:
         """
         评估是否在流动性黑洞中强行解除冻结并开启猎杀。
         """
         if not is_blackout:
-            return False # 仅在 Blackout 状态下具备“苏醒”资格
+            return False  # 仅在 Blackout 状态下具备“苏醒”资格
 
         if current_idx < self.window + 3:
-            return False # 预热窗不足
+            return False  # 预热窗不足
 
         # 1. 恐慌一阶导数: VIX 必须正在下降 (确认峰值已过)
         vix_momentum = vix_1m.iloc[current_idx] - vix_1m.iloc[current_idx - 1]

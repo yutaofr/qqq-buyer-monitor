@@ -1,4 +1,5 @@
 """Canonical data contract for v12 historical macro research inputs."""
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -169,7 +170,9 @@ def _normalize_signal_expectation_frame(df: pd.DataFrame) -> pd.DataFrame:
 
     duplicate_rows = frame.index[frame["date"].duplicated()].tolist()
     if duplicate_rows:
-        raise ValueError(f"Duplicate date values in signal expectation frame: rows {duplicate_rows}")
+        raise ValueError(
+            f"Duplicate date values in signal expectation frame: rows {duplicate_rows}"
+        )
 
     return frame
 
@@ -229,14 +232,20 @@ def validate_signal_expectation_frame(df: pd.DataFrame) -> None:
         invalid = multiplier.notna() & ((multiplier < 0.0) | (multiplier > 2.0))
         if invalid.any():
             bad_rows = frame.index[invalid].tolist()
-            raise ValueError(f"expected_deployment_multiplier must be between 0.0 and 2.0: rows {bad_rows}")
+            raise ValueError(
+                f"expected_deployment_multiplier must be between 0.0 and 2.0: rows {bad_rows}"
+            )
 
     for column in SIGNAL_EXPECTATION_OPTIONAL_NUMERIC_COLUMNS:
         if column in frame.columns:
             _validate_numeric_column(frame, column)
 
     if "expected_deployment_state" in frame.columns:
-        invalid = frame["expected_deployment_state"].dropna().map(lambda value: str(value) not in _ALLOWED_DEPLOYMENT_STATES)
+        invalid = (
+            frame["expected_deployment_state"]
+            .dropna()
+            .map(lambda value: str(value) not in _ALLOWED_DEPLOYMENT_STATES)
+        )
         if invalid.any():
             bad_rows = frame["expected_deployment_state"].dropna().index[invalid].tolist()
             raise ValueError(f"Unknown deployment state values: rows {bad_rows}")
@@ -248,8 +257,7 @@ def summarize_historical_macro_coverage(df: pd.DataFrame) -> dict[str, object]:
 
     observation_date = pd.to_datetime(df["observation_date"], errors="coerce")
     coverage = {
-        column: float(df[column].notna().mean())
-        for column in REQUIRED_HISTORICAL_MACRO_COLUMNS
+        column: float(df[column].notna().mean()) for column in REQUIRED_HISTORICAL_MACRO_COLUMNS
     }
     return {
         "rows": int(len(df)),
@@ -266,13 +274,11 @@ def summarize_signal_expectation_coverage(df: pd.DataFrame) -> dict[str, object]
 
     coverage_columns = tuple(
         column
-        for column in SIGNAL_EXPECTATION_EXPECTED_COLUMNS + SIGNAL_EXPECTATION_OPTIONAL_NUMERIC_COLUMNS
+        for column in SIGNAL_EXPECTATION_EXPECTED_COLUMNS
+        + SIGNAL_EXPECTATION_OPTIONAL_NUMERIC_COLUMNS
         if column in frame.columns
     )
-    coverage = {
-        column: float(frame[column].notna().mean())
-        for column in coverage_columns
-    }
+    coverage = {column: float(frame[column].notna().mean()) for column in coverage_columns}
     return {
         "rows": int(len(frame)),
         "first_date": frame["date"].min() if not frame.empty else None,
@@ -287,7 +293,9 @@ def _normalize_regime_series(regimes: pd.DataFrame | pd.Series) -> pd.Series:
     elif isinstance(regimes, pd.DataFrame) and "regime" in regimes.columns:
         series = regimes["regime"]
     else:
-        raise ValueError("Regime support validation requires a Series or a DataFrame with a `regime` column")
+        raise ValueError(
+            "Regime support validation requires a Series or a DataFrame with a `regime` column"
+        )
     return series.dropna().map(str)
 
 
@@ -300,7 +308,9 @@ def summarize_regime_state_support(
     label_regimes = sorted(set(_normalize_regime_series(regimes)))
     configured_regimes = sorted({str(regime) for regime in audit_regimes})
     supported_regimes = [regime for regime in configured_regimes if regime in label_regimes]
-    unsupported_audit_regimes = [regime for regime in configured_regimes if regime not in label_regimes]
+    unsupported_audit_regimes = [
+        regime for regime in configured_regimes if regime not in label_regimes
+    ]
     extra_label_regimes = [regime for regime in label_regimes if regime not in configured_regimes]
     return {
         "audit_regimes": configured_regimes,
@@ -321,9 +331,7 @@ def validate_regime_state_support(
     report = summarize_regime_state_support(regimes, audit_regimes=audit_regimes)
     allowed = {str(regime) for regime in (allow_missing or ())}
     unsupported = [
-        regime
-        for regime in report["unsupported_audit_regimes"]
-        if regime not in allowed
+        regime for regime in report["unsupported_audit_regimes"] if regime not in allowed
     ]
     if unsupported:
         raise ValueError(

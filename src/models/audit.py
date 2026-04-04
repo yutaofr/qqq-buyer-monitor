@@ -1,4 +1,5 @@
 """v7.0 Decision Audit model."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from src.models.risk import RiskState
 @dataclass(frozen=True)
 class DecisionAudit:
     """Full evidence record for a single v7 production decision."""
+
     market_date: date
     risk_state: RiskState
     deployment_state: DeploymentState

@@ -24,7 +24,9 @@ def test_v11_2020_high_pressure_workflow(tmp_path):
     )
 
     # 3. 准备 2020 年 3 月的测试窗口数据 (从刚刚生成的 baseline 中提取)
-    macro_df = pd.read_csv(macro_path, parse_dates=["observation_date"]).set_index("observation_date")
+    macro_df = pd.read_csv(macro_path, parse_dates=["observation_date"]).set_index(
+        "observation_date"
+    )
     test_window = macro_df[(macro_df.index >= "2020-03-01") & (macro_df.index <= "2020-05-01")]
 
     signals = []
@@ -36,22 +38,26 @@ def test_v11_2020_high_pressure_workflow(tmp_path):
 
         # 注入一个随机 NaN 来测试数据管道韧性
         if date == pd.Timestamp("2020-03-12"):
-            t0_data["credit_spread_bps"] = float('nan')
+            t0_data["credit_spread_bps"] = float("nan")
 
         result = conductor.daily_run(t0_data)
 
         # 模拟至少触发一次调仓以验证结算锁
         if date == test_window.index[0]:
-             conductor.beta_mapper.current_beta = 0.0
+            conductor.beta_mapper.current_beta = 0.0
 
         signals.append(result)
 
     # AC-1: 数据管道韧性 (3-12 数据质量应下降)
-    warn_signal = next(s for s in signals if pd.to_datetime(s["date"]) == pd.Timestamp("2020-03-12"))
+    warn_signal = next(
+        s for s in signals if pd.to_datetime(s["date"]) == pd.Timestamp("2020-03-12")
+    )
     assert warn_signal["data_quality"] < 1.0
 
     # AC-2: 风险识别 (3月中旬应对应高压环境)
-    panic_signal = next(s for s in signals if pd.to_datetime(s["date"]) == pd.Timestamp("2020-03-16"))
+    panic_signal = next(
+        s for s in signals if pd.to_datetime(s["date"]) == pd.Timestamp("2020-03-16")
+    )
     # 在 BUST 概率高时，Beta 应受到压制
     assert panic_signal["target_beta"] <= 1.0
 

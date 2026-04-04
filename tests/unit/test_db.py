@@ -35,9 +35,7 @@ def test_init_db_writes_schema_version_meta(tmp_path):
     db_path = tmp_path / "signals.db"
 
     conn = init_db(str(db_path))
-    schema_version = conn.execute(
-        "SELECT value FROM meta WHERE key = 'schema_version'"
-    ).fetchone()
+    schema_version = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
     conn.close()
 
     assert schema_version == (CURRENT_SCHEMA_VERSION,)
@@ -60,9 +58,7 @@ def test_init_db_rebuilds_legacy_signals_schema_and_sets_version(tmp_path):
 
     conn = init_db(str(db_path))
     columns = {row[1] for row in conn.execute("PRAGMA table_info(signals)").fetchall()}
-    schema_version = conn.execute(
-        "SELECT value FROM meta WHERE key = 'schema_version'"
-    ).fetchone()
+    schema_version = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
     conn.close()
 
     assert "target_beta" in columns
