@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>QQQ 氣象觀測站 - Probabilistic Target-Beta 儀表板</title>
+    <title id="ui-page-title">QQQ 氣象觀測站 - 機率目標係數儀表板</title>
     <script>
         window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
     </script>
@@ -74,19 +74,19 @@
                     <span>/</span>
                     <span onclick="setLanguage('zh-TW')" id="lang-tw" class="lang-toggle active">繁中</span>
                 </div>
-                <p id="ui-subtitle" class="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase">v13.0 Probabilistic</p>
+                <p id="ui-subtitle" class="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase">--</p>
             </div>
         </div>
 
         <div class="mt-12 sm:mt-14 mb-6 sm:mb-8 text-center">
             <h1 id="ui-title" class="text-3xl sm:text-4xl font-black tracking-tighter text-white">趨勢氣象站</h1>
-            <p class="text-[10px] font-bold text-emerald-400/60 uppercase tracking-[0.3em] mt-2">V14 Panorama Ensemble</p>
+            <p id="ui-version-tag" class="text-[10px] font-bold text-emerald-400/60 uppercase tracking-[0.3em] mt-2">--</p>
         </div>
 
         <!-- Main State Section -->
         <div class="space-y-8 sm:space-y-10 text-center mb-10 sm:mb-12">
             <div class="space-y-3">
-                <p id="ui-regime-label" class="text-[11px] font-black uppercase opacity-50 text-slate-500 tracking-wider">穩定體制 (Stable Regime)</p>
+                <p id="ui-regime-label" class="text-[11px] font-black uppercase opacity-50 text-slate-500 tracking-wider">穩定體制</p>
                 <div class="flex items-center justify-center space-x-4">
                     <div id="regime-lumiere" class="lumiere bg-slate-500"></div>
                     <p id="regime" class="text-4xl sm:text-5xl font-black tracking-tighter text-white break-words transition-colors duration-1000">--</p>
@@ -113,7 +113,7 @@
             
             <div class="flex flex-col items-center text-center space-y-4 relative z-10">
                 <!-- Verdict Section -->
-                <p id="ui-panorama-label" class="text-[11px] font-black uppercase text-slate-500 tracking-widest">全景診斷裁決 (Ensemble Verdict)</p>
+                <p id="ui-panorama-label" class="text-[11px] font-black uppercase text-slate-500 tracking-widest">全景診斷裁決</p>
                 <div class="flex items-center space-x-3">
                     <div id="verdict-icon" class="w-3 h-3 rounded-full animate-pulse"></div>
                     <p id="verdict-text" class="text-3xl font-black tracking-tighter text-white uppercase">--</p>
@@ -136,12 +136,12 @@
 
                 <!-- Execution Target (Merged Beta) -->
                 <div class="w-full pt-6 border-t border-white/5 mt-4 flex flex-col items-center">
-                    <p id="ui-beta-rec" class="text-[11px] font-black uppercase text-emerald-400/80 mb-2">最終執行 Beta (Target)</p>
+                    <p id="ui-beta-rec" class="text-[11px] font-black uppercase text-emerald-400/80 mb-2">最終執行目標</p>
                     <div class="flex items-end justify-center space-x-4 mb-4">
                         <p id="exposure" class="text-6xl font-black text-white leading-none">--</p>
                         <div class="text-right pb-1">
                             <p id="ui-confidence" class="text-[9px] font-bold text-slate-500 uppercase">信心度</p>
-                            <p class="text-[9px] font-black text-white bg-emerald-500/20 px-2 py-0.5 rounded">BAYESIAN</p>
+                            <p id="ui-model-type" class="text-[9px] font-black text-white bg-emerald-500/20 px-2 py-0.5 rounded">機率推斷</p>
                         </div>
                     </div>
                     
@@ -179,22 +179,16 @@
 
                     <div class="flex justify-between w-full mt-4 opacity-40">
                         <div class="flex flex-col items-start">
-                            <span class="text-[8px] font-black text-slate-500 uppercase">Tractor (SPY)</span>
-                            <div class="flex items-center space-x-1">
-                                <span id="diag-tractor" class="text-[10px] font-bold text-slate-300">--</span>
-                                <span id="diag-tractor-status" class="text-[8px] font-black text-slate-500 uppercase">--</span>
-                            </div>
+                            <span id="ui-tractor-label" class="text-[8px] font-black text-slate-500 uppercase">標普500</span>
+                            <span id="diag-tractor" class="text-[10px] font-bold text-slate-300">--</span>
                         </div>
                         <div class="flex flex-col items-center">
-                            <span class="text-[8px] font-black text-slate-500 uppercase">Mode</span>
+                            <span id="ui-mode-label" class="text-[8px] font-black text-slate-500 uppercase">模式</span>
                             <span id="overlay-mode" class="text-[9px] font-bold text-slate-300">--</span>
                         </div>
                         <div class="flex flex-col items-end">
-                            <span class="text-[8px] font-black text-slate-500 uppercase">Sidecar (QQQ)</span>
-                            <div class="flex items-center space-x-1">
-                                <span id="diag-sidecar-status" class="text-[8px] font-black text-slate-500 uppercase">--</span>
-                                <span id="diag-sidecar" class="text-[10px] font-bold text-slate-300">--</span>
-                            </div>
+                            <span id="ui-sidecar-label" class="text-[8px] font-black text-slate-500 uppercase">納指100</span>
+                            <span id="diag-sidecar" class="text-[10px] font-bold text-slate-300">--</span>
                         </div>
                     </div>
                 </div>
@@ -217,60 +211,51 @@
         <div id="insights-panel">
             <div class="space-y-12 sm:space-y-16 py-8 sm:py-10 border-t border-white/10 text-center">
                 <div class="space-y-6">
-                    <p id="ui-posterior-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">後驗機率分佈 (Posterior)</p>
+                    <p id="ui-posterior-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">後驗機率分佈</p>
                     <div id="prob-container" class="space-y-4 px-4 sm:px-6"></div>
                 </div>
 
                 <div class="space-y-6">
-                    <p id="ui-prior-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">運行時先驗 (Runtime Prior)</p>
+                    <p id="ui-prior-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">運行時先驗</p>
                     <div id="prior-container" class="space-y-4 px-4 sm:px-6"></div>
                 </div>
                 
                 <div class="flex flex-col items-center">
-                    <p id="ui-logic-tree-label" class="text-[11px] font-black uppercase opacity-40 mb-10 tracking-widest">聯動決策樹 (Logic Tree)</p>
+                    <p id="ui-logic-tree-label" class="text-[11px] font-black uppercase opacity-40 mb-10 tracking-widest">聯動決策樹</p>
                     <div class="w-full max-w-xs space-y-4">
                         <div class="flex flex-wrap justify-center gap-2">
-                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="CRISIS"><span class="ui-tag-crisis">危機</span> <span class="opacity-30">CRS</span></span>
-                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="STRESS"><span class="ui-tag-stress">壓力</span> <span class="opacity-30">STR</span></span>
-                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="NEUTRAL"><span class="ui-tag-neutral">中性</span> <span class="opacity-30">NEU</span></span>
-                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="EUPHORIC"><span class="ui-tag-euphoric">過熱</span> <span class="opacity-30">EUP</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="CRISIS"><span class="ui-tag-crisis">危機</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="STRESS"><span class="ui-tag-stress">壓力</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="NEUTRAL"><span class="ui-tag-neutral">中性</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="EUPHORIC"><span class="ui-tag-euphoric">過熱</span></span>
                         </div>
                         <div class="tree-line active mx-auto"></div>
                         <div class="flex flex-wrap justify-center gap-2">
-                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="BUST"><span class="ui-tag-bust">蕭條</span> <span class="opacity-30">BST</span></span>
-                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="RECOVERY"><span class="ui-tag-recovery">修復</span> <span class="opacity-30">RCV</span></span>
-                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="MID_CYCLE"><span class="ui-tag-mid">中期</span> <span class="opacity-30">MID</span></span>
-                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="LATE_CYCLE"><span class="ui-tag-late">後期</span> <span class="opacity-30">LAT</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="BUST"><span class="ui-tag-bust">蕭條</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="RECOVERY"><span class="ui-tag-recovery">修復</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="MID_CYCLE"><span class="ui-tag-mid">中期</span></span>
+                            <span class="tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl" data-key="LATE_CYCLE"><span class="ui-tag-late">後期</span></span>
                         </div>
                         <div class="tree-line active mx-auto"></div>
                         <div class="flex justify-center gap-4">
-                            <span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl" data-key="CASH"><span class="ui-tag-cash">現金</span> <span class="opacity-30">0X</span></span>
-                            <span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl" data-key="QQQ"><span class="ui-tag-qqq">倉位</span> <span class="opacity-30">1X</span></span>
-                            <span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl" data-key="QLD"><span class="ui-tag-qld">槓桿</span> <span class="opacity-30">2X</span></span>
+                            <span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl" data-key="CASH"><span class="ui-tag-cash">現金</span></span>
+                            <span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl" data-key="QQQ"><span class="ui-tag-qqq">倉位</span></span>
+                            <span class="tag text-ghost text-[10px] px-5 py-2 border border-white/5 rounded-2xl" data-key="QLD"><span class="ui-tag-qld">槓桿</span></span>
                         </div>
                     </div>
                 </div>
 
                 <div class="space-y-6">
-                    <p id="ui-logic-trace-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">邏輯下鑽 (Logic Trace)</p>
+                    <p id="ui-logic-trace-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">邏輯下鑽分析</p>
                     <div id="logic-trace-container" class="space-y-3 px-2 sm:px-4"></div>
                 </div>
 
-                <div class="space-y-6">
-                    <p id="ui-execution-overlay-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">執行 Overlay</p>
-                    <div id="execution-overlay-container" class="space-y-3 px-2 sm:px-4"></div>
-                </div>
-
-                <div class="space-y-6">
-                    <p id="ui-feature-values-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">特徵數值 (Feature Values)</p>
-                    <div id="feature-values-container" class="feature-grid px-2 sm:px-4"></div>
-                </div>
                 
                 <div class="pt-10 border-t border-white/5 text-[10px] font-black text-slate-600 uppercase text-left">
-                    <div class="flex justify-between"><span id="ui-engine-label">核心引擎版本</span><span class="text-slate-400">v14.0-PANORAMA</span></div>
+                    <div class="flex justify-between"><span id="ui-engine-label">核心引擎版本</span><span class="text-slate-400">v13.7-ULTIMA</span></div>
                     <div class="flex justify-between"><span id="ui-anchor-label">資料血緣回溯</span><span id="hydration-anchor" class="text-slate-400">2018-01-01</span></div>
-                    <div class="flex justify-between"><span id="ui-generated-label">生成時間 (UTC)</span><span id="calc-at" class="text-slate-400">--</span></div>
-                    <div class="flex justify-between"><span id="ui-data-status-label">數據同步狀態</span><span id="data-source" class="text-slate-400">--</span></div>
+                    <div class="flex justify-between"><span id="ui-generated-label">更新時間</span><span id="calc-at" class="text-slate-400">--</span></div>
+                    <div class="flex justify-between"><span id="ui-data-status-label">數據狀態</span><span id="data-source" class="text-slate-400">--</span></div>
                 </div>
             </div>
         </div>
@@ -282,9 +267,14 @@
         
         const TRANSLATIONS = {
             'en': {
-                'ui-title': 'QQQ Barometer', 'ui-subtitle': 'v13.0 Probabilistic', 'ui-regime-label': 'Stable Regime',
-                'ui-entropy-label': 'Entropy', 'ui-deploy-label': 'Entry Pacing', 'ui-beta-rec': 'Target Execution Beta',
+                'ui-page-title': 'QQQ Barometer - Probabilistic Dashboard',
+                'ui-title': 'QQQ Barometer', 'ui-subtitle': 'v13.0 Probabilistic', 
+                'ui-version-tag': 'V14 Panorama Ensemble',
+                'ui-regime-label': 'Stable Regime',
+                'ui-entropy-label': 'Entropy', 'ui-deploy-label': 'Entry Pacing', 'ui-beta-rec': 'Target Beta',
                 'ui-panorama-label': 'Panorama Ensemble Verdict',
+                'ui-model-type': 'Bayesian',
+                'ui-tractor-label': 'Tractor (SPY)', 'ui-sidecar-label': 'Sidecar (QQQ)',
                 'ui-standard-label': 'Standard', 'ui-protective-label': 'Protective', 'ui-aggressive-label': 'Aggressive',
                 'ui-confidence': 'Confidence', 'ui-ceiling': 'Ceiling', 'ui-raw': 'Raw', 'ui-protected': 'Protected',
                 'ui-overlay': 'Overlay', 'ui-beta-mult': 'Beta Mult', 'ui-pace-mult': 'Pace Mult',
@@ -294,6 +284,10 @@
                 'ui-logic-tree-label': 'Logic Tree', 'ui-logic-trace-label': 'Logic Trace',
                 'ui-execution-overlay-label': 'Execution Overlay', 'ui-feature-values-label': 'Feature Values',
                 'ui-engine-label': 'Engine', 'ui-anchor-label': 'Prior Anchor', 'ui-generated-label': 'Generated (UTC)',
+                'ui-step': 'Step',
+                'status': {
+                    'CLOUD_SYNCED': 'Synced', 'LOCAL_FALLBACK': 'LocalStorage', 'SYNC_ERROR': 'Sync Error'
+                },
                 'tags': {
                     'crisis': 'Crisis', 'stress': 'Stress', 'neutral': 'Neutral', 'euphoric': 'Euphoric',
                     'bust': 'Bust', 'recovery': 'Recovery', 'mid': 'Mid', 'late': 'Late',
@@ -311,9 +305,14 @@
                 }
             },
             'zh-TW': {
-                'ui-title': '趨勢氣象站', 'ui-subtitle': 'v13.0 機率推斷版', 'ui-regime-label': '週期階段',
-                'ui-entropy-label': '資訊熵', 'ui-deploy-label': '佈局節奏', 'ui-beta-rec': '最終執行目標 (Beta)',
+                'ui-page-title': 'QQQ 氣象觀測站 - 機率目標係數儀表板',
+                'ui-title': '趨勢氣象站', 'ui-subtitle': 'v13.0 機率推斷版', 
+                'ui-version-tag': 'V14 全景集成版',
+                'ui-regime-label': '穩定體制',
+                'ui-entropy-label': '資訊熵', 'ui-deploy-label': '佈局節奏', 'ui-beta-rec': '最終執行目標',
                 'ui-panorama-label': '全景診斷裁決',
+                'ui-model-type': '機率推斷',
+                'ui-tractor-label': '標普500', 'ui-sidecar-label': '納指100',
                 'ui-standard-label': '標配', 'ui-protective-label': '防禦', 'ui-aggressive-label': '積極',
                 'ui-confidence': '信心度', 'ui-ceiling': '上限', 'ui-raw': '原始', 'ui-protected': '受保護',
                 'ui-overlay': '疊加層', 'ui-beta-mult': '倉位縮放倍率', 'ui-pace-mult': '節奏縮放倍率',
@@ -322,7 +321,11 @@
                 'ui-posterior-label': '後驗機率分佈', 'ui-prior-label': '運行時先驗',
                 'ui-logic-tree-label': '聯動決策樹', 'ui-logic-trace-label': '邏輯下鑽分析',
                 'ui-execution-overlay-label': '執行疊加層', 'ui-feature-values-label': '特徵數值明細',
-                'ui-engine-label': '核心引擎版本', 'ui-anchor-label': '資料血緣回溯', 'ui-generated-label': '生成時間 (UTC)',
+                'ui-engine-label': '核心引擎版本', 'ui-anchor-label': '資料血緣回溯', 'ui-generated-label': '更新時間',
+                'ui-step': '第',
+                'status': {
+                    'CLOUD_SYNCED': '同步成功', 'LOCAL_FALLBACK': '本地備份', 'SYNC_ERROR': '同步出錯'
+                },
                 'tags': {
                     'crisis': '危機', 'stress': '壓力', 'neutral': '中性', 'euphoric': '過熱',
                     'bust': '蕭條', 'recovery': '修復', 'mid': '中期', 'late': '後期',
@@ -332,7 +335,13 @@
                     'CRISIS': '危機', 'STRESS': '壓力', 'NEUTRAL': '中性', 'EUPHORIC': '過熱',
                     'BUST': '蕭條', 'MID_CYCLE': '中期', 'LATE_CYCLE': '後期', 'RECOVERY': '修復',
                     'CASH': '現金', 'QQQ': '1x 倉位', 'QLD': '2x 槓桿',
-                    'FULL': '全量', 'HALF': '半量', 'QUARTER': '四分之一', 'NONE': '關閉'
+                    'FULL': '全量', 'SHADOW': '影子模式', 'HALF': '半量', 'QUARTER': '四分之一', 'NONE': '關閉',
+                    'FAST': '快速', 'BASE': '標配', 'SLOW': '減速', 'PAUSE': '停步', 'RECOVER': '恢復',
+                    'TRUE': '是', 'FALSE': '否', 'MODE': '模式', 'STATE': '狀態', 'NEGATIVE SCORE': '負向評分',
+                    'POSITIVE SCORE': '正向評分', 'DIAG BETA': '診斷敞口', 'DIAG PACE': '診斷節奏', 'FALLBACK': '觸發回退',
+                    'BREAKEVEN': '盈虧平衡', 'COPPER GOLD': '銅金比', 'NET LIQUIDITY': '淨流動性',
+                    'GLOBAL BETA': '全球系統風險', 'VIX TERM STRUCTURE': '波動率結構', 'MOMENTUM': '動量因子',
+                    'DEPLOY_BASE': '標準佈局', 'BUCKET_HOLD': '持倉不變', 'TARGET_BUCKET': '目標倉位', 'LOCK_ACTIVE': '鎖定生效'
                 },
                 'steps': {
                     'probabilistic_inference': '後驗推斷', 'entropy_haircut': '資訊熵懲罰',
@@ -357,7 +366,9 @@
                 if (typeof text === 'string') {
                     const el = document.getElementById(id);
                     if (el) {
-                        if (id.startsWith('ui-btn-')) {
+                        if (id === 'ui-page-title') {
+                            document.title = text;
+                        } else if (id.startsWith('ui-btn-')) {
                             // Keep SVG icon if exists
                             const svg = el.querySelector('svg');
                             el.innerHTML = svg ? svg.outerHTML + ' ' + text : text;
@@ -401,24 +412,33 @@
         }
 
         function formatScalar(value) {
+            const mapping = TRANSLATIONS[currentLang].mapping;
+            if (typeof value === 'boolean') return mapping[String(value).toUpperCase()] || String(value);
             if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
-            if (typeof value === 'boolean') return value ? 'true' : 'false';
-            return value == null ? 'null' : String(value);
+            const strVal = String(value || '');
+            if (mapping[strVal.toUpperCase()]) return mapping[strVal.toUpperCase()];
+            return strVal;
         }
 
         function summarizeResult(result) {
             if (result == null) return currentLang === 'en' ? 'No Output' : '無輸出';
             if (typeof result !== 'object') return formatScalar(result);
+            const mapping = TRANSLATIONS[currentLang].mapping;
+            // If it's a result with a status/state, just show the localized state
+            const state = result.overlay_state || result.deployment_state || result.target_bucket || result.stable_regime;
+            if (state && mapping[state]) return mapping[state];
+            
             const entries = Object.entries(result);
             if (!entries.length) return currentLang === 'en' ? 'Empty' : '空對象';
-            return entries.slice(0, 3).map(([key, value]) => `${key}: ${formatScalar(value)}`).join(' · ');
+            // Only show one primary entry if possible to avoid crowding/English
+            const [key, value] = entries[0];
+            return `${humanizeKey(key)}: ${formatScalar(value)}`;
         }
 
         function humanizeKey(key) {
             const mapping = TRANSLATIONS[currentLang].mapping;
-            if (mapping[key]) return mapping[key];
-            const cleanKey = String(key || '').toUpperCase();
-            if (mapping[cleanKey]) return mapping[cleanKey];
+            const upperKey = String(key || '').toUpperCase();
+            if (mapping[upperKey]) return mapping[upperKey];
             return String(key || '').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
         }
 
@@ -434,13 +454,15 @@
             steps.forEach((entry, index) => {
                 const stepKey = String(entry.step || `step_${index + 1}`);
                 const stepLabel = TRANSLATIONS[currentLang].steps[stepKey] || humanizeKey(stepKey);
+                const stepPrefix = TRANSLATIONS[currentLang]['ui-step'] || 'Step';
+                const stepSuffix = currentLang === 'zh-TW' ? ' 步' : '';
                 const summary = summarizeResult(entry.result);
                 const body = escapeHtml(JSON.stringify(entry.result ?? null, null, 2));
                 container.innerHTML += `
                     <details class="evidence-card" ${index === steps.length - 1 ? 'open' : ''}>
                         <summary class="flex items-start justify-between gap-4">
                             <div>
-                                <p class="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-400/80">Step ${index + 1}</p>
+                                <p class="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-400/80">${stepPrefix} ${index + 1}${stepSuffix}</p>
                                 <p class="text-sm sm:text-[15px] font-black text-white mt-1">${escapeHtml(stepLabel)}</p>
                             </div>
                             <p class="text-[10px] sm:text-[11px] font-bold text-slate-400 text-right leading-relaxed max-w-[55%]">${escapeHtml(summary)}</p>
@@ -475,18 +497,18 @@
             container.innerHTML = '';
             const overlay = executionOverlay || {};
             const entries = [
-                ['Mode', overlay.overlay_mode || 'FULL'], 
-                ['State', overlay.overlay_state || 'NEUTRAL'], 
-                ['Negative Score', overlay.negative_score], 
-                ['Positive Score', overlay.positive_score], 
-                ['Diag Beta', overlay.diagnostic_beta_overlay_multiplier], 
-                ['Diag Pace', overlay.diagnostic_deployment_overlay_multiplier], 
-                ['Fallback', overlay.neutral_fallback_triggered]
+                ['MODE', overlay.overlay_mode || '評估中'], 
+                ['STATE', overlay.overlay_state || 'NEUTRAL'], 
+                ['NEGATIVE SCORE', overlay.negative_score], 
+                ['POSITIVE SCORE', overlay.positive_score], 
+                ['DIAG BETA', overlay.diagnostic_beta_overlay_multiplier], 
+                ['DIAG PACE', overlay.diagnostic_deployment_overlay_multiplier], 
+                ['FALLBACK', overlay.neutral_fallback_triggered]
             ];
             container.innerHTML = entries.map(([key, value]) => `
                 <div class="feature-chip">
                     <p class="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">${escapeHtml(humanizeKey(key))}</p>
-                    <p class="text-base sm:text-lg font-black text-white mt-2 break-all">${escapeHtml(humanizeKey(formatScalar(value)))}</p>
+                    <p class="text-base sm:text-lg font-black text-white mt-2 break-all">${escapeHtml(formatScalar(value))}</p>
                 </div>
             `).join('');
         }
@@ -551,10 +573,8 @@
             document.getElementById('raw-beta').textContent = (data.signal.raw_target_beta || data.signal.target_beta).toFixed(2) + 'x';
             document.getElementById('protected-beta').textContent = (data.signal.protected_beta || data.signal.target_beta).toFixed(2) + 'x';
             document.getElementById('overlay-beta').textContent = (data.signal.overlay_beta || data.signal.target_beta).toFixed(2) + 'x';
-            document.getElementById('overlay-mode').textContent = data.signal.overlay_mode || 'FULL';
-            document.getElementById('beta-overlay-multiplier').textContent = (data.signal.beta_overlay_multiplier || 1.0).toFixed(2) + 'x';
-            document.getElementById('deployment-overlay-multiplier').textContent = (data.signal.deployment_overlay_multiplier || 1.0).toFixed(2) + 'x';
-            document.getElementById('market-label').textContent = mkt;
+            document.getElementById('overlay-mode').textContent = mapping[data.signal.overlay_mode] || data.signal.overlay_mode || '評估中';
+            document.getElementById('market-label').textContent = mapping[mkt] || mkt;
 
             const bar = document.getElementById('exposure-bar'); const beta = data.signal.target_beta;
             bar.style.width = Math.min(100, beta * 83.33) + '%'; bar.className = beta > 1.0 ? 'h-full overclock' : 'h-full bg-emerald-500';
@@ -570,8 +590,6 @@
             renderDistribution('prob-container', data.signal.probabilities, currentLang === 'en' ? 'No posterior distribution' : '暫無後驗分佈');
             renderDistribution('prior-container', data.signal.priors, currentLang === 'en' ? 'No runtime prior' : '當前未透傳運行時先驗');
             renderLogicTrace(data.evidence.logic_trace);
-            renderExecutionOverlay(data.evidence.execution_overlay);
-            renderFeatureValues(data.evidence.feature_values);
 
             // Panorama Rendering
             if (data.diagnostics) {
@@ -609,12 +627,7 @@
                 document.getElementById('opt-aggressive').textContent = ens.aggressive_beta.toFixed(2) + 'x';
                 
                 document.getElementById('diag-tractor').textContent = (diag.tractor.prob * 100).toFixed(1) + '%';
-                const tStatus = document.getElementById('diag-tractor-status');
-                if (tStatus) tStatus.textContent = diag.tractor.status || '--';
-                
                 document.getElementById('diag-sidecar').textContent = (diag.sidecar.prob * 100).toFixed(1) + '%';
-                const sStatus = document.getElementById('diag-sidecar-status');
-                if (sStatus) sStatus.textContent = diag.sidecar.status || '--';
             }
         }
 
@@ -625,21 +638,31 @@
                 let data = null;
                 try {
                     const res = await fetch(PROD_BLOB_URL + '?t=' + Date.now(), { method: 'GET', mode: 'cors', cache: 'no-store' });
-                    if (res.ok) { data = await res.json(); sourceLabel.textContent = "CLOUD_SYNCED"; sourceLabel.className = "text-emerald-500"; }
+                    if (res.ok) { 
+                        data = await res.json(); 
+                        sourceLabel.textContent = TRANSLATIONS[currentLang].status.CLOUD_SYNCED; 
+                        sourceLabel.className = "text-emerald-500"; 
+                    }
                 } catch (e) {}
                 if (!data) {
                     const res = await fetch(LOCAL_JSON + '?t=' + Date.now(), { cache: 'no-store' });
-                    if (res.ok) { data = await res.json(); sourceLabel.textContent = "LOCAL_FALLBACK"; sourceLabel.className = "text-orange-500"; }
+                    if (res.ok) { 
+                        data = await res.json(); 
+                        sourceLabel.textContent = TRANSLATIONS[currentLang].status.LOCAL_FALLBACK; 
+                        sourceLabel.className = "text-orange-500"; 
+                    }
                 }
                 if (!data) throw new Error("Offline");
                 lastData = data;
                 body.classList.remove('state-stale');
                 renderDashboard(data);
-            } catch (e) { console.error(e); sourceLabel.textContent = "SYNC_ERROR"; body.className = 'state-stale min-h-screen flex items-center justify-center p-3 sm:p-4'; }
+            } catch (e) { 
+                console.error(e); 
+                sourceLabel.textContent = TRANSLATIONS[currentLang].status.SYNC_ERROR; 
+                body.className = 'state-stale min-h-screen flex items-center justify-center p-3 sm:p-4'; 
+            }
         }
         updateDashboard(); setInterval(updateDashboard, 60000);
     </script>
 </body>
-
-
 </html>
