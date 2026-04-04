@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import warnings
 
 from src.engine.baseline.engine import predict_baseline_crisis_prob, train_baseline_model
 
@@ -63,3 +64,26 @@ def test_model_coefficients_direction():
     assert coeffs[2] > 0
     assert coeffs[0] < 0.1  # Should be negative or very small positive
     assert coeffs[1] < 0.1
+
+
+def test_train_baseline_model_avoids_runtime_overflow_on_separable_data():
+    n = 600
+    signal = np.r_[np.zeros(n // 2), np.ones(n // 2)]
+    X = pd.DataFrame(
+        {
+            "growth_composite": -signal,
+            "liquidity_composite": -signal,
+            "stress_composite": signal * 1000.0,
+        }
+    )
+    y = pd.Series(signal.astype(int))
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = train_baseline_model(X, y)
+
+    runtime_warnings = [
+        warning for warning in caught if issubclass(warning.category, RuntimeWarning)
+    ]
+    assert not runtime_warnings
+    assert np.isfinite(model.coef_).all()

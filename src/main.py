@@ -527,9 +527,11 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 
     # Inject Ensemble Suggestions
     result.metadata["v14_ensemble_verdict"] = ensemble["ensemble_verdict"]
+    result.metadata["v14_ensemble_verdict_label"] = ensemble["ensemble_verdict_label"]
     result.metadata["v14_s4_protective_beta"] = ensemble["s4_protective_beta"]
     result.metadata["v14_s5_aggressive_beta"] = ensemble["s5_aggressive_beta"]
     result.metadata["v14_standard_beta"] = ensemble["standard_beta"]
+    result.metadata["v14_shadow_mode"] = True
 
     # 1. Export Web Snapshot Locally (Production Baseline)
     from src.output.web_exporter import export_web_snapshot

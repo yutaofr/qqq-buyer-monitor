@@ -39,6 +39,7 @@ def print_signal(
 
     # 1. PANORAMA ENSEMBLE VERDICT (Top Priority)
     verdict = metadata.get("v14_ensemble_verdict", "NEUTRAL")
+    verdict_label = metadata.get("v14_ensemble_verdict_label", verdict)
     s_beta = metadata.get("v14_standard_beta", result.target_beta)
     p_beta = metadata.get("v14_s4_protective_beta", 0.5)
     a_beta = metadata.get("v14_s5_aggressive_beta", result.target_beta)
@@ -51,6 +52,8 @@ def print_signal(
 
     print(f"\n{c(_BOLD)}{c(_MAGENTA)}=== QQQ PANORAMA ENSEMBLE VERDICT (v14.8) ==={r}")
     print(f"Status:  {c(_BOLD)}{c(v_color)}{verdict}{r}")
+    if verdict_label != verdict:
+        print(f"Label:   {c(_DIM)}{verdict_label}{r}")
     print(f"Action:  {c(_CYAN)}Target Beta {s_beta:.2f}x{r} (Standard Choice)")
     print(
         f"Options: {c(_BOLD)}{c(_WHITE)}[S4 Protective: {p_beta:.2f}x] | [S5 Aggressive: {a_beta:.2f}x]{r}"

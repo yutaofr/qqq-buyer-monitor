@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from src.engine.v11.conductor import V11Conductor
+from src.engine.v11.core.expectation_surface import clamp_beta
 
 
 def _build_v12_macro_frame_with_overlay(dates: pd.DatetimeIndex) -> pd.DataFrame:
@@ -98,7 +99,9 @@ def test_conductor_exports_overlay_block_and_v13_snapshot(tmp_path):
     assert result["overlay"]["beta_overlay_multiplier"] <= 1.0
     assert result["overlay"]["deployment_overlay_multiplier"] >= 0.5
     assert result["overlay_beta"] == pytest.approx(
-        result["protected_beta"] * result["overlay"]["beta_overlay_multiplier"]
+        clamp_beta(
+            result["protected_beta"] * result["overlay"]["beta_overlay_multiplier"]
+        )
     )
 
     snapshot_path = snapshot_dir / f"snapshot_{t0.index[-1].date().isoformat()}.json"

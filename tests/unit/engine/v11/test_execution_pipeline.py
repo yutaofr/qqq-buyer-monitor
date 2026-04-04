@@ -9,6 +9,7 @@ from src.engine.v11.core.execution_pipeline import (
     compute_effective_entropy,
     run_execution_pipeline,
 )
+from src.engine.v11.core.entropy_controller import EntropyController
 
 
 @pytest.fixture
@@ -39,10 +40,10 @@ def test_apply_beta_floor_logic():
     assert beta == 0.5
     assert active is True
 
-    # Crash case
-    beta, active = apply_beta_floor(pre_floor_beta=0.4, floor=0.0, overlay_state="CRASH")
-    assert beta == 0.4  # max(0.0, 0.4)
-    assert active is False
+    # Business redline case: crash overlays may not violate the 0.5x floor
+    beta, active = apply_beta_floor(pre_floor_beta=0.4, floor=0.5, overlay_state="CRASH")
+    assert beta == 0.5
+    assert active is True
 
 
 def test_execution_pipeline_matches_snapshot_floor_and_overlay_order(snapshot):
@@ -105,3 +106,31 @@ def test_execution_pipeline_updates_high_entropy_streak_correctly():
         high_entropy_streak=11,
     )
     assert res2["high_entropy_streak"] == 0
+
+
+def test_execution_pipeline_reapplies_business_floor_after_negative_overlay():
+    entropy_ctrl = MagicMock()
+    entropy_ctrl.apply_haircut.return_value = 0.45
+
+    result = run_execution_pipeline(
+        raw_beta=0.55,
+        posterior_entropy=0.30,
+        quality_score=1.0,
+        posteriors={"MID_CYCLE": 0.2, "LATE_CYCLE": 0.4, "BUST": 0.4},
+        entropy_controller=entropy_ctrl,
+        overlay={"beta_overlay_multiplier": 0.5, "overlay_state": "PENALTY"},
+        e_sharpe=0.2,
+        erp_percentile=0.4,
+        high_entropy_streak=0,
+    )
+
+    assert result["protected_beta"] == pytest.approx(0.5)
+    assert result["overlay_beta"] == pytest.approx(0.5)
+
+
+def test_entropy_haircut_only_scales_surplus_above_business_floor():
+    controller = EntropyController()
+
+    beta = controller.apply_haircut(base_beta=0.8, norm_entropy=1.0, state_count=4)
+
+    assert beta == pytest.approx(0.594717183958671, rel=1e-4)

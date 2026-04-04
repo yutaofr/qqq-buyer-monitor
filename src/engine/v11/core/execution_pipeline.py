@@ -2,6 +2,8 @@ from typing import Any
 
 import numpy as np
 
+from src.engine.v11.core.expectation_surface import BETA_FLOOR, clamp_beta
+
 
 def compute_effective_entropy(*, posterior_entropy: float, quality_score: float) -> float:
     """Calculates effective entropy by penalizing low data quality."""
@@ -22,21 +24,23 @@ def compute_pre_floor_beta(
 
 
 def apply_beta_floor(
-    *, pre_floor_beta: float, floor: float = 0.5, overlay_state: str | None = None
+    *, pre_floor_beta: float, floor: float = BETA_FLOOR, overlay_state: str | None = None
 ) -> tuple[float, bool]:
-    """Applies safety floor to beta, with conditional overrides for crashes."""
-    beta_floor = floor
-    if overlay_state in ("CRASH", "LIQUIDITY_SHOCK"):
-        beta_floor = 0.0
-
-    protected_beta = max(beta_floor, pre_floor_beta)
-    is_floor_active = bool(protected_beta > pre_floor_beta and protected_beta == beta_floor)
+    """Applies the non-negotiable business floor to beta."""
+    _ = overlay_state
+    protected_beta = clamp_beta(pre_floor_beta, floor=floor)
+    is_floor_active = bool(protected_beta > float(pre_floor_beta))
     return protected_beta, is_floor_active
 
 
-def compute_overlay_beta(*, protected_beta: float, beta_overlay_multiplier: float) -> float:
-    """Applies execution overlay multiplier to protected beta."""
-    return protected_beta * float(beta_overlay_multiplier)
+def compute_overlay_beta(
+    *,
+    protected_beta: float,
+    beta_overlay_multiplier: float,
+    floor: float = BETA_FLOOR,
+) -> float:
+    """Applies execution overlay multiplier without violating the business floor."""
+    return clamp_beta(protected_beta * float(beta_overlay_multiplier), floor=floor)
 
 
 def compute_deployment_readiness(

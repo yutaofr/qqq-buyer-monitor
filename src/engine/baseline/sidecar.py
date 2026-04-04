@@ -2,10 +2,9 @@ import logging
 
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LogisticRegressionCV
-from sklearn.model_selection import TimeSeriesSplit
 
-from src.engine.baseline.engine import calculate_composites
+from src.engine.baseline.engine import calculate_composites, rolling_zscore, train_baseline_model
+from src.engine.baseline.targets import align_target_inputs
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +23,7 @@ def calculate_sidecar_composites(data: pd.DataFrame) -> pd.DataFrame:
     stress_cols = []
     for col in ["BAMLH0A0HYM2", "VIXCLS", "^VXN"]:
         if col in data.columns:
-            # Rolling Z-Score (36 months ~ 750 trading days)
-            z = (data[col] - data[col].rolling(750, min_periods=100).mean()) / data[col].rolling(
-                750, min_periods=100
-            ).std()
-            stress_cols.append(z)
+            stress_cols.append(rolling_zscore(data[col]))
 
     if stress_cols:
         stress_qqq = pd.concat(stress_cols, axis=1).max(axis=1)
@@ -51,13 +46,22 @@ def generate_sidecar_target(
 ) -> pd.Series:
     """
     Sidecar Target Y_qqq=1 if QQQ MDD > 10% or VXN > 35 in next 20 days.
+    Samples are marked NaN when the forward VXN window is incomplete, so the
+    target remains a single full-target object rather than a mixed drawdown-only proxy.
     """
+    aligned = align_target_inputs(price_series, vxn_series)
+    price_series = aligned["price"]
+    vxn_series = aligned["stress"]
     n = len(price_series)
-    y = pd.Series(0, index=price_series.index)
+    y = pd.Series(0.0, index=price_series.index)
 
     for i in range(n - horizon):
         window = price_series.iloc[i + 1 : i + 1 + horizon]
         vxn_window = vxn_series.iloc[i + 1 : i + 1 + horizon]
+
+        if window.isna().any() or vxn_window.isna().any():
+            y.iloc[i] = np.nan
+            continue
 
         p_start = price_series.iloc[i]
         p_min = window.min()
@@ -67,16 +71,11 @@ def generate_sidecar_target(
             y.iloc[i] = 1
 
     y.iloc[-horizon:] = np.nan
-    return y.dropna()
+    return y
 
 
 def train_sidecar_model(X: pd.DataFrame, y: pd.Series):
     """
     Train the Sidecar Ridge Logistic model with Cross-Validation.
     """
-    tscv = TimeSeriesSplit(n_splits=5, gap=20)
-    model = LogisticRegressionCV(
-        Cs=np.logspace(-4, 0, 10), cv=tscv, penalty="l2", scoring="neg_brier_score", random_state=42
-    )
-    model.fit(X, y)
-    return model
+    return train_baseline_model(X, y)

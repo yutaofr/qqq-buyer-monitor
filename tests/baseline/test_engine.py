@@ -40,3 +40,26 @@ def test_calculate_composites_empty():
     df = pd.DataFrame()
     with pytest.raises(ValueError):
         calculate_composites(df)
+
+
+def test_calculate_composites_returns_finite_bounded_values():
+    dates = pd.date_range("2020-01-01", periods=160, freq="B")
+    mostly_flat = np.ones(len(dates))
+    data = pd.DataFrame(
+        {
+            "IPMAN": mostly_flat,
+            "growth_margin": mostly_flat,
+            "M2REAL": mostly_flat,
+            "T10Y2Y": mostly_flat,
+            "BAMLH0A0HYM2": mostly_flat,
+            "VIXCLS": mostly_flat,
+        },
+        index=dates,
+    )
+    data.iloc[-1] = 1000.0
+
+    composites = calculate_composites(data)
+
+    assert not composites.empty
+    assert np.isfinite(composites.to_numpy()).all()
+    assert composites.abs().max().max() <= 8.0

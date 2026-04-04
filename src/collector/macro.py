@@ -4,6 +4,7 @@ import os
 import subprocess
 import time
 from collections.abc import Sequence
+from urllib.parse import urlencode
 
 import pandas as pd
 import requests
@@ -20,13 +21,31 @@ FRED_CSV_URL = (
 )
 
 
-def fetch_fred_api(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
+def fetch_fred_api(
+    series_id: str,
+    timeout: int = 15,
+    *,
+    observation_start: str | None = None,
+    realtime_start: str | None = None,
+    realtime_end: str | None = None,
+) -> pd.DataFrame | None:
     """Fetch FRED data using the official API (JSON format)."""
     api_key = os.getenv("FRED_API_KEY", "").strip()
     if not api_key or api_key == "your_fred_api_key_here":
         return None
 
-    url = f"https://api.stlouisfed.org/fred/series/observations?series_id={series_id}&api_key={api_key}&file_type=json"
+    query = {
+        "series_id": series_id,
+        "api_key": api_key,
+        "file_type": "json",
+    }
+    if observation_start is not None:
+        query["observation_start"] = observation_start
+    if realtime_start is not None:
+        query["realtime_start"] = realtime_start
+    if realtime_end is not None:
+        query["realtime_end"] = realtime_end
+    url = f"https://api.stlouisfed.org/fred/series/observations?{urlencode(query)}"
     try:
         logger.debug("Fetching FRED %s via API...", series_id)
         response = requests.get(url, timeout=timeout)
@@ -39,9 +58,17 @@ def fetch_fred_api(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
 
         df = pd.DataFrame(observations)
         df = df.rename(columns={"date": "observation_date", "value": series_id})
+        for column in ("realtime_start", "realtime_end"):
+            if column in df.columns:
+                df[column] = pd.to_datetime(df[column], errors="coerce").dt.normalize()
         # Ensure numeric conversion
         df[series_id] = pd.to_numeric(df[series_id], errors="coerce")
-        return df[["observation_date", series_id]]
+        columns = ["observation_date", series_id]
+        if "realtime_start" in df.columns:
+            columns.insert(1, "realtime_start")
+        if "realtime_end" in df.columns:
+            columns.insert(len(columns), "realtime_end")
+        return df[columns]
     except Exception as exc:
         logger.warning("FRED API fetch failed for %s: %s", series_id, exc)
         return None
