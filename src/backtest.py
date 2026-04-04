@@ -265,6 +265,19 @@ def run_v11_audit(
         full_df["qqq_volume"] = macro_df["qqq_volume"]
         full_df["source_qqq_volume"] = macro_df.get("source_qqq_volume", "direct:yfinance")
     full_df["source_qqq_close"] = macro_df.get("source_qqq_close", "direct:yfinance")
+    
+    if "qqq_volume_quality_score" in macro_df.columns:
+        full_df["qqq_volume_quality_score"] = macro_df["qqq_volume_quality_score"]
+    if "qqq_close_quality_score" in macro_df.columns:
+        full_df["qqq_close_quality_score"] = macro_df["qqq_close_quality_score"]
+
+    # Add overlay signals
+    for col in [
+        "adv_dec_ratio", "source_breadth_proxy", "breadth_quality_score",
+        "ndx_concentration", "source_ndx_concentration", "ndx_concentration_quality_score"
+    ]:
+        if col in macro_df.columns:
+            full_df[col] = macro_df[col]
 
     if "erp_ttm_pct" in macro_df.columns:
         full_df["erp_ttm_pct"] = pd.to_numeric(macro_df["erp_ttm_pct"], errors="coerce")
@@ -449,7 +462,7 @@ def run_v11_audit(
                 e_sharpe=e_sharpe,
                 erp_percentile=erp_p,
                 high_entropy_streak=0,
-                bypass_v11_floor=True # CRITICAL: Matched to baseline lack of floor
+                bypass_v11_floor=False # CRITICAL: Fixed bug, baseline must also respect 0.5 floor
             )
 
             # Result Mapping

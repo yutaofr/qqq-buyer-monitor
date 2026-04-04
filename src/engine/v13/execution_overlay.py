@@ -288,9 +288,11 @@ class ExecutionOverlayEngine:
             if neutral
             else float(
                 np.clip(
-                    1.0 - float(beta_cfg["lambda_beta"]) * negative_score,
+                    1.0
+                    - float(beta_cfg["lambda_beta"]) * negative_score
+                    + float(beta_cfg.get("lambda_beta_pos", 0.0)) * positive_score,
                     float(beta_cfg["beta_floor"]),
-                    1.0,
+                    float(beta_cfg.get("beta_ceiling", 1.0)),
                 )
             )
         )
@@ -318,6 +320,17 @@ class ExecutionOverlayEngine:
                 )
             )
         )
+        negative_only_beta_multiplier = (
+            1.0
+            if neutral
+            else float(
+                np.clip(
+                    1.0 - float(beta_cfg["lambda_beta"]) * negative_score,
+                    float(beta_cfg["beta_floor"]),
+                    1.0,
+                )
+            )
+        )
 
         if neutral:
             overlay_state = "NEUTRAL"
@@ -332,7 +345,7 @@ class ExecutionOverlayEngine:
             beta_overlay_multiplier = 1.0
             deployment_overlay_multiplier = 1.0
         elif overlay_mode == "NEGATIVE_ONLY":
-            beta_overlay_multiplier = diagnostic_beta_overlay_multiplier
+            beta_overlay_multiplier = negative_only_beta_multiplier
             deployment_overlay_multiplier = negative_only_deployment_multiplier
         else:
             beta_overlay_multiplier = diagnostic_beta_overlay_multiplier
