@@ -265,7 +265,7 @@ def run_v11_audit(
         full_df["qqq_volume"] = macro_df["qqq_volume"]
         full_df["source_qqq_volume"] = macro_df.get("source_qqq_volume", "direct:yfinance")
     full_df["source_qqq_close"] = macro_df.get("source_qqq_close", "direct:yfinance")
-    
+
     if "qqq_volume_quality_score" in macro_df.columns:
         full_df["qqq_volume_quality_score"] = macro_df["qqq_volume_quality_score"]
     if "qqq_close_quality_score" in macro_df.columns:
