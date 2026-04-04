@@ -202,7 +202,6 @@ def test_execution_overlay_positive_signal_can_boost_beta_above_one():
 
 def test_execution_overlay_asymmetric_sensitivity():
     """负向灵敏度 (0.65) 远大于正向灵敏度 (0.05)，验证非对称设计。"""
-    from src.engine.v13.execution_overlay import ExecutionOverlayEngine
     import json
     from pathlib import Path
 
