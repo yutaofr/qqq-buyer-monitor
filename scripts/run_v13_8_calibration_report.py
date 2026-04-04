@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import platform
 import subprocess
 import sys
 from pathlib import Path
+
 
 def get_git_revision() -> str:
     try:
@@ -25,19 +25,19 @@ def get_file_hash(path: Path) -> str:
 
 def main():
     print("Generating QQQ v13.8 Calibration Evidence Report...")
-    
+
     # 1. Load baseline audit data
     source_dir = Path("artifacts/v13_8_task6_check")
     summary_path = source_dir / "summary.json"
     trace_path = source_dir / "execution_trace.csv"
-    
+
     if not summary_path.exists():
         print(f"ERROR: Missing source summary at {summary_path}")
         sys.exit(1)
-        
+
     with open(summary_path, encoding="utf-8") as f:
         summary = json.load(f)
-        
+
     # 2. Extract dates from trace
     import pandas as pd
     try:
@@ -52,7 +52,7 @@ def main():
     # 3. Parameters and Logic Hashes
     registry_path = Path("src/engine/v11/resources/v13_4_weights_registry.json")
     params_hash = get_file_hash(registry_path)
-    
+
     # 4. Construct Evidence
     report = {
         "calibration_artifact_id": "v13.8-ULTIMA-INDUSTRIAL",
@@ -79,15 +79,15 @@ def main():
             "cpu_arch": platform.machine(),
         }
     }
-    
+
     # 5. Export
     output_dir = Path("artifacts/v13_8_acceptance")
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / "calibration_report.json"
-    
+
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
-        
+
     print(f"Report successfully generated at: {output_path}")
 
 if __name__ == "__main__":

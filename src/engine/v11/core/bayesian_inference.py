@@ -130,7 +130,7 @@ class BayesianInferenceEngine:
                         for f_name in feature_names
                     ]
                 )
-                
+
                 raw_log_lhs[regime_key] = float(np.sum(effective_weights * scaled_log_lh * q_weights))
 
                 for f_idx, f_name in enumerate(feature_names):

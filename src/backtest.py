@@ -16,7 +16,6 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pandas as pd
 import yfinance as yf
 
@@ -149,7 +148,12 @@ def run_v11_audit(
     from sklearn.naive_bayes import GaussianNB
 
     from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
+    from src.engine.v11.core.data_quality import (
+        assess_data_quality,
+        feature_reliability_weights,
+    )
     from src.engine.v11.core.entropy_controller import EntropyController
+    from src.engine.v11.core.execution_pipeline import run_execution_pipeline
     from src.engine.v11.core.model_validation import validate_feature_contract, validate_gaussian_nb
     from src.engine.v11.core.position_sizer import PositionSizingResult
     from src.engine.v11.core.prior_knowledge import PriorKnowledgeBase
@@ -166,11 +170,6 @@ def run_v11_audit(
         summarize_regime_state_support,
         validate_regime_state_support,
     )
-    from src.engine.v11.core.data_quality import (
-        assess_data_quality,
-        feature_reliability_weights,
-    )
-    from src.engine.v11.core.execution_pipeline import run_execution_pipeline
 
     dataset = Path(dataset_path)
     regimes_file = Path(regime_path)
@@ -260,13 +259,13 @@ def run_v11_audit(
             raise
     features = seeder.generate_features(macro_df)
     full_df = features.join(regime_df["regime"], how="inner")
-    
+
     full_df["qqq_close"] = macro_df["qqq_close"]
     if "qqq_volume" in macro_df.columns:
         full_df["qqq_volume"] = macro_df["qqq_volume"]
         full_df["source_qqq_volume"] = macro_df.get("source_qqq_volume", "direct:yfinance")
     full_df["source_qqq_close"] = macro_df.get("source_qqq_close", "direct:yfinance")
-    
+
     if "erp_ttm_pct" in macro_df.columns:
         full_df["erp_ttm_pct"] = pd.to_numeric(macro_df["erp_ttm_pct"], errors="coerce")
     full_df = full_df.dropna(subset=["regime"])
@@ -383,9 +382,9 @@ def run_v11_audit(
 
             # 1. Quality Auditing (Re-enabled for Task 6)
             latest_raw = row
-            previous_raw = previous_raw if 'previous_raw' in locals() else None 
+            previous_raw = previous_raw if 'previous_raw' in locals() else None
             # Note: In backtest, we can derive previous_raw from the loop state
-            
+
             quality_audit = assess_data_quality(
                 latest_raw,
                 previous_raw=previous_raw,
@@ -402,7 +401,7 @@ def run_v11_audit(
                 seeder_config=seeder.config,
             )
             quality_score = float(quality_audit.get("overall_quality", 1.0))
-            
+
             # 2. Bayesian Inference (With Quality Gating)
             posteriors, bayesian_diagnostics = inference_engine.infer_gaussian_nb_posterior(
                 classifier=gnb,
@@ -413,15 +412,15 @@ def run_v11_audit(
                 tau=float(registry.get("inference_tau", 3.0)),
                 m=float(registry.get("inference_momentum_m", 0.6)),
             )
-            
+
             # Update previous_raw for next iteration
             previous_raw = latest_raw
-            
+
             # 3. Execution Pipeline (Identity Wiring)
             # Calculation of intermediate pieces
             posterior_entropy = entropy_ctrl.calculate_normalized_entropy(posteriors)
             e_sharpe = sum(posteriors.get(r, 0.0) * s for r, s in regime_sharpes.items())
-            
+
             # ERP Percentile Rank
             train_erp = pd.to_numeric(train_window.get("erp_ttm_pct"), errors="coerce").dropna()
             current_erp = pd.to_numeric(pd.Series([row.get("erp_ttm_pct")]), errors="coerce").dropna()
@@ -452,23 +451,23 @@ def run_v11_audit(
                 high_entropy_streak=0,
                 bypass_v11_floor=True # CRITICAL: Matched to baseline lack of floor
             )
-            
+
             # Result Mapping
             norm_h = pipeline_result["effective_entropy"]
             protected_beta = pipeline_result["protected_beta"]
             overlay_beta = pipeline_result["overlay_beta"]
             final_beta = beta_mapper.calculate_inertial_beta(overlay_beta, norm_h)
-            
+
             deployment_readiness = pipeline_result["deployment_readiness"]
             overlay_readiness = pipeline_result["overlay_deployment_readiness"]
-            
+
             deployment_decision = deployment_policy.decide(
                 posteriors=posteriors,
                 entropy=norm_h,
                 readiness_score=overlay_readiness,
                 value_score=erp_p,
             )
-            
+
             raw_beta = sum(posteriors.get(regime, 0.0) * base_betas.get(regime, 1.0) for regime in ordered_regimes)
             regime_decision = regime_stabilizer.update(posteriors=posteriors, entropy=norm_h)
 
@@ -663,10 +662,10 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--acceptance mode REQUIRE --price-cache-path (Fail-closed)")
         if not args.price_end_date:
             parser.error("--acceptance mode REQUIRE --price-end-date (Fail-closed)")
-        
+
         # Lookahead defense: Reject if the end_date is the current dynamic 'today'
         import datetime
-        now_date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+        now_date = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d")
         if args.price_end_date == now_date:
             parser.error(f"--acceptance mode REJECTS current dynamic date '{now_date}' to prevent lookahead leakage.")
 
@@ -679,7 +678,7 @@ def main(argv: list[str] | None = None) -> int:
         experiment_config["price_end_date"] = args.price_end_date
     if args.no_price_download or args.acceptance:
         experiment_config["allow_price_download"] = False
-    
+
     experiment_config["use_canonical_pipeline"] = args.use_canonical_pipeline
 
     run_v11_audit(

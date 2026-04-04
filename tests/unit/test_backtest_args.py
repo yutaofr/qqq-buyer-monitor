@@ -1,5 +1,5 @@
-import pytest
 from src.backtest import main
+
 
 def test_backtest_can_parse_no_canonical_pipeline_flag():
     # Test that --no-canonical-pipeline is recognized to DISABLE it

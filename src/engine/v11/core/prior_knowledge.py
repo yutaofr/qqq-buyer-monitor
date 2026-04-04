@@ -21,12 +21,12 @@ logger = logging.getLogger(__name__)
 class PriorKnowledgeBase:
     """
     Deterministically manages and persists regime priors and transition memory.
-    
+
     V13.8 INDUSTRIAL SPEC: Fixed Baseline Prior Gravity (5%)
-    To prevent "Prior Inflation" and the "High-Entropy Deadlock" common in high-dimensional 
-    orthogonal spaces, this class enforces a minimal 5.0% baseline for historical counts 
-    once the system reaches maturity (total_counts > 100). This ensures the Bayesian 
-    posterior is dominated by recent evidence and transition dynamics (95% combined) 
+    To prevent "Prior Inflation" and the "High-Entropy Deadlock" common in high-dimensional
+    orthogonal spaces, this class enforces a minimal 5.0% baseline for historical counts
+    once the system reaches maturity (total_counts > 100). This ensures the Bayesian
+    posterior is dominated by recent evidence and transition dynamics (95% combined)
     rather than being trapped by ancient, potentially stale historical averages.
     """
 
@@ -131,9 +131,9 @@ class PriorKnowledgeBase:
         # V12.1-FIXED: Remove artificial base_weight drag to avoid trapping system in high-entropy states.
         # RATIONALE (V13.8 Industrial Standard):
         # High-dimensional orthogonal factors require high sensitivity to regime shifts.
-        # Statically pinning the baseline (base_weight) to 5.0% prevents the "Gravity Trap" 
-        # where the system refuses to acknowledge a regime change due to thousands of 
-        # accumulated historical days. 
+        # Statically pinning the baseline (base_weight) to 5.0% prevents the "Gravity Trap"
+        # where the system refuses to acknowledge a regime change due to thousands of
+        # accumulated historical days.
         # Blending Ratio: 0.05 (Baseline) / 0.65 (Posterior) / 0.30 (Transition Shift).
         total_counts = sum(self.counts.values())
         if total_counts > 100:

@@ -1,6 +1,6 @@
 from __future__ import annotations
-import datetime
 
+import datetime
 import json
 
 import numpy as np
@@ -199,7 +199,7 @@ def test_acceptance_hard_forces_no_download(monkeypatch):
         return {"top1_accuracy": 0.0, "mean_brier": 0.0, "mean_entropy": 0.0, "lock_incidence": 0.0}
 
     monkeypatch.setattr(backtest_module, "run_v11_audit", mock_run_v11_audit)
-    
+
     # Even if we try to sneak in allowing download, acceptance should override it
     backtest_module.main([
         "--evaluation-start", "2024-01-01",
@@ -207,5 +207,5 @@ def test_acceptance_hard_forces_no_download(monkeypatch):
         "--price-cache-path", "data/dummy_cache.csv",
         "--price-end-date", "2026-03-27"
     ])
-    
+
     assert called_config["allow_price_download"] is False

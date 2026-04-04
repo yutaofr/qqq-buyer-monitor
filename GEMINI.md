@@ -22,5 +22,11 @@ This repository is governed by a **v13.0 Orthogonal-Core** architecture. AI agen
 - **[PRD](./docs/core/PRD.md)**: Product definition and target goals.
 - **[Philosophy](./docs/core/V13_USER_PHILOSOPHY.md)**: The user philosophy of orthogonal reality.
 
+### 4. Code Quality & Auxiliary Agent Guidelines
+To prevent system degradation ("Spaghetti Code") and enforce proper engineering constraints, all auxiliary developer agents MUST adhere to:
+- **TDD-First**: All bug fixes and features must begin with a targeted failing test. Do not declare a task done without regression checks.
+- **Confined Modifications**: Stick strictly to the assigned file scopes. Do not restructure the entire codebase or modify unassigned modules. 
+- **Anti-Spaghetti measures**: Avoid God-classes, keep functions concise (under 200 lines if possible), and isolate side effects (e.g., IO, state persistence) from core deterministic logic (`execution_pipeline`, `bayesian_inference`). Never "Fix Forward" a foundational bug by adding layered `if/else` hacks.
+
 ---
 © 2026 QQQ Entropy AI Governance.

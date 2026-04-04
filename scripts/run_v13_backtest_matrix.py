@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import os
 import pandas as pd
+
 from src.backtest import run_v11_audit
 
 MODES = ["DISABLED", "SHADOW", "NEGATIVE_ONLY", "FULL"]
@@ -180,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
             else 0.0,
             **run["execution_metrics"],
         }
-        
+
         # Apply the Ruthless Automated Judge
         passed, reason = judge_acceptance(row, rows[0] if rows else row)
         row["acceptance_pass"] = passed
