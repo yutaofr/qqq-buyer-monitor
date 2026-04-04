@@ -40,8 +40,9 @@ class BayesianInferenceEngine:
         *,
         classifier: Any,
         evidence_frame: Any,
-        runtime_priors: dict[str, float],
+        runtime_priors: dict[str, float] | None = None,
         weight_registry: dict[str, Any] | None = None,
+        feature_quality_weights: dict[str, float] | None = None,
         tau: float = 0.5,
         m: float = 0.35,
     ) -> tuple[dict[str, float], dict[str, Any]]:
@@ -120,11 +121,21 @@ class BayesianInferenceEngine:
                     ]
                 )
 
-                raw_log_lhs[regime_key] = float(np.sum(effective_weights * scaled_log_lh))
+                # Task 6: Multiplicative Gating (v13.8 Industrial Hardening)
+                # We multiply the log-likelihood by the quality weight [0, 1].
+                # This is mathematically equivalent to Raising-to-the-power in the likelihood space.
+                q_weights = np.array(
+                    [
+                        (feature_quality_weights or {}).get(f_name, 1.0)
+                        for f_name in feature_names
+                    ]
+                )
+                
+                raw_log_lhs[regime_key] = float(np.sum(effective_weights * scaled_log_lh * q_weights))
 
                 for f_idx, f_name in enumerate(feature_names):
                     level_contributions[regime_key][f_name] = float(
-                        effective_weights[f_idx] * scaled_log_lh[f_idx]
+                        effective_weights[f_idx] * scaled_log_lh[f_idx] * q_weights[f_idx]
                     )
 
             # 3. Apply Base Temperature Scaling

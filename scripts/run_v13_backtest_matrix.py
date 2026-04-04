@@ -8,11 +8,38 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import os
 import pandas as pd
-
 from src.backtest import run_v11_audit
 
 MODES = ["DISABLED", "SHADOW", "NEGATIVE_ONLY", "FULL"]
+
+
+def judge_acceptance(
+    current: dict[str, Any], baseline: dict[str, Any]
+) -> tuple[bool, str]:
+    """Ruthless juror for V13.8 Industrial Hardening."""
+    # 1. Canonical Protection: No drift allowed in raw_target_beta vs DISABLED
+    raw_delta = float(current.get("max_raw_target_beta_delta_vs_disabled", 0.0))
+    if raw_delta > 1e-7:
+        return False, f"FAIL: Canonical Drift ({raw_delta:.6f})"
+
+    # 2. Defensive Asymmetry: Left tail risk must be <= baseline
+    current_lt = float(current.get("left_tail_mean_beta", 0.0))
+    baseline_lt = float(baseline.get("left_tail_mean_beta", 0.0))
+    if current_lt > baseline_lt + 1e-7:
+        return (
+            False,
+            f"FAIL: Defensive Violation (LtBeta: {current_lt:.4f} > Base: {baseline_lt:.4f})",
+        )
+
+    # 3. Optimism Bias: Rewards (long expansion) must not exceed Penalties (defensive contraction)
+    rewards = float(current.get("reward_days", 0.0))
+    penalties = float(current.get("penalty_days", 0.0))
+    if rewards > penalties + 1e-7:
+        return False, f"FAIL: Optimism Bias (Reward: {rewards} > Penalty: {penalties})"
+
+    return True, "PASS"
 
 
 def _read_trace(path: Path) -> pd.DataFrame:
@@ -153,6 +180,11 @@ def main(argv: list[str] | None = None) -> int:
             else 0.0,
             **run["execution_metrics"],
         }
+        
+        # Apply the Ruthless Automated Judge
+        passed, reason = judge_acceptance(row, rows[0] if rows else row)
+        row["acceptance_pass"] = passed
+        row["acceptance_fail_reason"] = reason
         rows.append(row)
 
     report = pd.DataFrame(rows)
