@@ -20,6 +20,12 @@ import pandas as pd
 import yfinance as yf
 
 from src.engine.v13.execution_overlay import ExecutionOverlayEngine
+from src.engine.v11.core.expectation_surface import (
+    compute_beta_expectation,
+    deployment_cash_notional,
+    deployment_state_rank,
+    expected_policy_for_regime,
+)
 from src.regime_topology import canonicalize_regime_sequence, merge_regime_weights
 
 logger = logging.getLogger(__name__)
@@ -465,11 +471,9 @@ def run_v11_audit(
             )
             overlay = overlay_engine.evaluate(overlay_context, mode=overlay_mode)
 
+            beta_expectation = compute_beta_expectation(posteriors, base_betas)
             pipeline_result = run_execution_pipeline(
-                raw_beta=sum(
-                    posteriors.get(regime, 0.0) * base_betas.get(regime, 1.0)
-                    for regime in ordered_regimes
-                ),
+                raw_beta=beta_expectation,
                 posterior_entropy=posterior_entropy,
                 quality_score=quality_score,  # 1.0
                 posteriors=posteriors,
@@ -497,13 +501,11 @@ def run_v11_audit(
                 value_score=erp_p,
             )
 
-            raw_beta = sum(
-                posteriors.get(regime, 0.0) * base_betas.get(regime, 1.0)
-                for regime in ordered_regimes
-            )
+            raw_beta = beta_expectation
             regime_decision = regime_stabilizer.update(posteriors=posteriors, entropy=norm_h)
 
             actual_regime = str(row["regime"])
+            expected_policy = expected_policy_for_regime(actual_regime, base_betas=base_betas)
             predicted_regime = max(posteriors, key=posteriors.get)
             brier = sum(
                 (posteriors.get(name, 0.0) - (1.0 if name == actual_regime else 0.0)) ** 2
@@ -548,6 +550,8 @@ def run_v11_audit(
             execution_rows.append(
                 {
                     "date": dt,
+                    "beta_expectation": raw_beta,
+                    "expected_target_beta": float(expected_policy["expected_target_beta"]),
                     "protected_beta": protected_beta,
                     "overlay_beta": overlay_beta,
                     "beta_overlay_multiplier": float(overlay["beta_overlay_multiplier"]),
@@ -564,6 +568,23 @@ def run_v11_audit(
                     "raw_regime": regime_decision["raw_regime"],
                     "stable_regime": regime_decision["stable_regime"],
                     "deployment_state": deployment_decision["deployment_state"],
+                    "deployment_multiplier": float(deployment_decision["deployment_multiplier"]),
+                    "expected_deployment_state": str(expected_policy["expected_deployment_state"]),
+                    "expected_deployment_multiplier": float(
+                        expected_policy["expected_deployment_multiplier"]
+                    ),
+                    "deployment_rank_abs_error": abs(
+                        deployment_state_rank(str(deployment_decision["deployment_state"]))
+                        - deployment_state_rank(str(expected_policy["expected_deployment_state"]))
+                    ),
+                    "actual_deployment_cash": deployment_cash_notional(
+                        float(deployment_decision["deployment_multiplier"])
+                    ),
+                    "expected_deployment_cash": deployment_cash_notional(
+                        float(expected_policy["expected_deployment_multiplier"])
+                    ),
+                    "deployment_pacing_error": float(deployment_decision["deployment_multiplier"])
+                    - float(expected_policy["expected_deployment_multiplier"]),
                     "lock_active": execution.lock_active,
                     "target_bucket": execution.target_bucket,
                     "close": row["qqq_close"],
@@ -607,6 +628,38 @@ def run_v11_audit(
         "gaussian_nb_var_smoothing": float(experiment.get("var_smoothing", default_var_smoothing)),
         "posterior_mode": posterior_mode,
         "overlay_mode": str(overlay_mode or overlay_engine.default_mode),
+        "beta_expectation_mae": float(
+            (execution_df["target_beta"] - execution_df["expected_target_beta"]).abs().mean()
+        ),
+        "raw_beta_expectation_mae": float(
+            (execution_df["raw_target_beta"] - execution_df["expected_target_beta"]).abs().mean()
+        ),
+        "deployment_exact_match": float(
+            (
+                execution_df["deployment_state"]
+                == execution_df["expected_deployment_state"]
+            ).mean()
+        ),
+        "deployment_rank_abs_error_mean": float(
+            execution_df["deployment_rank_abs_error"].mean()
+        ),
+        "deployment_pacing_abs_error_mean": float(
+            execution_df["deployment_pacing_error"].abs().mean()
+        ),
+        "deployment_pacing_signed_mean": float(execution_df["deployment_pacing_error"].mean()),
+        "raw_floor_breach_rate": float((execution_df["raw_target_beta"] < 0.5).mean()),
+        "expectation_floor_breach_rate": float((execution_df["beta_expectation"] < 0.5).mean()),
+        "target_floor_breach_rate": float((execution_df["target_beta"] < 0.5).mean()),
+        "raw_beta_min": float(execution_df["raw_target_beta"].min()),
+        "beta_expectation_min": float(execution_df["beta_expectation"].min()),
+        "target_beta_min": float(execution_df["target_beta"].min()),
+        "raw_beta_within_5pct_expected": float(
+            ((execution_df["raw_target_beta"] - execution_df["expected_target_beta"]).abs() <= 0.05).mean()
+        ),
+        "target_beta_within_5pct_expected": float(
+            ((execution_df["target_beta"] - execution_df["expected_target_beta"]).abs() <= 0.05).mean()
+        ),
+        "share_at_floor": float((execution_df["target_beta"] <= 0.500001).mean()),
     }
 
     print("\n--- v12 Unified Probabilistic Performance Audit ---")

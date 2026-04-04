@@ -1,6 +1,8 @@
 import numpy as np
 from scipy.stats import entropy
 
+from src.engine.v11.core.expectation_surface import BETA_FLOOR, clamp_beta
+
 
 class EntropyController:
     """
@@ -41,6 +43,7 @@ class EntropyController:
         norm_entropy: float,
         *,
         state_count: int | None = None,
+        floor: float = BETA_FLOOR,
     ) -> float:
         """
         Applies a threshold-free probabilistic haircut derived from Shannon entropy.
@@ -59,4 +62,6 @@ class EntropyController:
         base_h = h_norm * np.log(states)
         confidence = float(np.exp(-0.6 * (base_h**2)))
 
-        return float(base_beta) * confidence
+        anchored_beta = clamp_beta(float(base_beta), floor=floor)
+        surplus = max(0.0, anchored_beta - float(floor))
+        return float(floor) + (surplus * confidence)

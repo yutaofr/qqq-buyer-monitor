@@ -284,3 +284,70 @@ def test_run_v11_audit_can_use_classifier_posteriors_directly(tmp_path, monkeypa
     )
 
     assert summary["posterior_mode"] == "classifier_only"
+
+
+def test_run_v11_audit_emits_expectation_and_pacing_alignment_columns(tmp_path, monkeypatch):
+    dates = pd.bdate_range("2024-01-01", periods=320)
+    macro_path = tmp_path / "macro.csv"
+    regime_path = tmp_path / "regimes.csv"
+    artifact_dir = tmp_path / "audit_artifacts"
+
+    _build_v12_macro_frame(dates).to_csv(macro_path, index=False)
+    pd.DataFrame(
+        {
+            "observation_date": dates,
+            "regime": ["MID_CYCLE"] * 120
+            + ["RECOVERY"] * 60
+            + ["LATE_CYCLE"] * 80
+            + ["BUST"] * 60,
+        }
+    ).to_csv(regime_path, index=False)
+
+    monkeypatch.setattr(
+        backtest_module,
+        "_load_price_history",
+        lambda *args, **kwargs: pd.DataFrame(
+            {
+                "Close": np.linspace(100.0, 130.0, len(dates)),
+                "Volume": np.linspace(1_000_000.0, 2_000_000.0, len(dates)),
+            },
+            index=dates,
+        ),
+    )
+    monkeypatch.setattr(
+        "src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        "src.output.backtest_plots.save_v11_probabilistic_audit_figure",
+        lambda *args, **kwargs: None,
+    )
+
+    backtest_module.run_v11_audit(
+        dataset_path=str(macro_path),
+        regime_path=str(regime_path),
+        evaluation_start="2025-01-02",
+        artifact_dir=str(artifact_dir),
+        experiment_config={
+            "allow_price_download": False,
+            "price_end_date": "2025-12-31",
+        },
+    )
+
+    execution_trace = pd.read_csv(artifact_dir / "execution_trace.csv")
+    summary = pd.read_json(artifact_dir / "summary.json", typ="series")
+
+    assert "beta_expectation" in execution_trace.columns
+    assert "expected_target_beta" in execution_trace.columns
+    assert "expected_deployment_state" in execution_trace.columns
+    assert "deployment_multiplier" in execution_trace.columns
+    assert "expected_deployment_multiplier" in execution_trace.columns
+    assert "deployment_pacing_error" in execution_trace.columns
+    assert "deployment_pacing_abs_error_mean" in summary.index
+    assert "deployment_pacing_signed_mean" in summary.index
+    assert "raw_floor_breach_rate" in summary.index
+    assert "expectation_floor_breach_rate" in summary.index
+    assert "raw_beta_min" in summary.index
+    assert "target_beta_min" in summary.index
+    assert "beta_expectation_min" in summary.index
+    assert "raw_beta_within_5pct_expected" in summary.index
+    assert "target_beta_within_5pct_expected" in summary.index

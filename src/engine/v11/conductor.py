@@ -15,6 +15,7 @@ from src.engine.v11.core.data_quality import (
 )
 from src.engine.v11.core.entropy_controller import EntropyController
 from src.engine.v11.core.execution_pipeline import run_execution_pipeline
+from src.engine.v11.core.expectation_surface import compute_beta_expectation
 from src.engine.v11.core.model_validation import validate_feature_contract, validate_gaussian_nb
 from src.engine.v11.core.position_sizer import PositionSizingResult
 from src.engine.v11.core.prior_knowledge import PriorKnowledgeBase
@@ -397,10 +398,7 @@ class V11Conductor:
         # Use canonical sorting for probabilities to prevent index shift hallucinations
         posteriors = {r: float(posteriors[r]) for r in ACTIVE_REGIME_ORDER if r in posteriors}
 
-        raw_beta_expectation = sum(
-            posteriors.get(regime, 0.0) * self.base_betas.get(regime, 1.0)
-            for regime in self.base_betas.keys()
-        )
+        raw_beta_expectation = compute_beta_expectation(posteriors, self.base_betas)
 
         # SRD-v13.4: Evaluate Overlay BEFORE Pipeline to support Conditional Floor
         overlay = self.overlay_engine.evaluate(context_df.reset_index(), mode=self.overlay_mode)
@@ -520,6 +518,7 @@ class V11Conductor:
                 "protected_beta_pre_overlay": round(float(protected_beta), 6),
                 "overlay_beta": round(float(overlay_beta), 6),
                 "raw_target_beta": round(float(raw_beta_expectation), 6),
+                "beta_expectation": round(float(raw_beta_expectation), 6),
                 "deployment_state_pre_overlay": "derived_from_readiness",
                 "deployment_state_post_overlay": str(deployment_decision["deployment_state"]),
                 "behavioral_guard_input_beta": round(float(final_beta), 6),
@@ -569,6 +568,7 @@ class V11Conductor:
             "overlay": overlay,
             "target_beta": final_beta,
             "raw_target_beta": raw_beta_expectation,
+            "beta_expectation": raw_beta_expectation,
             "deployment_readiness": deployment_readiness,
             "deployment_readiness_overlay": overlay_deployment_readiness,
             "cdr_sharpe": e_sharpe,

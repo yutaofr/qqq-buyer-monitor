@@ -54,19 +54,24 @@ class FullPanoramaAggregator:
         overlay_floor_active = bayesian_runtime.get("is_floor_active", False)
 
         if risk_triggered:
-            verdict = "🚨 PROTECT (GUARD at 0.5)"
+            verdict = "PROTECTIVE"
+            verdict_label = "🚨 PROTECT (GUARD at 0.5)"
         elif is_calm:
-            verdict = "🚀 AGGRESSIVE (S5 Suggestion)"
+            verdict = "AGGRESSIVE"
+            verdict_label = "🚀 AGGRESSIVE (S5 Suggestion)"
         elif overlay_floor_active and not risk_triggered:
-            verdict = "⚠️ DIVERGENT (Overlay Active / Diagnostics Calm)"
+            verdict = "DIVERGENT"
+            verdict_label = "⚠️ DIVERGENT (Overlay Active / Diagnostics Calm)"
         else:
-            verdict = "⚖️ NEUTRAL (Standard Pipeline)"
+            verdict = "NEUTRAL"
+            verdict_label = "⚖️ NEUTRAL (Standard Pipeline)"
 
         return {
             "standard_beta": round(standard_beta, 3),
             "s4_protective_beta": round(protective_beta, 3),
             "s5_aggressive_beta": round(aggressive_beta, 3),
             "ensemble_verdict": verdict,
+            "ensemble_verdict_label": verdict_label,
             "risk_triggered": risk_triggered,
             "is_calm": is_calm,
         }

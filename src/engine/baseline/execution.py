@@ -1,5 +1,6 @@
 import logging
 
+import numpy as np
 import pandas as pd
 import yfinance as yf
 
@@ -61,8 +62,10 @@ def run_baseline_inference(price_history: pd.Series = None) -> dict:
     }
 
     try:
-        # 1. Broad Macro Data (FRED)
+        # 1. Broad Macro Data (FRED) - Now PIT-safe aligned by effective_date
         data = load_all_baseline_data(timeout=10)
+        metadata = data.attrs.get("metadata", {"degraded": []})
+        
         if data.empty:
             logger.warning("Mud Tractor: No macro data returned from FRED.")
             return {"prob": 0.0, "status": "no_macro_data"}
@@ -91,7 +94,10 @@ def run_baseline_inference(price_history: pd.Series = None) -> dict:
                     prob_t = float(
                         predict_baseline_crisis_prob(model_t, X_tractor.iloc[[-1]]).iloc[0]
                     )
-                    results["tractor"] = {"prob": prob_t, "status": "success"}
+                    status_t = "success"
+                    if "BAMLH0A0HYM2" in metadata["degraded"] or "VIXCLS" in metadata["degraded"]:
+                        status_t = "degraded_inputs"
+                    results["tractor"] = {"prob": prob_t, "status": status_t}
                 else:
                     results["tractor"]["status"] = "audit_failed_overfitting"
             else:
@@ -111,22 +117,38 @@ def run_baseline_inference(price_history: pd.Series = None) -> dict:
                 if qqq_close.index.tz is not None:
                     qqq_close.index = qqq_close.index.tz_localize(None)
 
-            vxn = data["^VXN"] if "^VXN" in data.columns else pd.Series(0, index=data.index)
+            if "^VXN" in data.columns and not data["^VXN"].isna().all():
+                vxn = data["^VXN"]
+            else:
+                # VXN is missing - NO SYNTHETIC PROXY
+                vxn = pd.Series(np.nan, index=data.index)
+                metadata["degraded"].append("^VXN")
+
             y_sidecar = generate_sidecar_target(qqq_close, vxn)
-            c_idx_s = X_sidecar.index.intersection(y_sidecar.index)
+            y_sidecar_valid = y_sidecar.dropna()
+            c_idx_s = X_sidecar.index.intersection(y_sidecar_valid.index)
 
             if len(c_idx_s) > 100:
+                # If VXN is missing, we must NOT train a valid sidecar model or we must mark it degraded
                 model_s = train_sidecar_model(X_sidecar.loc[c_idx_s], y_sidecar.loc[c_idx_s])
                 # Physical Audit
                 if validate_coefficients(model_s, X_sidecar.columns.tolist()):
                     prob_s = float(
                         predict_baseline_crisis_prob(model_s, X_sidecar.iloc[[-1]]).iloc[0]
                     )
-                    results["sidecar"] = {"prob": prob_s, "status": "success"}
+                    status_s = "success"
                 else:
-                    results["sidecar"]["status"] = "audit_failed_overfitting"
+                    status_s = "audit_failed_overfitting"
+                
+                if "^VXN" in metadata["degraded"] or "^VXN" not in data.columns:
+                    status_s = "degraded_missing_vxn"
+                
+                results["sidecar"] = {"prob": prob_s if 'prob_s' in locals() else 0.0, "status": status_s}
             else:
-                results["sidecar"]["status"] = "insufficient_sample"
+                status_s = "insufficient_sample"
+                if "^VXN" in metadata["degraded"] or "^VXN" not in data.columns:
+                    status_s = "degraded_missing_vxn"
+                results["sidecar"]["status"] = status_s
         except Exception as e:
             logger.error(f"QQQ Sidecar inference failed: {e}")
             results["sidecar"]["status"] = f"error: {str(e)}"
@@ -160,9 +182,11 @@ def calculate_baseline_oos_series(
     logger.info(f"OOS Batch: Generating probabilities from {start_date}...")
     X_t = calculate_composites(data)
     X_s = calculate_sidecar_composites(data)
+    target_qqq_valid = target_qqq.dropna()
 
     dates = data.index[data.index >= start_date].unique()
-    res = pd.DataFrame(index=dates, columns=["tractor_prob", "sidecar_prob"])
+    res = pd.DataFrame(index=dates, columns=["tractor_prob", "sidecar_prob", "sidecar_valid"])
+    res["sidecar_valid"] = False
 
     # Monthly Re-train Logic
     model_t, model_s = None, None
@@ -170,23 +194,40 @@ def calculate_baseline_oos_series(
     for i, current_dt in enumerate(dates):
         # Re-train every 21 trading days (approx 1 month)
         if i % 21 == 0:
+            # Training window is data point PRIOR to current_dt
             train_idx_t = X_t.index[X_t.index < current_dt].intersection(target_spy.index)
-            train_idx_s = X_s.index[X_s.index < current_dt].intersection(target_qqq.index)
+            train_idx_s = X_s.index[X_s.index < current_dt].intersection(target_qqq_valid.index)
 
             # Minimum sample size requirement
-            if len(train_idx_t) > 100:
+            if len(train_idx_t) > 500:
                 model_t = train_baseline_model(X_t.loc[train_idx_t], target_spy.loc[train_idx_t])
-            if len(train_idx_s) > 100:
-                model_s = train_sidecar_model(X_s.loc[train_idx_s], target_qqq.loc[train_idx_s])
+            if len(train_idx_s) > 500:
+                model_s = train_sidecar_model(X_s.loc[train_idx_s], target_qqq_valid.loc[train_idx_s])
 
-        # Predict T0 with the current model
+        # Predict T0 with the model trained on data UP TO T-1
         if model_t is not None:
             res.loc[current_dt, "tractor_prob"] = float(
                 predict_baseline_crisis_prob(model_t, X_t.loc[[current_dt]]).iloc[0]
             )
-        if model_s is not None:
+
+        # Sidecar prediction only if model exists, the current feature is present,
+        # and the forward target window is valid.
+        if (
+            model_s is not None
+            and current_dt in target_qqq_valid.index
+            and "^VXN" in data.columns
+            and not pd.isna(data.loc[current_dt, "^VXN"])
+        ):
             res.loc[current_dt, "sidecar_prob"] = float(
                 predict_baseline_crisis_prob(model_s, X_s.loc[[current_dt]]).iloc[0]
             )
+            res.loc[current_dt, "sidecar_valid"] = True
+        else:
+            res.loc[current_dt, "sidecar_prob"] = np.nan
+            res.loc[current_dt, "sidecar_valid"] = False
 
-    return res.ffill().fillna(0.0)
+    # Tractor prob should be ffilled as it is generally always available
+    res["tractor_prob"] = res["tractor_prob"].ffill().fillna(0.0)
+    # Sidecar prob should stay NaN if invalid for a given date
+    
+    return res

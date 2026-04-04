@@ -189,12 +189,16 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 },
                 "ensemble_options": {
                     "verdict": metadata.get("v14_ensemble_verdict", "NEUTRAL"),
+                    "verdict_label": metadata.get(
+                        "v14_ensemble_verdict_label",
+                        metadata.get("v14_ensemble_verdict", "NEUTRAL"),
+                    ),
                     "standard_beta": metadata.get("v14_standard_beta", result.target_beta),
                     "protective_beta": metadata.get("v14_s4_protective_beta", 0.5),
                     "aggressive_beta": metadata.get("v14_s5_aggressive_beta", result.target_beta),
                     "system_floor": 0.5,
                 },
-                "shadow_mode": False,
+                "shadow_mode": bool(metadata.get("v14_shadow_mode", not metadata.get("v14_baseline_active", False))),
             },
         }
         path = Path(output_path) if output_path else Path("src/web/public/status.json")
