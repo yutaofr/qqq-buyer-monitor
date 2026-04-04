@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+
 import pytest
 
 # Since the script is not yet implemented, we mock its existence/output for TDD
@@ -27,7 +28,7 @@ def test_calibration_report_schema_compliance():
         "reliability_required",
         "environment",
     ]
-    
+
     for field in required_fields:
         assert field in report, f"Mandatory field '{field}' missing from calibration report."
 
@@ -36,7 +37,7 @@ def test_calibration_report_schema_compliance():
     assert "top1_accuracy" in metrics
     assert "mean_entropy" in metrics
     assert "mean_brier" in metrics
-    
+
     # Validate environment info
     assert "python_version" in report["environment"]
     assert "platform" in report["environment"]

@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 
+
 def apply_data_quality_penalty(*, posterior_entropy: float, quality_score: float) -> float:
     """Calculates effective entropy by penalizing low data quality."""
     h = float(np.clip(posterior_entropy, 0.0, 1.0))
@@ -18,8 +19,8 @@ def normalize_source_marker(raw_source: object) -> str:
     return source
 
 def detect_source_switch(
-    latest_raw: pd.Series, 
-    *, 
+    latest_raw: pd.Series,
+    *,
     previous_raw: pd.Series | None = None,
     field_specs: dict[str, tuple[str, str | None, str | None]] | None = None
 ) -> dict[str, object]:
@@ -68,7 +69,7 @@ def assess_data_quality(
     field_specs: dict[str, tuple[str, str | None, str | None]],
 ) -> dict[str, object]:
     """v13.4 Tiered Quality Scoring: Core Veto + Support Robustness."""
-    
+
     weights_matrix = registry.get("feature_weight_matrix", {})
     q_transfer = registry.get("quality_transfer_function", {})
     core_fields = set(registry.get("core_fields", ["credit_spread"]))
@@ -169,7 +170,7 @@ def feature_reliability_weights(
     seeder_config: dict[str, dict[str, object]],
 ) -> dict[str, float]:
     """Maps field-level quality to individual feature weights."""
-    
+
     source_to_field = {
         "credit_spread_bps": "credit_spread",
         "net_liquidity_usd_bn": "net_liquidity",

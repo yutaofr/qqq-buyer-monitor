@@ -1,15 +1,17 @@
 import json
-import pandas as pd
-import numpy as np
-import pytest
 from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pytest
+
 from src.engine.v11.core.data_quality import (
     apply_data_quality_penalty,
-    normalize_source_marker,
-    detect_source_switch,
     assess_data_quality,
+    detect_source_switch,
     feature_reliability_weights,
 )
+
 
 @pytest.fixture
 def snapshot():
@@ -30,17 +32,17 @@ def test_assess_data_quality_returns_expected_reason_for_missing_core_field(snap
     # Let's mock a case where credit_spread_bps is NaN
     latest_raw_missing = latest_raw.copy()
     latest_raw_missing["credit_spread_bps"] = np.nan
-    
+
     registry = {
         "feature_weight_matrix": {},
         "quality_transfer_function": {"direct": 1.0},
         "core_fields": ["credit_spread"]
     }
-    
+
     field_specs = {
         "credit_spread": ("credit_spread_bps", "source_credit_spread", None),
     }
-    
+
     result = assess_data_quality(
         latest_raw=latest_raw_missing,
         previous_raw=None,
@@ -57,10 +59,10 @@ def test_assess_data_quality_returns_expected_reason_for_missing_core_field(snap
 def test_feature_reliability_weights_zero_out_missing_raw_features(snapshot):
     latest_raw = pd.Series(snapshot["raw_t0_data"][0])
     latest_raw["credit_spread_bps"] = np.nan
-    
+
     latest_vector = pd.DataFrame(snapshot["feature_vector"])
     # "spread_21d" uses "credit_spread_bps"
-    
+
     field_quality = {
         "credit_spread": 0.0,
         "net_liquidity": 1.0,
@@ -72,19 +74,19 @@ def test_feature_reliability_weights_zero_out_missing_raw_features(snapshot):
         "usdjpy": 1.0,
         "erp_ttm": 1.0,
     }
-    
+
     seeder_config = {
         "spread_21d": {"src": "credit_spread_bps"},
         "liquidity_252d": {"src": "net_liquidity_usd_bn"}
     }
-    
+
     weights = feature_reliability_weights(
         latest_vector=latest_vector,
         latest_raw=latest_raw,
         field_quality=field_quality,
         seeder_config=seeder_config
     )
-    
+
     assert weights["spread_21d"] == 0.0
     assert weights["liquidity_252d"] == 1.0
 
@@ -93,7 +95,7 @@ def test_detect_source_switch_flags_build_version_change(snapshot):
     previous_raw = latest_raw.copy()
     previous_raw["build_version"] = "OLD_VERSION"
     latest_raw["build_version"] = "NEW_VERSION"
-    
+
     result = detect_source_switch(latest_raw, previous_raw=previous_raw)
     assert result["detected"] is True
     assert "build_version" in result["changed_fields"]

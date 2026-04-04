@@ -9,7 +9,12 @@ import pandas as pd
 from sklearn.naive_bayes import GaussianNB
 
 from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
+from src.engine.v11.core.data_quality import (
+    assess_data_quality,
+    feature_reliability_weights,
+)
 from src.engine.v11.core.entropy_controller import EntropyController
+from src.engine.v11.core.execution_pipeline import run_execution_pipeline
 from src.engine.v11.core.model_validation import validate_feature_contract, validate_gaussian_nb
 from src.engine.v11.core.position_sizer import PositionSizingResult
 from src.engine.v11.core.prior_knowledge import PriorKnowledgeBase
@@ -25,12 +30,6 @@ from src.regime_topology import (
     canonicalize_regime_sequence,
     merge_regime_weights,
 )
-from src.engine.v11.core.data_quality import (
-    apply_data_quality_penalty,
-    assess_data_quality,
-    feature_reliability_weights,
-)
-from src.engine.v11.core.execution_pipeline import run_execution_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -388,13 +387,13 @@ class V11Conductor:
             bayesian_diagnostics = {"level_contributions": {}}
 
         posterior_entropy = self.entropy_ctrl.calculate_normalized_entropy(posteriors)
-        
+
         # 3. Execution Pipeline (v13.8 Unified)
         # Goal: Decouple risk-haircut, floor/overlay logic, and deployment readiness.
         # Parameters derived from self.audit_data (Structural Consistency).
         e_sharpe = sum(posteriors.get(r, 0.0) * s for r, s in self.regime_sharpes.items())
         erp_percentile = self._resolve_erp_percentile(context_df, raw_t0_data)
-        
+
         # Use canonical sorting for probabilities to prevent index shift hallucinations
         posteriors = {r: float(posteriors[r]) for r in ACTIVE_REGIME_ORDER if r in posteriors}
 
@@ -417,7 +416,7 @@ class V11Conductor:
             erp_percentile=erp_percentile,
             high_entropy_streak=self.high_entropy_streak
         )
-        
+
         norm_h = pipeline_result["effective_entropy"]
         pre_floor_beta = pipeline_result["pre_floor_beta"]
         protected_beta = pipeline_result["protected_beta"]
