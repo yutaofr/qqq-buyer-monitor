@@ -299,6 +299,8 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     from src.collector.macro import fetch_credit_spread_snapshot
     from src.collector.macro_v3 import fetch_net_liquidity_snapshot, fetch_real_yield_snapshot
     from src.collector.price import fetch_price_data
+    from src.engine.aggregator import FullPanoramaAggregator
+    from src.engine.baseline.execution import run_baseline_inference
     from src.engine.v11.conductor import V11Conductor
     from src.output.cli import print_signal
     from src.output.report import to_json
@@ -495,7 +497,39 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     )
 
     runtime = V11Conductor(prior_state_path=prior_file_path).daily_run(raw_row)
+
+    # 3. Running Mud Tractor (V_Baseline) Shadow Model
+    baseline_result = run_baseline_inference(price_history=price_history["Close"])
+
+    # 4. Shadow Mode Diagnostics (Reference Only)
+    # Both Tractor and Sidecar results will be stored in metadata.
+    # PROHIBITION: No modification of runtime['target_beta'] as per v14.3 role.
+    runtime["mud_tractor_diagnostics"] = baseline_result
+
+    # 5. Full Panorama Aggregator (v14.8) - Ensemble Coordination
+    # Synthesizes all 4 pipelines for user implementation options
+    ensemble = FullPanoramaAggregator.aggregate(runtime, baseline_result)
+
     result = _build_v11_signal_result(runtime, price=float(price_data["price"]))
+
+    # Add baseline metadata to SignalResult for diagnostic reference
+    result.metadata["v14_baseline_prob"] = float(
+        baseline_result.get("tractor", {}).get("prob", 0.0)
+    )
+    result.metadata["v14_sidecar_prob"] = float(baseline_result.get("sidecar", {}).get("prob", 0.0))
+    result.metadata["v14_baseline_status"] = str(
+        baseline_result.get("tractor", {}).get("status", "unknown")
+    )
+    result.metadata["v14_sidecar_status"] = str(
+        baseline_result.get("sidecar", {}).get("status", "unknown")
+    )
+    result.metadata["v14_baseline_active"] = False  # Shadow Mode remains
+
+    # Inject Ensemble Suggestions
+    result.metadata["v14_ensemble_verdict"] = ensemble["ensemble_verdict"]
+    result.metadata["v14_s4_protective_beta"] = ensemble["s4_protective_beta"]
+    result.metadata["v14_s5_aggressive_beta"] = ensemble["s5_aggressive_beta"]
+    result.metadata["v14_standard_beta"] = ensemble["standard_beta"]
 
     # 1. Export Web Snapshot Locally (Production Baseline)
     from src.output.web_exporter import export_web_snapshot

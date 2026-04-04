@@ -17,12 +17,16 @@ def snapshot():
     with open(path) as f:
         return json.load(f)
 
+
 def test_compute_effective_entropy_logic():
     # 1.0 - ((1.0 - h) * q)
     h = 0.4
     q = 0.8
     expected = 1.0 - ((1.0 - h) * q)
-    assert compute_effective_entropy(posterior_entropy=h, quality_score=q) == pytest.approx(expected)
+    assert compute_effective_entropy(posterior_entropy=h, quality_score=q) == pytest.approx(
+        expected
+    )
+
 
 def test_apply_beta_floor_logic():
     # Regular case
@@ -37,8 +41,9 @@ def test_apply_beta_floor_logic():
 
     # Crash case
     beta, active = apply_beta_floor(pre_floor_beta=0.4, floor=0.0, overlay_state="CRASH")
-    assert beta == 0.4 # max(0.0, 0.4)
+    assert beta == 0.4  # max(0.0, 0.4)
     assert active is False
+
 
 def test_execution_pipeline_matches_snapshot_floor_and_overlay_order(snapshot):
     # Mocking components
@@ -59,13 +64,14 @@ def test_execution_pipeline_matches_snapshot_floor_and_overlay_order(snapshot):
         overlay=overlay,
         e_sharpe=0.5,
         erp_percentile=0.5,
-        high_entropy_streak=5
+        high_entropy_streak=5,
     )
 
     assert result["pre_floor_beta"] == 0.7
-    assert result["protected_beta"] == 0.7 # > 0.5
+    assert result["protected_beta"] == 0.7  # > 0.5
     assert result["is_floor_active"] is False
     assert result["overlay_beta"] == pytest.approx(0.7 * 0.9)
+
 
 def test_execution_pipeline_updates_high_entropy_streak_correctly():
     # Streak increments if entropy > 0.85
@@ -82,7 +88,7 @@ def test_execution_pipeline_updates_high_entropy_streak_correctly():
         overlay={"beta_overlay_multiplier": 1.0},
         e_sharpe=0.5,
         erp_percentile=0.5,
-        high_entropy_streak=10
+        high_entropy_streak=10,
     )
     assert res1["high_entropy_streak"] == 11
 
@@ -96,6 +102,6 @@ def test_execution_pipeline_updates_high_entropy_streak_correctly():
         overlay={"beta_overlay_multiplier": 1.0},
         e_sharpe=0.5,
         erp_percentile=0.5,
-        high_entropy_streak=11
+        high_entropy_streak=11,
     )
     assert res2["high_entropy_streak"] == 0

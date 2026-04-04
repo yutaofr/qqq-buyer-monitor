@@ -14,6 +14,7 @@ def get_git_revision() -> str:
     except Exception:
         return "unknown:detached-or-git-missing"
 
+
 def get_file_hash(path: Path) -> str:
     if not path.exists():
         return "missing"
@@ -22,6 +23,7 @@ def get_file_hash(path: Path) -> str:
         while chunk := f.read(8192):
             sha256.update(chunk)
     return sha256.hexdigest()
+
 
 def main():
     print("Generating QQQ v13.8 Calibration Evidence Report...")
@@ -40,6 +42,7 @@ def main():
 
     # 2. Extract dates from trace
     import pandas as pd
+
     try:
         trace = pd.read_csv(trace_path)
         dates = pd.to_datetime(trace["date"])
@@ -77,7 +80,7 @@ def main():
             "python_version": sys.version,
             "platform": platform.platform(),
             "cpu_arch": platform.machine(),
-        }
+        },
     }
 
     # 5. Export
@@ -89,6 +92,7 @@ def main():
         json.dump(report, f, indent=2)
 
     print(f"Report successfully generated at: {output_path}")
+
 
 if __name__ == "__main__":
     main()

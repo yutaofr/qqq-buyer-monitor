@@ -11,6 +11,7 @@ class MockClassifier:
         self.theta_ = np.array([[1.0, 1.0], [-1.0, -1.0]])
         self.var_ = np.array([[0.1, 0.1], [0.1, 0.1]])
 
+
 def test_quality_weight_1_preserves_existing_math():
     """Verify that quality=1.0 yields the same result as quality=None."""
     engine = BayesianInferenceEngine(kde_models={}, base_priors={"BULL": 0.5, "BEAR": 0.5})
@@ -23,7 +24,7 @@ def test_quality_weight_1_preserves_existing_math():
         evidence_frame=evidence,
         runtime_priors=None,
         weight_registry={"feature_weight_matrix": {"f1": 1.0, "f2": 1.0}},
-        tau=1.0
+        tau=1.0,
     )
 
     # 2. Quality = 1.0 for all
@@ -33,11 +34,12 @@ def test_quality_weight_1_preserves_existing_math():
         runtime_priors=None,
         weight_registry={"feature_weight_matrix": {"f1": 1.0, "f2": 1.0}},
         feature_quality_weights={"f1": 1.0, "f2": 1.0},
-        tau=1.0
+        tau=1.0,
     )
 
     assert pytest.approx(post1["BULL"]) == post2["BULL"]
     assert pytest.approx(post1["BEAR"]) == post2["BEAR"]
+
 
 def test_missing_feature_quality_0_removes_feature_contribution():
     """Verify that quality=0.0 makes the feature contribution zero."""
@@ -54,7 +56,7 @@ def test_missing_feature_quality_0_removes_feature_contribution():
         evidence_frame=evidence,
         runtime_priors=None,
         weight_registry={"feature_weight_matrix": {"f1": 1.0, "f2": 1.0}},
-        tau=1.0
+        tau=1.0,
     )
 
     # If f2 quality is 0, only f1 counts (strong BULL)
@@ -64,11 +66,12 @@ def test_missing_feature_quality_0_removes_feature_contribution():
         runtime_priors=None,
         weight_registry={"feature_weight_matrix": {"f1": 1.0, "f2": 1.0}},
         feature_quality_weights={"f1": 1.0, "f2": 0.0},
-        tau=1.0
+        tau=1.0,
     )
 
     assert post_gated["BULL"] > post_both["BULL"]
     assert post_gated["BULL"] > 0.9  # Should be dominant
+
 
 def test_degraded_feature_quality_reduces_confidence():
     """Verify that quality=0.5 reduces likelihood confidence (increases entropy)."""
@@ -84,7 +87,7 @@ def test_degraded_feature_quality_reduces_confidence():
         evidence_frame=evidence,
         runtime_priors=None,
         weight_registry={"feature_weight_matrix": {"f1": 1.0, "f2": 1.0}},
-        tau=1.0
+        tau=1.0,
     )
 
     # 2. Degraded quality (0.1)
@@ -94,7 +97,7 @@ def test_degraded_feature_quality_reduces_confidence():
         runtime_priors=None,
         weight_registry={"feature_weight_matrix": {"f1": 1.0, "f2": 1.0}},
         feature_quality_weights={"f1": 0.1, "f2": 0.1},
-        tau=1.0
+        tau=1.0,
     )
 
     # Low quality should move probabilities closer to the prior (0.5/0.5)

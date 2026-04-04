@@ -8,6 +8,7 @@ def apply_data_quality_penalty(*, posterior_entropy: float, quality_score: float
     q = float(np.clip(quality_score, 0.0, 1.0))
     return 1.0 - ((1.0 - h) * q)
 
+
 def normalize_source_marker(raw_source: object) -> str:
     """Standardizes source provenance string."""
     if raw_source is None or pd.isna(raw_source):
@@ -18,11 +19,12 @@ def normalize_source_marker(raw_source: object) -> str:
         return "missing:provenance"
     return source
 
+
 def detect_source_switch(
     latest_raw: pd.Series,
     *,
     previous_raw: pd.Series | None = None,
-    field_specs: dict[str, tuple[str, str | None, str | None]] | None = None
+    field_specs: dict[str, tuple[str, str | None, str | None]] | None = None,
 ) -> dict[str, object]:
     """Detects shifts in data provenance or build versions between runs."""
     if previous_raw is None:
@@ -36,7 +38,9 @@ def detect_source_switch(
     # Use field_specs to find source keys if provided, else use defaults
     source_fields = {}
     if field_specs:
-        source_fields = {field: source_key for field, (_, source_key, _) in field_specs.items() if source_key}
+        source_fields = {
+            field: source_key for field, (_, source_key, _) in field_specs.items() if source_key
+        }
 
     changed_fields: list[str] = []
     for field_name, source_key in source_fields.items():
@@ -61,6 +65,7 @@ def detect_source_switch(
         "current_build_version": current_build_version or None,
     }
 
+
 def assess_data_quality(
     latest_raw: pd.Series,
     *,
@@ -83,11 +88,7 @@ def assess_data_quality(
         raw_value = latest_raw.get(value_key)
         numeric_value = pd.to_numeric(pd.Series([raw_value]), errors="coerce").iloc[0]
         available = bool(pd.notna(numeric_value) and np.isfinite(float(numeric_value)))
-        source = (
-            normalize_source_marker(latest_raw.get(source_key))
-            if source_key
-            else "direct"
-        )
+        source = normalize_source_marker(latest_raw.get(source_key)) if source_key else "direct"
 
         if not available:
             field_quality = 0.0
@@ -141,7 +142,9 @@ def assess_data_quality(
 
     quality_score = float(np.clip(q_core * q_support, 0.0, 1.0))
 
-    source_switch = detect_source_switch(latest_raw, previous_raw=previous_raw, field_specs=field_specs)
+    source_switch = detect_source_switch(
+        latest_raw, previous_raw=previous_raw, field_specs=field_specs
+    )
     if source_switch["detected"]:
         reason = "SOURCE_SWITCH"
     elif q_core < 0.15:
@@ -161,6 +164,7 @@ def assess_data_quality(
         "q_core": q_core,
         "q_support": q_support,
     }
+
 
 def feature_reliability_weights(
     *,
@@ -193,8 +197,6 @@ def feature_reliability_weights(
             continue
 
         field_name = source_to_field.get(str(src))
-        weights[str(feature_name)] = float(
-            np.clip(field_quality.get(field_name, 1.0), 0.0, 1.0)
-        )
+        weights[str(feature_name)] = float(np.clip(field_quality.get(field_name, 1.0), 0.0, 1.0))
 
     return weights

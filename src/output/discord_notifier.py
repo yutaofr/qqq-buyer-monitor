@@ -127,6 +127,17 @@ def build_discord_payload(result: SignalResult) -> dict:
 
     fields = [
         {
+            "name": "🔭 Ensemble Implementation Options (v14.8)",
+            "value": (
+                f"**Verdict:** `{metadata.get('v14_ensemble_verdict', 'NEUTRAL')}`\n"
+                f"1️⃣ **Standard (Official):** `{metadata.get('v14_standard_beta', result.target_beta):.2f}x`\n"
+                f"2️⃣ **Protective (S4):** `{metadata.get('v14_s4_protective_beta', 0.5):.2f}x` (0.5 Floor)\n"
+                f"3️⃣ **Aggressive (S5):** `{metadata.get('v14_s5_aggressive_beta', result.target_beta):.2f}x` (1.25 Ceiling)\n"
+                "> 💡 **Choice is up to the User.** Final decision calibrated via Panorama Ensemble."
+            ),
+            "inline": False,
+        },
+        {
             "name": "📊 Posterior Distribution",
             "value": prob_str,
             "inline": False,
@@ -146,6 +157,14 @@ def build_discord_payload(result: SignalResult) -> dict:
                 f"**Beta Multiplier:** `{float(beta_overlay_multiplier):.2f}x`\n"
                 f"**Pace Multiplier:** `{float(deployment_overlay_multiplier):.2f}x`\n"
                 f"**Overlay State:** `{overlay_state}`"
+            ),
+            "inline": False,
+        },
+        {
+            "name": "🧭 v14 Diagnostic Audit",
+            "value": (
+                f"**Tractor (SPY Macro):** `{metadata.get('v14_baseline_prob', 0.0):.1%}` | Status: `{metadata.get('v14_baseline_status', 'success')}`\n"
+                f"**Sidecar (QQQ Tech):**  `{metadata.get('v14_sidecar_prob', 0.0):.1%}` | Status: `{metadata.get('v14_sidecar_status', 'success')}`"
             ),
             "inline": False,
         },

@@ -15,9 +15,7 @@ from src.backtest import run_v11_audit
 MODES = ["DISABLED", "SHADOW", "NEGATIVE_ONLY", "FULL"]
 
 
-def judge_acceptance(
-    current: dict[str, Any], baseline: dict[str, Any]
-) -> tuple[bool, str]:
+def judge_acceptance(current: dict[str, Any], baseline: dict[str, Any]) -> tuple[bool, str]:
     """Ruthless juror for V13.8 Industrial Hardening."""
     # 1. Canonical Protection: No drift allowed in raw_target_beta vs DISABLED
     raw_delta = float(current.get("max_raw_target_beta_delta_vs_disabled", 0.0))
