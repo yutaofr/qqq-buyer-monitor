@@ -94,7 +94,7 @@ def test_execution_overlay_monotone_worsening_cannot_increase_beta():
 
     assert stressed_result["negative_score"] >= benign_result["negative_score"]
     assert stressed_result["beta_overlay_multiplier"] <= benign_result["beta_overlay_multiplier"]
-    assert 0.5 <= stressed_result["beta_overlay_multiplier"] <= 1.2
+    assert 0.5 <= stressed_result["beta_overlay_multiplier"] <= 1.1
 
 
 def test_execution_overlay_rejects_repurposed_proxy_fields_as_production_evidence():
