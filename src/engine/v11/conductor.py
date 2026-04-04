@@ -373,7 +373,7 @@ class V11Conductor:
                 evidence_frame=latest_vector,
                 runtime_priors=active_priors,
                 weight_registry=active_registry,
-                feature_quality_weights=feature_weights, # Task 6: External quality signals
+                feature_quality_weights=feature_weights,  # Task 6: External quality signals
                 tau=registry_tau,
                 m=registry_m,
             )
@@ -414,7 +414,7 @@ class V11Conductor:
             overlay=overlay,
             e_sharpe=e_sharpe,
             erp_percentile=erp_percentile,
-            high_entropy_streak=self.high_entropy_streak
+            high_entropy_streak=self.high_entropy_streak,
         )
 
         norm_h = pipeline_result["effective_entropy"]
@@ -599,7 +599,6 @@ class V11Conductor:
         )
 
         return runtime_result
-
 
     def _write_runtime_snapshot(
         self,

@@ -177,21 +177,23 @@ def test_execution_overlay_positive_signal_can_boost_beta_above_one():
     volume_vals = [1_000_000.0] * periods
     volume_vals[-5:] = [3_000_000.0] * 5  # 放量
 
-    context = pd.DataFrame({
-        "observation_date": dates,
-        "adv_dec_ratio": [0.55] * periods,
-        "source_breadth_proxy": ["observed:^ADD"] * periods,
-        "breadth_quality_score": [1.0] * periods,
-        "ndx_concentration": [0.01] * periods,
-        "source_ndx_concentration": ["derived:qqq-qqew"] * periods,
-        "ndx_concentration_quality_score": [1.0] * periods,
-        "qqq_close": close_vals,
-        "source_qqq_close": ["direct:yfinance"] * periods,
-        "qqq_close_quality_score": [1.0] * periods,
-        "qqq_volume": volume_vals,
-        "source_qqq_volume": ["direct:yfinance"] * periods,
-        "qqq_volume_quality_score": [1.0] * periods,
-    })
+    context = pd.DataFrame(
+        {
+            "observation_date": dates,
+            "adv_dec_ratio": [0.55] * periods,
+            "source_breadth_proxy": ["observed:^ADD"] * periods,
+            "breadth_quality_score": [1.0] * periods,
+            "ndx_concentration": [0.01] * periods,
+            "source_ndx_concentration": ["derived:qqq-qqew"] * periods,
+            "ndx_concentration_quality_score": [1.0] * periods,
+            "qqq_close": close_vals,
+            "source_qqq_close": ["direct:yfinance"] * periods,
+            "qqq_close_quality_score": [1.0] * periods,
+            "qqq_volume": volume_vals,
+            "source_qqq_volume": ["direct:yfinance"] * periods,
+            "qqq_volume_quality_score": [1.0] * periods,
+        }
+    )
 
     result = engine.evaluate(context, mode="FULL")
 
@@ -199,15 +201,12 @@ def test_execution_overlay_positive_signal_can_boost_beta_above_one():
     assert result["diagnostic_beta_overlay_multiplier"] <= 1.1, "不得超过 beta_ceiling"
 
 
-
 def test_execution_overlay_asymmetric_sensitivity():
     """负向灵敏度 (0.65) 远大于正向灵敏度 (0.05)，验证非对称设计。"""
     import json
     from pathlib import Path
 
-    config = json.loads(
-        Path("src/engine/v13/resources/execution_overlay_audit.json").read_text()
-    )
+    config = json.loads(Path("src/engine/v13/resources/execution_overlay_audit.json").read_text())
     lambda_neg = config["beta_overlay"]["lambda_beta"]
     lambda_pos = config["beta_overlay"]["lambda_beta_pos"]
 
@@ -229,21 +228,23 @@ def test_execution_overlay_negative_only_mode_blocks_positive_beta_boost():
     volume_vals = [1_000_000.0] * periods
     volume_vals[-5:] = [3_000_000.0] * 5
 
-    context = pd.DataFrame({
-        "observation_date": dates,
-        "adv_dec_ratio": [0.55] * periods,
-        "source_breadth_proxy": ["observed:^ADD"] * periods,
-        "breadth_quality_score": [1.0] * periods,
-        "ndx_concentration": [0.01] * periods,
-        "source_ndx_concentration": ["derived:qqq-qqew"] * periods,
-        "ndx_concentration_quality_score": [1.0] * periods,
-        "qqq_close": close_vals,
-        "source_qqq_close": ["direct:yfinance"] * periods,
-        "qqq_close_quality_score": [1.0] * periods,
-        "qqq_volume": volume_vals,
-        "source_qqq_volume": ["direct:yfinance"] * periods,
-        "qqq_volume_quality_score": [1.0] * periods,
-    })
+    context = pd.DataFrame(
+        {
+            "observation_date": dates,
+            "adv_dec_ratio": [0.55] * periods,
+            "source_breadth_proxy": ["observed:^ADD"] * periods,
+            "breadth_quality_score": [1.0] * periods,
+            "ndx_concentration": [0.01] * periods,
+            "source_ndx_concentration": ["derived:qqq-qqew"] * periods,
+            "ndx_concentration_quality_score": [1.0] * periods,
+            "qqq_close": close_vals,
+            "source_qqq_close": ["direct:yfinance"] * periods,
+            "qqq_close_quality_score": [1.0] * periods,
+            "qqq_volume": volume_vals,
+            "source_qqq_volume": ["direct:yfinance"] * periods,
+            "qqq_volume_quality_score": [1.0] * periods,
+        }
+    )
 
     full_result = engine.evaluate(context, mode="FULL")
     neg_only_result = engine.evaluate(context, mode="NEGATIVE_ONLY")

@@ -8,11 +8,14 @@ import pytest
 # Since the script is not yet implemented, we mock its existence/output for TDD
 REPORT_PATH = Path("artifacts/v13_8_acceptance/calibration_report.json")
 
+
 def test_calibration_report_schema_compliance():
     """Verify that the generated calibration report contains all mandatory fields."""
     # This test will fail until the script is run and generates the file
     if not REPORT_PATH.exists():
-        pytest.fail(f"Calibration report missing at {REPORT_PATH}. Run scripts/run_v13_8_calibration_report.py first.")
+        pytest.fail(
+            f"Calibration report missing at {REPORT_PATH}. Run scripts/run_v13_8_calibration_report.py first."
+        )
 
     with open(REPORT_PATH, encoding="utf-8") as f:
         report = json.load(f)

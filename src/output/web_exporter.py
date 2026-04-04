@@ -178,6 +178,24 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "feature_values": metadata.get("feature_values", {}),
                 "execution_overlay": execution_overlay,
             },
+            "diagnostics": {
+                "tractor": {
+                    "prob": metadata.get("v14_baseline_prob", 0.0),
+                    "status": metadata.get("v14_baseline_status", "unknown"),
+                },
+                "sidecar": {
+                    "prob": metadata.get("v14_sidecar_prob", 0.0),
+                    "status": metadata.get("v14_sidecar_status", "unknown"),
+                },
+                "ensemble_options": {
+                    "verdict": metadata.get("v14_ensemble_verdict", "NEUTRAL"),
+                    "standard_beta": metadata.get("v14_standard_beta", result.target_beta),
+                    "protective_beta": metadata.get("v14_s4_protective_beta", 0.5),
+                    "aggressive_beta": metadata.get("v14_s5_aggressive_beta", result.target_beta),
+                    "system_floor": 0.5,
+                },
+                "shadow_mode": False,
+            },
         }
         path = Path(output_path) if output_path else Path("src/web/public/status.json")
         path.parent.mkdir(parents=True, exist_ok=True)

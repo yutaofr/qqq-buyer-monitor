@@ -121,6 +121,8 @@ def _v11_inference_task(
         "brier": brier,
         "posterior": posterior,
     }
+
+
 def _v12_quality_field_specs() -> dict[str, tuple[str, str, str | None]]:
     return {
         "credit_spread": ("credit_spread_bps", "source_credit_spread", None),
@@ -273,8 +275,12 @@ def run_v11_audit(
 
     # Add overlay signals
     for col in [
-        "adv_dec_ratio", "source_breadth_proxy", "breadth_quality_score",
-        "ndx_concentration", "source_ndx_concentration", "ndx_concentration_quality_score"
+        "adv_dec_ratio",
+        "source_breadth_proxy",
+        "breadth_quality_score",
+        "ndx_concentration",
+        "source_ndx_concentration",
+        "ndx_concentration_quality_score",
     ]:
         if col in macro_df.columns:
             full_df[col] = macro_df[col]
@@ -395,7 +401,7 @@ def run_v11_audit(
 
             # 1. Quality Auditing (Re-enabled for Task 6)
             latest_raw = row
-            previous_raw = previous_raw if 'previous_raw' in locals() else None
+            previous_raw = previous_raw if "previous_raw" in locals() else None
             # Note: In backtest, we can derive previous_raw from the loop state
 
             quality_audit = assess_data_quality(
@@ -436,33 +442,43 @@ def run_v11_audit(
 
             # ERP Percentile Rank
             train_erp = pd.to_numeric(train_window.get("erp_ttm_pct"), errors="coerce").dropna()
-            current_erp = pd.to_numeric(pd.Series([row.get("erp_ttm_pct")]), errors="coerce").dropna()
+            current_erp = pd.to_numeric(
+                pd.Series([row.get("erp_ttm_pct")]), errors="coerce"
+            ).dropna()
             if train_erp.empty or current_erp.empty:
                 erp_p = 0.5
             else:
-                erp_p = float(pd.concat([train_erp, current_erp], ignore_index=True).rank(pct=True).iloc[-1])
+                erp_p = float(
+                    pd.concat([train_erp, current_erp], ignore_index=True).rank(pct=True).iloc[-1]
+                )
 
             # Run unified pipeline WITH BYPASS for Bit-identicality
             overlay_cols_for_context = [
                 col for col in overlay_cols if col in train_window.columns and col in row.index
             ]
             overlay_context = pd.concat(
-                [train_window[overlay_cols_for_context], pd.DataFrame([row[overlay_cols_for_context]])],
+                [
+                    train_window[overlay_cols_for_context],
+                    pd.DataFrame([row[overlay_cols_for_context]]),
+                ],
                 ignore_index=True,
             )
             overlay = overlay_engine.evaluate(overlay_context, mode=overlay_mode)
 
             pipeline_result = run_execution_pipeline(
-                raw_beta=sum(posteriors.get(regime, 0.0) * base_betas.get(regime, 1.0) for regime in ordered_regimes),
+                raw_beta=sum(
+                    posteriors.get(regime, 0.0) * base_betas.get(regime, 1.0)
+                    for regime in ordered_regimes
+                ),
                 posterior_entropy=posterior_entropy,
-                quality_score=quality_score, # 1.0
+                quality_score=quality_score,  # 1.0
                 posteriors=posteriors,
                 entropy_controller=entropy_ctrl,
                 overlay=overlay,
                 e_sharpe=e_sharpe,
                 erp_percentile=erp_p,
                 high_entropy_streak=0,
-                bypass_v11_floor=False # CRITICAL: Fixed bug, baseline must also respect 0.5 floor
+                bypass_v11_floor=False,  # CRITICAL: Fixed bug, baseline must also respect 0.5 floor
             )
 
             # Result Mapping
@@ -481,7 +497,10 @@ def run_v11_audit(
                 value_score=erp_p,
             )
 
-            raw_beta = sum(posteriors.get(regime, 0.0) * base_betas.get(regime, 1.0) for regime in ordered_regimes)
+            raw_beta = sum(
+                posteriors.get(regime, 0.0) * base_betas.get(regime, 1.0)
+                for regime in ordered_regimes
+            )
             regime_decision = regime_stabilizer.update(posteriors=posteriors, entropy=norm_h)
 
             actual_regime = str(row["regime"])
@@ -678,9 +697,12 @@ def main(argv: list[str] | None = None) -> int:
 
         # Lookahead defense: Reject if the end_date is the current dynamic 'today'
         import datetime
+
         now_date = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d")
         if args.price_end_date == now_date:
-            parser.error(f"--acceptance mode REJECTS current dynamic date '{now_date}' to prevent lookahead leakage.")
+            parser.error(
+                f"--acceptance mode REJECTS current dynamic date '{now_date}' to prevent lookahead leakage."
+            )
 
     experiment_config: dict[str, Any] = {}
     if args.overlay_mode:
