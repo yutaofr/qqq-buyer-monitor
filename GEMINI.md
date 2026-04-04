@@ -1,8 +1,8 @@
-# GEMINI.md - QQQ Bayesian Orthogonal Factor Monitor (v12.0)
+# GEMINI.md - QQQ Bayesian Orthogonal Factor Monitor (v13.0)
 
 > **Repository Master Index: AI & Design Focus**
 
-This repository is governed by a **v12.0 Orthogonal-Core** architecture. AI agents and architects should refer to the following atomic rule files:
+This repository is governed by a **v13.0 Orthogonal-Core** architecture. AI agents and architects should refer to the following atomic rule files:
 
 ### 1. Architecture & Design (The "Why")
 - **[Principles](./docs/core/v12_principles.md)**: Orthogonal Matrix, Entropy-First, PIT Integrity, Gram-Schmidt Engine.
@@ -20,7 +20,7 @@ This repository is governed by a **v12.0 Orthogonal-Core** architecture. AI agen
 
 ### 3. Product & Philosophy
 - **[PRD](./docs/core/PRD.md)**: Product definition and target goals.
-- **[Philosophy](./docs/core/V12_USER_PHILOSOPHY.md)**: The user philosophy of orthogonal reality.
+- **[Philosophy](./docs/core/V13_USER_PHILOSOPHY.md)**: The user philosophy of orthogonal reality.
 
 ---
 © 2026 QQQ Entropy AI Governance.
