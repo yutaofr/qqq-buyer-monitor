@@ -38,7 +38,18 @@ def _build_dev_fixture_frame() -> pd.DataFrame:
         ("2021-06-01", "2021-11-01", 200.0, -0.010, 112.0, 0.018, 0.026, 270.0, 0.21, 0),
         ("2022-01-01", "2022-12-31", 500.0, 0.020, 135.0, 0.040, 0.018, 150.0, 0.17, 0),
     ]
-    for start, end, spread_bps, real_yield, usdjpy, erp_ttm, treasury_vol, liquidity_bn, cg_ratio, stressed in regimes:
+    for (
+        start,
+        end,
+        spread_bps,
+        real_yield,
+        usdjpy,
+        erp_ttm,
+        treasury_vol,
+        liquidity_bn,
+        cg_ratio,
+        stressed,
+    ) in regimes:
         mask = (frame["observation_date"] >= start) & (frame["observation_date"] <= end)
         frame.loc[mask, "credit_spread_bps"] = spread_bps
         frame.loc[mask, "real_yield_10y_pct"] = real_yield
@@ -50,7 +61,9 @@ def _build_dev_fixture_frame() -> pd.DataFrame:
         frame.loc[mask, "funding_stress_flag"] = stressed
 
     frame["breakeven_10y"] = 0.018 + np.sin(np.linspace(0.0, 40.0, len(frame))) * 0.004
-    frame["core_capex_mm"] = np.repeat(np.linspace(8.0, 20.0, len(frame) // 21 + 2), 21)[: len(frame)]
+    frame["core_capex_mm"] = np.repeat(np.linspace(8.0, 20.0, len(frame) // 21 + 2), 21)[
+        : len(frame)
+    ]
     frame["effective_date"] = frame["observation_date"]
     frame["source_credit_spread"] = SOURCE_TAG
     frame["source_real_yield"] = SOURCE_TAG
@@ -68,7 +81,9 @@ def _build_dev_fixture_frame() -> pd.DataFrame:
     return frame
 
 
-def build_dev_fixture_historical_macro_dataset(output_path: str | Path = DEFAULT_OUTPUT_PATH) -> pd.DataFrame:
+def build_dev_fixture_historical_macro_dataset(
+    output_path: str | Path = DEFAULT_OUTPUT_PATH,
+) -> pd.DataFrame:
     """Build the canonical CSV used for local smoke testing only."""
     frame = _build_dev_fixture_frame()
     output_path = Path(output_path)

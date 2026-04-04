@@ -25,7 +25,9 @@ def _build_v12_macro_frame(dates: pd.DatetimeIndex) -> pd.DataFrame:
             "real_yield_10y_pct": 0.008 + np.linspace(0.0, 0.018, len(dates)),
             "net_liquidity_usd_bn": 5200.0 + np.linspace(0.0, 250.0, len(dates)),
             "treasury_vol_21d": 0.004 + np.linspace(0.0, 0.006, len(dates)),
-            "copper_gold_ratio": 0.18 + np.linspace(0.0, 0.04, len(dates)) + rng.normal(0.0, 0.001, len(dates)),
+            "copper_gold_ratio": 0.18
+            + np.linspace(0.0, 0.04, len(dates))
+            + rng.normal(0.0, 0.001, len(dates)),
             "breakeven_10y": 0.018 + np.linspace(0.0, 0.01, len(dates)),
             "core_capex_mm": monthly_block,
             "usdjpy": 120.0 + np.linspace(0.0, 18.0, len(dates)) + rng.normal(0.0, 0.2, len(dates)),
@@ -151,12 +153,14 @@ def test_conductor_applies_entropy_penalty_when_v12_source_is_degraded(tmp_path)
     )
 
     t0 = macro_df.tail(1).set_index("observation_date")
-    t0["credit_spread_bps"] = np.nan # V13.7: Direct value invalidation
+    t0["credit_spread_bps"] = np.nan  # V13.7: Direct value invalidation
     result = conductor.daily_run(t0)
 
     assert result["data_quality"] < 1.0
     assert result["quality_audit"]["reason"] in ("DEGRADED_SOURCE", "CORE_SENSOR_FAILURE")
-    assert result["quality_audit"]["effective_entropy"] > result["quality_audit"]["posterior_entropy"]
+    assert (
+        result["quality_audit"]["effective_entropy"] > result["quality_audit"]["posterior_entropy"]
+    )
 
 
 def test_conductor_flags_source_switch_and_writes_runtime_snapshot(tmp_path):
@@ -231,14 +235,14 @@ def test_conductor_marks_missing_provenance_as_degraded(tmp_path):
     t0 = macro_df.tail(1).copy().set_index("observation_date")
     t0["erp_ttm_pct"] = np.nan
     t0["source_erp_ttm"] = np.nan
-    t0["build_version"] = "v12.0-orthogonal-factor-r1" # Match default to avoid switch
+    t0["build_version"] = "v12.0-orthogonal-factor-r1"  # Match default to avoid switch
     result = conductor.daily_run(t0)
 
     erp_quality = result["quality_audit"]["fields"]["erp_ttm"]
     assert erp_quality["quality"] == 0.0
     assert result["quality_audit"]["reason"] in ("SENSOR_DEGRADATION", "SOURCE_SWITCH")
     assert erp_quality["source"] == "missing:provenance"
-    assert erp_quality["degraded"] is False # V13.7: Missing is not degraded
+    assert erp_quality["degraded"] is False  # V13.7: Missing is not degraded
     assert erp_quality["quality"] == 0.0
 
 

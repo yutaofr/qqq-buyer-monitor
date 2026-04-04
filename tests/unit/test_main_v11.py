@@ -162,7 +162,10 @@ def test_run_v11_pipeline_stops_when_cloud_pull_fails(monkeypatch):
             return False
 
     monkeypatch.setattr(main_module, "CloudPersistenceBridge", _FatalCloudBridge)
-    monkeypatch.setattr("src.collector.price.fetch_price_data", lambda: (_ for _ in ()).throw(AssertionError("should not fetch")))
+    monkeypatch.setattr(
+        "src.collector.price.fetch_price_data",
+        lambda: (_ for _ in ()).throw(AssertionError("should not fetch")),
+    )
 
     with pytest.raises(RuntimeError, match="Cloud state pull failed"):
         main_module.run_v11_pipeline(

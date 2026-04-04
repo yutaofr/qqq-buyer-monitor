@@ -1,4 +1,4 @@
-# v13.7-ULTIMA Operational & Validation Protocols
+# v12.1-FIXED Operational & Validation Protocols
 
 > **Numerical Governance for High-Confidence Execution**
 
@@ -7,15 +7,19 @@
 在任何代码进入 `main` 分支前，必须完成以下 3 层数值验证：
 
 ### 1.1 结构性注水审计 (Structural Hydration Audit)
-- **要求**: 运行 `scripts/v13_sequential_replay.py`。
+- **要求**: 运行 `scripts/v13_sequential_replay.py` 或触发 `main.py` 冷启动。
 - **目标**: 产生 `v13_6_ex_hydrated_prior.json`。
 - **标准**: 样本数必须 > 2000，且 `hydration_anchor` 为 2018-01-01。
 
-### 1.2 物理底线拦截验证 (Redline Intercept Test)
-- **要求**: 模拟高熵死锁场景（H > 0.85）。
+### 1.2 贝叶斯完备性校验 (Bayesian Integrity Test)
+- **要求**: 核查 `Posterior` 是否呈现出平滑且非单极化的分布。
+- **标准**: 在趋势清晰时，主导 Regime 概率应在 75%-95% 之间，信息熵（Entropy）应处于 0.3-0.6 之间（Tau=3.0 平滑生效）。
+
+### 1.3 物理底线拦截验证 (Redline Intercept Test)
+- **要求**: 模拟极高熵场景（H > 0.85）。
 - **标准**: 最终 `target_beta` 必须稳定在 0.50，且 `is_floor_active` 返回 `True`。
 
-### 1.3 实体经济对齐审计 (Real-Economy Alignment)
+### 1.4 实体经济对齐审计 (Real-Economy Alignment)
 - **要求**: 核查 12 因子特征流。
 - **标准**: `pmi_momentum` 与 `labor_slack` 必须显示非零的 Log-Likelihood 贡献。
 

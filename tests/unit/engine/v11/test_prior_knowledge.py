@@ -122,7 +122,9 @@ def test_prior_knowledge_rejects_bootstrap_fingerprint_drift(tmp_path, bootstrap
         PriorKnowledgeBase(storage_path=storage_path, bootstrap_regimes=bootstrap_history)
 
 
-def test_prior_knowledge_migrates_legacy_capitulation_payload_into_recovery(tmp_path, bootstrap_history):
+def test_prior_knowledge_migrates_legacy_capitulation_payload_into_recovery(
+    tmp_path, bootstrap_history
+):
     storage_path = tmp_path / "prior_state.json"
     storage_path.write_text(
         json.dumps(

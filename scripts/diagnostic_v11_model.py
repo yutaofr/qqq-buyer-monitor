@@ -7,6 +7,7 @@ from src.engine.v11.conductor import V11Conductor
 
 logging.basicConfig(level=logging.INFO)
 
+
 def run_diagnostic():
     print("=== v11.5 Probability Diagnostic ===")
 
@@ -14,7 +15,9 @@ def run_diagnostic():
     cond = V11Conductor()
 
     # 2. Get current macro data from the dump
-    macro_df = pd.read_csv("data/macro_historical_dump.csv", index_col="observation_date", parse_dates=True)
+    macro_df = pd.read_csv(
+        "data/macro_historical_dump.csv", index_col="observation_date", parse_dates=True
+    )
     features = cond.seeder.generate_features(macro_df)
     latest_vector = features.iloc[-1:]
 
@@ -42,7 +45,10 @@ def run_diagnostic():
             # Prob density
             z = (val - mean) / np.sqrt(var) if var > 0 else 0
             density = (1 / (np.sqrt(2 * np.pi * var))) * np.exp(-0.5 * z**2) if var > 0 else 0
-            print(f"  {feat:25}: mean={mean:+.4f}, var={var:+.4f}, current={val:+.4f}, z={z:+.2f}, density={density:.2e}")
+            print(
+                f"  {feat:25}: mean={mean:+.4f}, var={var:+.4f}, current={val:+.4f}, z={z:+.2f}, density={density:.2e}"
+            )
+
 
 if __name__ == "__main__":
     run_diagnostic()

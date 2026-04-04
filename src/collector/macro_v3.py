@@ -21,9 +21,7 @@ RESEARCH_PRIMARY_SERIES: tuple[str, ...] = (
     "NFCI",
 )
 
-RESEARCH_OPTIONAL_SERIES: tuple[str, ...] = (
-    "CPFF",
-)
+RESEARCH_OPTIONAL_SERIES: tuple[str, ...] = ("CPFF",)
 
 
 def fetch_real_yield_snapshot() -> dict[str, float | str | bool | None]:
@@ -94,16 +92,18 @@ def fetch_move_index() -> float | None:
             return float(df["Close"].iloc[-1])
     except Exception as exc:
         logger.warning("MOVE Index fetch failed: %s", exc)
-    return 100.0 # Neutral fallback
+    return 100.0  # Neutral fallback
+
 
 def fetch_sector_rotation(ticker: str = "QQQ") -> float | None:
     """Analyze cyclical vs defensive sector rotation."""
-    return 1.0 # Placeholder
+    return 1.0  # Placeholder
 
 
 def fetch_short_volume_proxy(ticker: str = "QQQ") -> float | None:
     """Fetch FINRA short volume ratio for QQQ."""
-    return 0.45 # Placeholder
+    return 0.45  # Placeholder
+
 
 def fetch_net_liquidity(series_id: str = "WDTGAL") -> tuple[float | None, float | None]:
     snapshot = fetch_net_liquidity_snapshot(series_id=series_id)
@@ -191,12 +191,14 @@ def fetch_credit_acceleration(window: int = 10) -> float | None:
             return 0.0
 
         accel_pct = ((latest - start) / start) * 100.0
-        logger.info("Credit Spread Acceleration (10d): %.2f%% (%.2f -> %.2f)",
-                    accel_pct, start, latest)
+        logger.info(
+            "Credit Spread Acceleration (10d): %.2f%% (%.2f -> %.2f)", accel_pct, start, latest
+        )
         return accel_pct
     except Exception as exc:
         logger.error("Failed to calculate credit acceleration: %s", exc)
         return None
+
 
 def fetch_funding_stress() -> dict:
     """
@@ -212,7 +214,7 @@ def fetch_funding_stress() -> dict:
             stress_info["nfci"] = float(nfci_df.iloc[-1]["NFCI"])
 
         # CPFF (Commercial Paper) via API
-        cpff_df = fetch_fred_api("CPFF") # Proxy ID
+        cpff_df = fetch_fred_api("CPFF")  # Proxy ID
         if cpff_df is not None and not cpff_df.empty:
             stress_info["cpff"] = float(cpff_df.iloc[-1]["CPFF"])
 

@@ -3,6 +3,7 @@
 v11.5 Historical Macro Analyzer & Reproduction Tool.
 Consolidates timeline analysis, regime transitions, and accuracy auditing.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -17,6 +18,7 @@ from src.engine.v11.conductor import V11Conductor
 # Suppress noisy logs
 logging.getLogger("src.engine.v11").setLevel(logging.WARNING)
 
+
 def run_historical_audit(start_date: str, end_date: str, csv_path: str):
     print(f"=== v11.5 Historical Audit: {start_date} to {end_date} ===")
 
@@ -27,8 +29,7 @@ def run_historical_audit(start_date: str, end_date: str, csv_path: str):
 
     full_df = pd.read_csv(csv_path, parse_dates=["observation_date"])
     window_df = full_df[
-        (full_df["observation_date"] >= start_date) &
-        (full_df["observation_date"] <= end_date)
+        (full_df["observation_date"] >= start_date) & (full_df["observation_date"] <= end_date)
     ].sort_values("observation_date")
 
     if window_df.empty:
@@ -52,16 +53,18 @@ def run_historical_audit(start_date: str, end_date: str, csv_path: str):
         runtime = conductor.daily_run(t0_df)
 
         # Capture context
-        history.append({
-            "date": dt,
-            "regime": runtime["stable_regime"],
-            "beta": runtime["target_beta"],
-            "entropy": runtime.get("entropy", 0.0),
-            "actual_regime": row_raw.get("regime"),  # May be None if not labeled
-            "liq": row_raw.get("net_liquidity_usd_bn"),
-            "spread": row_raw.get("credit_spread_bps"),
-            "price": row_raw.get("qqq_close")
-        })
+        history.append(
+            {
+                "date": dt,
+                "regime": runtime["stable_regime"],
+                "beta": runtime["target_beta"],
+                "entropy": runtime.get("entropy", 0.0),
+                "actual_regime": row_raw.get("regime"),  # May be None if not labeled
+                "liq": row_raw.get("net_liquidity_usd_bn"),
+                "spread": row_raw.get("credit_spread_bps"),
+                "price": row_raw.get("qqq_close"),
+            }
+        )
 
     history_df = pd.DataFrame(history)
 
@@ -74,7 +77,9 @@ def run_historical_audit(start_date: str, end_date: str, csv_path: str):
         print("  (No transitions detected in this window)")
     else:
         for _, c in changes.iterrows():
-            print(f"  {c['date'].date()}: -> {c['regime']:12} | Beta={c['beta']:.2f}x | Entropy={c['entropy']:.4f}")
+            print(
+                f"  {c['date'].date()}: -> {c['regime']:12} | Beta={c['beta']:.2f}x | Entropy={c['entropy']:.4f}"
+            )
 
     # 5. Accuracy Metrics (If Ground Truth Available)
     if history_df["actual_regime"].notna().any():
@@ -95,6 +100,7 @@ def run_historical_audit(start_date: str, end_date: str, csv_path: str):
         print(f"\n[ALERT] BUST periods detected: {len(bust_periods)} days")
         print(f"  Min Beta during window: {history_df['beta'].min():.2f}x")
 
+
 def main():
     parser = argparse.ArgumentParser(description="V11 historical analysis tool")
     parser.add_argument("--start", default="2025-01-01", help="Start date (YYYY-MM-DD)")
@@ -103,6 +109,7 @@ def main():
 
     args = parser.parse_args()
     run_historical_audit(args.start, args.end, args.dataset)
+
 
 if __name__ == "__main__":
     main()

@@ -2,6 +2,7 @@
 Decouples cognitive half-life from VIX and anchors it to Credit Spread OAS ROC.
 Implements the 'Malignant Expansion' decay function.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -12,9 +13,10 @@ class ExogenousMemoryOperator:
     """
     v11 终极认知中枢：基于外生信贷压力的自适应半衰期引擎。
     """
+
     def __init__(self, base_half_life: float = 10.0, kappa: float = 5.0):
         self.base_half_life = base_half_life
-        self.kappa = kappa # 惩罚系数：决定信贷危机时的“遗忘暴力程度”
+        self.kappa = kappa  # 惩罚系数：决定信贷危机时的“遗忘暴力程度”
 
     def compute_adaptive_lambda(self, credit_spread_series: pd.Series) -> pd.Series:
         """
@@ -35,10 +37,13 @@ class ExogenousMemoryOperator:
         # 设定物理底线：半衰期不能低于 0.5 年，防止模型完全退化为白噪声
         return np.maximum(dynamic_lambda, 0.5)
 
-    def get_weighted_rank(self, value_series: pd.Series, lambda_series: pd.Series, window: int = 252*20) -> pd.Series:
+    def get_weighted_rank(
+        self, value_series: pd.Series, lambda_series: pd.Series, window: int = 252 * 20
+    ) -> pd.Series:
         """
         利用动态半衰期计算加权分位数排名。
         """
+
         def _weighted_pct(x):
             if len(x) < 1:
                 return np.nan

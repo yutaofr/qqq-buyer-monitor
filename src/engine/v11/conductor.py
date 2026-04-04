@@ -85,7 +85,9 @@ class V11Conductor:
             self.audit_data.get("model_hyperparameters", {}).get("gaussian_nb_var_smoothing", 1e-2)
         )
         self.posterior_mode = str(
-            self.audit_data.get("model_hyperparameters", {}).get("posterior_mode", "runtime_reweight")
+            self.audit_data.get("model_hyperparameters", {}).get(
+                "posterior_mode", "runtime_reweight"
+            )
         )
         self.regimes = list(self.base_betas.keys())
         self._validate_canonical_inputs()
@@ -93,7 +95,9 @@ class V11Conductor:
             self.regime_data_path,
             parse_dates=["observation_date"],
         ).set_index("observation_date")
-        self.regime_history["regime"] = self.regime_history["regime"].apply(canonicalize_regime_name)
+        self.regime_history["regime"] = self.regime_history["regime"].apply(
+            canonicalize_regime_name
+        )
         self.model_regimes = sorted(self.regime_history["regime"].dropna().astype(str).unique())
         self._validate_regime_coverage()
 
@@ -125,7 +129,9 @@ class V11Conductor:
         if self.prior_book.counts:
             # Select the most frequent regime from hydrated counts as the anchor
             hydrated_regime = max(self.prior_book.counts, key=self.prior_book.counts.get)
-            logger.info(f"GOLD+: Cold-start synchronizing regime to {hydrated_regime} from hydrated priors.")
+            logger.info(
+                f"GOLD+: Cold-start synchronizing regime to {hydrated_regime} from hydrated priors."
+            )
 
         self.regime_stabilizer = RegimeStabilizer(
             initial_regime=hydrated_regime or str(execution_state.get("stable_regime")),
@@ -133,8 +139,10 @@ class V11Conductor:
         )
         execution_state = self.prior_book.get_execution_state()
         self.beta_mapper = InertialBetaMapper(
-            initial_beta=float(execution_state["current_beta"]) if "current_beta" in execution_state else None,
-            initial_evidence=float(execution_state.get("beta_evidence", 0.0) or 0.0)
+            initial_beta=float(execution_state["current_beta"])
+            if "current_beta" in execution_state
+            else None,
+            initial_evidence=float(execution_state.get("beta_evidence", 0.0) or 0.0),
         )
         self.behavior_guard = BehavioralGuard(
             initial_bucket=str(execution_state.get("current_bucket", "QQQ") or "QQQ"),
@@ -148,7 +156,9 @@ class V11Conductor:
         self.overlay_mode = overlay_mode
         self.high_entropy_streak = int(execution_state.get("high_entropy_streak", 0) or 0)
         self.deployment_policy = ProbabilisticDeploymentPolicy(
-            initial_state=str(execution_state.get("deployment_state", "DEPLOY_BASE") or "DEPLOY_BASE"),
+            initial_state=str(
+                execution_state.get("deployment_state", "DEPLOY_BASE") or "DEPLOY_BASE"
+            ),
             evidence=float(execution_state.get("deployment_evidence", 0.0) or 0.0),
         )
 
@@ -160,8 +170,7 @@ class V11Conductor:
             self.gnb = self._initialize_model(macro_data_path, regime_data_path)
 
         self.inference_engine = BayesianInferenceEngine(
-            kde_models={r: None for r in self.gnb.classes_},
-            base_priors=self._get_base_priors()
+            kde_models={r: None for r in self.gnb.classes_}, base_priors=self._get_base_priors()
         )
 
     def _validate_canonical_inputs(self) -> None:
@@ -200,14 +209,18 @@ class V11Conductor:
 
         # 1. Load Seeding Datasets
         macro_df = pd.read_csv(macro_data_path, index_col="observation_date", parse_dates=True)
-        regime_df = pd.read_csv(regime_data_path, parse_dates=["observation_date"]).set_index("observation_date")
+        regime_df = pd.read_csv(regime_data_path, parse_dates=["observation_date"]).set_index(
+            "observation_date"
+        )
 
         # Generate features via unified seeder
         features = self.seeder.generate_features(macro_df)
         df = features.join(regime_df["regime"], how="inner").dropna()
 
         if df.empty:
-            raise ValueError("JIT Training failed: Empty intersection between macro and regime data.")
+            raise ValueError(
+                "JIT Training failed: Empty intersection between macro and regime data."
+            )
 
         # Fit GNB (Architect A/B/C feature suite)
         # AC-0: Add variance smoothing to prevent probability collapse on low data (v11.19)
@@ -228,7 +241,9 @@ class V11Conductor:
         )
         return gnb
 
-    def _validate_model(self, gnb: GaussianNB, *, feature_count: int | None = None) -> dict[str, object]:
+    def _validate_model(
+        self, gnb: GaussianNB, *, feature_count: int | None = None
+    ) -> dict[str, object]:
         return validate_gaussian_nb(
             gnb,
             expected_classes=self.model_regimes,
@@ -249,7 +264,9 @@ class V11Conductor:
         macro_csv = self.macro_data_path
         previous_raw = None
         if os.path.exists(macro_csv):
-            hist_df = pd.read_csv(macro_csv, parse_dates=["observation_date"]).set_index("observation_date")
+            hist_df = pd.read_csv(macro_csv, parse_dates=["observation_date"]).set_index(
+                "observation_date"
+            )
             # Use raw_t0_data as a DataFrame to match columns
             t0_df = raw_t0_data.copy()
             # Use observation_date column as index if available to avoid Epoch 0 (1970-01-01)
@@ -298,26 +315,38 @@ class V11Conductor:
             elif self.posterior_mode == "runtime_reweight":
                 active_priors = runtime_priors
             else:
-                active_priors = runtime_priors # Default to runtime
+                active_priors = runtime_priors  # Default to runtime
 
             # v13.6-EX / v13.7-ULTIMA: Adaptive Paranoid Adjustment
             active_registry = self.v13_4_registry
             if self.high_entropy_streak >= 21:
-                logger.warning(f"ULTIMA CIRCUIT BREAKER: Streak={self.high_entropy_streak}. Cutting all non-core sensors.")
+                logger.warning(
+                    f"ULTIMA CIRCUIT BREAKER: Streak={self.high_entropy_streak}. Cutting all non-core sensors."
+                )
                 # v13.7-ULTIMA: Mandatory Cut (Weight=0) for everything except Level 1
                 import copy
+
                 active_registry = copy.deepcopy(self.v13_4_registry)
                 matrix = active_registry.get("feature_weight_matrix", {})
+                core_fields = set(
+                    active_registry.get("core_fields", ["credit_spread_bps", "spread_"])
+                )
                 for k in matrix:
-                    if k != "credit_spread_bps":
-                        matrix[k] = 0.0 # Extreme surgical cut
+                    if k not in core_fields:
+                        matrix[k] = 0.0  # Extreme surgical cut
             elif self.high_entropy_streak >= 5:
-                logger.warning(f"PARANOID_MODE ACTIVE: High entropy streak={self.high_entropy_streak}. Damping secondary factors.")
+                logger.warning(
+                    f"PARANOID_MODE ACTIVE: High entropy streak={self.high_entropy_streak}. Damping secondary factors."
+                )
                 import copy
+
                 active_registry = copy.deepcopy(self.v13_4_registry)
                 matrix = active_registry.get("feature_weight_matrix", {})
+                core_fields = set(
+                    active_registry.get("core_fields", ["credit_spread_bps", "spread_"])
+                )
                 for k in matrix:
-                    if k != "credit_spread_bps":
+                    if k not in core_fields:
                         matrix[k] = float(matrix[k]) * 0.7
 
             # SRD-v13.5-PRO: Asymmetric Weighted Inference
@@ -331,7 +360,7 @@ class V11Conductor:
                 runtime_priors=active_priors,
                 weight_registry=active_registry,
                 tau=registry_tau,
-                m=registry_m
+                m=registry_m,
             )
             if any(np.isnan(list(posteriors.values()))):
                 logger.warning("Bayesian Inference produced NaNs. Falling back to priors.")
@@ -360,8 +389,10 @@ class V11Conductor:
         # Use canonical sorting for probabilities to prevent index shift hallucinations
         posteriors = {r: float(posteriors[r]) for r in ACTIVE_REGIME_ORDER if r in posteriors}
 
-        raw_beta_expectation = sum(posteriors.get(regime, 0.0) * self.base_betas.get(regime, 1.0)
-                                   for regime in self.base_betas.keys())
+        raw_beta_expectation = sum(
+            posteriors.get(regime, 0.0) * self.base_betas.get(regime, 1.0)
+            for regime in self.base_betas.keys()
+        )
 
         # SRD-v13.5-GOLD: Precision Stabilizer Update
         regime_decision = self.regime_stabilizer.update(posteriors=posteriors, entropy=norm_h)
@@ -371,7 +402,9 @@ class V11Conductor:
         if norm_h > 0.8:
             contribs = bayesian_diagnostics.get("level_contributions", {}).get(top_regime, {})
             sorted_contribs = sorted(contribs.items(), key=lambda x: x[1])
-            logger.info(f"High Entropy Conflict Audit (Top Regime={top_regime}): Lowest Contribs: {sorted_contribs[:3]}")
+            logger.info(
+                f"High Entropy Conflict Audit (Top Regime={top_regime}): Lowest Contribs: {sorted_contribs[:3]}"
+            )
 
         # Apply Information-Theoretic Haircut (v13.5-GOLD: Damped exp(-0.6*H^2))
         pre_floor_beta = self.entropy_ctrl.apply_haircut(
@@ -494,7 +527,7 @@ class V11Conductor:
         )
 
         # 6. UI/Main Alignment Data (v13.6-EX)
-        resurrection = (regime_decision["stable_regime"] == "RECOVERY")
+        resurrection = regime_decision["stable_regime"] == "RECOVERY"
         observation_date = pd.Timestamp(features.index[-1]).date().isoformat()
         self.prior_book.update_with_posterior(
             observation_date=observation_date,
@@ -516,7 +549,9 @@ class V11Conductor:
                 "lock_active": execution.lock_active,
                 "action_required": execution.action_required,
                 "is_floor_active": is_floor_active,
-                "hydration_anchor": self.prior_book.execution_state.get("hydration_anchor", "2018-01-01"),
+                "hydration_anchor": self.prior_book.execution_state.get(
+                    "hydration_anchor", "2018-01-01"
+                ),
                 "high_entropy_streak": self.high_entropy_streak,
             },
             "priors": runtime_priors,
@@ -558,7 +593,7 @@ class V11Conductor:
             deployment_state=str(deployment_decision["deployment_state"]),
             deployment_evidence=float(self.deployment_policy.evidence),
             high_entropy_streak=self.high_entropy_streak,
-            hydration_anchor=runtime_result.get("signal", {}).get("hydration_anchor", "2018-01-01")
+            hydration_anchor=runtime_result.get("signal", {}).get("hydration_anchor", "2018-01-01"),
         )
 
         return runtime_result
@@ -594,7 +629,11 @@ class V11Conductor:
             raw_value = latest_raw.get(value_key)
             numeric_value = pd.to_numeric(pd.Series([raw_value]), errors="coerce").iloc[0]
             available = bool(pd.notna(numeric_value) and np.isfinite(float(numeric_value)))
-            source = self._normalize_source_marker(latest_raw.get(source_key)) if source_key else "direct"
+            source = (
+                self._normalize_source_marker(latest_raw.get(source_key))
+                if source_key
+                else "direct"
+            )
 
             # SRD-v13.4: Quality Transfer Function Implementation
             if not available:
@@ -654,7 +693,7 @@ class V11Conductor:
         source_switch = self._detect_source_switch(latest_raw, previous_raw=previous_raw)
         if source_switch["detected"]:
             reason = "SOURCE_SWITCH"
-        elif q_core < 0.15: # SRD: Significant Core Degradation
+        elif q_core < 0.15:  # SRD: Significant Core Degradation
             reason = "CORE_SENSOR_FAILURE"
         elif degraded_present:
             reason = "DEGRADED_SOURCE"
@@ -669,7 +708,7 @@ class V11Conductor:
             "fields": fields,
             "source_switch": source_switch,
             "q_core": q_core,
-            "q_support": q_support
+            "q_support": q_support,
         }
 
     @staticmethod
@@ -697,7 +736,9 @@ class V11Conductor:
                 "current_build_version": str(latest_raw.get("build_version", "")) or None,
             }
 
-        source_fields = {field: source_key for field, (_, source_key, _) in _v12_quality_field_specs().items()}
+        source_fields = {
+            field: source_key for field, (_, source_key, _) in _v12_quality_field_specs().items()
+        }
 
         changed_fields: list[str] = []
         for field_name, source_key in source_fields.items():
@@ -708,7 +749,11 @@ class V11Conductor:
 
         previous_build_version = str(previous_raw.get("build_version", "") or "")
         current_build_version = str(latest_raw.get("build_version", "") or "")
-        if previous_build_version and current_build_version and previous_build_version != current_build_version:
+        if (
+            previous_build_version
+            and current_build_version
+            and previous_build_version != current_build_version
+        ):
             changed_fields.append("build_version")
 
         return {
@@ -752,7 +797,9 @@ class V11Conductor:
                 continue
 
             field_name = source_to_field.get(str(src))
-            weights[str(feature_name)] = float(np.clip(field_quality.get(field_name, 1.0), 0.0, 1.0))
+            weights[str(feature_name)] = float(
+                np.clip(field_quality.get(field_name, 1.0), 0.0, 1.0)
+            )
 
         return weights
 
@@ -798,7 +845,9 @@ class V11Conductor:
 
             self.snapshot_dir.mkdir(parents=True, exist_ok=True)
             snapshot_path = self.snapshot_dir / f"snapshot_{observation_date}.json"
-            snapshot_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            snapshot_path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to write v11 runtime snapshot: %s", exc)
 
@@ -807,7 +856,9 @@ class V11Conductor:
         serializable = frame.copy()
         if "observation_date" not in serializable.columns:
             index_name = serializable.index.name or "observation_date"
-            serializable = serializable.reset_index().rename(columns={index_name: "observation_date"})
+            serializable = serializable.reset_index().rename(
+                columns={index_name: "observation_date"}
+            )
 
         for column in serializable.columns:
             if pd.api.types.is_datetime64_any_dtype(serializable[column]):
@@ -870,15 +921,11 @@ class V11Conductor:
         # Standard unit of $100k for the signal generator
         NAV = 100_000.0
         if beta > 1.0:
-            qld = (beta - 1.0) * NAV # Exposure above 1.0 goes to QLD
+            qld = (beta - 1.0) * NAV  # Exposure above 1.0 goes to QLD
             qqq = NAV
             cash = 0.0
         else:
             qld = 0.0
             qqq = NAV * beta
             cash = NAV - qqq
-        return {
-            "qqq_dollars": qqq,
-            "qld_notional_dollars": qld,
-            "cash_dollars": cash
-        }
+        return {"qqq_dollars": qqq, "qld_notional_dollars": qld, "cash_dollars": cash}

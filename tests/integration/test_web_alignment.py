@@ -2,6 +2,7 @@
 Ultimate Alignment Test for V12.0 Web Frontend.
 Verifies that status.json produced by engine matches index.html expectations.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,9 +27,11 @@ def test_web_frontend_contract_alignment():
         entropy=0.001,
         stable_regime="LATE_CYCLE",
         target_allocation=TargetAllocationState(0.198, 0.802, 0.0, 0.80),
-        logic_trace=[{"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QQQ"}}],
+        logic_trace=[
+            {"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QQQ"}}
+        ],
         explanation="v12.0 test",
-        metadata={"beta_ceiling": 1.20, "raw_target_beta": 0.85}
+        metadata={"beta_ceiling": 1.20, "raw_target_beta": 0.85},
     )
 
     json_path = Path("src/web/public/status.json")
@@ -66,7 +69,9 @@ def test_web_frontend_contract_alignment():
     for key in required_json_keys:
         # Check if the JS code in index.html references this specific data path
         # Using a simple string search since it's a static template
-        assert key in html_content, f"Frontend misalignment: index.html is missing reference to '{key}'"
+        assert key in html_content, (
+            f"Frontend misalignment: index.html is missing reference to '{key}'"
+        )
         print(f"Key Found: {key} -> ALIGNED")
 
     # 4. Check specific V11 fields
@@ -78,6 +83,7 @@ def test_web_frontend_contract_alignment():
     assert "feature-values-container" in html_content
 
     print("\nWeb Alignment: SUCCESS. V12.0 Engine and Frontend are in sync.")
+
 
 if __name__ == "__main__":
     test_web_frontend_contract_alignment()

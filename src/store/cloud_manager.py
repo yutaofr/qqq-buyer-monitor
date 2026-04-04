@@ -8,6 +8,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+
 class CloudPersistenceBridge:
     """
     v11.18 Cloud Persistence Bridge.
@@ -29,10 +30,9 @@ class CloudPersistenceBridge:
             self.namespace = f"staging/{clean_branch}"
 
         self.base_api_url = "https://blob.vercel-storage.com"
-        self.headers = {
-            "authorization": f"Bearer {self.token}",
-            "x-api-version": "7"
-        } if self.token else {}
+        self.headers = (
+            {"authorization": f"Bearer {self.token}", "x-api-version": "7"} if self.token else {}
+        )
 
     def _get_remote_path(self, local_filename: str) -> str:
         """Applies namespace prefix to the filename."""
@@ -90,7 +90,9 @@ class CloudPersistenceBridge:
             # Vercel Blob uses 'pathname' as the original stable identifier.
             url_map = self._list_blob_url_map(limit=1000)
         except Exception as e:
-            logger.error("Failed to list cloud blobs: %s. Refusing to continue with stale runtime state.", e)
+            logger.error(
+                "Failed to list cloud blobs: %s. Refusing to continue with stale runtime state.", e
+            )
             return False
 
         for filename in local_files:
@@ -101,7 +103,9 @@ class CloudPersistenceBridge:
             local_path.parent.mkdir(parents=True, exist_ok=True)
 
             if not download_url:
-                logger.warning("Cloud file miss: %s (404). Using local repository seed.", remote_path)
+                logger.warning(
+                    "Cloud file miss: %s (404). Using local repository seed.", remote_path
+                )
                 continue
 
             try:
@@ -152,11 +156,15 @@ class CloudPersistenceBridge:
         put_url = f"{self.base_api_url}/{remote_path}"
 
         put_headers = self.headers.copy()
-        put_headers.update({
-            "x-add-random-suffix": "false",
-            "x-access": "public",
-            "content-type": "application/json; charset=utf-8" if not is_binary else "application/octet-stream"
-        })
+        put_headers.update(
+            {
+                "x-add-random-suffix": "false",
+                "x-access": "public",
+                "content-type": "application/json; charset=utf-8"
+                if not is_binary
+                else "application/octet-stream",
+            }
+        )
 
         if not is_binary and isinstance(payload, dict):
             data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -171,9 +179,11 @@ class CloudPersistenceBridge:
                 logger.info("Successfully PERSISTED %s to Cloud.", remote_path)
                 return True
             except Exception as e:
-                logger.error("Vercel Blob Upload Attempt %d failed for %s: %s", attempt+1, remote_path, e)
+                logger.error(
+                    "Vercel Blob Upload Attempt %d failed for %s: %s", attempt + 1, remote_path, e
+                )
                 if attempt == max_retries - 1:
                     raise
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
 
         return False

@@ -14,7 +14,9 @@ from src.research.data_contracts import (
 from src.research.valuation_history import parse_damodaran_histimpl_html
 
 
-def _primary_series_frame(series_id: str, values: list[float], dates: pd.DatetimeIndex) -> pd.DataFrame:
+def _primary_series_frame(
+    series_id: str, values: list[float], dates: pd.DatetimeIndex
+) -> pd.DataFrame:
     return pd.DataFrame(
         {
             "observation_date": dates,
@@ -23,7 +25,9 @@ def _primary_series_frame(series_id: str, values: list[float], dates: pd.Datetim
     )
 
 
-def _v12_frame(value_column: str, values: list[float], observation_dates: list[str], effective_dates: list[str]) -> pd.DataFrame:
+def _v12_frame(
+    value_column: str, values: list[float], observation_dates: list[str], effective_dates: list[str]
+) -> pd.DataFrame:
     return pd.DataFrame(
         {
             "observation_date": pd.to_datetime(observation_dates),
@@ -116,9 +120,21 @@ def test_fetch_historical_fred_series_does_not_use_proxy_fallbacks(monkeypatch):
     )
 
     monkeypatch.setattr(macro, "fetch_fred_data", lambda series_id, timeout=15: raw)
-    monkeypatch.setattr(macro, "fetch_chicago_fed_nfci", lambda: (_ for _ in ()).throw(AssertionError("unexpected fallback")))
-    monkeypatch.setattr(macro, "fetch_treasury_yields", lambda: (_ for _ in ()).throw(AssertionError("unexpected fallback")))
-    monkeypatch.setattr(macro, "fetch_hyg_proxy", lambda: (_ for _ in ()).throw(AssertionError("unexpected fallback")))
+    monkeypatch.setattr(
+        macro,
+        "fetch_chicago_fed_nfci",
+        lambda: (_ for _ in ()).throw(AssertionError("unexpected fallback")),
+    )
+    monkeypatch.setattr(
+        macro,
+        "fetch_treasury_yields",
+        lambda: (_ for _ in ()).throw(AssertionError("unexpected fallback")),
+    )
+    monkeypatch.setattr(
+        macro,
+        "fetch_hyg_proxy",
+        lambda: (_ for _ in ()).throw(AssertionError("unexpected fallback")),
+    )
 
     frame = macro.fetch_historical_fred_series("BAMLH0A0HYM2")
 
@@ -272,23 +288,64 @@ def test_build_historical_macro_dataset_derives_v12_canonical_fields(monkeypatch
         macro_v3,
         "fetch_research_historical_primary_series",
         lambda series_ids=builder._LIQUIDITY_SERIES: {
-            "WALCL": _primary_series_frame("WALCL", [8000000.0, 8001000.0, 8002500.0, 8004000.0, 8005200.0, 8007000.0], weekly_dates),
-            "WDTGAL": _primary_series_frame("WDTGAL", [500000.0, 500100.0, 500150.0, 500200.0, 500250.0, 500300.0], weekly_dates),
-            "RRPONTSYD": _primary_series_frame("RRPONTSYD", [1000.0, 1010.0, 1020.0, 1030.0, 1040.0, 1050.0], weekly_dates),
+            "WALCL": _primary_series_frame(
+                "WALCL",
+                [8000000.0, 8001000.0, 8002500.0, 8004000.0, 8005200.0, 8007000.0],
+                weekly_dates,
+            ),
+            "WDTGAL": _primary_series_frame(
+                "WDTGAL", [500000.0, 500100.0, 500150.0, 500200.0, 500250.0, 500300.0], weekly_dates
+            ),
+            "RRPONTSYD": _primary_series_frame(
+                "RRPONTSYD", [1000.0, 1010.0, 1020.0, 1030.0, 1040.0, 1050.0], weekly_dates
+            ),
         },
     )
     monkeypatch.setattr(
         global_macro,
         "fetch_v12_historical_series_bundle",
         lambda timeout=20: {
-            "credit_spread": _primary_series_frame("BAMLH0A0HYM2", [1.00, 1.02, 1.04], pd.date_range("2024-01-01", periods=3, freq="B")),
-            "real_yield": _primary_series_frame("real_yield_10y_pct", [0.012, 0.011, 0.010], pd.date_range("2024-01-01", periods=3, freq="B")),
-            "treasury_vol": _v12_frame("treasury_vol_21d", [0.006, 0.007], ["2024-01-01", "2024-01-02"], ["2024-01-02", "2024-01-03"]),
-            "breakeven": _v12_frame("breakeven_10y", [0.021, 0.020], ["2024-01-01", "2024-01-02"], ["2024-01-02", "2024-01-03"]),
-            "capex": _v12_frame("core_capex_mm", [11.0, 15.0], ["2023-11-30", "2023-12-31"], ["2024-01-12", "2024-02-12"]),
-            "copper_gold": _v12_frame("copper_gold_ratio", [0.18, 0.181], ["2024-01-01", "2024-01-02"], ["2024-01-02", "2024-01-03"]),
-            "usdjpy": _v12_frame("usdjpy", [145.0, 146.0], ["2024-01-01", "2024-01-02"], ["2024-01-02", "2024-01-03"]),
-            "erp_ttm": _v12_frame("erp_ttm_pct", [0.037, 0.038], ["2023-11-30", "2023-12-31"], ["2024-01-12", "2024-02-12"]),
+            "credit_spread": _primary_series_frame(
+                "BAMLH0A0HYM2", [1.00, 1.02, 1.04], pd.date_range("2024-01-01", periods=3, freq="B")
+            ),
+            "real_yield": _primary_series_frame(
+                "real_yield_10y_pct",
+                [0.012, 0.011, 0.010],
+                pd.date_range("2024-01-01", periods=3, freq="B"),
+            ),
+            "treasury_vol": _v12_frame(
+                "treasury_vol_21d",
+                [0.006, 0.007],
+                ["2024-01-01", "2024-01-02"],
+                ["2024-01-02", "2024-01-03"],
+            ),
+            "breakeven": _v12_frame(
+                "breakeven_10y",
+                [0.021, 0.020],
+                ["2024-01-01", "2024-01-02"],
+                ["2024-01-02", "2024-01-03"],
+            ),
+            "capex": _v12_frame(
+                "core_capex_mm",
+                [11.0, 15.0],
+                ["2023-11-30", "2023-12-31"],
+                ["2024-01-12", "2024-02-12"],
+            ),
+            "copper_gold": _v12_frame(
+                "copper_gold_ratio",
+                [0.18, 0.181],
+                ["2024-01-01", "2024-01-02"],
+                ["2024-01-02", "2024-01-03"],
+            ),
+            "usdjpy": _v12_frame(
+                "usdjpy", [145.0, 146.0], ["2024-01-01", "2024-01-02"], ["2024-01-02", "2024-01-03"]
+            ),
+            "erp_ttm": _v12_frame(
+                "erp_ttm_pct",
+                [0.037, 0.038],
+                ["2023-11-30", "2023-12-31"],
+                ["2024-01-12", "2024-02-12"],
+            ),
         },
     )
 
@@ -325,8 +382,20 @@ def test_build_historical_macro_dataset_collapses_to_business_calendar(monkeypat
         global_macro,
         "fetch_v12_historical_series_bundle",
         lambda timeout=20: {
-            "credit_spread": _primary_series_frame("BAMLH0A0HYM2", [3.0, 3.1, 3.2, 3.3, 3.4], pd.DatetimeIndex(["2024-05-30", "2024-05-31", "2024-06-02", "2024-06-03", "2024-06-04"])),
-            "real_yield": _primary_series_frame("real_yield_10y_pct", [0.018, 0.017, 0.016, 0.015, 0.014], pd.DatetimeIndex(["2024-05-30", "2024-05-31", "2024-06-02", "2024-06-03", "2024-06-04"])),
+            "credit_spread": _primary_series_frame(
+                "BAMLH0A0HYM2",
+                [3.0, 3.1, 3.2, 3.3, 3.4],
+                pd.DatetimeIndex(
+                    ["2024-05-30", "2024-05-31", "2024-06-02", "2024-06-03", "2024-06-04"]
+                ),
+            ),
+            "real_yield": _primary_series_frame(
+                "real_yield_10y_pct",
+                [0.018, 0.017, 0.016, 0.015, 0.014],
+                pd.DatetimeIndex(
+                    ["2024-05-30", "2024-05-31", "2024-06-02", "2024-06-03", "2024-06-04"]
+                ),
+            ),
             "treasury_vol": _v12_frame("treasury_vol_21d", [0.006], ["2024-05-31"], ["2024-06-03"]),
             "breakeven": _v12_frame("breakeven_10y", [0.021], ["2024-05-31"], ["2024-06-03"]),
             "capex": _v12_frame("core_capex_mm", [10.0], ["2024-04-30"], ["2024-06-03"]),
@@ -372,7 +441,9 @@ def test_historical_macro_seeder_preserves_legacy_mock_df_path():
 def test_generate_dev_fixture_historical_macro_dataset_emits_canonical_schema(tmp_path):
     output_path = tmp_path / "macro_historical_dump.csv"
 
-    frame = generate_historical_macro.build_dev_fixture_historical_macro_dataset(output_path=output_path)
+    frame = generate_historical_macro.build_dev_fixture_historical_macro_dataset(
+        output_path=output_path
+    )
 
     assert output_path.exists()
     assert list(frame.columns) == list(REQUIRED_HISTORICAL_MACRO_COLUMNS)
@@ -387,7 +458,9 @@ def test_generate_dev_fixture_historical_macro_dataset_emits_canonical_schema(tm
 def test_generate_dev_fixture_historical_macro_dataset_writes_smokeable_rows(tmp_path):
     output_path = tmp_path / "macro_historical_dump.csv"
 
-    frame = generate_historical_macro.build_dev_fixture_historical_macro_dataset(output_path=output_path)
+    frame = generate_historical_macro.build_dev_fixture_historical_macro_dataset(
+        output_path=output_path
+    )
     written = pd.read_csv(output_path)
 
     assert len(frame) == len(written)

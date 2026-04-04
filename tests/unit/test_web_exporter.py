@@ -1,4 +1,5 @@
 """Unit tests for the v12.0 Bayesian web exporter."""
+
 from __future__ import annotations
 
 import json
@@ -42,7 +43,7 @@ def _v11_result() -> SignalResult:
                 "admission_decisions": {"qqq_tape": {"admitted": True, "reason": "admitted"}},
                 "neutral_fallback_triggered": False,
             },
-        }
+        },
     )
 
 
@@ -52,7 +53,11 @@ def test_export_web_snapshot_v11_contract(tmp_path, monkeypatch):
 
     # Mock market cursor to avoid mcal dependency issues in unit tests
     monkeypatch.setattr(MarketCursor, "get_market_state", lambda self, now: "FROZEN")
-    monkeypatch.setattr(MarketCursor, "get_expires_at_utc", lambda self, now: datetime(2026, 3, 30, 17, 30, tzinfo=UTC))
+    monkeypatch.setattr(
+        MarketCursor,
+        "get_expires_at_utc",
+        lambda self, now: datetime(2026, 3, 30, 17, 30, tzinfo=UTC),
+    )
 
     ok = export_web_snapshot(result, output_path=output_path)
 
@@ -82,7 +87,9 @@ def test_export_web_snapshot_preserves_dual_surface_semantics(tmp_path, monkeypa
         entropy=0.44,
         stable_regime="MID_CYCLE",
         target_allocation=TargetAllocationState(0.20, 0.80, 0.0, 0.80),
-        logic_trace=[{"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QQQ"}}],
+        logic_trace=[
+            {"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QQQ"}}
+        ],
         explanation="v12.0 semantic separation test",
         metadata={
             "raw_regime": "LATE_CYCLE",
@@ -94,7 +101,11 @@ def test_export_web_snapshot_preserves_dual_surface_semantics(tmp_path, monkeypa
     output_path = tmp_path / "status.json"
 
     monkeypatch.setattr(MarketCursor, "get_market_state", lambda self, now: "FROZEN")
-    monkeypatch.setattr(MarketCursor, "get_expires_at_utc", lambda self, now: datetime(2026, 3, 30, 17, 30, tzinfo=UTC))
+    monkeypatch.setattr(
+        MarketCursor,
+        "get_expires_at_utc",
+        lambda self, now: datetime(2026, 3, 30, 17, 30, tzinfo=UTC),
+    )
 
     ok = export_web_snapshot(result, output_path=output_path)
 
@@ -124,7 +135,11 @@ def test_export_web_snapshot_collapses_legacy_capitulation_into_recovery(tmp_pat
     output_path = tmp_path / "status.json"
 
     monkeypatch.setattr(MarketCursor, "get_market_state", lambda self, now: "FROZEN")
-    monkeypatch.setattr(MarketCursor, "get_expires_at_utc", lambda self, now: datetime(2026, 3, 30, 17, 30, tzinfo=UTC))
+    monkeypatch.setattr(
+        MarketCursor,
+        "get_expires_at_utc",
+        lambda self, now: datetime(2026, 3, 30, 17, 30, tzinfo=UTC),
+    )
 
     ok = export_web_snapshot(result, output_path=output_path)
 

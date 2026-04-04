@@ -164,7 +164,9 @@ def test_build_v12_diagnostic_report_includes_protocol_sections(
     assert "2020_COVID" in report["beta_comparison"]["windows"]
     assert "overall" in report["entropy"]
     assert "2020_COVID" in report["feature_diagnostics"]["windows"]
-    assert report["feature_diagnostics"]["windows"]["2020_COVID"]["mean_move_spread_beta"] == pytest.approx(0.135)
+    assert report["feature_diagnostics"]["windows"]["2020_COVID"][
+        "mean_move_spread_beta"
+    ] == pytest.approx(0.135)
 
 
 def test_default_crisis_windows_cover_required_protocol_periods():

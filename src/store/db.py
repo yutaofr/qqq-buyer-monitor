@@ -1,4 +1,5 @@
 """SQLite persistence layer for v11 Bayesian signal records."""
+
 from __future__ import annotations
 
 import json
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS meta (
     value TEXT NOT NULL
 );
 """
+
 
 def init_db(path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     """Initialise (or open) the SQLite database and create the table."""
@@ -123,9 +125,7 @@ def load_history(n: int = 30, path: str = DEFAULT_DB_PATH) -> list[dict]:
     if not Path(path).exists():
         return []
     conn = init_db(path)
-    rows = conn.execute(
-        "SELECT json_blob FROM signals ORDER BY date DESC LIMIT ?", (n,)
-    ).fetchall()
+    rows = conn.execute("SELECT json_blob FROM signals ORDER BY date DESC LIMIT ?", (n,)).fetchall()
     conn.close()
     return [json.loads(row[0]) for row in rows]
 
@@ -148,7 +148,7 @@ def save_macro_state(
             forward_pe = COALESCE(excluded.forward_pe, macro_states.forward_pe),
             real_yield = COALESCE(excluded.real_yield, macro_states.real_yield)
         """,
-        (record_date.isoformat(), credit_spread, forward_pe, real_yield)
+        (record_date.isoformat(), credit_spread, forward_pe, real_yield),
     )
     conn.commit()
     conn.close()

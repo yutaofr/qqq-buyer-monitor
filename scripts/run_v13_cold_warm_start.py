@@ -1,4 +1,5 @@
 """Run a deterministic v13 cold-start and warm-start validation from frozen market cache."""
+
 from __future__ import annotations
 
 import argparse
@@ -16,9 +17,13 @@ from src.output.web_exporter import export_web_snapshot
 
 
 def _load_validation_row(macro_path: str, price_cache_path: str) -> pd.DataFrame:
-    macro_df = pd.read_csv(macro_path, parse_dates=["observation_date"]).set_index("observation_date")
+    macro_df = pd.read_csv(macro_path, parse_dates=["observation_date"]).set_index(
+        "observation_date"
+    )
     price_df = pd.read_csv(price_cache_path)
-    price_df["Date"] = pd.to_datetime(price_df["Date"], utc=True).dt.tz_localize(None).dt.normalize()
+    price_df["Date"] = (
+        pd.to_datetime(price_df["Date"], utc=True).dt.tz_localize(None).dt.normalize()
+    )
     price_df = price_df.set_index("Date")
 
     common_dates = macro_df.index.intersection(price_df.index)
@@ -39,7 +44,9 @@ def _load_validation_row(macro_path: str, price_cache_path: str) -> pd.DataFrame
     row["ndx_concentration"] = np.nan
     row["source_ndx_concentration"] = "unavailable:ndx_concentration"
     row["ndx_concentration_quality_score"] = 0.0
-    row["reference_capital"] = float(row.get("reference_capital", pd.Series([100_000.0])).iloc[0] or 100_000.0)
+    row["reference_capital"] = float(
+        row.get("reference_capital", pd.Series([100_000.0])).iloc[0] or 100_000.0
+    )
     row["current_nav"] = float(row.get("current_nav", pd.Series([100_000.0])).iloc[0] or 100_000.0)
     return row
 

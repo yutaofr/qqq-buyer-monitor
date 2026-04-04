@@ -7,6 +7,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+
 class SovereignMemoryBooster:
     """
     V11 DNA: The bootstrap guardian.
@@ -83,7 +84,9 @@ class SovereignMemoryBooster:
                 liq = 6100 + np.random.normal(0, 50)
             elif regime == "LATE_CYCLE":
                 erp = 0.020 + np.random.normal(0, 0.005)  # Target: 2.0%
-                yield_10y = 0.035 + np.random.normal(0, 0.005)  # Target: 3.5% (Realistic Late Stage)
+                yield_10y = 0.035 + np.random.normal(
+                    0, 0.005
+                )  # Target: 3.5% (Realistic Late Stage)
                 spread = 350 + np.random.normal(0, 20)  # Target: 350bps
                 liq = 5800 + np.random.normal(0, 60)
             elif regime == "RECOVERY":

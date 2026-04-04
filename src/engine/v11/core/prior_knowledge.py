@@ -1,4 +1,5 @@
 """Deterministic prior knowledge store for the v11 Bayesian regime engine."""
+
 from __future__ import annotations
 
 import hashlib
@@ -58,9 +59,11 @@ class PriorKnowledgeBase:
         }
         self.last_posterior: dict[str, float] | None = None
         self.last_observation_date: str | None = None
-        self.execution_state: dict[str, float | str | int | bool | None] = self._bootstrap_execution_state(
-            bootstrap_regimes=bootstrap_regimes,
-            fallback_regimes=self.regimes,
+        self.execution_state: dict[str, float | str | int | bool | None] = (
+            self._bootstrap_execution_state(
+                bootstrap_regimes=bootstrap_regimes,
+                fallback_regimes=self.regimes,
+            )
         )
         self.bootstrap_fingerprint = expected_bootstrap_fingerprint
 
@@ -78,22 +81,28 @@ class PriorKnowledgeBase:
         prior_source = previous_posterior or self.last_posterior
 
         logger.info("Bayesian Prior Synthesis initiated.")
-        logger.info(f"  Source 1 [Historical Baseline]: Based on {sum(self.counts.values()):.1f} total counts from {self.storage_path}")
+        logger.info(
+            f"  Source 1 [Historical Baseline]: Based on {sum(self.counts.values()):.1f} total counts from {self.storage_path}"
+        )
 
         # If no previous knowledge, return baseline as 100% of the prior
         if not prior_source:
-             logger.info("  Source 2 [Recent Memory]: No previous observation found. Using 100% baseline.")
-             details = {
+            logger.info(
+                "  Source 2 [Recent Memory]: No previous observation found. Using 100% baseline."
+            )
+            details = {
                 "base_weight": 1.0,
                 "posterior_weight": 0.0,
                 "transition_weight": 0.0,
                 "base_priors": base_priors,
                 "posterior_prior": base_priors,
-                "transition_prior": base_priors
+                "transition_prior": base_priors,
             }
-             return base_priors, details
+            return base_priors, details
 
-        logger.info(f"  Source 2 [Recent Memory]: Found posterior from {self.last_observation_date or 'unknown date'}")
+        logger.info(
+            f"  Source 2 [Recent Memory]: Found posterior from {self.last_observation_date or 'unknown date'}"
+        )
         normalized_source = self._normalize(
             merge_regime_weights(
                 prior_source,
@@ -110,22 +119,22 @@ class PriorKnowledgeBase:
             for target, target_weight in normalized_row.items():
                 transition_prior[target] += weight * target_weight
 
-        # v13.6-EX: Adaptive Blending Weights
-        # If total counts are high (hydrated), we decrease the weight of Source 1 (long-term average)
-        # and increase the weight of recent memory/transition shift.
+        # V12.1-FIXED: Remove artificial base_weight drag to avoid trapping system in high-entropy states.
+        # Use Dirichlet pseudo-counts strategy inherently managed by the transition matrix,
+        # but for explicit blending, we give minimal weight to the static base_priors.
         total_counts = sum(self.counts.values())
-        if total_counts > 1000:
-            # EXPERT: Hydrated state. Shift more confidence to recent transitions.
-            active_blend = min(0.60, 0.35 + (total_counts - 1000) / 2000.0)
+        if total_counts > 100:
+            base_weight = 0.05
+            posterior_weight = 0.65
+            transition_weight = 0.30
         else:
-            active_blend = self.transition_blend
+            base_weight = 1.0 - self.transition_blend
+            posterior_weight = self.transition_blend * 0.5
+            transition_weight = self.transition_blend * 0.5
 
-        # Blending logic constants
-        posterior_weight = active_blend * 0.5
-        transition_weight = active_blend * 0.5
-        base_weight = 1.0 - posterior_weight - transition_weight
-
-        logger.info(f"  v13.6-EX Blending: {base_weight:.1%} history | {posterior_weight:.1%} last-seen | {transition_weight:.1%} predicted-shift")
+        logger.info(
+            f"  V12.1-FIXED Blending: {base_weight:.1%} history | {posterior_weight:.1%} last-seen | {transition_weight:.1%} predicted-shift"
+        )
 
         blended = {}
         for regime in self.regimes:
@@ -148,7 +157,7 @@ class PriorKnowledgeBase:
             "transition_weight": transition_weight,
             "base_priors": base_priors,
             "posterior_prior": normalized_source,
-            "transition_prior": self._normalize(transition_prior)
+            "transition_prior": self._normalize(transition_prior),
         }
         return final_prior, details
 
@@ -173,10 +182,15 @@ class PriorKnowledgeBase:
             self._save()
             return
 
+        # EXPERT TUNING: Exponential Forgetting to prevent Prior Inflation (Zombie Prior)
+        # Decay of 0.995 yields ~138 day half-life, letting the system forget ancient history
+        # while bounding the maximum weight of the prior.
+        decay_factor = 0.995
+
         for regime in self.regimes:
-            self.counts[regime] = self.counts.get(regime, self.pseudo_count) + normalized_posterior.get(
-                regime, 0.0
-            )
+            self.counts[regime] = (
+                self.counts.get(regime, self.pseudo_count) * decay_factor
+            ) + normalized_posterior.get(regime, 0.0)
 
         if self.last_posterior is not None:
             previous = self._normalize(self.last_posterior)
@@ -186,7 +200,7 @@ class PriorKnowledgeBase:
                     {target: self.pseudo_count for target in self.regimes},
                 )
                 for dst_regime, dst_weight in normalized_posterior.items():
-                    row[dst_regime] = row.get(dst_regime, self.pseudo_count) + (
+                    row[dst_regime] = (row.get(dst_regime, self.pseudo_count) * decay_factor) + (
                         src_weight * dst_weight
                     )
 
@@ -198,7 +212,9 @@ class PriorKnowledgeBase:
         post_str = ", ".join([f"{r} ({p:.1%})" for r, p in top_posteriors])
         logger.info(f"Bayesian State Finalized for {self.last_observation_date}:")
         logger.info(f"  Saved Posterior: {post_str}")
-        logger.info("  Note: This posterior will serve as Source 2 (Recent Memory) for the next run.")
+        logger.info(
+            "  Note: This posterior will serve as Source 2 (Recent Memory) for the next run."
+        )
 
         self._save()
 
@@ -240,7 +256,9 @@ class PriorKnowledgeBase:
             if [str(regime) for regime in payload_regimes] != self.regimes:
                 backfilled = True
         else:
-            raise ValueError("PriorKnowledgeBase state is missing regimes and no bootstrap fallback is available.")
+            raise ValueError(
+                "PriorKnowledgeBase state is missing regimes and no bootstrap fallback is available."
+            )
 
         self.pseudo_count = float(payload.get("pseudo_count", self.pseudo_count))
         self.transition_blend = float(payload.get("transition_blend", self.transition_blend))
@@ -256,8 +274,7 @@ class PriorKnowledgeBase:
         if set(merged_counts) != set(counts_payload):
             backfilled = True
         self.counts = {
-            regime: float(merged_counts.get(regime, self.pseudo_count))
-            for regime in self.regimes
+            regime: float(merged_counts.get(regime, self.pseudo_count)) for regime in self.regimes
         }
 
         transition_payload = payload.get("transition_counts", {})

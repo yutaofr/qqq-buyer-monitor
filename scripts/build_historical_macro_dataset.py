@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build the canonical v7.0 historical macro dataset."""
+
 from __future__ import annotations
 
 import argparse
@@ -8,7 +9,9 @@ from src.research.historical_macro_builder import build_and_summarize
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build the v7.0 canonical historical macro dataset")
+    parser = argparse.ArgumentParser(
+        description="Build the v7.0 canonical historical macro dataset"
+    )
     parser.add_argument(
         "--output",
         default="data/macro_historical_dump.csv",

@@ -2,6 +2,7 @@
 """v11 Research: ERP Momentum vs Real Yield vs Baseline.
 Comprehensive evaluation of Accuracy and Brier Score using Parallel KDE Inference.
 """
+
 import logging
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -12,8 +13,9 @@ from sklearn.decomposition import PCA
 from sklearn.metrics import accuracy_score
 from sklearn.neighbors import KernelDensity
 
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
+
 
 def calculate_features(df, factor_name, window=252):
     """Calculate Water Level and Derivative for a factor."""
@@ -26,6 +28,7 @@ def calculate_features(df, factor_name, window=252):
     rolling_std = diff.rolling(window, min_periods=60).std().replace(0, np.nan)
     df[f"{factor_name}_deriv"] = (diff - rolling_mean) / rolling_std
     return df
+
 
 def evaluate_probabilistic_performance(args):
     """Worker function: Evaluates Accuracy and Brier Score for a feature set."""
@@ -63,11 +66,11 @@ def evaluate_probabilistic_performance(args):
 
     # 3. Bayesian Inference on Test Set
     results = []
-    y_true_binary = [] # For Brier Score (one-vs-rest)
-    y_prob_top1 = []   # Probability of the true regime
+    y_true_binary = []  # For Brier Score (one-vs-rest)
+    y_prob_top1 = []  # Probability of the true regime
 
     for i in range(len(X_test_pca)):
-        obs = X_test_pca[i:i+1]
+        obs = X_test_pca[i : i + 1]
         log_probs = {}
         for r, kde in kde_models.items():
             log_probs[r] = kde.score_samples(obs)[0] + np.log(priors.get(r, 1e-6))
@@ -89,19 +92,20 @@ def evaluate_probabilistic_performance(args):
         for r in regimes:
             y_i = 1.0 if r == actual_regime else 0.0
             p_i = probs.get(r, 0.0)
-            brier_sum += (p_i - y_i)**2
+            brier_sum += (p_i - y_i) ** 2
         y_true_binary.append(brier_sum)
 
     accuracy = accuracy_score(test_df[target_col], results)
-    mean_brier = np.mean(y_true_binary) # Multi-class Brier Score (lower is better)
+    mean_brier = np.mean(y_true_binary)  # Multi-class Brier Score (lower is better)
 
     return {
         "features": features,
         "accuracy": accuracy,
         "brier_score": mean_brier,
         "pca_var": sum(pca.explained_variance_ratio_),
-        "samples": len(test_df)
+        "samples": len(test_df),
     }
+
 
 def run_research():
     # 1. Load data
@@ -117,8 +121,16 @@ def run_research():
     macro_df["observation_date"] = pd.to_datetime(macro_df["observation_date"])
 
     # 2. Merge and Calculate Momentum for Class A
-    available = [c for c in ["real_yield_10y_pct", "erp_pct", "erp", "nfci_raw"] if c in macro_df.columns]
-    df = pd.merge(df, macro_df[["observation_date"] + available], on="observation_date", how="left", suffixes=("", "_macro"))
+    available = [
+        c for c in ["real_yield_10y_pct", "erp_pct", "erp", "nfci_raw"] if c in macro_df.columns
+    ]
+    df = pd.merge(
+        df,
+        macro_df[["observation_date"] + available],
+        on="observation_date",
+        how="left",
+        suffixes=("", "_macro"),
+    )
     df = df.sort_values("observation_date")
 
     # Standardize column names
@@ -139,7 +151,7 @@ def run_research():
 
     # 3. Parallel Backtest Comparison
     test_suites = [
-        ["vix_pct", "dd_pct", "breadth_pct"], # Baseline
+        ["vix_pct", "dd_pct", "breadth_pct"],  # Baseline
     ]
     if "erp_pct_level" in df.columns:
         test_suites.append(["vix_pct", "dd_pct", "breadth_pct", "erp_pct_level"])
@@ -149,7 +161,9 @@ def run_research():
         test_suites.append(["vix_pct", "dd_pct", "breadth_pct", "real_yield_10y_pct_deriv"])
 
     if "erp_pct_deriv" in df.columns and "real_yield_10y_pct_deriv" in df.columns:
-        test_suites.append(["vix_pct", "dd_pct", "breadth_pct", "erp_pct_deriv", "real_yield_10y_pct_deriv"])
+        test_suites.append(
+            ["vix_pct", "dd_pct", "breadth_pct", "erp_pct_deriv", "real_yield_10y_pct_deriv"]
+        )
 
     logger.info(f"Starting complete probabilistic comparison of {len(test_suites)} feature sets...")
 
@@ -158,15 +172,23 @@ def run_research():
         results = list(executor.map(evaluate_probabilistic_performance, tasks))
 
     # 4. Final Comparison Report
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print(f"{'Feature Set':<60} | {'Acc':<6} | {'Brier':<6} | {'PCA':<6}")
     print("-" * 80)
     for res in results:
         if res:
-            feat_str = "+".join([f.replace("_pct", "").replace("_level", "").replace("_deriv", " (M)") for f in res['features']])
-            print(f"{feat_str:<60} | {res['accuracy']:.2%} | {res['brier_score']:.4f} | {res['pca_var']:.4f}")
-    print("="*80)
+            feat_str = "+".join(
+                [
+                    f.replace("_pct", "").replace("_level", "").replace("_deriv", " (M)")
+                    for f in res["features"]
+                ]
+            )
+            print(
+                f"{feat_str:<60} | {res['accuracy']:.2%} | {res['brier_score']:.4f} | {res['pca_var']:.4f}"
+            )
+    print("=" * 80)
     print("Note: Brier Score is Multi-class (Sum of Squares). Lower is better.")
+
 
 if __name__ == "__main__":
     run_research()

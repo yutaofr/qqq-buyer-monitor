@@ -8,6 +8,7 @@ class EntropyController:
     Responsibility: Information-theoretic safety valve.
     Scales Target Beta toward 1.0 (Safe Neutral) as posterior uncertainty (Shannon Entropy) increases.
     """
+
     def __init__(self, threshold: float | None = None):
         # Retained for backwards compatibility only. Risk pricing is now threshold-free.
         self.threshold = threshold
@@ -56,6 +57,6 @@ class EntropyController:
         # SRD-v13.5-GOLD: Damped Gaussian Confidence Mapping (k=0.6)
         # Rationalized by ML Expert to prevent "Suicidal De-risking".
         base_h = h_norm * np.log(states)
-        confidence = float(np.exp(-0.6 * (base_h ** 2)))
+        confidence = float(np.exp(-0.6 * (base_h**2)))
 
         return float(base_beta) * confidence

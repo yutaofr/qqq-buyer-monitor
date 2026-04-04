@@ -3,6 +3,7 @@
 SRD-v13.4 Deep Hydration Script.
 Replays 2018-2026 to build a self-consistent Bayesian Prior.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -13,14 +14,17 @@ import pandas as pd
 
 from src.engine.v11.conductor import V11Conductor
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
+
 
 def run_replay(macro_path: str, output_path: str, start_date: str = "2018-01-01"):
     logger.info(f"Starting Deep Hydration from {start_date}...")
 
     # 1. Load full macro corpus (including 2017 for Z-Score pre-filling)
-    full_df = pd.read_csv(macro_path, parse_dates=["observation_date"]).set_index("observation_date")
+    full_df = pd.read_csv(macro_path, parse_dates=["observation_date"]).set_index(
+        "observation_date"
+    )
     full_df = full_df.sort_index()
 
     # 2. Initialize Conductor in 'Silent Replay' mode
@@ -31,7 +35,7 @@ def run_replay(macro_path: str, output_path: str, start_date: str = "2018-01-01"
     conductor = V11Conductor(
         macro_data_path=macro_path,
         prior_state_path=str(temp_prior_path),
-        snapshot_dir="/tmp/v13_hydration_snapshots"
+        snapshot_dir="/tmp/v13_hydration_snapshots",
     )
 
     # 3. Filter dates for replay (2018 onwards)
@@ -80,6 +84,7 @@ def run_replay(macro_path: str, output_path: str, start_date: str = "2018-01-01"
 
     logger.info(f"Deep Hydration Complete. Prior state saved to {final_path}")
 
+
 def main():
     parser = argparse.ArgumentParser(description="v13.4 Deep Hydration")
     parser.add_argument("--macro-path", default="data/macro_historical_dump.csv")
@@ -87,6 +92,7 @@ def main():
     args = parser.parse_args()
 
     run_replay(args.macro_path, args.output)
+
 
 if __name__ == "__main__":
     main()

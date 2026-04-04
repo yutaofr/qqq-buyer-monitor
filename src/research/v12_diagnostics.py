@@ -1,4 +1,5 @@
 """Research diagnostics for the v12 orthogonal-factor audit."""
+
 from __future__ import annotations
 
 import json
@@ -117,7 +118,9 @@ def _normalize_audit_frame(audit_frame: pd.DataFrame) -> pd.DataFrame:
 
 def _build_summary(audit: pd.DataFrame) -> dict[str, float | int]:
     predicted = audit.get("predicted_regime", audit.get("stable_regime"))
-    top1_accuracy = float((predicted == audit["actual_regime"]).mean()) if predicted is not None else 0.0
+    top1_accuracy = (
+        float((predicted == audit["actual_regime"]).mean()) if predicted is not None else 0.0
+    )
     return {
         "compared_points": int(len(audit)),
         "top1_accuracy": top1_accuracy,
@@ -125,7 +128,9 @@ def _build_summary(audit: pd.DataFrame) -> dict[str, float | int]:
         "stable_accuracy": float((audit["stable_regime"] == audit["actual_regime"]).mean()),
         "mean_brier": float(audit["brier"].mean()) if "brier" in audit.columns else 0.0,
         "mean_entropy": float(audit["entropy"].mean()) if "entropy" in audit.columns else 0.0,
-        "lock_incidence": float(audit["lock_active"].astype(bool).mean()) if "lock_active" in audit.columns else 0.0,
+        "lock_incidence": float(audit["lock_active"].astype(bool).mean())
+        if "lock_active" in audit.columns
+        else 0.0,
     }
 
 
@@ -139,8 +144,12 @@ def _build_critical_regime_performance(audit: pd.DataFrame) -> dict[str, float]:
         }
     return {
         "critical_days": int(critical_days.sum()),
-        "raw_critical_recall": float(audit.loc[critical_days, "raw_regime"].isin(_CRITICAL_REGIMES).mean()),
-        "stable_critical_recall": float(audit.loc[critical_days, "stable_regime"].isin(_CRITICAL_REGIMES).mean()),
+        "raw_critical_recall": float(
+            audit.loc[critical_days, "raw_regime"].isin(_CRITICAL_REGIMES).mean()
+        ),
+        "stable_critical_recall": float(
+            audit.loc[critical_days, "stable_regime"].isin(_CRITICAL_REGIMES).mean()
+        ),
     }
 
 
@@ -159,7 +168,7 @@ def _build_crisis_window_report(
     report: dict[str, dict[str, Any]] = {}
     dated = audit.set_index("date")
     for window_name, (start, end) in windows.items():
-        frame = dated.loc[pd.Timestamp(start): pd.Timestamp(end)].copy()
+        frame = dated.loc[pd.Timestamp(start) : pd.Timestamp(end)].copy()
         report[window_name] = _summarize_crisis_window(frame)
     return report
 
@@ -184,10 +193,14 @@ def _summarize_crisis_window(frame: pd.DataFrame) -> dict[str, Any]:
     return {
         "rows": int(len(frame)),
         "critical_days": int(critical_days.sum()),
-        "raw_critical_recall": float(frame.loc[critical_days, "raw_regime"].isin(_CRITICAL_REGIMES).mean())
+        "raw_critical_recall": float(
+            frame.loc[critical_days, "raw_regime"].isin(_CRITICAL_REGIMES).mean()
+        )
         if critical_days.any()
         else 0.0,
-        "stable_critical_recall": float(frame.loc[critical_days, "stable_regime"].isin(_CRITICAL_REGIMES).mean())
+        "stable_critical_recall": float(
+            frame.loc[critical_days, "stable_regime"].isin(_CRITICAL_REGIMES).mean()
+        )
         if critical_days.any()
         else 0.0,
         "raw_stable_divergence": float((frame["raw_regime"] != frame["stable_regime"]).mean()),
@@ -195,8 +208,12 @@ def _summarize_crisis_window(frame: pd.DataFrame) -> dict[str, Any]:
         "mean_beta_gap": float((frame["raw_target_beta"] - frame["target_beta"]).mean())
         if {"raw_target_beta", "target_beta"}.issubset(frame.columns)
         else 0.0,
-        "first_raw_bust_date": raw_bust_dates.min().date().isoformat() if len(raw_bust_dates) else None,
-        "first_stable_bust_date": stable_bust_dates.min().date().isoformat() if len(stable_bust_dates) else None,
+        "first_raw_bust_date": raw_bust_dates.min().date().isoformat()
+        if len(raw_bust_dates)
+        else None,
+        "first_stable_bust_date": stable_bust_dates.min().date().isoformat()
+        if len(stable_bust_dates)
+        else None,
     }
 
 
@@ -211,7 +228,7 @@ def _build_beta_comparison(
     }
     for window_name, (start, end) in windows.items():
         report["windows"][window_name] = _summarize_beta_window(
-            dated.loc[pd.Timestamp(start): pd.Timestamp(end)]
+            dated.loc[pd.Timestamp(start) : pd.Timestamp(end)]
         )
     return report
 
@@ -266,17 +283,27 @@ def _build_entropy_report(
     report = {"overall": _summarize_entropy_window(dated), "windows": {}}
     for window_name, (start, end) in windows.items():
         report["windows"][window_name] = _summarize_entropy_window(
-            dated.loc[pd.Timestamp(start): pd.Timestamp(end)]
+            dated.loc[pd.Timestamp(start) : pd.Timestamp(end)]
         )
     return report
 
 
 def _summarize_entropy_window(frame: pd.DataFrame) -> dict[str, float]:
     if frame.empty or "entropy" not in frame.columns:
-        return {"rows": int(len(frame)), "mean_entropy": 0.0, "max_entropy": 0.0, "p90_entropy": 0.0}
+        return {
+            "rows": int(len(frame)),
+            "mean_entropy": 0.0,
+            "max_entropy": 0.0,
+            "p90_entropy": 0.0,
+        }
     entropy = pd.to_numeric(frame["entropy"], errors="coerce").dropna()
     if entropy.empty:
-        return {"rows": int(len(frame)), "mean_entropy": 0.0, "max_entropy": 0.0, "p90_entropy": 0.0}
+        return {
+            "rows": int(len(frame)),
+            "mean_entropy": 0.0,
+            "max_entropy": 0.0,
+            "p90_entropy": 0.0,
+        }
     return {
         "rows": int(len(frame)),
         "mean_entropy": float(entropy.mean()),
@@ -308,7 +335,7 @@ def _build_feature_diagnostics(
     report = {"overall": _summarize_feature_window(diag), "windows": {}}
     for window_name, (start, end) in windows.items():
         report["windows"][window_name] = _summarize_feature_window(
-            diag.loc[pd.Timestamp(start): pd.Timestamp(end)]
+            diag.loc[pd.Timestamp(start) : pd.Timestamp(end)]
         )
     return report
 
@@ -324,8 +351,16 @@ def _summarize_feature_window(frame: pd.DataFrame) -> dict[str, float]:
         }
     return {
         "rows": int(len(frame)),
-        "mean_move_21d_raw_abs": float(pd.to_numeric(frame.get("move_21d_raw_z"), errors="coerce").abs().mean()),
-        "mean_move_21d_orth_abs": float(pd.to_numeric(frame.get("move_21d_orth_z"), errors="coerce").abs().mean()),
-        "mean_move_spread_beta": float(pd.to_numeric(frame.get("move_spread_beta"), errors="coerce").mean()),
-        "mean_move_spread_corr_21d": float(pd.to_numeric(frame.get("move_spread_corr_21d"), errors="coerce").mean()),
+        "mean_move_21d_raw_abs": float(
+            pd.to_numeric(frame.get("move_21d_raw_z"), errors="coerce").abs().mean()
+        ),
+        "mean_move_21d_orth_abs": float(
+            pd.to_numeric(frame.get("move_21d_orth_z"), errors="coerce").abs().mean()
+        ),
+        "mean_move_spread_beta": float(
+            pd.to_numeric(frame.get("move_spread_beta"), errors="coerce").mean()
+        ),
+        "mean_move_spread_corr_21d": float(
+            pd.to_numeric(frame.get("move_spread_corr_21d"), errors="coerce").mean()
+        ),
     }

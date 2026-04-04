@@ -1,4 +1,5 @@
 """Backtest plotting helpers for report generation."""
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -259,9 +260,21 @@ def build_deployment_pacing_figure(daily_ts: pd.DataFrame, summary: Any | None =
     ax_error.set_ylabel("Pacing Error", fontsize=12, color="#2b3440")
     ax_error.legend(loc="upper left", frameon=False, fontsize=10)
 
-    mae = float(summary.mean_absolute_error) if summary is not None and hasattr(summary, "mean_absolute_error") else float(error_series.abs().mean())
-    rmse = float(summary.rmse) if summary is not None and hasattr(summary, "rmse") else float((error_series.pow(2).mean()) ** 0.5)
-    variance = float(summary.error_variance) if summary is not None and hasattr(summary, "error_variance") else float(error_series.var(ddof=0))
+    mae = (
+        float(summary.mean_absolute_error)
+        if summary is not None and hasattr(summary, "mean_absolute_error")
+        else float(error_series.abs().mean())
+    )
+    rmse = (
+        float(summary.rmse)
+        if summary is not None and hasattr(summary, "rmse")
+        else float((error_series.pow(2).mean()) ** 0.5)
+    )
+    variance = (
+        float(summary.error_variance)
+        if summary is not None and hasattr(summary, "error_variance")
+        else float(error_series.var(ddof=0))
+    )
     within_ratio = (
         float(summary.within_tolerance_ratio)
         if summary is not None and hasattr(summary, "within_tolerance_ratio")
@@ -336,10 +349,33 @@ def build_v11_fidelity_figure(daily_ts: pd.DataFrame, summary: Any | None = None
     ax_price.legend(loc="upper left", frameon=False, fontsize=10)
 
     if has_expected:
-        ax_beta.step(frame.index, expected_beta, label="Expected Beta", color="#4c7a3f", linewidth=1.6, linestyle="--", where="post")
+        ax_beta.step(
+            frame.index,
+            expected_beta,
+            label="Expected Beta",
+            color="#4c7a3f",
+            linewidth=1.6,
+            linestyle="--",
+            where="post",
+        )
 
-    ax_beta.step(frame.index, raw_beta, label="V12 Raw Beta", color="#8f99ab", linewidth=1.2, alpha=0.7, where="post")
-    ax_beta.step(frame.index, advised_beta, label="V12 Advised Beta", color="#f28c28", linewidth=2.0, where="post")
+    ax_beta.step(
+        frame.index,
+        raw_beta,
+        label="V12 Raw Beta",
+        color="#8f99ab",
+        linewidth=1.2,
+        alpha=0.7,
+        where="post",
+    )
+    ax_beta.step(
+        frame.index,
+        advised_beta,
+        label="V12 Advised Beta",
+        color="#f28c28",
+        linewidth=2.0,
+        where="post",
+    )
 
     ax_beta.set_ylabel("Target Beta", fontsize=12, color="#2b3440")
     ax_beta.set_ylim(0.4, 1.3)
@@ -366,6 +402,7 @@ def save_v11_fidelity_figure(
 ) -> list[Path]:
     matplotlib.use("Agg", force=True)
     import matplotlib.pyplot as plt
+
     fig = build_v11_fidelity_figure(daily_ts, summary=summary)
     saved_paths: list[Path] = []
     try:
@@ -389,15 +426,26 @@ def build_v11_probabilistic_audit_figure(daily_ts: pd.DataFrame, summary: Any | 
     colors = dict(REGIME_HEX_COLORS)
 
     fig, (ax_prob, ax_entropy) = plt.subplots(
-        2, 1, figsize=(14, 10), sharex=True, constrained_layout=True,
-        gridspec_kw={"height_ratios": [3, 1], "hspace": 0.05}
+        2,
+        1,
+        figsize=(14, 10),
+        sharex=True,
+        constrained_layout=True,
+        gridspec_kw={"height_ratios": [3, 1], "hspace": 0.05},
     )
 
     bottom = pd.Series(0.0, index=frame.index)
     for r in regimes:
         col = f"prob_{r}"
         if col in frame.columns:
-            ax_prob.fill_between(frame.index, bottom, bottom + frame[col], label=r, color=colors.get(r, "#95a5a6"), alpha=0.8)
+            ax_prob.fill_between(
+                frame.index,
+                bottom,
+                bottom + frame[col],
+                label=r,
+                color=colors.get(r, "#95a5a6"),
+                alpha=0.8,
+            )
             bottom += frame[col]
 
     ax_prob.set_ylabel("Posterior Probability", fontsize=12)
@@ -407,7 +455,13 @@ def build_v11_probabilistic_audit_figure(daily_ts: pd.DataFrame, summary: Any | 
         ax_prob.legend(loc="upper left", bbox_to_anchor=(1, 1), frameon=False)
 
     if "entropy" in frame.columns:
-        ax_entropy.plot(frame.index, frame["entropy"], color="#34495e", linewidth=1.5, label="Information Entropy")
+        ax_entropy.plot(
+            frame.index,
+            frame["entropy"],
+            color="#34495e",
+            linewidth=1.5,
+            label="Information Entropy",
+        )
         ax_entropy.fill_between(frame.index, 0, frame["entropy"], color="#34495e", alpha=0.1)
         ax_entropy.set_ylabel("Entropy", fontsize=12)
         ax_entropy.set_ylim(0, 1.1)
@@ -426,6 +480,7 @@ def save_v11_probabilistic_audit_figure(
 ) -> list[Path]:
     matplotlib.use("Agg", force=True)
     import matplotlib.pyplot as plt
+
     fig = build_v11_probabilistic_audit_figure(daily_ts, summary=summary)
     saved_paths: list[Path] = []
     try:

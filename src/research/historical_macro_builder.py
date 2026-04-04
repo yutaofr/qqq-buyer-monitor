@@ -1,4 +1,5 @@
 """Canonical v12 historical macro dataset builder."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -62,7 +63,9 @@ def _prepare_credit_spread_frame(frame: pd.DataFrame | None) -> pd.DataFrame:
     out = frame.copy()
     if "BAMLH0A0HYM2" in out.columns:
         out["credit_spread_bps"] = pd.to_numeric(out["BAMLH0A0HYM2"], errors="coerce") * 100.0
-    out["observation_date"] = pd.to_datetime(out["observation_date"], errors="coerce").dt.normalize()
+    out["observation_date"] = pd.to_datetime(
+        out["observation_date"], errors="coerce"
+    ).dt.normalize()
     out["effective_date"] = _next_business_day(out["observation_date"])
     return out.loc[:, ["observation_date", "effective_date", "credit_spread_bps"]]
 
@@ -74,7 +77,9 @@ def _prepare_real_yield_frame(frame: pd.DataFrame | None) -> pd.DataFrame:
     out = frame.copy()
     if "DFII10" in out.columns:
         out["real_yield_10y_pct"] = pd.to_numeric(out["DFII10"], errors="coerce") / 100.0
-    out["observation_date"] = pd.to_datetime(out["observation_date"], errors="coerce").dt.normalize()
+    out["observation_date"] = pd.to_datetime(
+        out["observation_date"], errors="coerce"
+    ).dt.normalize()
     out["effective_date"] = _next_business_day(out["observation_date"])
     return out.loc[:, ["observation_date", "effective_date", "real_yield_10y_pct"]]
 
@@ -85,17 +90,25 @@ def _build_weekly_liquidity_frame(frames: dict[str, pd.DataFrame]) -> pd.DataFra
         raise ValueError(f"Missing weekly liquidity series: {', '.join(missing)}")
 
     walcl = frames["WALCL"].copy()
-    walcl["observation_date"] = pd.to_datetime(walcl["observation_date"], errors="coerce").dt.normalize()
+    walcl["observation_date"] = pd.to_datetime(
+        walcl["observation_date"], errors="coerce"
+    ).dt.normalize()
     weekly_dates = walcl["observation_date"].dropna().drop_duplicates().sort_values()
     weekly = pd.DataFrame(index=pd.DatetimeIndex(weekly_dates))
     weekly["observation_date"] = weekly.index
 
     for series_id in _LIQUIDITY_SERIES:
-        weekly[series_id] = _asof_align_from_date_column(frames[series_id], "observation_date", series_id, weekly.index)
+        weekly[series_id] = _asof_align_from_date_column(
+            frames[series_id], "observation_date", series_id, weekly.index
+        )
 
-    weekly["net_liquidity_usd_bn"] = (weekly["WALCL"] - weekly["WDTGAL"]) / 1000.0 - weekly["RRPONTSYD"]
+    weekly["net_liquidity_usd_bn"] = (weekly["WALCL"] - weekly["WDTGAL"]) / 1000.0 - weekly[
+        "RRPONTSYD"
+    ]
     weekly["effective_date"] = _next_business_day(weekly["observation_date"])
-    return weekly.reset_index(drop=True).loc[:, ["observation_date", "effective_date", "net_liquidity_usd_bn"]]
+    return weekly.reset_index(drop=True).loc[
+        :, ["observation_date", "effective_date", "net_liquidity_usd_bn"]
+    ]
 
 
 def _harmonize_v12_bundle(bundle: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
@@ -128,7 +141,9 @@ def _load_existing_visible_frame(
         return pd.DataFrame(columns=["observation_date", "effective_date", value_column])
 
     out = frame.loc[:, ["observation_date", "effective_date", value_column]].copy()
-    out["observation_date"] = pd.to_datetime(out["observation_date"], errors="coerce").dt.normalize()
+    out["observation_date"] = pd.to_datetime(
+        out["observation_date"], errors="coerce"
+    ).dt.normalize()
     out["effective_date"] = pd.to_datetime(out["effective_date"], errors="coerce").dt.normalize()
     out[value_column] = pd.to_numeric(out[value_column], errors="coerce")
     return out.dropna(subset=["observation_date"]).sort_values("observation_date")
@@ -149,15 +164,25 @@ def build_historical_macro_dataset(
     Build the canonical PIT-safe v12 macro dataset used by backtests and production.
     """
     bundle = _harmonize_v12_bundle(global_macro.fetch_v12_historical_series_bundle())
-    credit_spread_fallback = _load_existing_visible_frame(base_dataset_path, value_column="credit_spread_bps")
-    real_yield_fallback = _load_existing_visible_frame(base_dataset_path, value_column="real_yield_10y_pct")
-    liquidity_fallback = _load_existing_visible_frame(base_dataset_path, value_column="net_liquidity_usd_bn")
+    credit_spread_fallback = _load_existing_visible_frame(
+        base_dataset_path, value_column="credit_spread_bps"
+    )
+    real_yield_fallback = _load_existing_visible_frame(
+        base_dataset_path, value_column="real_yield_10y_pct"
+    )
+    liquidity_fallback = _load_existing_visible_frame(
+        base_dataset_path, value_column="net_liquidity_usd_bn"
+    )
 
-    bundle["credit_spread"] = _combine_preferred_frame(bundle["credit_spread"], credit_spread_fallback)
+    bundle["credit_spread"] = _combine_preferred_frame(
+        bundle["credit_spread"], credit_spread_fallback
+    )
     bundle["real_yield"] = _combine_preferred_frame(bundle["real_yield"], real_yield_fallback)
 
     if liquidity_fallback.empty:
-        weekly_frames = macro_v3.fetch_research_historical_primary_series(series_ids=_LIQUIDITY_SERIES)
+        weekly_frames = macro_v3.fetch_research_historical_primary_series(
+            series_ids=_LIQUIDITY_SERIES
+        )
         liquidity = _build_weekly_liquidity_frame(weekly_frames)
     else:
         liquidity = liquidity_fallback
@@ -207,7 +232,9 @@ def build_historical_macro_dataset(
         bundle["erp_ttm"], "effective_date", "erp_ttm_pct", calendar
     )
 
-    daily["credit_acceleration_pct_10d"] = daily["credit_spread_bps"].pct_change(periods=10).mul(100.0)
+    daily["credit_acceleration_pct_10d"] = (
+        daily["credit_spread_bps"].pct_change(periods=10).mul(100.0)
+    )
     daily["liquidity_roc_pct_4w"] = daily["net_liquidity_usd_bn"].pct_change(periods=20).mul(100.0)
     daily["forward_pe"] = np.nan
     daily["erp_pct"] = np.nan
@@ -238,6 +265,8 @@ def build_historical_macro_dataset(
     return canonical
 
 
-def build_and_summarize(output_path: str | Path | None = None) -> tuple[pd.DataFrame, dict[str, object]]:
+def build_and_summarize(
+    output_path: str | Path | None = None,
+) -> tuple[pd.DataFrame, dict[str, object]]:
     df = build_historical_macro_dataset(output_path=output_path)
     return df, summarize_historical_macro_coverage(df)

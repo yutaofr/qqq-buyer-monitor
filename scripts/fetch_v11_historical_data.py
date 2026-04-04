@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Fetch VIX and Price history for v11 POC starting from 1995."""
+
 import logging
 from datetime import date
 
@@ -8,6 +9,7 @@ import yfinance as yf
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 def fetch_v11_data():
     start_date = "1995-01-01"
@@ -49,11 +51,14 @@ def fetch_v11_data():
 
     # Calculate Breadth Proxy (QQQ/QQEW Relative Strength)
     # QQEW started in 2006. For earlier periods we might use a dummy or proxy.
-    df["breadth_proxy"] = (df["qqq_close"] / df["qqew_close"]).pct_change(20) # 20d momentum of relative strength
+    df["breadth_proxy"] = (df["qqq_close"] / df["qqew_close"]).pct_change(
+        20
+    )  # 20d momentum of relative strength
 
     output_path = "data/v11_price_vix_history.csv"
     df.to_csv(output_path)
     logger.info(f"Saved {len(df)} rows to {output_path}")
+
 
 if __name__ == "__main__":
     fetch_v11_data()

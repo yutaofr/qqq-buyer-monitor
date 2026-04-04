@@ -21,7 +21,9 @@ def main() -> None:
         raise RuntimeError("Unable to fetch DFII10 for ERP backfill")
 
     real_yield = real_yield.rename(columns={"DFII10": "real_yield_10y_pct"})
-    real_yield["real_yield_10y_pct"] = pd.to_numeric(real_yield["real_yield_10y_pct"], errors="coerce") / 100.0
+    real_yield["real_yield_10y_pct"] = (
+        pd.to_numeric(real_yield["real_yield_10y_pct"], errors="coerce") / 100.0
+    )
 
     erp = fetch_historical_shiller_erp_series(real_yield_frame=real_yield)
     if erp.empty:
@@ -29,7 +31,11 @@ def main() -> None:
 
     calendar = pd.to_datetime(frame["observation_date"], errors="coerce")
     erp["effective_date"] = pd.to_datetime(erp["effective_date"], errors="coerce")
-    erp = erp.sort_values("effective_date").drop_duplicates("effective_date", keep="last").set_index("effective_date")
+    erp = (
+        erp.sort_values("effective_date")
+        .drop_duplicates("effective_date", keep="last")
+        .set_index("effective_date")
+    )
 
     frame["erp_ttm_pct"] = pd.to_numeric(
         erp["erp_ttm_pct"].reindex(calendar, method="ffill"),
@@ -44,7 +50,9 @@ def main() -> None:
         {
             "rows": len(frame),
             "erp_non_null": int(frame["erp_ttm_pct"].notna().sum()),
-            "first_erp_date": str(frame.loc[frame["erp_ttm_pct"].notna(), "observation_date"].min()),
+            "first_erp_date": str(
+                frame.loc[frame["erp_ttm_pct"].notna(), "observation_date"].min()
+            ),
             "last_erp_date": str(frame.loc[frame["erp_ttm_pct"].notna(), "observation_date"].max()),
         }
     )

@@ -1,4 +1,5 @@
 """Run controlled v12 ablations and compare them against the baseline."""
+
 from __future__ import annotations
 
 import argparse
@@ -99,7 +100,7 @@ EXPERIMENTS: dict[str, dict[str, Any]] = {
                 "LATE_CYCLE": 0.2,
                 "MID_CYCLE": 1.0,
             },
-        }
+        },
     },
     "states_4_var1e4_capex": {
         "var_smoothing": 1e-4,
@@ -193,7 +194,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dataset-path", default="data/macro_historical_dump.csv")
     parser.add_argument("--regime-path", default="data/v11_poc_phase1_results.csv")
     parser.add_argument("--evaluation-start", default="2018-01-01")
-    parser.add_argument("--audit-contract-path", default="src/engine/v11/resources/regime_audit.json")
+    parser.add_argument(
+        "--audit-contract-path", default="src/engine/v11/resources/regime_audit.json"
+    )
     parser.add_argument("--output-dir", default="artifacts/v12_ablations")
     parser.add_argument(
         "--experiments",
@@ -211,7 +214,9 @@ def main(argv: list[str] | None = None) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     audit_regimes = _load_audit_regimes(Path(args.audit_contract_path))
     label_frame = pd.read_csv(args.regime_path, parse_dates=["observation_date"])
-    macro_frame = pd.read_csv(args.dataset_path, parse_dates=["observation_date"]).set_index("observation_date")
+    macro_frame = pd.read_csv(args.dataset_path, parse_dates=["observation_date"]).set_index(
+        "observation_date"
+    )
 
     comparison_rows: list[dict[str, Any]] = []
     reports: dict[str, dict[str, Any]] = {}
@@ -219,9 +224,10 @@ def main(argv: list[str] | None = None) -> int:
         experiment = EXPERIMENTS[name]
         experiment_dir = output_dir / name
         experiment_dir.mkdir(parents=True, exist_ok=True)
-        experiment_audit_regimes = list(
-            dict(experiment.get("audit_overrides", {}).get("base_betas", {})).keys()
-        ) or audit_regimes
+        experiment_audit_regimes = (
+            list(dict(experiment.get("audit_overrides", {}).get("base_betas", {})).keys())
+            or audit_regimes
+        )
 
         run_v11_audit(
             dataset_path=args.dataset_path,

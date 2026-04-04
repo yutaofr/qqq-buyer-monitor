@@ -1,4 +1,5 @@
 """Run the frozen v13 execution-overlay backtest matrix and summarize non-regression."""
+
 from __future__ import annotations
 
 import argparse
@@ -20,11 +21,15 @@ def _read_trace(path: Path) -> pd.DataFrame:
 
 def _compute_execution_metrics(trace: pd.DataFrame) -> dict[str, float]:
     close = pd.to_numeric(trace.get("close"), errors="coerce")
-    target_beta = pd.to_numeric(trace.get("target_beta"), errors="coerce").clip(lower=0.0).fillna(0.0)
+    target_beta = (
+        pd.to_numeric(trace.get("target_beta"), errors="coerce").clip(lower=0.0).fillna(0.0)
+    )
     raw_beta = pd.to_numeric(trace.get("raw_target_beta"), errors="coerce").fillna(0.0)
 
     qqq_ret = close.pct_change().replace([np.inf, -np.inf], np.nan).fillna(0.0)
-    portfolio_ret = target_beta.shift(1).fillna(target_beta.iloc[0] if not target_beta.empty else 0.0) * qqq_ret
+    portfolio_ret = (
+        target_beta.shift(1).fillna(target_beta.iloc[0] if not target_beta.empty else 0.0) * qqq_ret
+    )
     equity = (1.0 + portfolio_ret).cumprod()
     rolling_peak = equity.cummax().replace(0.0, np.nan)
     drawdown = (equity / rolling_peak) - 1.0
@@ -38,10 +43,26 @@ def _compute_execution_metrics(trace: pd.DataFrame) -> dict[str, float]:
         "approx_max_drawdown": float(drawdown.min()) if not drawdown.empty else 0.0,
         "mean_target_beta": float(target_beta.mean()) if not target_beta.empty else 0.0,
         "mean_raw_target_beta": float(raw_beta.mean()) if not raw_beta.empty else 0.0,
-        "mean_turnover": float(target_beta.diff().abs().fillna(0.0).mean()) if not target_beta.empty else 0.0,
-        "left_tail_mean_beta": float(target_beta[left_tail_mask].mean()) if left_tail_mask.any() else 0.0,
-        "penalty_days": float((pd.to_numeric(trace.get("beta_overlay_multiplier"), errors="coerce").fillna(1.0) < 0.999999).sum()),
-        "reward_days": float((pd.to_numeric(trace.get("deployment_overlay_multiplier"), errors="coerce").fillna(1.0) > 1.000001).sum()),
+        "mean_turnover": float(target_beta.diff().abs().fillna(0.0).mean())
+        if not target_beta.empty
+        else 0.0,
+        "left_tail_mean_beta": float(target_beta[left_tail_mask].mean())
+        if left_tail_mask.any()
+        else 0.0,
+        "penalty_days": float(
+            (
+                pd.to_numeric(trace.get("beta_overlay_multiplier"), errors="coerce").fillna(1.0)
+                < 0.999999
+            ).sum()
+        ),
+        "reward_days": float(
+            (
+                pd.to_numeric(trace.get("deployment_overlay_multiplier"), errors="coerce").fillna(
+                    1.0
+                )
+                > 1.000001
+            ).sum()
+        ),
     }
 
 
@@ -124,8 +145,12 @@ def main(argv: list[str] | None = None) -> int:
             "mean_brier": run["summary"]["mean_brier"],
             "mean_entropy": run["summary"]["mean_entropy"],
             "lock_incidence": run["summary"]["lock_incidence"],
-            "max_raw_target_beta_delta_vs_disabled": float(raw_beta_delta.max()) if not raw_beta_delta.empty else 0.0,
-            "mean_target_beta_delta_vs_disabled": float(target_beta_delta.mean()) if not target_beta_delta.empty else 0.0,
+            "max_raw_target_beta_delta_vs_disabled": float(raw_beta_delta.max())
+            if not raw_beta_delta.empty
+            else 0.0,
+            "mean_target_beta_delta_vs_disabled": float(target_beta_delta.mean())
+            if not target_beta_delta.empty
+            else 0.0,
             **run["execution_metrics"],
         }
         rows.append(row)

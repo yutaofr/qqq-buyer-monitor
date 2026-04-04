@@ -1,4 +1,5 @@
 """Discord notification logic for QQQ v13.0 Bayesian Monitor."""
+
 from __future__ import annotations
 
 import logging
@@ -71,7 +72,9 @@ def build_discord_payload(result: SignalResult) -> dict:
     deployment_readiness = metadata.get("deployment_readiness", 0.0)
     deployment_state = str(metadata.get("deployment_state", "DEPLOY_BASE"))
     execution_bucket = str(metadata.get("execution_bucket", "n/a"))
-    raw_regime = canonicalize_regime_name(metadata.get("raw_regime", display_regime)) or display_regime
+    raw_regime = (
+        canonicalize_regime_name(metadata.get("raw_regime", display_regime)) or display_regime
+    )
 
     if is_floor_active:
         color = COLOR_STRESS

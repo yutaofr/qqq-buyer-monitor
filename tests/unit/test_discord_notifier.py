@@ -1,4 +1,5 @@
 """Unit tests for the v12.0 Bayesian Discord notifier."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -29,7 +30,7 @@ def _v11_result() -> SignalResult:
             "beta_overlay_multiplier": 0.97,
             "deployment_overlay_multiplier": 1.06,
             "overlay_state": "REWARD",
-        }
+        },
     )
 
 
@@ -38,7 +39,9 @@ def test_discord_notification_uses_v11_contract(monkeypatch):
 
     class _Response:
         status_code = 204
-        def raise_for_status(self) -> None: return None
+
+        def raise_for_status(self) -> None:
+            return None
 
     def fake_post(url, json, timeout):
         captured["url"] = url
@@ -61,7 +64,9 @@ def test_discord_notification_uses_v11_contract(monkeypatch):
     assert "📊 Posterior Distribution" in field_names
     assert "🛡️ Execution Audit" in field_names
     assert "📎 Reference Allocation" in field_names
-    execution_field = next(field for field in embed["fields"] if field["name"] == "🛡️ Execution Audit")
+    execution_field = next(
+        field for field in embed["fields"] if field["name"] == "🛡️ Execution Audit"
+    )
     assert "Overlay Mode" in execution_field["value"]
     assert "Protected Beta" in execution_field["value"]
     assert "Overlay Beta" in execution_field["value"]

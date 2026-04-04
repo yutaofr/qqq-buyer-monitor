@@ -1,6 +1,7 @@
 """
 Narrative engine to generate human-readable explanations and decision logic traces.
 """
+
 from __future__ import annotations
 
 import logging
@@ -10,6 +11,7 @@ from typing import Any
 from src.models import AllocationState
 
 logger = logging.getLogger(__name__)
+
 
 class NarrativeEngine:
     """Generates narrative interpretation of signal logic."""
@@ -33,7 +35,7 @@ class NarrativeEngine:
             "allocation_policy": "风险控制/保护模式/为什么要看这个/决策逻辑",
             "portfolio_alignment": "组合对齐",
             "strategic_allocation": "战略配置",
-            "finalize": "最终结论"
+            "finalize": "最终结论",
         }
         for step in logic_trace:
             name = step.get("step", "Unknown")
@@ -77,7 +79,7 @@ class NarrativeEngine:
         if state not in (
             AllocationState.WATCH_DEFENSE,
             AllocationState.DELEVERAGE,
-            AllocationState.CASH_FLIGHT
+            AllocationState.CASH_FLIGHT,
         ):
             return text
 

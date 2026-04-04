@@ -5,6 +5,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+
 class BayesianInferenceEngine:
     def __init__(self, kde_models: dict[str, Any], base_priors: dict[str, float]):
         self.kde_models = kde_models
@@ -72,10 +73,14 @@ class BayesianInferenceEngine:
                 root_mapping[name] = matched_root
                 root_counts[matched_root] = root_counts.get(matched_root, 0) + 1
 
-            effective_weights = np.array([
-                float(weights_config.get(root_mapping[name], fallback_w)) / root_counts[root_mapping[name]]
-                for name in feature_names
-            ], dtype=float)
+            effective_weights = np.array(
+                [
+                    float(weights_config.get(root_mapping[name], fallback_w))
+                    / root_counts[root_mapping[name]]
+                    for name in feature_names
+                ],
+                dtype=float,
+            )
 
             total_weight_sum = np.sum(effective_weights)
             runtime = self._normalize(runtime_priors or self.base_priors)
@@ -98,7 +103,7 @@ class BayesianInferenceEngine:
                 "labor_slack": acute_tau,
                 "treasury_vol_21d": acute_tau,
                 "move_21d": acute_tau,
-                "DEFAULT_FALLBACK": base_tau
+                "DEFAULT_FALLBACK": base_tau,
             }
 
             for idx, regime_label in enumerate(classifier.classes_):
@@ -108,32 +113,44 @@ class BayesianInferenceEngine:
 
                 feature_log_lh = -0.5 * (np.log(2.0 * np.pi * var) + ((x - theta) ** 2) / var)
 
-                scaled_log_lh = np.array([
-                    feature_log_lh[f_idx] / tau_map.get(root_mapping[f_name], base_tau)
-                    for f_idx, f_name in enumerate(feature_names)
-                ])
+                scaled_log_lh = np.array(
+                    [
+                        feature_log_lh[f_idx] / tau_map.get(root_mapping[f_name], base_tau)
+                        for f_idx, f_name in enumerate(feature_names)
+                    ]
+                )
 
                 raw_log_lhs[regime_key] = float(np.sum(effective_weights * scaled_log_lh))
 
                 for f_idx, f_name in enumerate(feature_names):
-                    level_contributions[regime_key][f_name] = float(effective_weights[f_idx] * scaled_log_lh[f_idx])
+                    level_contributions[regime_key][f_name] = float(
+                        effective_weights[f_idx] * scaled_log_lh[f_idx]
+                    )
 
             # 3. Apply Base Temperature Scaling
             max_log = max(raw_log_lhs.values())
-            raw_evidence_dist = self._normalize({
-                r: np.exp(val - max_log) for r, val in raw_log_lhs.items()
-            })
+            raw_evidence_dist = self._normalize(
+                {r: np.exp(val - max_log) for r, val in raw_log_lhs.items()}
+            )
 
-            # v13.7-REFINED: Momentum下调至 0.35
-            posteriors = {k: (1 - m) * runtime.get(k, 0.0) + m * v for k, v in raw_evidence_dist.items()}
+            # V12.1-FIXED: Use true Bayesian multiplication instead of linear mixture.
+            # Removing artificial momentum limit (m) to allow confidence accumulation.
+            unnorm_post = {k: runtime.get(k, 0.0) * v for k, v in raw_evidence_dist.items()}
+            total_unnorm = sum(unnorm_post.values())
+            if total_unnorm > 0:
+                posteriors = {k: val / total_unnorm for k, val in unnorm_post.items()}
+            else:
+                posteriors = runtime
 
             diagnostics = {
-                "effective_weights": dict(zip(feature_names, effective_weights.tolist(), strict=True)),
+                "effective_weights": dict(
+                    zip(feature_names, effective_weights.tolist(), strict=True)
+                ),
                 "total_weight": total_weight_sum,
                 "tau_applied": base_tau,
                 "m_applied": m,
                 "evidence_dist": raw_evidence_dist,
-                "level_contributions": level_contributions
+                "level_contributions": level_contributions,
             }
             return posteriors, diagnostics
 
@@ -142,7 +159,13 @@ class BayesianInferenceEngine:
             # CR-1 Fix: Consistent return signature
             return runtime_priors or self.base_priors, {"error": str(e)}
 
-    def reweight_probabilities(self, *, classifier_posteriors: dict[str, float], training_priors: dict[str, float], runtime_priors: dict[str, float] | None = None) -> dict[str, float]:
+    def reweight_probabilities(
+        self,
+        *,
+        classifier_posteriors: dict[str, float],
+        training_priors: dict[str, float],
+        runtime_priors: dict[str, float] | None = None,
+    ) -> dict[str, float]:
         runtime = self._normalize(runtime_priors or self.base_priors)
         posterior = self._normalize(classifier_posteriors)
         train = self._normalize(training_priors)
@@ -150,7 +173,10 @@ class BayesianInferenceEngine:
             return runtime
         regimes = sorted(set(runtime) | set(posterior) | set(train))
         eps = 1e-12
-        adjusted = {r: posterior.get(r, 0.0) * runtime.get(r, 0.0) / max(train.get(r, 0.0), eps) for r in regimes}
+        adjusted = {
+            r: posterior.get(r, 0.0) * runtime.get(r, 0.0) / max(train.get(r, 0.0), eps)
+            for r in regimes
+        }
         return self._normalize(adjusted) or runtime
 
     @staticmethod

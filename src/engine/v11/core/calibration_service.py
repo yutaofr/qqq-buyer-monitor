@@ -1,6 +1,7 @@
 """v11 Core: Calibration Service.
 Handles PCA dimensionality reduction and KDE likelihood model training.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -18,7 +19,12 @@ class CalibrationService:
         self.feature_cols: list[str] = []
         self.is_fitted = False
 
-    def calibrate(self, standardized_df: pd.DataFrame, labeled_df: pd.DataFrame, feature_cols: list[str] | None = None):
+    def calibrate(
+        self,
+        standardized_df: pd.DataFrame,
+        labeled_df: pd.DataFrame,
+        feature_cols: list[str] | None = None,
+    ):
         """
         根据标定标签训练 KDE 模型。
         """
@@ -29,20 +35,30 @@ class CalibrationService:
         if feature_cols is None:
             # Include both Level (_pct) and Momentum (_momentum)
             # This follows Howard Marks' advice: "Not just level, but direction/derivative"
-            feature_cols = sorted(c for c in standardized_df.columns if c.endswith("_pct") or c.endswith("_momentum"))
+            feature_cols = sorted(
+                c for c in standardized_df.columns if c.endswith("_pct") or c.endswith("_momentum")
+            )
 
         self.feature_cols = feature_cols
 
         # 1. 对齐数据
-        df = pd.merge(standardized_df, labeled_df[["observation_date", "regime"]], on="observation_date")
+        df = pd.merge(
+            standardized_df, labeled_df[["observation_date", "regime"]], on="observation_date"
+        )
 
         # 强制删除 NaN 样本，防止 PCA 崩溃
         df_clean = df.dropna(subset=feature_cols)
-        if df_clean.empty or len(feature_cols) < self.pca.n_components or len(df_clean) < self.pca.n_components:
+        if (
+            df_clean.empty
+            or len(feature_cols) < self.pca.n_components
+            or len(df_clean) < self.pca.n_components
+        ):
             self.is_fitted = False
             return
 
-        X = np.nan_to_num(df_clean[feature_cols].values.astype(float), nan=0.0, posinf=1.0, neginf=0.0)
+        X = np.nan_to_num(
+            df_clean[feature_cols].values.astype(float), nan=0.0, posinf=1.0, neginf=0.0
+        )
         X = np.clip(X, 0.0, 1.0)
 
         # 2. PCA 降维
@@ -57,7 +73,7 @@ class CalibrationService:
             if len(r_data) < 10:
                 continue
 
-            kde = KernelDensity(bandwidth=0.1, kernel='gaussian')
+            kde = KernelDensity(bandwidth=0.1, kernel="gaussian")
             kde.fit(r_data)
             self.kde_models[r] = kde
         self.is_fitted = bool(self.kde_models)

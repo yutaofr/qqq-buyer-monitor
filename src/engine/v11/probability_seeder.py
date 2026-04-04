@@ -98,7 +98,6 @@ class ProbabilitySeeder:
                 "z_method": "expanding",
                 "min_periods": 63,
             },
-            # SRD-v13.5-RC1: Real-Economy Temporal Smoothing
             "pmi_momentum": {
                 "src": "pmi_proxy_manemp",
                 "ewma_span": 21,
@@ -113,7 +112,7 @@ class ProbabilitySeeder:
                 "z_method": "rolling",
                 "z_window": 252,
                 "min_periods": 63,
-            }
+            },
         }
 
     @staticmethod
@@ -136,7 +135,9 @@ class ProbabilitySeeder:
         self.orthogonalization_strength = float(min(1.0, max(0.0, self.orthogonalization_strength)))
 
     def contract_hash(self) -> str:
-        canonical = json.dumps(self._contract_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        canonical = json.dumps(
+            self._contract_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        )
         digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         return f"sha256:{digest}"
 
@@ -219,7 +220,9 @@ class ProbabilitySeeder:
         beta = (cov / var.replace(0, pd.NA)).fillna(0.0)
         residual = move_z.copy()
         if self.orthogonalization_mode == "residualize":
-            residual = (move_z - (self.orthogonalization_strength * beta * spread_z)).clip(*self.clip_range)
+            residual = (move_z - (self.orthogonalization_strength * beta * spread_z)).clip(
+                *self.clip_range
+            )
         corr_21d = move_z.rolling(21, min_periods=5).corr(spread_z).fillna(0.0)
 
         out["move_21d"] = residual

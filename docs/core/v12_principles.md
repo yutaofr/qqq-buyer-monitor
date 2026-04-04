@@ -6,9 +6,11 @@
 - **Three-Layer Matrix**: Discount, Real Economy, Sentiment.
 - **Factor Independence**: No information inbreeding. Collinear factors must be decoupled.
 
-## 2. Information Honesty (v13.7-ULTIMA)
+## 2. Information Honesty (v12.1-FIXED)
+- **Bayesian Integrity**: Strict adherence to $Posterior \propto Prior \times Likelihood$. No linear mixtures or artificial momentum caps that trap the system in high-entropy states.
+- **Temperature Calibration (Tau=3.0)**: Use Log-Likelihood scaling to smooth Naive Bayes overconfidence, ensuring a realistic probability distribution.
 - **Entropy-First**: Quantify model doubt via Shannon Entropy.
-- **Gaussian Haircut (Non-linear)**: `target_beta = raw_beta * exp(-0.6 * H^2)`. Accelerated de-risking in conflict zones (H > 0.7) to protect capital while preventing suicidal cuts.
+- **Gaussian Haircut (Non-linear)**: `target_beta = raw_beta * exp(-0.6 * (H_norm * log(states))^2)`. Accelerated de-risking in conflict zones (H > 0.7) to protect capital while preventing suicidal cuts.
 
 ## 3. Real-Economy Gravity
 - **Physical Sensing**: 12-factor augmented space (including PMI Mom, Labor Slack). 

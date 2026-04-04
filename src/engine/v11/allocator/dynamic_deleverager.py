@@ -1,6 +1,7 @@
 """v11 Allocator: Dynamic Deleverager for Bucket A.
 Implements the 'Active Bleeding' mechanism to raise free cash before the crisis peaks.
 """
+
 from __future__ import annotations
 
 
@@ -8,6 +9,7 @@ class BayesianDeleverager:
     """
     根据危机概率提前释放流动性，防止在极高波动率下与券商 MMR 硬刚。
     """
+
     def __init__(self, min_exposure: float = 0.20, gamma: float = 2.0):
         self.min_exposure = min_exposure
         self.gamma = gamma
@@ -17,7 +19,7 @@ class BayesianDeleverager:
         基于 P(BUST) 计算允许的最大现货敞口比例。
         """
         # 非线性惩罚项
-        reduction = p_bust ** self.gamma
+        reduction = p_bust**self.gamma
         target_exposure = 1.0 - reduction
         return max(self.min_exposure, target_exposure)
 

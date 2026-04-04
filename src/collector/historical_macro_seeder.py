@@ -52,7 +52,11 @@ class HistoricalMacroSeeder:
             frame["observation_date"] = pd.to_datetime(frame["observation_date"], errors="coerce")
             frame = frame.dropna(subset=["observation_date"]).sort_values("observation_date")
             frame = frame.set_index("observation_date")
-        return frame.resample("D").ffill() if not frame.empty and isinstance(frame.index, pd.DatetimeIndex) else frame
+        return (
+            frame.resample("D").ffill()
+            if not frame.empty and isinstance(frame.index, pd.DatetimeIndex)
+            else frame
+        )
 
     @staticmethod
     def _float_or_default(value: object, default: float | None = None) -> float | None:
@@ -85,7 +89,7 @@ class HistoricalMacroSeeder:
         if target_ts < self.df.index.min():
             return features
 
-        idx = self.df.index.get_indexer([target_ts], method='ffill')[0]
+        idx = self.df.index.get_indexer([target_ts], method="ffill")[0]
         if idx == -1:
             return features
 
@@ -93,12 +97,18 @@ class HistoricalMacroSeeder:
 
         if self._canonical_mode:
             features["credit_spread"] = self._float_or_default(row.get("credit_spread_bps"))
-            features["credit_accel"] = self._float_or_default(row.get("credit_acceleration_pct_10d"), 0.0) or 0.0
-            features["erp"] = self._float_or_default(row.get("erp_ttm_pct", row.get("erp_pct", row.get("erp"))))
+            features["credit_accel"] = (
+                self._float_or_default(row.get("credit_acceleration_pct_10d"), 0.0) or 0.0
+            )
+            features["erp"] = self._float_or_default(
+                row.get("erp_ttm_pct", row.get("erp_pct", row.get("erp")))
+            )
             features["forward_pe"] = self._float_or_default(row.get("forward_pe"))
             features["real_yield"] = self._float_or_default(row.get("real_yield_10y_pct"))
             features["net_liquidity"] = self._float_or_default(row.get("net_liquidity_usd_bn"))
-            features["liquidity_roc"] = self._float_or_default(row.get("liquidity_roc_pct_4w"), 0.0) or 0.0
+            features["liquidity_roc"] = (
+                self._float_or_default(row.get("liquidity_roc_pct_4w"), 0.0) or 0.0
+            )
             features["treasury_vol"] = self._float_or_default(row.get("treasury_vol_21d"))
             features["copper_gold_ratio"] = self._float_or_default(row.get("copper_gold_ratio"))
             features["breakeven"] = self._float_or_default(row.get("breakeven_10y"))
@@ -107,7 +117,9 @@ class HistoricalMacroSeeder:
             funding_value = row.get("funding_stress_flag", 0)
         else:
             features["credit_spread"] = self._float_or_default(row.get("BAMLH0A0HYM2"))
-            features["credit_accel"] = self._float_or_default(row.get("credit_acceleration"), 0.0) or 0.0
+            features["credit_accel"] = (
+                self._float_or_default(row.get("credit_acceleration"), 0.0) or 0.0
+            )
             features["erp"] = self._float_or_default(row.get("erp"))
             features["forward_pe"] = self._float_or_default(row.get("forward_pe"))
             features["real_yield"] = self._float_or_default(row.get("real_yield"), None)
@@ -115,6 +127,8 @@ class HistoricalMacroSeeder:
             features["liquidity_roc"] = self._float_or_default(row.get("liquidity_roc"), 0.0) or 0.0
             funding_value = row.get("is_funding_stressed")
 
-        features["is_funding_stressed"] = bool(funding_value) if not pd.isna(funding_value) else False
+        features["is_funding_stressed"] = (
+            bool(funding_value) if not pd.isna(funding_value) else False
+        )
 
         return features

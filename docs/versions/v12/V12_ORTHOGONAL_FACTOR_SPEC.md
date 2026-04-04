@@ -34,7 +34,7 @@ v12.0 的目标是：**在保持贝叶斯推断框架不变的前提下，通过
 
 ---
 
-## 2. 因子矩阵 (10 因子 · 三层正交)
+## 2. 因子矩阵 (12 因子 · 三层正交)
 
 ### 2.1 全局拓扑
 
@@ -52,6 +52,8 @@ graph TB
         I1["core_capex_momentum<br/>Core Capex Momentum<br/>NEWORDER M/M Delta · Expanding Z"]
         CG["copper_gold_roc_126d<br/>铜金比<br/>126d · 一阶导"]
         JP["usdjpy_roc_126d<br/>USD/JPY<br/>126d · 一阶导"]
+        PM["pmi_momentum<br/>PMI Momentum<br/>MANEMP 21d EWMA · 二阶导"]
+        LS["labor_slack<br/>Labor Slack<br/>JTSJOL 21d EWMA · Level"]
     end
 
     subgraph "Layer 3: 情绪层 Sentiment"
@@ -63,13 +65,13 @@ graph TB
     end
 
     R1 & M1 & B1 --> GNB
-    I1 & CG & JP --> GNB
+    I1 & CG & JP & PM & LS --> GNB
     CS & NL & EP & SA --> GNB
 
-    GNB[GaussianNB<br/>协方差矩阵自发现权重<br/>var_smoothing=1e-2]
+    GNB[GaussianNB<br/>正统贝叶斯更新 (Prior x Likelihood)<br/>Tau=3.0 平滑]
     GNB --> POST[后验概率分布]
     POST --> ENT[Shannon 熵 Haircut]
-    ENT --> BETA["β_final = E[β|P] · e^{-H}"]
+    ENT --> BETA["β_final = E[β|P] · exp(-0.6 * (H_norm * ln(S))^2)"]
 
     style R1 fill:#e74c3c,color:#fff
     style M1 fill:#e74c3c,color:#fff
@@ -77,6 +79,8 @@ graph TB
     style I1 fill:#27ae60,color:#fff
     style CG fill:#27ae60,color:#fff
     style JP fill:#27ae60,color:#fff
+    style PM fill:#27ae60,color:#fff
+    style LS fill:#27ae60,color:#fff
     style CS fill:#2980b9,color:#fff
     style NL fill:#2980b9,color:#fff
     style EP fill:#2980b9,color:#fff
@@ -90,7 +94,7 @@ graph TB
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 | `real_yield_structural_z` | 真实融资成本的结构趋势 | `real_yield_10y_pct` | FRED `DFII10` | 日 | 126d | 0 (Level) | EWMA Z |
 | 2 | `move_21d` | 国债收益率已实现波动率：贴现率崩坏的先行哨兵 | `treasury_vol_21d` | FRED `DGS10` → 21d rolling std | 日 | 1 (Raw) | 0 (Level) | **Expanding Z** |
-| 3 | `breakeven_accel` | 通胀预期加速度：美联储看跌期权失效探测 | `breakeven_10y` | FRED `T10YIE` | 日 | 21d | **2 (Accel)** | Rolling Z |
+| 3 | `breakeven_accel` | 通胀预期加速度：美联署看跌期权失效探测 | `breakeven_10y` | FRED `T10YIE` | 日 | 21d | **2 (Accel)** | Rolling Z |
 | 4 | `core_capex_momentum` | 实体经济动能：资本支出幅度 (Core Capex) | `core_capex_mm` | FRED `NEWORDER` | **月** | 1 (M/M Delta) | 0 (Level) | **Expanding Z** |
 | 5 | `copper_gold_roc_126d` | 铜金比动能：全球资本开支 vs 恐慌 | `copper_gold_ratio` | yfinance `HG=F` / `GC=F` | 日 | 126d | 1 (Mom) | Rolling Z |
 | 6 | `usdjpy_roc_126d` | 日元套息交易逆转：全球融资压力唯一跨境因子 | `usdjpy` | yfinance `USDJPY=X` | 日 | 126d | 1 (Mom) | Rolling Z |
@@ -98,6 +102,8 @@ graph TB
 | 8 | `liquidity_252d` | 净流动性结构趋势：货币周期锚 | `net_liquidity_usd_bn` | FRED 多系列衍生 | 周 | 252d | 0 (Level) | Rolling Z |
 | 9 | `erp_absolute` | 股权风险溢价 (TTM EPS)：估值地心引力 | `erp_ttm_pct` | Shiller Dataset (Yale) → TTM E/P - Real Yield | 月→日 | 1 (Raw) | 0 (Level) | **Expanding Z** |
 | 10 | `spread_absolute` | 信用利差绝对水位：历史自标定锚 | `credit_spread_bps` | FRED `BAMLH0A0HYM2` | 日 | 1 (Raw) | 0 (Level) | **Expanding Z** |
+| 11 | `pmi_momentum` | 实体经济扩张速度衰减 | `pmi_proxy_manemp` | FRED `MANEMP` | 月 | 21d EWMA | 2 (Accel) | Rolling Z |
+| 12 | `labor_slack` | 劳动力市场松弛拐点 | `job_openings` | FRED `JTSJOL` | 月 | 21d EWMA | 0 (Level) | Rolling Z |
 
 ### 2.3 因子−周期映射
 

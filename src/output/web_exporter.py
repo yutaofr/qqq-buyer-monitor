@@ -1,4 +1,5 @@
 """Web exporter for the v13.0 Bayesian probabilistic monitor."""
+
 from __future__ import annotations
 
 import json
@@ -104,9 +105,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
             regimes=ACTIVE_REGIME_ORDER,
             include_zeros=True,
         )
-        regime_info = REGIME_MAP.get(
-            stable_regime, {"label": stable_regime, "desc": "Unknown"}
-        )
+        regime_info = REGIME_MAP.get(stable_regime, {"label": stable_regime, "desc": "Unknown"})
         metadata = result.metadata or {}
         execution_overlay = metadata.get("execution_overlay", {})
 
@@ -119,7 +118,9 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 lock_active = guard_res.get("lock_active", False)
                 execution_bucket = str(guard_res.get("target_bucket", execution_bucket))
 
-        raw_regime = canonicalize_regime_name(metadata.get("raw_regime", stable_regime)) or stable_regime
+        raw_regime = (
+            canonicalize_regime_name(metadata.get("raw_regime", stable_regime)) or stable_regime
+        )
         deployment_state = str(metadata.get("deployment_state", "DEPLOY_BASE"))
         deployment_state_key = str(
             metadata.get("deployment_state_key", deployment_state.replace("DEPLOY_", ""))
@@ -130,9 +131,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "version": "v13.0",
                 "calculated_at_utc": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "observation_date": result.date.isoformat(),
-                "expires_at_utc": cursor.get_expires_at_utc(now_utc).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                ),
+                "expires_at_utc": cursor.get_expires_at_utc(now_utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "market_state": cursor.get_market_state(now_utc),
             },
             "signal": {
@@ -142,9 +141,13 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "raw_regime": raw_regime,
                 "target_beta": result.target_beta,
                 "raw_target_beta": metadata.get("raw_target_beta", result.target_beta),
-                "protected_beta": metadata.get("protected_beta", metadata.get("raw_target_beta", result.target_beta)),
+                "protected_beta": metadata.get(
+                    "protected_beta", metadata.get("raw_target_beta", result.target_beta)
+                ),
                 "overlay_beta": metadata.get("overlay_beta", result.target_beta),
-                "overlay_mode": metadata.get("overlay_mode", execution_overlay.get("overlay_mode", "FULL")),
+                "overlay_mode": metadata.get(
+                    "overlay_mode", execution_overlay.get("overlay_mode", "FULL")
+                ),
                 "beta_overlay_multiplier": metadata.get("beta_overlay_multiplier", 1.0),
                 "deployment_overlay_multiplier": metadata.get("deployment_overlay_multiplier", 1.0),
                 "overlay_state": metadata.get("overlay_state", "NEUTRAL"),

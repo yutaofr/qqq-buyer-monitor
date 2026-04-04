@@ -28,14 +28,20 @@ def test_weekly_overlay_source_is_visible_only_after_release_timestamp():
 
     release_ts = datetime(2026, 4, 3, 19, 30, tzinfo=UTC)
 
-    assert is_weekly_release_visible(
-        observation_ts=datetime(2026, 4, 3, 19, 29, tzinfo=UTC),
-        release_ts=release_ts,
-    ) is False
-    assert is_weekly_release_visible(
-        observation_ts=datetime(2026, 4, 3, 19, 30, tzinfo=UTC),
-        release_ts=release_ts,
-    ) is True
+    assert (
+        is_weekly_release_visible(
+            observation_ts=datetime(2026, 4, 3, 19, 29, tzinfo=UTC),
+            release_ts=release_ts,
+        )
+        is False
+    )
+    assert (
+        is_weekly_release_visible(
+            observation_ts=datetime(2026, 4, 3, 19, 30, tzinfo=UTC),
+            release_ts=release_ts,
+        )
+        is True
+    )
 
 
 def test_execution_overlay_emits_provenance_and_quality_for_admitted_inputs():
