@@ -246,6 +246,16 @@
                 </div>
 
                 <div class="space-y-6">
+                    <p id="ui-execution-overlay-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">執行疊加層</p>
+                    <div id="execution-overlay-container" class="feature-grid px-2 sm:px-4"></div>
+                </div>
+
+                <div class="space-y-6">
+                    <p id="ui-feature-values-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">特徵數值明細</p>
+                    <div id="feature-values-container" class="feature-grid px-2 sm:px-4"></div>
+                </div>
+
+                <div class="space-y-6">
                     <p id="ui-logic-trace-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">邏輯下鑽分析</p>
                     <div id="logic-trace-container" class="space-y-3 px-2 sm:px-4"></div>
                 </div>
@@ -574,6 +584,8 @@
             document.getElementById('protected-beta').textContent = (data.signal.protected_beta || data.signal.target_beta).toFixed(2) + 'x';
             document.getElementById('overlay-beta').textContent = (data.signal.overlay_beta || data.signal.target_beta).toFixed(2) + 'x';
             document.getElementById('overlay-mode').textContent = mapping[data.signal.overlay_mode] || data.signal.overlay_mode || '評估中';
+            document.getElementById('beta-overlay-multiplier').textContent = (data.signal.beta_overlay_multiplier || 1.0).toFixed(2);
+            document.getElementById('deployment-overlay-multiplier').textContent = (data.signal.deployment_overlay_multiplier || 1.0).toFixed(2);
             document.getElementById('market-label').textContent = mapping[mkt] || mkt;
 
             const bar = document.getElementById('exposure-bar'); const beta = data.signal.target_beta;
@@ -589,6 +601,8 @@
 
             renderDistribution('prob-container', data.signal.probabilities, currentLang === 'en' ? 'No posterior distribution' : '暫無後驗分佈');
             renderDistribution('prior-container', data.signal.priors, currentLang === 'en' ? 'No runtime prior' : '當前未透傳運行時先驗');
+            renderFeatureValues(data.evidence.feature_values);
+            renderExecutionOverlay(data.evidence.execution_overlay);
             renderLogicTrace(data.evidence.logic_trace);
 
             // Panorama Rendering
