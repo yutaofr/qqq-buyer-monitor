@@ -93,33 +93,15 @@ class BayesianInferenceEngine:
 
             # v13.7-FINAL: Asymmetric Tau mapping derived from injected tau.
             base_tau = max(0.01, float(tau))
-            acute_tau = base_tau * 0.7
-
-            tau_map = {
-                "credit_spread_bps": base_tau,
-                "erp_ttm_pct": base_tau,
-                "net_liquidity_usd_bn": base_tau,
-                "real_yield_10y_pct": base_tau,
-                "pmi_momentum": acute_tau,
-                "labor_slack": acute_tau,
-                "treasury_vol_21d": acute_tau,
-                "move_21d": acute_tau,
-                "DEFAULT_FALLBACK": base_tau,
-            }
 
             for idx, regime_label in enumerate(classifier.classes_):
                 regime_key = str(regime_label)
                 theta = np.asarray(classifier.theta_[idx], dtype=float)
                 var = np.maximum(np.asarray(classifier.var_[idx], dtype=float), eps)
 
+                # SRD-v13.4: Uniform Static Tau (No sharpening)
                 feature_log_lh = -0.5 * (np.log(2.0 * np.pi * var) + ((x - theta) ** 2) / var)
-
-                scaled_log_lh = np.array(
-                    [
-                        feature_log_lh[f_idx] / tau_map.get(root_mapping[f_name], base_tau)
-                        for f_idx, f_name in enumerate(feature_names)
-                    ]
-                )
+                scaled_log_lh = feature_log_lh / base_tau
 
                 # Task 6: Multiplicative Gating (v13.8 Industrial Hardening)
                 # We multiply the log-likelihood by the quality weight [0, 1].

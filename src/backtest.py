@@ -368,7 +368,9 @@ def run_v11_audit(
         feature_cols = seeder.feature_names()
         for _, row in test.iterrows():
             dt = row["observation_date"]
-            train_window = full_df[full_df["observation_date"] < dt].copy()
+            # v14.0 INDUSTRIAL PIT HARDENING: Training labels must be lagged by target horizon (20d)
+            # to ensure zero look-ahead bias from future-defined regimes.
+            train_window = full_df[full_df["observation_date"] < (dt - pd.offsets.BDay(20))].copy()
             if train_window.empty:
                 continue
 
