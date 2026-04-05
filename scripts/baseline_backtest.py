@@ -112,13 +112,14 @@ def collect_panorama_oos_artifacts(
         "metadata": metadata,
         "oos_start": oos_start,
         "data_count": len(data),
-        "target_spy_count": len(target_spy),
-        "target_qqq_count": len(target_qqq),
+        "target_spy": target_spy,
+        "target_qqq": target_qqq,
         "leak_results": leak_results,
     }
 
 def main():
     """Standalone execution logic for v14 hardening diagnostics."""
+    from sklearn.metrics import roc_auc_score
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     try:
@@ -138,10 +139,28 @@ def main():
         else:
             print("Sidecar Data Coverage: 0.0% (CRITICAL DEGRADATION)")
 
+        # 7. Real-world Performance Audit (OOS AUC)
+        print("\n--- Real-world OOS Performance Audit ---")
+        y_spy = artifacts["target_spy"]
+        y_qqq = artifacts["target_qqq"]
+        
+        # Tractor AUC
+        t_idx = results.index.intersection(y_spy.dropna().index)
+        t_auc = roc_auc_score(y_spy.loc[t_idx], results.loc[t_idx, "tractor_prob"])
+        print(f"Tractor OOS AUC: {t_auc:.4f}")
+        
+        # Sidecar AUC
+        s_idx = valid_sidecar.index.intersection(y_qqq.dropna().index)
+        if not s_idx.empty:
+            s_auc = roc_auc_score(y_qqq.loc[s_idx], results.loc[s_idx, "sidecar_prob"])
+            print(f"Sidecar OOS AUC: {s_auc:.4f} (Goal: 0.60+)")
+        else:
+            print("Sidecar OOS AUC: N/A (Insufficient valid sample)")
+
         print("\n--- AC-2 Pipeline Integrity Audit (Synthetic) ---")
         leak = artifacts["leak_results"]
-        print(f"PIT-Safe AUC:  {leak['pit_safe_auc']:.4f}")
-        print(f"Leaky AUC:     {leak['leaky_auc']:.4f}")
+        print(f"PIT-Safe AUC (Synthetic): {leak['pit_safe_auc']:.4f}")
+        print(f"Leaky AUC (Synthetic):    {leak['leaky_auc']:.4f}")
 
         # Integrity Pass: The detector MUST distinguish between PIT-safe and Leaky handlers
         integrity_passed = leak["leakage_detected"] and (leak["pit_safe_auc"] < 0.65)

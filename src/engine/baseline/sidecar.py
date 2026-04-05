@@ -11,31 +11,50 @@ logger = logging.getLogger(__name__)
 
 def calculate_sidecar_composites(data: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculate 3-axis composites for the QQQ Sidecar.
-    Maintains Growth and Liquidity from Base Tractor.
-    Merges VXN and MA Cross into a single QQQ Stress axis (Sensor Fusion).
+    Calculate 5-axis composites for the QQQ Sidecar.
+    1. growth_composite (Macro Growth)
+    2. liquidity_composite (Macro Liquidity)
+    3. stress_composite_extreme (Max(VIX, VXN, Spread) Z-scores)
+    4. vxn_acceleration (Non-linear volatility pressure)
+    5. qqq_spy_relative_heat (Sector overcrowding pressure)
     """
     # 1. Base Composites (Growth, Liquidity)
     base = calculate_composites(data)
 
-    # 2. Enhanced Stress Composite (Max Retention)
-    # C_stress_qqq = Max(Z_Spread, Z_VIX, Z_VXN, MA_Cross_Z_Proxy)
+    # 2. Stress Composite Extreme (Max Retention)
     stress_cols = []
     for col in ["BAMLH0A0HYM2", "VIXCLS", "^VXN"]:
         if col in data.columns:
             stress_cols.append(rolling_zscore(data[col]))
 
     if stress_cols:
-        stress_qqq = pd.concat(stress_cols, axis=1).max(axis=1)
+        stress_extreme = pd.concat(stress_cols, axis=1).max(axis=1)
     else:
-        stress_qqq = base["stress_composite"]
+        stress_extreme = base["stress_composite"]
 
-    # RETURNS STRICTLY 3 DIMENSIONS TO PREVENT OVERFITTING
+    # 3. VXN Acceleration Refined (3-day Jump)
+    # V_accel = RollingZScore(VXN - VXN.shift(3), 252)
+    vxn_accel = pd.Series(np.nan, index=data.index)
+    if "^VXN" in data.columns:
+        jump = data["^VXN"] - data["^VXN"].shift(3)
+        vxn_accel = rolling_zscore(jump, window=252)
+
+    # 4. QQQ/SPY Relative Heat (adapted for Weakness/Reversal)
+    # RS = QQQ / SPY, Z_RS = RollingZScore(log(RS), 252)
+    # Feature = Min(0, Z_RS)
+    rel_heat_weakness = pd.Series(np.nan, index=data.index)
+    if "SPY" in data.columns and "QQQ" in data.columns:
+        rs = data["QQQ"] / data["SPY"]
+        z_rs = rolling_zscore(np.log(rs), window=252)
+        rel_heat_weakness = z_rs.clip(upper=0.0)
+
     return pd.DataFrame(
         {
             "growth_composite": base["growth_composite"],
             "liquidity_composite": base["liquidity_composite"],
-            "stress_composite_qqq": stress_qqq,
+            "stress_composite_extreme": stress_extreme,
+            "vxn_acceleration": vxn_accel,
+            "qqq_spy_relative_weakness": rel_heat_weakness,
         },
         index=data.index,
     ).dropna()
