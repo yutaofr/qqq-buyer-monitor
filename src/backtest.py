@@ -153,7 +153,11 @@ def run_v11_audit(
     experiment_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run the unified v12 probabilistic audit with deterministic walk-forward causality."""
+    import numpy as np
     from sklearn.naive_bayes import GaussianNB
+
+    # v14.0 INDUSTRIAL REPRODUCIBILITY: Fixed seed for all ML/Stochastic components
+    np.random.seed(42)
 
     from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
     from src.engine.v11.core.data_quality import (
@@ -240,12 +244,16 @@ def run_v11_audit(
     )
     price_df.index = pd.to_datetime(price_df.index, utc=True).tz_localize(None).normalize()
 
+    # v14.0 INDUSTRIAL PIT AUDIT: Reindex macro data onto the canonical trading calendar
+    # This prevents temporal contamination by ensuring macro data is only visible on trading days
+    # and subsequent ffill() honors the daily close sequence correctly.
+    trading_calendar = price_df.index
     macro_df.index = pd.to_datetime(macro_df.index).tz_localize(None).normalize()
+    macro_df = macro_df.reindex(trading_calendar).ffill()
+
     macro_df["qqq_close"] = price_df["Close"]
-    macro_df["qqq_close"] = macro_df["qqq_close"].ffill()
     if "Volume" in price_df.columns:
         macro_df["qqq_volume"] = pd.to_numeric(price_df["Volume"], errors="coerce")
-        macro_df["qqq_volume"] = macro_df["qqq_volume"].ffill()
         macro_df["source_qqq_volume"] = "direct:yfinance"
         macro_df["qqq_volume_quality_score"] = 1.0
     macro_df["source_qqq_close"] = "direct:yfinance"
@@ -256,6 +264,7 @@ def run_v11_audit(
         contract_features = audit_data.get("feature_contract", {}).get("feature_names")
         if contract_features:
             seeder_kwargs["selected_features"] = list(contract_features)
+
     seeder = ProbabilitySeeder(**seeder_kwargs)
     feature_contract_validation = "validated"
     try:
@@ -270,11 +279,12 @@ def run_v11_audit(
             feature_contract_validation = f"override:{exc}"
         else:
             raise
-    features = seeder.generate_features(macro_df)
-    full_df = features.join(regime_df["regime"], how="inner")
 
-    # Preserve raw macro inputs and provenance so the backtest quality gate sees the
-    # same sensor surface as the live conductor instead of zeroing feature weights.
+    # v14.0 CAUSAL PIPELINE: Features are generated INSIDE the walk-forward loop to prevent "Shadow Leakage"
+    # We join labels and macro inputs into a raw container first.
+    full_df = macro_df.join(regime_df["regime"], how="inner")
+
+    # Preserve raw macro inputs and provenance
     quality_fields = {"build_version"}
     for value_key, source_key, quality_key in _v12_quality_field_specs().values():
         quality_fields.add(str(value_key))
@@ -285,17 +295,6 @@ def run_v11_audit(
     for col in sorted(quality_fields):
         if col in macro_df.columns:
             full_df[col] = macro_df[col]
-
-    full_df["qqq_close"] = macro_df["qqq_close"]
-    if "qqq_volume" in macro_df.columns:
-        full_df["qqq_volume"] = macro_df["qqq_volume"]
-        full_df["source_qqq_volume"] = macro_df.get("source_qqq_volume", "direct:yfinance")
-    full_df["source_qqq_close"] = macro_df.get("source_qqq_close", "direct:yfinance")
-
-    if "qqq_volume_quality_score" in macro_df.columns:
-        full_df["qqq_volume_quality_score"] = macro_df["qqq_volume_quality_score"]
-    if "qqq_close_quality_score" in macro_df.columns:
-        full_df["qqq_close_quality_score"] = macro_df["qqq_close_quality_score"]
 
     # Add overlay signals
     for col in [
@@ -311,9 +310,9 @@ def run_v11_audit(
 
     if "erp_ttm_pct" in macro_df.columns:
         full_df["erp_ttm_pct"] = pd.to_numeric(macro_df["erp_ttm_pct"], errors="coerce")
-    full_df = full_df.dropna(subset=["regime"])
-    full_df = full_df.reset_index().rename(columns={"index": "observation_date"})
-    full_df = full_df.sort_values("observation_date").reset_index(drop=True)
+
+    full_df.index.name = "observation_date"
+    full_df = full_df.reset_index().sort_values("observation_date").reset_index(drop=True)
 
     eval_start = pd.to_datetime(evaluation_start)
     train = full_df[full_df["observation_date"] < eval_start].copy()
@@ -367,23 +366,31 @@ def run_v11_audit(
 
         print(f"Walk-forward Audit: Re-fitting {len(test)} causal windows...")
         previous_raw = None
+        feature_cols = seeder.feature_names()
         for _, row in test.iterrows():
             dt = row["observation_date"]
             train_window = full_df[full_df["observation_date"] < dt].copy()
             if train_window.empty:
                 continue
 
+            context_df = pd.concat([train_window, pd.DataFrame([row])]).set_index("observation_date")
+            features_context = seeder.generate_features(context_df)
+
+            train_features = features_context.iloc[:-1]
+            latest_features = features_context.iloc[-1:]
+
             gnb = GaussianNB(
                 var_smoothing=float(experiment.get("var_smoothing", default_var_smoothing))
             )
-            gnb.fit(train_window[feature_cols], train_window["regime"])
+            regime_y = train_window["regime"]
+            gnb.fit(train_features[feature_cols], regime_y)
             validate_gaussian_nb(
                 gnb,
-                expected_classes=sorted(train_window["regime"].astype(str).unique()),
+                expected_classes=sorted(regime_y.astype(str).unique()),
                 feature_count=len(feature_cols),
             )
 
-            evidence = pd.DataFrame([row[feature_cols].to_dict()], columns=feature_cols)
+            evidence = latest_features[feature_cols]
             class_priors = list(getattr(gnb, "class_prior_", []))
             if len(class_priors) != len(gnb.classes_):
                 class_priors = [1.0 / len(gnb.classes_)] * len(gnb.classes_)
