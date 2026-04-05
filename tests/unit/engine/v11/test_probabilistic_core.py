@@ -22,7 +22,7 @@ def base_priors():
 
 def test_bayesian_inference_priors(mock_kde_models, base_priors):
     """验证推断引擎能够输出归一化的后验概率"""
-    engine = BayesianInferenceEngine(mock_kde_models, base_priors)
+    engine = BayesianInferenceEngine(base_priors, mock_kde_models)
     evidence = np.array([0.1, -0.2, 0.5, 0.1, -0.1, 0.0])  # 6-factor vector
 
     probs = engine.infer_posterior(evidence)

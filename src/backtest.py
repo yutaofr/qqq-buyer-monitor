@@ -366,21 +366,25 @@ def run_v11_audit(
         print(f"Walk-forward Audit: Re-fitting {len(test)} causal windows...")
         previous_raw = None
         feature_cols = seeder.feature_names()
+
+        # v14.9 INDUSTRIAL HARDENING: Pre-calculate features on the FULL continuous dataset.
+        # This ensures Z-scores have complete rolling windows without the 20-day 'hole'
+        # previously introduced by looping over lagged windows.
+        print("Pre-calculating Factor Vector (Z-scores)...")
+        full_features_df = seeder.generate_features(full_df.set_index("observation_date"))
+        full_features_df.index = pd.to_datetime(full_features_df.index).tz_localize(None).normalize()
+
         for _, row in test.iterrows():
             dt = row["observation_date"]
-            # v14.0 INDUSTRIAL PIT HARDENING: Training labels must be lagged by target horizon (20d)
-            # to ensure zero look-ahead bias from future-defined regimes.
-            train_window = full_df[full_df["observation_date"] < (dt - pd.offsets.BDay(20))].copy()
+            # PIT Lag for Training Labels: Labels must be at least 20 days old.
+            cutoff_dt = dt - pd.offsets.BDay(20)
+            train_window = full_df[full_df["observation_date"] < cutoff_dt].copy()
             if train_window.empty:
                 continue
 
-            context_df = pd.concat([train_window, pd.DataFrame([row])]).set_index(
-                "observation_date"
-            )
-            features_context = seeder.generate_features(context_df)
-
-            train_features = features_context.iloc[:-1]
-            latest_features = features_context.iloc[-1:]
+            # Inference context: Use the pre-calculated seamless features
+            train_features = full_features_df[full_features_df.index < cutoff_dt]
+            evidence = full_features_df.loc[[dt], feature_cols]
 
             gnb = GaussianNB(
                 var_smoothing=float(experiment.get("var_smoothing", default_var_smoothing))
@@ -393,7 +397,6 @@ def run_v11_audit(
                 feature_count=len(feature_cols),
             )
 
-            evidence = latest_features[feature_cols]
             class_priors = list(getattr(gnb, "class_prior_", []))
             if len(class_priors) != len(gnb.classes_):
                 class_priors = [1.0 / len(gnb.classes_)] * len(gnb.classes_)

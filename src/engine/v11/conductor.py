@@ -179,7 +179,8 @@ class V11Conductor:
             self.gnb = self._initialize_model(macro_data_path, regime_data_path)
 
         self.inference_engine = BayesianInferenceEngine(
-            kde_models={r: None for r in self.gnb.classes_}, base_priors=self._get_base_priors()
+            base_priors=self._get_base_priors(),
+            kde_models={r: None for r in self.gnb.classes_}
         )
 
     def _validate_canonical_inputs(self) -> None:
@@ -235,7 +236,13 @@ class V11Conductor:
         # AC-0: Add variance smoothing to prevent probability collapse on low data (v11.19)
         gnb = GaussianNB(var_smoothing=self.gaussian_nb_var_smoothing)
         feature_cols = [c for c in df.columns if c != "regime"]
+        # FIT AND DIAGNOSE (Forensic Audit 13.9)
         gnb.fit(df[feature_cols], df["regime"])
+
+        # Log class means to detect "Identity Lock"
+        for i, label in enumerate(gnb.classes_):
+             logger.info(f"FORENSIC GNB [{label}]: mean[spread_21d]={gnb.theta_[i][feature_cols.index('spread_21d')]:.4f}, var={gnb.var_[i][feature_cols.index('spread_21d')]:.6f}")
+
         summary = self._validate_model(gnb, feature_count=len(feature_cols))
 
         logger.info(
@@ -337,32 +344,30 @@ class V11Conductor:
 
             # v13.6-EX / v13.7-ULTIMA: Adaptive Paranoid Adjustment
             active_registry = self.v13_4_registry
+
             if self.high_entropy_streak >= 21:
                 logger.warning(
-                    f"ULTIMA CIRCUIT BREAKER: Streak={self.high_entropy_streak}. Cutting all non-core sensors."
+                    f"ULTIMA CIRCUIT BREAKER ACTIVE: Streak={self.high_entropy_streak}. Cutting all non-core sensors."
                 )
-                # v13.7-ULTIMA: Mandatory Cut (Weight=0) for everything except Level 1
                 import copy
-
                 active_registry = copy.deepcopy(self.v13_4_registry)
                 matrix = active_registry.get("feature_weight_matrix", {})
-                core_fields = set(
-                    active_registry.get("core_fields", ["credit_spread_bps", "spread_"])
-                )
-                for k in matrix:
-                    if k not in core_fields:
+                # Core fields for surgical preservation
+                core_fields = set(active_registry.get("core_fields", ["spread_21d", "spread_absolute", "real_yield_structural_z"]))
+
+                for k in list(matrix.keys()):
+                    # Match if the matrix key matches or is a prefix of any core field
+                    is_core = any(k.startswith(cf) or cf.startswith(k) for cf in core_fields)
+                    if not is_core and k != "DEFAULT_FALLBACK":
                         matrix[k] = 0.0  # Extreme surgical cut
             elif self.high_entropy_streak >= 5:
                 logger.warning(
                     f"PARANOID_MODE ACTIVE: High entropy streak={self.high_entropy_streak}. Damping secondary factors."
                 )
                 import copy
-
                 active_registry = copy.deepcopy(self.v13_4_registry)
                 matrix = active_registry.get("feature_weight_matrix", {})
-                core_fields = set(
-                    active_registry.get("core_fields", ["credit_spread_bps", "spread_"])
-                )
+                core_fields = set(active_registry.get("core_fields", ["spread_21d", "spread_absolute", "real_yield_structural_z"]))
                 for k in matrix:
                     if k not in core_fields:
                         matrix[k] = float(matrix[k]) * 0.7

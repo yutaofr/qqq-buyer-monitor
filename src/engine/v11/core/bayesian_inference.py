@@ -7,8 +7,8 @@ logger = logging.getLogger(__name__)
 
 
 class BayesianInferenceEngine:
-    def __init__(self, kde_models: dict[str, Any], base_priors: dict[str, float]):
-        self.kde_models = kde_models
+    def __init__(self, base_priors: dict[str, float], kde_models: dict[str, Any] | None = None):
+        self.kde_models = kde_models or {}
         self.base_priors = base_priors
         self.regimes = list(base_priors.keys())
 
@@ -54,6 +54,7 @@ class BayesianInferenceEngine:
                 raise ValueError("evidence_frame must contain exactly one observation")
 
             feature_names = list(getattr(evidence_frame, "columns", []))
+            logger.info(f"Bayesian Audit: Evaluating {len(feature_names)} features: {feature_names[:10]}...")
             x = np.asarray(evidence_frame.iloc[0], dtype=float)
 
             # 1. SRD-v13.4: Lineage Normalization
@@ -129,9 +130,16 @@ class BayesianInferenceEngine:
             # Removing artificial momentum limit (m) to allow confidence accumulation.
             unnorm_post = {k: runtime.get(k, 0.0) * v for k, v in raw_evidence_dist.items()}
             total_unnorm = sum(unnorm_post.values())
-            if total_unnorm > 0:
+
+            # Diagnostic: Uniformity Audit
+            is_uniform = all(abs(v - 1.0/len(raw_evidence_dist)) < 1e-9 for v in raw_evidence_dist.values())
+            if is_uniform:
+                logger.info("Bayesian Audit: Evidence distribution is UNIFORM. Features are providing ZERO categorical info.")
+
+            if total_unnorm > 0 and not any(np.isnan(v) for v in unnorm_post.values()):
                 posteriors = {k: val / total_unnorm for k, val in unnorm_post.items()}
             else:
+                logger.warning("Bayesian Inference produced NaNs or Zero probability. Level 1 Audit: Falling back to priors.")
                 posteriors = runtime
 
             diagnostics = {
@@ -142,6 +150,7 @@ class BayesianInferenceEngine:
                 "tau_applied": base_tau,
                 "evidence_dist": raw_evidence_dist,
                 "level_contributions": level_contributions,
+                "was_uniform": is_uniform
             }
             return posteriors, diagnostics
 
