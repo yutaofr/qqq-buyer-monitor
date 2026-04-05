@@ -138,23 +138,53 @@ def test_bayesian_integrity_multiplicative():
         assert abs(posteriors[r] - expected_post) < 1e-7, (
             f"Bayesian integrity violation in regime {r}: {posteriors[r]} != {expected_post}"
         )
-    logger.info("Bayesian Integrity Audit passed (Multiplicative Identity Verified).")
+
+    # Hardening: Production Tau Check (tau=3.0)
+    logger.info("Verifying Production Tau stability (tau=3.0)...")
+    posteriors_v14, diagnostics_v14 = engine.infer_gaussian_nb_posterior(
+        classifier=gnb, evidence_frame=obs, tau=3.0, runtime_priors={"0": 0.5, "1": 0.5}
+    )
+    assert not np.isnan(list(posteriors_v14.values())).any(), "Numerical instability (NaN) detected at tau=3.0"
+    assert "evidence_dist" in diagnostics_v14, "Missing evidence distribution in V14 diagnostics"
+
+    logger.info("Bayesian Integrity Audit passed (Multiplicative Identity & V14 Stability Verified).")
 
 
 def test_tau_sensitivity_analysis():
-    """Forensic Audit: Tau Sensitivity Sweep."""
+    """Forensic Audit: Tau Sensitivity Sweep to ensure monotonic confidence scaling."""
     logger.info("Running Tau Sensitivity Analysis...")
-    # This would require real data and a trained classifier.
-    # For now, we simulate scores or use a small slice of real data.
-    # Goal: Report OOS relative Brier improvement.
-    pass
+    gnb = GaussianNB()
+    X = np.array([[1.0, 1.0], [1.1, 1.1], [5.0, 5.0], [5.1, 5.1]])
+    y = np.array([0, 0, 1, 1])
+    gnb.fit(X, y)
+
+    engine = BayesianInferenceEngine({}, {"0": 0.5, "1": 0.5})
+    obs = pd.DataFrame([[1.2, 1.2]], columns=["f1", "f2"]) # Very close to class 0
+
+    taus = [0.5, 1.0, 3.0, 10.0]
+    results = []
+
+    for tau in taus:
+        post, _ = engine.infer_gaussian_nb_posterior(
+            classifier=gnb, evidence_frame=obs, tau=tau
+        )
+        results.append(post["0"])
+
+    # High Tau should lead to lower confidence (closer to prior 0.5)
+    # Low Tau should lead to higher confidence (closer to 1.0)
+    for i in range(len(results) - 1):
+        assert results[i] >= results[i+1], f"Non-monotonic confidence scaling at tau={taus[i+1]}"
+        logger.info(f"  Tau={taus[i]:4.1f} | Confidence={results[i]:.4f}")
+
+    logger.info("Tau Sensitivity Audit passed (Monotonicity Verified).")
 
 
 def test_cv_leakage_isolation():
     """Forensic Test: Ensure StandardScaler never sees future or test fold data."""
     logger.info("Running CV Leakage Isolation Audit...")
     from sklearn.preprocessing import StandardScaler
-    from src.engine.baseline.engine import _select_regularization_c, _valid_time_splits
+
+    from src.engine.baseline.engine import _valid_time_splits
 
     # Create dummy data with a massive outlier in the "future" (last fold)
     X = pd.DataFrame({
@@ -164,7 +194,7 @@ def test_cv_leakage_isolation():
 
     splits = _valid_time_splits(y, n_splits=3, gap=0)
 
-    for train_idx, test_idx in splits:
+    for train_idx, _test_idx in splits:
         # Manually fit a scaler on the training slice
         scaler = StandardScaler()
         scaler.fit(X.iloc[train_idx])
@@ -173,7 +203,10 @@ def test_cv_leakage_isolation():
         # even when training on the first 100 samples.
         # Max training index for first fold is around 37.
         if train_idx.max() < 100:
-            assert scaler.mean_[0] < 5.0, f"LEAKAGE DETECTED: Scaler mean {scaler.mean_[0]} contaminated by future outlier."
+            assert scaler.mean_[0] < 5.0, (
+                f"LEAKAGE CRITICAL: Scaler mean {scaler.mean_[0]} contaminated by future outlier. "
+                f"Training set up to {train_idx.max()}, but outlier at index 100+ influenced normalization."
+            )
 
     logger.info("CV Leakage Isolation Audit passed.")
 
