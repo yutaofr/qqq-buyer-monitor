@@ -38,11 +38,19 @@ def validate_coefficients(model, feature_names: list) -> bool:
         )
         is_valid = False
 
-    # 3. Liquidity Direction Check (Left Tail Risk Alignment)
-    liquidity_key = [k for k in coefs if "liquidity" in k]
-    if liquidity_key and coefs[liquidity_key[0]] < 0:
+    # 2. Growth Direction Check: +Growth -> -Prob (- Coeff)
+    growth_key = [k for k in coefs if "growth" in k]
+    if growth_key and coefs[growth_key[0]] > 0:
         logger.warning(
-            f"!!! Audit Failed: {liquidity_key[0]} is {coefs[liquidity_key[0]]:.4f} (Expected +) !!! Details: {coefs}"
+            f"!!! Audit Failed: {growth_key[0]} is {coefs[growth_key[0]]:.4f} (Expected -) !!! Details: {coefs}"
+        )
+        is_valid = False
+
+    # 3. Liquidity Direction Check (Left Tail Risk Alignment): +Liquidity -> -Prob (- Coeff)
+    liquidity_key = [k for k in coefs if "liquidity" in k]
+    if liquidity_key and coefs[liquidity_key[0]] > 0:
+        logger.warning(
+            f"!!! Audit Failed: {liquidity_key[0]} is {coefs[liquidity_key[0]]:.4f} (Expected -) !!! Details: {coefs}"
         )
         is_valid = False
 
@@ -88,18 +96,26 @@ def run_baseline_inference(price_history: pd.Series = None) -> dict:
             y_tractor = generate_baseline_target(spy_close, data["VIXCLS"])
             c_idx = X_tractor.index.intersection(y_tractor.index)
             if len(c_idx) > 100:
-                model_t = train_baseline_model(X_tractor.loc[c_idx], y_tractor.loc[c_idx])
-                # Physical Audit
-                if validate_coefficients(model_t, X_tractor.columns.tolist()):
-                    prob_t = float(
-                        predict_baseline_crisis_prob(model_t, X_tractor.iloc[[-1]]).iloc[0]
-                    )
-                    status_t = "success"
-                    if "BAMLH0A0HYM2" in metadata["degraded"] or "VIXCLS" in metadata["degraded"]:
-                        status_t = "degraded_inputs"
-                    results["tractor"] = {"prob": prob_t, "status": status_t}
-                else:
-                    results["tractor"]["status"] = "audit_failed_overfitting"
+                # v14.8 Hardening: Enable constrained fallback for Mud Tractor
+                bounds_t = {
+                    "growth_composite": (None, 0.0),
+                    "liquidity_composite": (None, 0.0),
+                    "stress_composite": (0.0, None),
+                }
+                model_t = train_baseline_model(
+                    X_tractor.loc[c_idx],
+                    y_tractor.loc[c_idx],
+                    audit_fn=validate_coefficients,
+                    bounds=bounds_t,
+                )
+
+                prob_t = float(predict_baseline_crisis_prob(model_t, X_tractor.iloc[[-1]]).iloc[0])
+                status_t = "success"
+                if getattr(model_t, "constrained_flag", False):
+                    status_t = "success_constrained_audit"
+                if "BAMLH0A0HYM2" in metadata["degraded"] or "VIXCLS" in metadata["degraded"]:
+                    status_t = "degraded_inputs"
+                results["tractor"] = {"prob": prob_t, "status": status_t}
             else:
                 results["tractor"]["status"] = "insufficient_sample"
         except Exception as e:
@@ -143,7 +159,10 @@ def run_baseline_inference(price_history: pd.Series = None) -> dict:
                 if "^VXN" in metadata["degraded"] or "^VXN" not in data.columns:
                     status_s = "degraded_missing_vxn"
 
-                results["sidecar"] = {"prob": prob_s if 'prob_s' in locals() else 0.0, "status": status_s}
+                results["sidecar"] = {
+                    "prob": prob_s if "prob_s" in locals() else 0.0,
+                    "status": status_s,
+                }
             else:
                 status_s = "insufficient_sample"
                 if "^VXN" in metadata["degraded"] or "^VXN" not in data.columns:
@@ -165,7 +184,11 @@ def run_baseline_inference(price_history: pd.Series = None) -> dict:
 
 
 def calculate_baseline_oos_series(
-    data: pd.DataFrame, target_spy: pd.Series, target_qqq: pd.Series, start_date: str = "2018-01-01"
+    data: pd.DataFrame,
+    target_spy: pd.Series,
+    target_qqq: pd.Series,
+    start_date: str = "2018-01-01",
+    horizon: int = 20,
 ) -> pd.DataFrame:
     """
     Batch helper for Full Panorama Backtest (v14.7).
@@ -194,15 +217,35 @@ def calculate_baseline_oos_series(
     for i, current_dt in enumerate(dates):
         # Re-train every 21 trading days (approx 1 month)
         if i % 21 == 0:
-            # Training window is data point PRIOR to current_dt
-            train_idx_t = X_t.index[X_t.index < current_dt].intersection(target_spy.index)
-            train_idx_s = X_s.index[X_s.index < current_dt].intersection(target_qqq_valid.index)
+            # PIT-Audit (MAJOR): Purge temporal leakage by introducing a horizon gap.
+            # If target at time t depends on data up to t + horizon,
+            # then at inference time current_dt, we can only safely use targets
+            # whose observation window is entirely in the PAST.
+            # v14.8 Hardening: Use horizon + 3-day buffer for settlement/reporting safety.
+            effective_cutoff = current_dt - pd.offsets.BDay(horizon + 3)
+
+            train_idx_t = X_t.index[X_t.index <= effective_cutoff].intersection(target_spy.index)
+            train_idx_s = X_s.index[X_s.index <= effective_cutoff].intersection(
+                target_qqq_valid.index
+            )
 
             # Minimum sample size requirement (inclusive threshold for first-window hydration)
             if len(train_idx_t) >= 250:
-                model_t = train_baseline_model(X_t.loc[train_idx_t], target_spy.loc[train_idx_t])
+                bounds_t = {
+                    "growth_composite": (None, 0.0),
+                    "liquidity_composite": (None, 0.0),
+                    "stress_composite": (0.0, None),
+                }
+                model_t = train_baseline_model(
+                    X_t.loc[train_idx_t],
+                    target_spy.loc[train_idx_t],
+                    audit_fn=validate_coefficients,
+                    bounds=bounds_t,
+                )
             if len(train_idx_s) >= 250:
-                model_s = train_sidecar_model(X_s.loc[train_idx_s], target_qqq_valid.loc[train_idx_s])
+                model_s = train_sidecar_model(
+                    X_s.loc[train_idx_s], target_qqq_valid.loc[train_idx_s]
+                )
 
         # Predict T0 with the model trained on data UP TO T-1
         if model_t is not None:

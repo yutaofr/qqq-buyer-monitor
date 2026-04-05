@@ -26,7 +26,9 @@ def generate_baseline_target(
         if window.isna().any() or vix_window.isna().any() or pd.isna(price_series.iloc[i]):
             y.iloc[i] = np.nan
             continue
-        if ((price_series.iloc[i] - window.min()) / price_series.iloc[i] > 0.08) or vix_window.max() > 30:
+        if (
+            (price_series.iloc[i] - window.min()) / price_series.iloc[i] > 0.08
+        ) or vix_window.max() > 30:
             y.iloc[i] = 1
     y.iloc[-horizon:] = np.nan
     return y.dropna()
@@ -49,12 +51,14 @@ def run_ac2_label_permutation_test(X: pd.DataFrame, y: pd.Series, n_shuffles: in
             if (i - start_idx) % cadence == 0:
                 # PIT Gap: Ensure training set excludes targets that 'saw' the future data at index i.
                 # v14.8 Hardening: Use horizon + 3-day buffer (23 business days).
-                effective_cutoff = i - 23 
+                effective_cutoff = i - 23
                 y_train = y_shuffled_ser.iloc[:effective_cutoff]
                 if len(np.unique(y_train)) > 1:
                     model = train_baseline_model(X.iloc[:effective_cutoff], y_train)
             if model is not None:
-                all_oos_probs.append(float(predict_baseline_crisis_prob(model, X.iloc[[i]]).iloc[0]))
+                all_oos_probs.append(
+                    float(predict_baseline_crisis_prob(model, X.iloc[[i]]).iloc[0])
+                )
                 all_oos_targets.append(y_shuffled_ser.iloc[i])
         if all_oos_probs and len(np.unique(all_oos_targets)) > 1:
             aucs.append(roc_auc_score(all_oos_targets, all_oos_probs))
@@ -70,7 +74,9 @@ def run_ac2_leakage_detection():
     for i in range(1, n):
         latent[i] = 0.95 * latent[i - 1] + rng.standard_normal()
     y = pd.Series((latent > 0).astype(int), index=dates)
-    X_safe = pd.DataFrame(rng.standard_normal((n, 3)), index=dates, columns=["feat_0", "feat_1", "feat_2"])
+    X_safe = pd.DataFrame(
+        rng.standard_normal((n, 3)), index=dates, columns=["feat_0", "feat_1", "feat_2"]
+    )
     X_leaky = X_safe.copy()
     X_leaky["future_label"] = pd.Series(y.values, index=dates).shift(-1).fillna(0).astype(float)
 
@@ -83,7 +89,9 @@ def run_ac2_leakage_detection():
             if (i - start_idx) % 100 == 0:
                 # Apply horizon + 3-day gap (23 business days)
                 effective_cutoff = i - 23
-                model = train_baseline_model(features.iloc[:effective_cutoff], y.iloc[:effective_cutoff])
+                model = train_baseline_model(
+                    features.iloc[:effective_cutoff], y.iloc[:effective_cutoff]
+                )
             if model is not None:
                 probs.append(float(predict_baseline_crisis_prob(model, features.iloc[[i]]).iloc[0]))
                 targets.append(int(y.iloc[i]))
@@ -98,7 +106,9 @@ def run_ac2_leakage_detection():
             effective_cutoff = i - 23
             model = train_baseline_model(X_safe.iloc[:effective_cutoff], y.iloc[:effective_cutoff])
         if model is not None:
-            pit_safe_probs.append(float(predict_baseline_crisis_prob(model, X_safe.iloc[[i]]).iloc[0]))
+            pit_safe_probs.append(
+                float(predict_baseline_crisis_prob(model, X_safe.iloc[[i]]).iloc[0])
+            )
             targets.append(int(y.iloc[i]))
 
     auc_pit = roc_auc_score(targets, pit_safe_probs) if len(np.unique(targets)) > 1 else 0.5
@@ -107,13 +117,15 @@ def run_ac2_leakage_detection():
     return {
         "pit_safe_auc": float(auc_pit),
         "leaky_auc": float(auc_leaky),
-        "leakage_detected": bool(auc_leaky > auc_pit + 0.1)
+        "leakage_detected": bool(auc_leaky > auc_pit + 0.1),
     }
 
 
 def plot_ac3_reliability_diagram(y_true, y_prob, n_bins=5, save_path=None):
     if len(np.unique(y_prob)) < 2:
-        logger.warning("AC-3: Probability collapse detected (all values same). Calibration invalid.")
+        logger.warning(
+            "AC-3: Probability collapse detected (all values same). Calibration invalid."
+        )
         return None, None
 
     prob_true, prob_pred = calibration_curve(y_true, y_prob, n_bins=n_bins)

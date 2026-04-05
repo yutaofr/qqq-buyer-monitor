@@ -10,9 +10,12 @@ from src.engine.baseline.data_loader import load_all_baseline_data
 def mock_macro(monkeypatch):
     mock = MagicMock()
     # Ensure ALFRED path is also mocked to avoid hitting real API/cache
-    monkeypatch.setattr("src.engine.baseline.data_loader.fetch_fred_api", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "src.engine.baseline.data_loader.fetch_fred_api", lambda *args, **kwargs: None
+    )
     monkeypatch.setattr("src.engine.baseline.data_loader.fetch_fred_data", mock)
     return mock
+
 
 def test_pit_no_lookahead(mock_macro):
     """
@@ -21,16 +24,12 @@ def test_pit_no_lookahead(mock_macro):
     Effective Date (22 BDays): ~2020-02-03
     """
     # 1. Create a monthly observation
-    ipman_raw = pd.DataFrame({
-        "observation_date": ["2020-01-01"],
-        "IPMAN": [55.0]
-    })
+    ipman_raw = pd.DataFrame({"observation_date": ["2020-01-01"], "IPMAN": [55.0]})
 
     # 2. Create daily price/vix data that spans the gap
-    vix_raw = pd.DataFrame({
-        "observation_date": pd.date_range("2019-12-01", "2020-03-01", freq="B"),
-        "VIXCLS": 20.0
-    })
+    vix_raw = pd.DataFrame(
+        {"observation_date": pd.date_range("2019-12-01", "2020-03-01", freq="B"), "VIXCLS": 20.0}
+    )
 
     def side_effect(series_id, **kwargs):
         if series_id == "IPMAN":

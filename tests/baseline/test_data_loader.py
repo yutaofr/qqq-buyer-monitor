@@ -12,7 +12,9 @@ def mock_macro(monkeypatch):
     """Fixture to mock src.collector.macro locally for each test."""
     mock = MagicMock()
     # Ensure ALFRED path is also mocked to avoid hitting real API/cache
-    monkeypatch.setattr("src.engine.baseline.data_loader.fetch_fred_api", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "src.engine.baseline.data_loader.fetch_fred_api", lambda *args, **kwargs: None
+    )
     # Use monkeypatch to safely mock the dependency in the module where it's used
     monkeypatch.setattr("src.engine.baseline.data_loader.fetch_fred_data", mock)
     return mock
@@ -20,9 +22,7 @@ def mock_macro(monkeypatch):
 
 def test_fetch_baseline_series_success(mock_macro):
     # Daily series should have 1-day lag
-    mock_df = pd.DataFrame(
-        {"observation_date": ["2020-01-01"], "VIXCLS": [15.0]}
-    )
+    mock_df = pd.DataFrame({"observation_date": ["2020-01-01"], "VIXCLS": [15.0]})
     mock_macro.return_value = mock_df
 
     df = fetch_baseline_series("VIXCLS")
@@ -51,7 +51,9 @@ def test_fetch_baseline_series_uses_alfred_vintage(monkeypatch):
     monkeypatch.setattr("src.engine.baseline.data_loader.fetch_fred_api", api_side_effect)
     monkeypatch.setattr(
         "src.engine.baseline.data_loader.fetch_fred_data",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("fallback path should not run")),
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("fallback path should not run")
+        ),
     )
 
     df = fetch_baseline_series("IPMAN")
@@ -66,7 +68,12 @@ def test_load_all_baseline_data_pit(mock_macro):
     # IPMAN (Monthly) observed on 2020-01-01
     ipman = pd.DataFrame({"observation_date": ["2020-01-01"], "IPMAN": [50.0]})
     # VIXCLS (Daily) observed on 2020-01-01, 2020-01-02
-    vix = pd.DataFrame({"observation_date": ["2020-01-01", "2020-01-02", "2020-02-03"], "VIXCLS": [15.0, 16.0, 17.0]})
+    vix = pd.DataFrame(
+        {
+            "observation_date": ["2020-01-01", "2020-01-02", "2020-02-03"],
+            "VIXCLS": [15.0, 16.0, 17.0],
+        }
+    )
 
     def side_effect(series_id, **kwargs):
         if series_id == "IPMAN":

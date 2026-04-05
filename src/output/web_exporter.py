@@ -198,7 +198,9 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                     "aggressive_beta": metadata.get("v14_s5_aggressive_beta", result.target_beta),
                     "system_floor": 0.5,
                 },
-                "shadow_mode": bool(metadata.get("v14_shadow_mode", not metadata.get("v14_baseline_active", False))),
+                "shadow_mode": bool(
+                    metadata.get("v14_shadow_mode", not metadata.get("v14_baseline_active", False))
+                ),
             },
         }
         path = Path(output_path) if output_path else Path("src/web/public/status.json")

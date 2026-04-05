@@ -5,6 +5,7 @@ from sklearn.metrics import brier_score_loss
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+
 from src.engine.baseline.constrained_model import ConstrainedLogisticRegression
 
 RANDOM_SEED = 42
@@ -32,7 +33,9 @@ def _standardize(X: pd.DataFrame, mean: pd.Series, scale: pd.Series) -> pd.DataF
     return (filled - mean) / scale
 
 
-def _valid_time_splits(y: pd.Series, n_splits: int = 5, gap: int = 20) -> list[tuple[np.ndarray, np.ndarray]]:
+def _valid_time_splits(
+    y: pd.Series, n_splits: int = 5, gap: int = 20
+) -> list[tuple[np.ndarray, np.ndarray]]:
     splits: list[tuple[np.ndarray, np.ndarray]] = []
     # v14.8 Hardening: Fixed random_state for deterministic CV
     for train_idx, test_idx in TimeSeriesSplit(n_splits=n_splits, gap=gap).split(y):
@@ -44,7 +47,9 @@ def _valid_time_splits(y: pd.Series, n_splits: int = 5, gap: int = 20) -> list[t
 
 
 def _predict_scores(model, X: pd.DataFrame) -> np.ndarray:
-    return np.einsum("ij,j->i", X.to_numpy(dtype=float), model.coef_[0]) + float(model.intercept_[0])
+    return np.einsum("ij,j->i", X.to_numpy(dtype=float), model.coef_[0]) + float(
+        model.intercept_[0]
+    )
 
 
 def _predict_probs(model, X: pd.DataFrame) -> np.ndarray:
@@ -64,10 +69,17 @@ def _select_regularization_c(
         losses: list[float] = []
         for train_idx, test_idx in splits:
             # PIT-Safe: StandardScaler is fitted ONLY on the training indices of the current fold.
-            pipeline = Pipeline([
-                ("scaler", StandardScaler()),
-                ("model", LogisticRegression(C=float(c), solver="liblinear", max_iter=2000, random_state=RANDOM_SEED)),
-            ])
+            pipeline = Pipeline(
+                [
+                    ("scaler", StandardScaler()),
+                    (
+                        "model",
+                        LogisticRegression(
+                            C=float(c), solver="liblinear", max_iter=2000, random_state=RANDOM_SEED
+                        ),
+                    ),
+                ]
+            )
             pipeline.fit(X.iloc[train_idx], y.iloc[train_idx])
             # Use predict_proba from the pipeline to ensure test features are scaled using training stats.
             probs = pipeline.predict_proba(X.iloc[test_idx])[:, 1]
@@ -104,10 +116,17 @@ def train_baseline_model(X: pd.DataFrame, y: pd.Series, audit_fn=None, bounds=No
     best_c = _select_regularization_c(X_clean, y_clean, splits)
 
     # 2. Final Training Phase
-    pipeline = Pipeline([
-        ("scaler", StandardScaler()),
-        ("model", LogisticRegression(C=best_c, solver="liblinear", max_iter=2000, random_state=RANDOM_SEED)),
-    ])
+    pipeline = Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            (
+                "model",
+                LogisticRegression(
+                    C=best_c, solver="liblinear", max_iter=2000, random_state=RANDOM_SEED
+                ),
+            ),
+        ]
+    )
     pipeline.fit(X_clean, y_clean)
 
     # 3. Physical Audit & Constrained Fallback
@@ -123,8 +142,10 @@ def train_baseline_model(X: pd.DataFrame, y: pd.Series, audit_fn=None, bounds=No
         X_scaled = (X_clean - mean) / scale
 
         # Prepare bounds list for ConstrainedLogisticRegression
-        bounds_list = [bounds.get(name, (None, None)) if bounds else (None, None) for name in feature_names]
-        
+        bounds_list = [
+            bounds.get(name, (None, None)) if bounds else (None, None) for name in feature_names
+        ]
+
         constrained_model = ConstrainedLogisticRegression(C=best_c, bounds=bounds_list)
         constrained_model.fit(X_scaled, y_clean)
 

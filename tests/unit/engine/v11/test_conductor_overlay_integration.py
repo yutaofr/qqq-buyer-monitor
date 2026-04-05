@@ -99,9 +99,7 @@ def test_conductor_exports_overlay_block_and_v13_snapshot(tmp_path):
     assert result["overlay"]["beta_overlay_multiplier"] <= 1.0
     assert result["overlay"]["deployment_overlay_multiplier"] >= 0.5
     assert result["overlay_beta"] == pytest.approx(
-        clamp_beta(
-            result["protected_beta"] * result["overlay"]["beta_overlay_multiplier"]
-        )
+        clamp_beta(result["protected_beta"] * result["overlay"]["beta_overlay_multiplier"])
     )
 
     snapshot_path = snapshot_dir / f"snapshot_{t0.index[-1].date().isoformat()}.json"

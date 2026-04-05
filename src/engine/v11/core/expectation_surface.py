@@ -76,7 +76,9 @@ def expected_policy_for_regime(
 
 
 def deployment_state_rank(state: str) -> int:
-    return DEPLOYMENT_STATE_RANK.get(str(state), DEPLOYMENT_STATE_RANK[DeploymentState.DEPLOY_BASE.value])
+    return DEPLOYMENT_STATE_RANK.get(
+        str(state), DEPLOYMENT_STATE_RANK[DeploymentState.DEPLOY_BASE.value]
+    )
 
 
 def deployment_cash_notional(

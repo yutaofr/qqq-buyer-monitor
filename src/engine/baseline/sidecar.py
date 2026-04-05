@@ -5,7 +5,6 @@ import pandas as pd
 
 from src.engine.baseline.engine import calculate_composites, rolling_zscore, train_baseline_model
 from src.engine.baseline.targets import align_target_inputs
-from src.engine.baseline.constrained_model import ConstrainedLogisticRegression
 
 logger = logging.getLogger(__name__)
 

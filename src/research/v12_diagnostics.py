@@ -214,14 +214,20 @@ def _build_posterior_alignment(audit: pd.DataFrame) -> dict[str, Any]:
             "mean_true_regime_rank": float(ranks[true_regime_col].mean()),
             "mean_entropy": float(pd.to_numeric(frame["entropy"], errors="coerce").mean()),
             "mean_expected_l1_error": float(l1_error.mean()),
-            **{f"mean_prob_{regime}": probability for regime, probability in mean_posterior.items()},
+            **{
+                f"mean_prob_{regime}": probability for regime, probability in mean_posterior.items()
+            },
         }
 
     return {
         "overall": {
             "rows": int(len(aligned)),
-            "mean_true_regime_probability": float(np.mean(overall_true_prob)) if overall_true_prob else 0.0,
-            "mean_true_regime_rank": float(np.mean(overall_true_rank)) if overall_true_rank else 0.0,
+            "mean_true_regime_probability": float(np.mean(overall_true_prob))
+            if overall_true_prob
+            else 0.0,
+            "mean_true_regime_rank": float(np.mean(overall_true_rank))
+            if overall_true_rank
+            else 0.0,
             "mean_expected_l1_error": float(np.mean(overall_l1_error)) if overall_l1_error else 0.0,
         },
         "by_regime": by_regime,

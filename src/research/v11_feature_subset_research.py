@@ -117,7 +117,9 @@ def flatten_window_report(window_name: str, report: dict[str, Any]) -> dict[str,
         if metrics
     ]
     regime_true_ranks = [
-        float(metrics.get("mean_true_regime_rank", 0.0)) for metrics in by_regime.values() if metrics
+        float(metrics.get("mean_true_regime_rank", 0.0))
+        for metrics in by_regime.values()
+        if metrics
     ]
 
     prefix = f"{window_name}_"
@@ -135,7 +137,9 @@ def flatten_window_report(window_name: str, report: dict[str, Any]) -> dict[str,
         f"{prefix}min_regime_true_probability": float(min(regime_true_probs))
         if regime_true_probs
         else 0.0,
-        f"{prefix}max_regime_true_rank": float(max(regime_true_ranks)) if regime_true_ranks else 0.0,
+        f"{prefix}max_regime_true_rank": float(max(regime_true_ranks))
+        if regime_true_ranks
+        else 0.0,
     }
 
 
@@ -172,8 +176,12 @@ def build_research_frame(
     from src.engine.v11.probability_seeder import ProbabilitySeeder
     from src.regime_topology import canonicalize_regime_sequence
 
-    macro_df = pd.read_csv(dataset_path, parse_dates=["observation_date"]).set_index("observation_date")
-    regime_df = pd.read_csv(regime_path, parse_dates=["observation_date"]).set_index("observation_date")
+    macro_df = pd.read_csv(dataset_path, parse_dates=["observation_date"]).set_index(
+        "observation_date"
+    )
+    regime_df = pd.read_csv(regime_path, parse_dates=["observation_date"]).set_index(
+        "observation_date"
+    )
 
     macro_df.index = pd.to_datetime(macro_df.index).tz_localize(None).normalize()
     regime_df.index = pd.to_datetime(regime_df.index).tz_localize(None).normalize()
@@ -197,7 +205,9 @@ def build_research_frame(
     index_name = str(features.index.name or "index")
     full_df = full_df.rename(columns={index_name: "date", "index": "date"})
     full_df = full_df.sort_values("date").reset_index(drop=True)
-    ordered_regimes = canonicalize_regime_sequence(full_df["regime"].astype(str).unique(), include_all=False)
+    ordered_regimes = canonicalize_regime_sequence(
+        full_df["regime"].astype(str).unique(), include_all=False
+    )
 
     return full_df, ordered_regimes, {"feature_names": list(seeder.feature_names())}
 

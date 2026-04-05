@@ -296,10 +296,7 @@ def test_run_v11_audit_emits_expectation_and_pacing_alignment_columns(tmp_path, 
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * 120
-            + ["RECOVERY"] * 60
-            + ["LATE_CYCLE"] * 80
-            + ["BUST"] * 60,
+            "regime": ["MID_CYCLE"] * 120 + ["RECOVERY"] * 60 + ["LATE_CYCLE"] * 80 + ["BUST"] * 60,
         }
     ).to_csv(regime_path, index=False)
 
