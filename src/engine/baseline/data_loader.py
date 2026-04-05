@@ -18,6 +18,7 @@ BASELINE_SERIES_MAP = {
     "stress_vxn": "^VXN",
     "price_spy": "SPY",
     "price_qqq": "QQQ",
+    "real_yield": "DFII10",
 }
 
 # Conservative release lags (in business days) as per SRD / V14 PIT requirements
@@ -32,6 +33,7 @@ RELEASE_LAG_MAP = {
     "^VXN": 1,
     "SPY": 1,
     "QQQ": 1,
+    "DFII10": 1,
 }
 
 ALFRED_REALTIME_START = "1776-07-04"
@@ -231,6 +233,20 @@ def load_all_baseline_data(timeout: int = 15) -> pd.DataFrame:
     metadata = {"degraded": []}
     vintage_modes: list[str] = []
 
+    # Canonical Mapping for Conductor Parity (SRD-v13.4)
+    CANONICAL_NAME_MAP = {
+        BASELINE_SERIES_MAP["stress_credit"]: "credit_spread_bps",
+        "DFII10": "real_yield_10y_pct",
+        BASELINE_SERIES_MAP["liquidity_m2"]: "net_liquidity_usd_bn",
+        BASELINE_SERIES_MAP["liquidity_slope"]: "liquidity_slope",
+        BASELINE_SERIES_MAP["stress_vix"]: "stress_vix",
+        BASELINE_SERIES_MAP["stress_vxn"]: "stress_vxn",
+        BASELINE_SERIES_MAP["growth_pmi"]: "ipman_raw",
+        "growth_margin": "growth_margin",
+        "SPY": "spy_close",
+        "QQQ": "qqq_close",
+    }
+
     # 1. IPMAN (Monthly)
     ipman = fetch_baseline_series(BASELINE_SERIES_MAP["growth_pmi"], timeout=timeout)
     if ipman is not None:
@@ -308,6 +324,13 @@ def load_all_baseline_data(timeout: int = 15) -> pd.DataFrame:
     else:
         metadata["degraded"].append("QQQ")
 
+    # 10. Real Yield (Daily)
+    ry = fetch_baseline_series(BASELINE_SERIES_MAP["real_yield"], timeout=timeout)
+    if ry is not None:
+        frames.append(ry[[BASELINE_SERIES_MAP["real_yield"]]])
+    else:
+        metadata["degraded"].append("DFII10")
+
     if not frames:
         return pd.DataFrame()
 
@@ -320,6 +343,12 @@ def load_all_baseline_data(timeout: int = 15) -> pd.DataFrame:
     # We create a daily range to ensure we have a point for every trading day
     daily_idx = pd.date_range(start=combined.index.min(), end=combined.index.max(), freq="B")
     combined = combined.reindex(daily_idx).ffill()
+
+    # Final Canonical Mapping for V11/V12 Conductor Parity (SRD-v13.4)
+    # Applied as duplication to maintain backward compatibility with legacy V14 baseline engines.
+    for src_id, canonical_name in CANONICAL_NAME_MAP.items():
+        if src_id in combined.columns:
+            combined[canonical_name] = combined[src_id]
 
     logger.debug(f"Combined columns after daily reindex: {combined.columns.tolist()}")
     logger.info(f"Loaded baseline data: {len(combined)} rows, Columns: {combined.columns.tolist()}")

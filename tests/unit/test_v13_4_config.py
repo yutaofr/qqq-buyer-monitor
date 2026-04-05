@@ -51,15 +51,15 @@ class TestV13_4Config(unittest.TestCase):
         cls.registry = json.loads(path.read_text())
 
     def test_feature_weight_mapping(self):
-        # 1. Direct matches
-        self.assertEqual(get_v13_4_feature_weight("credit_spread_bps", self.registry), 2.5)
-        self.assertEqual(get_v13_4_feature_weight("net_liquidity_usd_bn", self.registry), 2.0)
+        # 1. Direct matches (v13.7-ULTIMA keys)
+        self.assertEqual(get_v13_4_feature_weight("spread_21d", self.registry), 2.5)
+        self.assertEqual(get_v13_4_feature_weight("liquidity_252d", self.registry), 2.0)
 
         # 2. Lineage inheritance (Longest prefix match)
         self.assertEqual(
-            get_v13_4_feature_weight("credit_spread_bps_21d_accel", self.registry), 2.5
+            get_v13_4_feature_weight("spread_21d_accel", self.registry), 2.5
         )
-        self.assertEqual(get_v13_4_feature_weight("move_21d_orth", self.registry), 1.5)
+        self.assertEqual(get_v13_4_feature_weight("move_21d", self.registry), 1.5)
 
         # 3. Fallback
         self.assertEqual(get_v13_4_feature_weight("unseen_factor", self.registry), 1.0)

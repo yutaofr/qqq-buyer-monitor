@@ -153,11 +153,11 @@ def test_conductor_applies_entropy_penalty_when_v12_source_is_degraded(tmp_path)
     )
 
     t0 = macro_df.tail(1).set_index("observation_date")
-    t0["credit_spread_bps"] = np.nan  # V13.7: Direct value invalidation
+    t0["credit_spread_bps"] = np.nan
     result = conductor.daily_run(t0)
 
     assert result["data_quality"] < 1.0
-    assert result["quality_audit"]["reason"] in ("DEGRADED_SOURCE", "CORE_SENSOR_FAILURE")
+    assert result["quality_audit"]["reason"] == "CORE_SENSOR_FAILURE"
     assert (
         result["quality_audit"]["effective_entropy"] > result["quality_audit"]["posterior_entropy"]
     )
