@@ -272,9 +272,29 @@
     </div>
 
     <script>
-        const PROD_BLOB_URL = 'https://rtmr1b9ayzxiugfu.public.blob.vercel-storage.com/prod/status.json';
-        const LOCAL_JSON = './status.json';
-        
+        // Environment & Data Source Configuration
+        const DATA_SOURCES = {
+            prod: 'https://rtmr1b9ayzxiugfu.public.blob.vercel-storage.com/prod/status.json',
+            dev: 'https://rtmr1b9ayzxiugfu.public.blob.vercel-storage.com/dev/status.json',
+            local: './status.json'
+        };
+
+        function getDataSourceUrl() {
+            const params = new URLSearchParams(window.location.search);
+            const source = params.get('source');
+            if (source) return source;
+
+            const env = params.get('env');
+            if (env && DATA_SOURCES[env]) return DATA_SOURCES[env];
+
+            // Auto-detect local development
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                return DATA_SOURCES.local;
+            }
+
+            return DATA_SOURCES.prod;
+        }
+
         const TRANSLATIONS = {
             'en': {
                 'ui-page-title': 'QQQ Barometer - Probabilistic Dashboard',
@@ -650,22 +670,28 @@
             const sourceLabel = document.getElementById('data-source');
             try {
                 let data = null;
+                const primaryUrl = getDataSourceUrl();
+                
                 try {
-                    const res = await fetch(PROD_BLOB_URL + '?t=' + Date.now(), { method: 'GET', mode: 'cors', cache: 'no-store' });
+                    const res = await fetch(primaryUrl + '?t=' + Date.now(), { method: 'GET', mode: 'cors', cache: 'no-store' });
                     if (res.ok) { 
                         data = await res.json(); 
-                        sourceLabel.textContent = TRANSLATIONS[currentLang].status.CLOUD_SYNCED; 
-                        sourceLabel.className = "text-emerald-500"; 
+                        const isProduction = primaryUrl === DATA_SOURCES.prod;
+                        const statusMsg = TRANSLATIONS[currentLang].status.CLOUD_SYNCED;
+                        sourceLabel.textContent = isProduction ? statusMsg : `${statusMsg} (Test)`;
+                        sourceLabel.className = isProduction ? "text-emerald-500" : "text-blue-400"; 
                     }
                 } catch (e) {}
-                if (!data) {
-                    const res = await fetch(LOCAL_JSON + '?t=' + Date.now(), { cache: 'no-store' });
+
+                if (!data && primaryUrl !== DATA_SOURCES.local) {
+                    const res = await fetch(DATA_SOURCES.local + '?t=' + Date.now(), { cache: 'no-store' });
                     if (res.ok) { 
                         data = await res.json(); 
                         sourceLabel.textContent = TRANSLATIONS[currentLang].status.LOCAL_FALLBACK; 
                         sourceLabel.className = "text-orange-500"; 
                     }
                 }
+
                 if (!data) throw new Error("Offline");
                 lastData = data;
                 body.classList.remove('state-stale');
