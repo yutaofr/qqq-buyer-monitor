@@ -3,7 +3,7 @@
 > **Archive Notice (2026-04-01):** This document is no longer authoritative for production.
 > It reflects an exploratory multi-layer factor design that predates the current curated v11.5 runtime.
 > The active production baseline is:
-> - `docs/v11_bayesian_production_baseline_2026-03-30.md`
+> - `docs/versions/v11/v11_bayesian_production_baseline_2026-04-05.md`
 > - `docs/architecture.md`
 > - `docs/backtest_report.md`
 

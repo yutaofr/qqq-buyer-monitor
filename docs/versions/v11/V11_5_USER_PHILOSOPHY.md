@@ -440,10 +440,10 @@ docker run --rm -v $(pwd):/app -w /app qqq-monitor:py313 python scripts/run_v12_
 
 1. 读取 `data/macro_historical_dump.csv`
 2. 读取 `data/v11_poc_phase1_results.csv`
-3. 用 `ProbabilitySeeder` 生成 10 维正交特征
+3. 用 `ProbabilitySeeder` 生成当前 production contract 对应的正交特征
 4. 对每一天做 walk-forward GaussianNB 重新拟合
 5. 计算后验、熵、raw beta、stable beta、deployment state
-6. 输出 `artifacts/v12_audit/` 下的审计结果
+6. 输出 canonical 审计结果到 `artifacts/v14_mainline_audit/` 与 `artifacts/v14_mainline_diagnostics/`
 
 ```mermaid
 flowchart LR
@@ -459,13 +459,14 @@ flowchart LR
 
 ### 5.4 诊断报告看什么
 
-`artifacts/v12_diagnostics/diagnostic_report.json` 关注的不是单一准确率，而是一组更完整的证据：
+`artifacts/v14_mainline_diagnostics/diagnostic_report.json` 关注的不是单一准确率，而是一组更完整的证据：
 
 - `top1_accuracy`
 - `mean_brier`
 - `mean_entropy`
 - `raw_critical_recall`
 - `stable_critical_recall`
+- `posterior_alignment`
 - `raw_stable_divergence`
 - crisis window 逐段表现
 - `state_support`
@@ -473,32 +474,35 @@ flowchart LR
 
 ### 5.5 当前已验证结果
 
-最新锁版回测和诊断结果是：
+当前 production contract 的锁版结果是：
 
 | 指标 | 结果 |
 | :--- | :--- |
-| `top1_accuracy` | `67.38%` |
-| `stable_accuracy` | `66.68%` |
-| `mean_brier` | `0.4475` |
-| `mean_entropy` | `0.3332` |
-| `lock_incidence` | `1.21%` |
-| `stable_critical_recall` | `74.41%` |
-| `raw_critical_recall` | `73.87%` |
+| `top1_accuracy` | `68.31%` |
+| `stable_accuracy` | `67.70%` |
+| `mean_brier` | `0.4582` |
+| `mean_entropy` | `0.5892` |
+| `lock_incidence` | `0.00%` |
+| `stable_critical_recall` | `82.15%` |
+| `raw_critical_recall` | `82.15%` |
+| `mean_true_regime_probability` | `0.5436` |
+| `mean_true_regime_rank` | `1.4452` |
 
 这意味着：
 
-- v12 不再是假装“超级确定”；
-- 它更像一个真正知道自己边界在哪里的系统；
-- 它在危机段保住了防御性，但在平稳区间不再靠重复投票制造虚高准确率。
+- 主链现在不是“高墒瘫痪”，而是一个有明确边界的 4-state posterior engine；
+- 它在 `MID_CYCLE` 与 `LATE_CYCLE` 已经具备可用判别力；
+- 真正还需要继续打磨的是 turning points，尤其是 `BUST` 和 `RECOVERY`。
 
 > 通俗版：  
-> v11.5 像是“答题特别自信但有点作弊”；v12 像是“答题没那么满分，但更可信”。对防御系统来说，后者才是应该保留的。
+> 现在的 v11/v12 主链不再是“装作很确定”的系统；  
+> 它会在该保守时保守，但不会再因为 floor 或 smoothing 把长期 `QQQ` 核心仓位压碎。
 
 ### 5.5.1 回测结果图
 
-![v12 概率审计图](../artifacts/v12_audit/v12_probabilistic_audit.png)
+![v12 概率审计图](../artifacts/v14_mainline_audit/v12_probabilistic_audit.png)
 
-![v12 Beta 保真度图](../artifacts/v12_audit/v12_target_beta_fidelity.png)
+![v12 Beta 保真度图](../artifacts/v14_mainline_audit/v12_target_beta_fidelity.png)
 
 ### 5.6 危机切片的真实表现
 
@@ -522,6 +526,7 @@ v12 的改进不是“感觉更好”，而是通过受控 ablation 逐项验证
 - `core_capex_momentum` 使用 `ewma_span=3`
 - 默认 posterior mode 切到 `classifier_only`
 - active runtime topology 清理为 4-state，`CAPITULATION` 只保留为旧负载兼容别名
+- active production factor contract 收缩到 `10` 维，移除 `pmi_momentum` 和 `labor_slack`
 
 ### 6.2 为什么这些改动被接受
 
@@ -529,6 +534,7 @@ v12 的改进不是“感觉更好”，而是通过受控 ablation 逐项验证
 - `core_capex_momentum` 先平滑再扩张，能减少月度噪声的误导。
 - `classifier_only` 比 runtime reweight 更少引入额外主观先验，后验更诚实。
 - topology 清理让系统和标签空间一致，避免“看到了一个训练集中根本不存在的状态”。
+- `pmi_momentum` / `labor_slack` 在修正后的 QQQ-cycle holdout 上没有增量贡献，因此按 KISS 原则从 active contract 移除。
 
 ### 6.3 被拒绝的控制项
 
@@ -541,6 +547,8 @@ v12 的改进不是“感觉更好”，而是通过受控 ablation 逐项验证
 | `move_orth_half` | 拒绝作为默认 | 有改善，但不如完整残差化稳健 |
 | `clip_12` | 拒绝 | 基本无决定性收益 |
 | `var_smoothing=1e-5` / `1e-6` | 拒绝为默认 | Brier 有些许改善，但回报和整体判别并没有稳定提升 |
+| `drop_erp_absolute` | 拒绝 | 选择窗很好看，但 `2018+` holdout 准确率和 true-prob 退化，属于过拟合 |
+| `qqq_core_6` | 拒绝 | 因子过少，holdout accuracy/Brier/entropy 全面恶化 |
 
 ### 6.4 这些 ablation 告诉我们什么
 
@@ -550,6 +558,7 @@ v12 的改进不是“感觉更好”，而是通过受控 ablation 逐项验证
 - 因果更严格；
 - 稳定器更诚实；
 - 执行层更克制。
+- 生产合同更精简，但不是盲目删因子；只有在 holdout 上证明确实冗余的因子才会被移除。
 
 换句话说，v12 的收益来自结构修正，不来自更激进的数值微调。
 
@@ -629,17 +638,18 @@ v12 的哲学不是“更强的预测”，而是**更严的证据纪律**。
 
 ## 10. 审计与产物索引
 
-![v12 概率审计图](../artifacts/v12_audit/v12_probabilistic_audit.png)
+![v12 概率审计图](../artifacts/v14_mainline_audit/v12_probabilistic_audit.png)
 
-![v12 Beta 保真度图](../artifacts/v12_audit/v12_target_beta_fidelity.png)
+![v12 Beta 保真度图](../artifacts/v14_mainline_audit/v12_target_beta_fidelity.png)
 
-结构化产物仍保留在：
+结构化产物当前保留在：
 
-- `artifacts/v12_audit/summary.json`
-- `artifacts/v12_audit/full_audit.csv`
-- `artifacts/v12_diagnostics/diagnostic_report.json`
-- `artifacts/v12_diagnostics/crisis_windows.csv`
-- `artifacts/v12_diagnostics/beta_windows.csv`
+- `artifacts/v14_mainline_audit/summary.json`
+- `artifacts/v14_mainline_audit/full_audit.csv`
+- `artifacts/v14_mainline_diagnostics/diagnostic_report.json`
+- `artifacts/v14_mainline_diagnostics/crisis_windows.csv`
+- `artifacts/v14_mainline_diagnostics/beta_windows.csv`
+- `artifacts/v14_mainline_diagnostics/posterior_alignment.csv`
 
 ---
 

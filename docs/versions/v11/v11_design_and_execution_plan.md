@@ -1,7 +1,7 @@
 # Archived Research Note
 
 > 归档状态: Historical research only
-> 现行生产基线: `docs/v11_bayesian_production_baseline_2026-03-30.md`
+> 现行生产基线: `docs/versions/v11/v11_bayesian_production_baseline_2026-04-05.md`
 > 说明: 本文档描述的是早期设计阶段方案，现已被执行后的生产基线替代。
 
 # v11.0 Design and Execution Plan: The Cognitive Exoskeleton (Retail Edition)

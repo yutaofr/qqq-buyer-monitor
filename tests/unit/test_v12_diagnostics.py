@@ -163,6 +163,10 @@ def test_build_v12_diagnostic_report_includes_protocol_sections(
     assert "overall" in report["beta_comparison"]
     assert "2020_COVID" in report["beta_comparison"]["windows"]
     assert "overall" in report["entropy"]
+    assert "overall" in report["posterior_alignment"]
+    assert report["posterior_alignment"]["by_regime"]["RECOVERY"][
+        "mean_true_regime_probability"
+    ] == pytest.approx(0.72)
     assert "2020_COVID" in report["feature_diagnostics"]["windows"]
     assert report["feature_diagnostics"]["windows"]["2020_COVID"][
         "mean_move_spread_beta"

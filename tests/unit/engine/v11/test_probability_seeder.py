@@ -161,3 +161,24 @@ def test_seeder_can_disable_move_orthogonalization(sample_macro_df):
         diagnostics["move_21d_raw_z"],
         check_names=False,
     )
+
+
+def test_seeder_can_restrict_to_selected_features(sample_macro_df):
+    baseline = ProbabilitySeeder()
+    subset = ProbabilitySeeder(
+        selected_features=[
+            "real_yield_structural_z",
+            "liquidity_252d",
+            "erp_absolute",
+        ]
+    )
+
+    features = subset.generate_features(sample_macro_df)
+
+    assert subset.feature_names() == [
+        "real_yield_structural_z",
+        "liquidity_252d",
+        "erp_absolute",
+    ]
+    assert list(features.columns) == subset.feature_names()
+    assert baseline.contract_hash() != subset.contract_hash()
