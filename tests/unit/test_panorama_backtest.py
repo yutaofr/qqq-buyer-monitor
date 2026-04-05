@@ -23,8 +23,8 @@ def test_build_panorama_scenario_frame_respects_single_and_combined_detectors():
     diagnostics = pd.DataFrame(
         {
             "date": dates,
-            "tractor_prob": [0.05, 0.05, 0.35, 0.15],
-            "sidecar_prob": [0.04, 0.30, 0.05, 0.12],
+            "tractor_prob": [0.04, 0.04, 0.35, 0.15],
+            "sidecar_prob": [0.03, 0.30, 0.04, 0.12],
             "sidecar_valid": [True, True, True, True],
         }
     )
@@ -59,7 +59,7 @@ def test_build_panorama_scenario_frame_ignores_missing_sidecar_signal():
     diagnostics = pd.DataFrame(
         {
             "date": dates,
-            "tractor_prob": [0.30, 0.05],
+            "tractor_prob": [0.35, 0.04],
             "sidecar_prob": [float("nan"), float("nan")],
             "sidecar_valid": [False, False],
         }

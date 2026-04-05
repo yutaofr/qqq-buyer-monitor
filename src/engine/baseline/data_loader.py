@@ -140,18 +140,26 @@ def fetch_baseline_series(series_id: str, timeout: int = 15) -> pd.DataFrame | N
             logger.warning(f"YFinance fetch failed for {series_id}: {e}")
             return None
     else:
-        alfred_raw = fetch_fred_api(
-            series_id,
-            timeout=timeout,
-            observation_start=FRED_HISTORY_START,
-            realtime_start=ALFRED_REALTIME_START,
-            realtime_end=ALFRED_REALTIME_END,
-        )
+        # ALFRED Path: Only for low-frequency series with archival needs (Monthly/Quarterly)
+        # Daily series (lag=1) should skip this to avoid 400 Bad Request / No Observations on ALFRED.
+        is_daily = RELEASE_LAG_MAP.get(series_id, 1) == 1
+
+        alfred_raw = None
+        if not is_daily:
+            alfred_raw = fetch_fred_api(
+                series_id,
+                timeout=timeout,
+                observation_start=FRED_HISTORY_START,
+                realtime_start=ALFRED_REALTIME_START,
+                realtime_end=ALFRED_REALTIME_END,
+            )
+
         if alfred_raw is not None and not alfred_raw.empty and {"realtime_start", "realtime_end"}.issubset(alfred_raw.columns):
             alfred_frame = _build_alfred_visible_frame(alfred_raw, series_id)
             if alfred_frame is not None and not alfred_frame.empty:
                 return alfred_frame
 
+        # Fallback (or primary for Daily): Standard FRED path with PIT-lag
         raw = fetch_fred_data(series_id, timeout=timeout)
         if raw is None or raw.empty:
             logger.warning(f"Failed to fetch baseline series: {series_id}")
