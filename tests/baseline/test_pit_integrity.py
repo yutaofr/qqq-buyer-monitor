@@ -9,6 +9,8 @@ from src.engine.baseline.data_loader import load_all_baseline_data
 @pytest.fixture
 def mock_macro(monkeypatch):
     mock = MagicMock()
+    # Ensure ALFRED path is also mocked to avoid hitting real API/cache
+    monkeypatch.setattr("src.engine.baseline.data_loader.fetch_fred_api", lambda *args, **kwargs: None)
     monkeypatch.setattr("src.engine.baseline.data_loader.fetch_fred_data", mock)
     return mock
 

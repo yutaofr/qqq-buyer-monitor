@@ -11,6 +11,8 @@ from src.engine.baseline.data_loader import fetch_baseline_series, load_all_base
 def mock_macro(monkeypatch):
     """Fixture to mock src.collector.macro locally for each test."""
     mock = MagicMock()
+    # Ensure ALFRED path is also mocked to avoid hitting real API/cache
+    monkeypatch.setattr("src.engine.baseline.data_loader.fetch_fred_api", lambda *args, **kwargs: None)
     # Use monkeypatch to safely mock the dependency in the module where it's used
     monkeypatch.setattr("src.engine.baseline.data_loader.fetch_fred_data", mock)
     return mock
