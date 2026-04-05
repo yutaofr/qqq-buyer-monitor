@@ -8,7 +8,6 @@ from typing import Any
 
 import pandas as pd
 
-from scripts.baseline_backtest import collect_panorama_oos_artifacts
 from src.backtest import run_v11_audit
 from src.engine.panorama_backtest import (
     build_panorama_scenario_frame,
@@ -16,6 +15,8 @@ from src.engine.panorama_backtest import (
     compute_execution_metrics,
     judge_panorama_candidate,
 )
+
+from scripts.baseline_backtest import collect_panorama_oos_artifacts
 
 SCENARIOS = {
     "standard": "standard_beta",
