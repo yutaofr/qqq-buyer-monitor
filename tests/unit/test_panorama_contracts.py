@@ -37,7 +37,9 @@ def test_web_exporter_sets_shadow_mode_from_metadata(tmp_path):
             target_qld_pct=0.0,
             target_beta=0.8,
         ),
-        logic_trace=[{"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QQQ"}}],
+        logic_trace=[
+            {"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QQQ"}}
+        ],
         explanation="test",
         metadata={
             "v14_baseline_prob": 0.1,

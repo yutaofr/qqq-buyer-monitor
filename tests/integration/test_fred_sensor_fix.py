@@ -22,7 +22,9 @@ class TestFredSensorRepro(unittest.TestCase):
         # 1. Setup Mock for success
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"observations": [{"date": "2024-01-01", "value": "15.5"}]}
+        mock_response.json.return_value = {
+            "observations": [{"date": "2024-01-01", "value": "15.5"}]
+        }
         mock_get.return_value = mock_response
 
         # 2. Execute
@@ -34,7 +36,9 @@ class TestFredSensorRepro(unittest.TestCase):
         # Verify that archival params are NOT in any call for this series
         for call in mock_get.call_args_list:
             url = call[0][0]
-            self.assertNotIn("realtime_start", url, f"Found archival param in URL for Daily series: {url}")
+            self.assertNotIn(
+                "realtime_start", url, f"Found archival param in URL for Daily series: {url}"
+            )
             self.assertIn("series_id=VIXCLS", url)
 
     @patch("src.collector.macro.requests.get")
@@ -48,7 +52,12 @@ class TestFredSensorRepro(unittest.TestCase):
         # ALFRED-like response
         mock_response.json.return_value = {
             "observations": [
-                {"date": "2024-01-01", "value": "100.5", "realtime_start": "2024-01-15", "realtime_end": "9999-12-31"}
+                {
+                    "date": "2024-01-01",
+                    "value": "100.5",
+                    "realtime_start": "2024-01-15",
+                    "realtime_end": "9999-12-31",
+                }
             ]
         }
         mock_get.return_value = mock_response
@@ -77,6 +86,7 @@ class TestFredSensorRepro(unittest.TestCase):
         # In current state, this is expected to return DATA because ALFRED params are gone
         self.assertIsNotNone(result, "Live API should return DATA for VIXCLS now.")
         print(f"Verified: result has {len(result)} rows.")
+
 
 if __name__ == "__main__":
     unittest.main()

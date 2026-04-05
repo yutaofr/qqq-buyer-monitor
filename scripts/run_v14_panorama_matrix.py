@@ -148,7 +148,9 @@ def _write_report(
         "standard_beta_expected_mae",
         "beta_expectation_mae",
     ]
-    beta_lens = default_holdout_report[[c for c in beta_lens_columns if c in default_holdout_report.columns]].copy()
+    beta_lens = default_holdout_report[
+        [c for c in beta_lens_columns if c in default_holdout_report.columns]
+    ].copy()
     beta_lens = beta_lens.rename(
         columns={
             "mean_target_beta": "mean_scenario_beta",
@@ -160,12 +162,18 @@ def _write_report(
     with output_path.open("w", encoding="utf-8") as handle:
         handle.write("# v14 Panorama Strategy Matrix\n\n")
         handle.write("## Protocol\n\n")
-        handle.write(f"- Diagnostics Vintage Mode: `{diagnostics_meta.get('vintage_mode', 'UNKNOWN')}`\n")
+        handle.write(
+            f"- Diagnostics Vintage Mode: `{diagnostics_meta.get('vintage_mode', 'UNKNOWN')}`\n"
+        )
         handle.write(f"- Calibration Window: `{diagnostics_meta['oos_start']}` to `2017-12-29`\n")
         handle.write(f"- Holdout Window: `{holdout_start}` onward\n")
         handle.write("- Mainline Trace: `run_v11_audit()` canonical execution trace\n")
-        handle.write("- Detector Trace: `scripts/baseline_backtest.py` canonical PIT-safe OOS diagnostics\n")
-        handle.write("- Acceptance: no worse max drawdown, no worse left-tail beta, bounded turnover drift\n\n")
+        handle.write(
+            "- Detector Trace: `scripts/baseline_backtest.py` canonical PIT-safe OOS diagnostics\n"
+        )
+        handle.write(
+            "- Acceptance: no worse max drawdown, no worse left-tail beta, bounded turnover drift\n\n"
+        )
 
         handle.write("## Default Threshold Holdout\n\n")
         handle.write(_markdown_table(default_holdout_report))
@@ -196,9 +204,15 @@ def _write_report(
         handle.write(
             "- `mean_raw_beta`: posterior expectation surface before entropy haircut, overlay, and smoothing.\n"
         )
-        handle.write("- `mean_standard_beta`: mainline production target beta after the full execution stack.\n")
-        handle.write("- `mean_scenario_beta`: S4/S5-adjusted effective beta used for the scenario replay.\n")
-        handle.write("- `mean_expected_beta`: regime-policy beta implied by the realized regime label.\n\n")
+        handle.write(
+            "- `mean_standard_beta`: mainline production target beta after the full execution stack.\n"
+        )
+        handle.write(
+            "- `mean_scenario_beta`: S4/S5-adjusted effective beta used for the scenario replay.\n"
+        )
+        handle.write(
+            "- `mean_expected_beta`: regime-policy beta implied by the realized regime label.\n\n"
+        )
         handle.write(_markdown_table(beta_lens))
         handle.write("\n\n")
 
@@ -227,7 +241,9 @@ def _write_report(
             )
         else:
             handle.write("- Keep `standard` as the production champion.\n")
-            handle.write("- Keep `s4_sidecar`, `s5_tractor`, and `s4s5_panorama` in shadow/diagnostic mode only.\n")
+            handle.write(
+                "- Keep `s4_sidecar`, `s5_tractor`, and `s4s5_panorama` in shadow/diagnostic mode only.\n"
+            )
 
         handle.write(
             f"- Structural note: the mainline holdout trace now stays above the `0.5x` floor "
@@ -240,9 +256,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the v14 panorama scenario matrix.")
     parser.add_argument("--holdout-start", default="2018-01-01")
     parser.add_argument("--output-dir", default="artifacts/v14_panorama")
-    parser.add_argument(
-        "--report-path", default="docs/research/v14_panorama_strategy_matrix.md"
-    )
+    parser.add_argument("--report-path", default="docs/research/v14_panorama_strategy_matrix.md")
     parser.add_argument("--price-cache-path", default="data/qqq_history_cache.csv")
     args = parser.parse_args(argv)
 

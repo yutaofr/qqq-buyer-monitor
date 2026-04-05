@@ -19,11 +19,14 @@ def test_ac2_random_convergence():
     rng = np.random.default_rng(42)
     n = 600
     dates = pd.date_range("2010-01-01", periods=n, freq="B")
-    X = pd.DataFrame({
-        "growth": rng.standard_normal(n),
-        "liquidity": rng.standard_normal(n),
-        "stress": rng.standard_normal(n)
-    }, index=dates)
+    X = pd.DataFrame(
+        {
+            "growth": rng.standard_normal(n),
+            "liquidity": rng.standard_normal(n),
+            "stress": rng.standard_normal(n),
+        },
+        index=dates,
+    )
 
     y = pd.Series(rng.choice([0, 1], size=n), index=dates)
 
@@ -32,6 +35,7 @@ def test_ac2_random_convergence():
 
     # Check if within [0.35, 0.65] range
     assert 0.35 <= mean_auc <= 0.65, f"AC-2 failed: Random AUC was {mean_auc:.4f}"
+
 
 def test_ac2_leakage_detection():
     """
@@ -104,17 +108,20 @@ def test_sidecar_validity_tracking():
     n = 800
     dates = pd.date_range("2010-01-01", periods=n, freq="B")
     # Provide all columns needed by calculate_composites
-    data = pd.DataFrame({
-        "IPMAN": rng.standard_normal(n),
-        "growth_margin": rng.standard_normal(n),
-        "M2REAL": rng.standard_normal(n),
-        "T10Y2Y": rng.standard_normal(n),
-        "BAMLH0A0HYM2": rng.standard_normal(n),
-        "VIXCLS": rng.standard_normal(n),
-        "^VXN": rng.standard_normal(n),
-        "QQQ": 100.0 + rng.standard_normal(n).cumsum(),
-        "SPY": 100.0 + rng.standard_normal(n).cumsum()
-    }, index=dates)
+    data = pd.DataFrame(
+        {
+            "IPMAN": rng.standard_normal(n),
+            "growth_margin": rng.standard_normal(n),
+            "M2REAL": rng.standard_normal(n),
+            "T10Y2Y": rng.standard_normal(n),
+            "BAMLH0A0HYM2": rng.standard_normal(n),
+            "VIXCLS": rng.standard_normal(n),
+            "^VXN": rng.standard_normal(n),
+            "QQQ": 100.0 + rng.standard_normal(n).cumsum(),
+            "SPY": 100.0 + rng.standard_normal(n).cumsum(),
+        },
+        index=dates,
+    )
 
     # Inject missing ^VXN at the end
     data.loc[dates[-50:], "^VXN"] = np.nan
@@ -128,7 +135,7 @@ def test_sidecar_validity_tracking():
 
     # First part of OOS should be valid (excluding initial train/re-train window)
     # We skip the first 21 days to allow for model hydration
-    valid_mask = (results.index >= dates[600+21]) & (results.index < dates[-50])
+    valid_mask = (results.index >= dates[600 + 21]) & (results.index < dates[-50])
     invalid_mask = (results.index >= dates[-50]) & (results.index < dates[-1])
 
     assert results.loc[valid_mask, "sidecar_valid"].all()

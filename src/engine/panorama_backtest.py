@@ -35,10 +35,14 @@ def build_panorama_scenario_frame(
     joined["standard_beta"] = pd.to_numeric(joined["target_beta"], errors="coerce")
     joined["tractor_prob"] = pd.to_numeric(joined["tractor_prob"], errors="coerce").fillna(0.0)
     joined["sidecar_prob"] = pd.to_numeric(joined["sidecar_prob"], errors="coerce")
-    joined["sidecar_valid"] = joined["sidecar_valid"].fillna(joined["sidecar_prob"].notna()).astype(bool)
+    joined["sidecar_valid"] = (
+        joined["sidecar_valid"].fillna(joined["sidecar_prob"].notna()).astype(bool)
+    )
 
     joined["tractor_risk"] = joined["tractor_prob"] > tractor_risk_threshold
-    joined["sidecar_risk"] = joined["sidecar_valid"] & (joined["sidecar_prob"] > sidecar_risk_threshold)
+    joined["sidecar_risk"] = joined["sidecar_valid"] & (
+        joined["sidecar_prob"] > sidecar_risk_threshold
+    )
     joined["all_calm"] = (
         (joined["tractor_prob"] < calm_threshold)
         & joined["sidecar_valid"]
@@ -54,7 +58,11 @@ def build_panorama_scenario_frame(
     joined["panorama_beta"] = np.where(
         joined["tractor_risk"] | joined["sidecar_risk"],
         beta_floor,
-        np.where(joined["all_calm"], np.maximum(joined["standard_beta"], beta_ceiling), joined["standard_beta"]),
+        np.where(
+            joined["all_calm"],
+            np.maximum(joined["standard_beta"], beta_ceiling),
+            joined["standard_beta"],
+        ),
     )
     return joined
 
@@ -80,7 +88,9 @@ def compute_execution_metrics(trace: pd.DataFrame, beta_col: str) -> dict[str, f
     expected_beta = pd.to_numeric(trace.get("expected_target_beta"), errors="coerce")
     if expected_beta is not None and not expected_beta.dropna().empty:
         metrics["mean_expected_beta"] = float(expected_beta.dropna().mean())
-        aligned = pd.concat([beta.rename("beta"), expected_beta.rename("expected")], axis=1).dropna()
+        aligned = pd.concat(
+            [beta.rename("beta"), expected_beta.rename("expected")], axis=1
+        ).dropna()
         if not aligned.empty:
             error = aligned["beta"] - aligned["expected"]
             metrics["beta_expectation_mae"] = float(error.abs().mean())
@@ -96,9 +106,7 @@ def compute_execution_metrics(trace: pd.DataFrame, beta_col: str) -> dict[str, f
             if not aligned_raw.empty:
                 raw_error = aligned_raw["raw_beta"] - aligned_raw["expected"]
                 metrics["raw_beta_expected_mae"] = float(raw_error.abs().mean())
-                metrics["raw_beta_expected_within_5pct"] = float(
-                    (raw_error.abs() <= 0.05).mean()
-                )
+                metrics["raw_beta_expected_within_5pct"] = float((raw_error.abs() <= 0.05).mean())
     standard_beta = pd.to_numeric(trace.get("standard_beta"), errors="coerce")
     if standard_beta is not None and not standard_beta.dropna().empty:
         metrics["mean_standard_beta"] = float(standard_beta.dropna().mean())
@@ -115,12 +123,16 @@ def compute_execution_metrics(trace: pd.DataFrame, beta_col: str) -> dict[str, f
     return metrics
 
 
-def judge_panorama_candidate(
-    current: dict[str, Any], baseline: dict[str, Any]
-) -> tuple[bool, str]:
-    if float(current.get("left_tail_mean_beta", 0.0)) > float(baseline.get("left_tail_mean_beta", 0.0)) + 1e-7:
+def judge_panorama_candidate(current: dict[str, Any], baseline: dict[str, Any]) -> tuple[bool, str]:
+    if (
+        float(current.get("left_tail_mean_beta", 0.0))
+        > float(baseline.get("left_tail_mean_beta", 0.0)) + 1e-7
+    ):
         return False, "Defensive Violation"
-    if float(current.get("approx_max_drawdown", 0.0)) < float(baseline.get("approx_max_drawdown", 0.0)) - 1e-7:
+    if (
+        float(current.get("approx_max_drawdown", 0.0))
+        < float(baseline.get("approx_max_drawdown", 0.0)) - 1e-7
+    ):
         return False, "Drawdown Regression"
     turnover_limit = max(
         float(baseline.get("mean_turnover", 0.0)) * 1.5,

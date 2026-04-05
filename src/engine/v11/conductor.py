@@ -368,9 +368,8 @@ class V11Conductor:
                         matrix[k] = float(matrix[k]) * 0.7
 
             # SRD-v13.5-PRO: Asymmetric Weighted Inference
-            # v13.7-FINAL: Extract tau and m from registry (CR-1 & CR-4)
+            # v13.7-FINAL: Extract tau from registry (CR-1)
             registry_tau = float(active_registry.get("inference_tau", 0.5))
-            registry_m = float(active_registry.get("inference_momentum_m", 0.35))
 
             posteriors, bayesian_diagnostics = self.inference_engine.infer_gaussian_nb_posterior(
                 classifier=self.gnb,

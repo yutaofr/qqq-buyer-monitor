@@ -22,11 +22,11 @@ BASELINE_SERIES_MAP = {
 
 # Conservative release lags (in business days) as per SRD / V14 PIT requirements
 RELEASE_LAG_MAP = {
-    "IPMAN": 22,    # Monthly (~1 month)
-    "M2REAL": 22,   # Monthly (~1 month)
-    "CP": 66,       # Quarterly (~3 months)
-    "GDP": 66,      # Quarterly (~3 months)
-    "T10Y2Y": 1,    # Daily
+    "IPMAN": 22,  # Monthly (~1 month)
+    "M2REAL": 22,  # Monthly (~1 month)
+    "CP": 66,  # Quarterly (~3 months)
+    "GDP": 66,  # Quarterly (~3 months)
+    "T10Y2Y": 1,  # Daily
     "BAMLH0A0HYM2": 1,
     "VIXCLS": 1,
     "^VXN": 1,
@@ -40,9 +40,15 @@ ALFRED_REALTIME_END = "9999-12-31"
 
 def _build_alfred_visible_frame(raw: pd.DataFrame, series_id: str) -> pd.DataFrame | None:
     frame = raw.copy()
-    frame["observation_date"] = pd.to_datetime(frame["observation_date"], errors="coerce").dt.tz_localize(None)
-    frame["realtime_start"] = pd.to_datetime(frame["realtime_start"], errors="coerce").dt.tz_localize(None)
-    frame["realtime_end"] = pd.to_datetime(frame["realtime_end"], errors="coerce").dt.tz_localize(None)
+    frame["observation_date"] = pd.to_datetime(
+        frame["observation_date"], errors="coerce"
+    ).dt.tz_localize(None)
+    frame["realtime_start"] = pd.to_datetime(
+        frame["realtime_start"], errors="coerce"
+    ).dt.tz_localize(None)
+    frame["realtime_end"] = pd.to_datetime(frame["realtime_end"], errors="coerce").dt.tz_localize(
+        None
+    )
     frame[series_id] = pd.to_numeric(frame[series_id], errors="coerce")
     frame = frame.dropna(subset=["observation_date", "realtime_start", series_id]).sort_values(
         ["realtime_start", "observation_date"]
@@ -90,7 +96,12 @@ def _build_pit_fallback_frame(raw: pd.DataFrame, series_id: str) -> pd.DataFrame
     frame = frame.dropna(subset=[series_id])
     lag = RELEASE_LAG_MAP.get(series_id, 1)
     frame["effective_date"] = frame["observation_date"] + pd.offsets.BDay(lag)
-    out = frame.set_index("effective_date")[[series_id, "observation_date"]].sort_index().groupby(level=0).last()
+    out = (
+        frame.set_index("effective_date")[[series_id, "observation_date"]]
+        .sort_index()
+        .groupby(level=0)
+        .last()
+    )
     out.attrs["vintage_mode"] = "PIT_FALLBACK"
     return out
 
@@ -100,6 +111,7 @@ def fetch_baseline_series(series_id: str, timeout: int = 15) -> pd.DataFrame | N
     if series_id.startswith("^") or series_id in ["SPY", "QQQ"]:
         # YFinance Path
         import yfinance as yf
+
         try:
             # Explicitly choose the ticker and suppress progress
             raw = yf.download(series_id, start=FRED_HISTORY_START, progress=False)
@@ -126,10 +138,12 @@ def fetch_baseline_series(series_id: str, timeout: int = 15) -> pd.DataFrame | N
             if date_col:
                 raw = raw.rename(columns={date_col: "observation_date"})
             else:
-                raw["observation_date"] = raw.index # Fallback
+                raw["observation_date"] = raw.index  # Fallback
 
             # Extract closing price
-            close_col = next((c for c in ["Close", "Adj Close", series_id] if c in raw.columns), None)
+            close_col = next(
+                (c for c in ["Close", "Adj Close", series_id] if c in raw.columns), None
+            )
             if close_col:
                 raw[series_id] = raw[close_col]
             else:
@@ -137,7 +151,12 @@ def fetch_baseline_series(series_id: str, timeout: int = 15) -> pd.DataFrame | N
             out = raw.set_index("observation_date")[[series_id]].sort_index()
             out["observation_date"] = out.index
             out["effective_date"] = out.index + pd.offsets.BDay(1)
-            out = out.set_index("effective_date")[[series_id, "observation_date"]].sort_index().groupby(level=0).last()
+            out = (
+                out.set_index("effective_date")[[series_id, "observation_date"]]
+                .sort_index()
+                .groupby(level=0)
+                .last()
+            )
             out.attrs["vintage_mode"] = "DIRECT_TAPE"
             return out
         except Exception as e:
@@ -158,7 +177,11 @@ def fetch_baseline_series(series_id: str, timeout: int = 15) -> pd.DataFrame | N
                 realtime_end=ALFRED_REALTIME_END,
             )
 
-        if alfred_raw is not None and not alfred_raw.empty and {"realtime_start", "realtime_end"}.issubset(alfred_raw.columns):
+        if (
+            alfred_raw is not None
+            and not alfred_raw.empty
+            and {"realtime_start", "realtime_end"}.issubset(alfred_raw.columns)
+        ):
             alfred_frame = _build_alfred_visible_frame(alfred_raw, series_id)
             if alfred_frame is not None and not alfred_frame.empty:
                 return alfred_frame
@@ -191,8 +214,10 @@ def get_growth_margin(timeout: int = 15) -> pd.DataFrame | None:
     out = pd.DataFrame({"growth_margin": margin}, index=merged.index)
     cp_mode = cp.attrs.get("vintage_mode", "UNKNOWN")
     gdp_mode = gdp.attrs.get("vintage_mode", "UNKNOWN")
-    out.attrs["vintage_mode"] = "ALFRED" if cp_mode == gdp_mode == "ALFRED" else "+".join(
-        sorted({mode for mode in (cp_mode, gdp_mode) if mode})
+    out.attrs["vintage_mode"] = (
+        "ALFRED"
+        if cp_mode == gdp_mode == "ALFRED"
+        else "+".join(sorted({mode for mode in (cp_mode, gdp_mode) if mode}))
     )
     return out
 
@@ -301,7 +326,11 @@ def load_all_baseline_data(timeout: int = 15) -> pd.DataFrame:
 
     # Attach metadata as an attribute for downstream use
     unique_modes = sorted({mode for mode in vintage_modes if mode})
-    metadata["vintage_mode"] = "ALFRED" if unique_modes == ["ALFRED"] else ("+".join(unique_modes) if unique_modes else "UNKNOWN")
+    metadata["vintage_mode"] = (
+        "ALFRED"
+        if unique_modes == ["ALFRED"]
+        else ("+".join(unique_modes) if unique_modes else "UNKNOWN")
+    )
     combined.attrs["metadata"] = metadata
     return combined
 

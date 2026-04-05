@@ -108,7 +108,6 @@ def _v11_inference_task(
         runtime_priors=base_priors,
         weight_registry=registry,
         tau=float(registry.get("inference_tau", 3.0)),
-        m=float(registry.get("inference_momentum_m", 0.6)),
     )
 
     actual_regime = str(std_row.get("regime", source_row.get("regime", "MID_CYCLE")))
@@ -373,7 +372,9 @@ def run_v11_audit(
             if train_window.empty:
                 continue
 
-            context_df = pd.concat([train_window, pd.DataFrame([row])]).set_index("observation_date")
+            context_df = pd.concat([train_window, pd.DataFrame([row])]).set_index(
+                "observation_date"
+            )
             features_context = seeder.generate_features(context_df)
 
             train_features = features_context.iloc[:-1]
@@ -460,7 +461,6 @@ def run_v11_audit(
                 weight_registry=registry,
                 feature_quality_weights=feature_weights,
                 tau=float(registry.get("inference_tau", 3.0)),
-                m=float(registry.get("inference_momentum_m", 0.6)),
             )
 
             # Update previous_raw for next iteration
@@ -661,14 +661,9 @@ def run_v11_audit(
             (execution_df["raw_target_beta"] - execution_df["expected_target_beta"]).abs().mean()
         ),
         "deployment_exact_match": float(
-            (
-                execution_df["deployment_state"]
-                == execution_df["expected_deployment_state"]
-            ).mean()
+            (execution_df["deployment_state"] == execution_df["expected_deployment_state"]).mean()
         ),
-        "deployment_rank_abs_error_mean": float(
-            execution_df["deployment_rank_abs_error"].mean()
-        ),
+        "deployment_rank_abs_error_mean": float(execution_df["deployment_rank_abs_error"].mean()),
         "deployment_pacing_abs_error_mean": float(
             execution_df["deployment_pacing_error"].abs().mean()
         ),
@@ -680,10 +675,15 @@ def run_v11_audit(
         "beta_expectation_min": float(execution_df["beta_expectation"].min()),
         "target_beta_min": float(execution_df["target_beta"].min()),
         "raw_beta_within_5pct_expected": float(
-            ((execution_df["raw_target_beta"] - execution_df["expected_target_beta"]).abs() <= 0.05).mean()
+            (
+                (execution_df["raw_target_beta"] - execution_df["expected_target_beta"]).abs()
+                <= 0.05
+            ).mean()
         ),
         "target_beta_within_5pct_expected": float(
-            ((execution_df["target_beta"] - execution_df["expected_target_beta"]).abs() <= 0.05).mean()
+            (
+                (execution_df["target_beta"] - execution_df["expected_target_beta"]).abs() <= 0.05
+            ).mean()
         ),
         "share_at_floor": float((execution_df["target_beta"] <= 0.500001).mean()),
     }
