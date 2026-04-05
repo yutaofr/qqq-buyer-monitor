@@ -12,9 +12,9 @@ class FullPanoramaAggregator:
 
     BETA_FLOOR = 0.50
     BETA_CEILING_AGGRESSIVE = 1.25
-    TRACTOR_RISK_THRESHOLD = 0.25
-    SIDECAR_RISK_THRESHOLD = 0.20
-    CALM_THRESHOLD = 0.10
+    TRACTOR_RISK_THRESHOLD = 0.20
+    SIDECAR_RISK_THRESHOLD = 0.15
+    CALM_THRESHOLD = 0.05
 
     @classmethod
     def aggregate(cls, bayesian_runtime: dict, baseline_result: dict) -> dict:
