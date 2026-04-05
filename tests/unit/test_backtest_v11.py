@@ -351,3 +351,92 @@ def test_run_v11_audit_emits_expectation_and_pacing_alignment_columns(tmp_path, 
     assert "beta_expectation_min" in summary.index
     assert "raw_beta_within_5pct_expected" in summary.index
     assert "target_beta_within_5pct_expected" in summary.index
+    assert "active_features" in summary.index
+
+
+def test_run_v11_audit_feature_subset_changes_posteriors_when_raw_quality_fields_exist(
+    tmp_path, monkeypatch
+):
+    dates = pd.bdate_range("2024-01-01", periods=320)
+    macro_path = tmp_path / "macro.csv"
+    regime_path = tmp_path / "regimes.csv"
+
+    macro = _build_v12_macro_frame(dates)
+    macro["credit_spread_bps"] = np.r_[
+        np.full(160, 180.0),
+        np.full(80, 320.0),
+        np.full(80, 520.0),
+    ]
+    macro["erp_ttm_pct"] = 0.03 + np.sin(np.linspace(0.0, 12.0, len(dates))) * 0.0005
+    macro["source_credit_spread"] = "direct"
+    macro["source_erp_ttm"] = "direct"
+    macro.to_csv(macro_path, index=False)
+
+    pd.DataFrame(
+        {
+            "observation_date": dates,
+            "regime": ["MID_CYCLE"] * 160 + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
+        }
+    ).to_csv(regime_path, index=False)
+
+    monkeypatch.setattr(
+        backtest_module,
+        "_load_price_history",
+        lambda *args, **kwargs: pd.DataFrame(
+            {
+                "Close": np.linspace(100.0, 130.0, len(dates)),
+                "Volume": np.linspace(1_000_000.0, 2_000_000.0, len(dates)),
+            },
+            index=dates,
+        ),
+    )
+    monkeypatch.setattr(
+        "src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        "src.output.backtest_plots.save_v11_probabilistic_audit_figure",
+        lambda *args, **kwargs: None,
+    )
+
+    common = {
+        "dataset_path": str(macro_path),
+        "regime_path": str(regime_path),
+        "evaluation_start": "2025-01-02",
+        "experiment_config": {
+            "allow_price_download": False,
+            "price_end_date": "2025-12-31",
+            "save_plots": False,
+            "audit_overrides": {
+                "base_betas": {"BUST": 0.5, "LATE_CYCLE": 0.8, "MID_CYCLE": 1.0},
+                "regime_sharpes": {"BUST": -0.8, "LATE_CYCLE": 0.2, "MID_CYCLE": 1.0},
+            },
+        },
+    }
+
+    spread_dir = tmp_path / "audit_spread"
+    erp_dir = tmp_path / "audit_erp"
+
+    spread_exp = dict(common["experiment_config"])
+    spread_exp["probability_seeder"] = {"selected_features": ["spread_absolute"]}
+    backtest_module.run_v11_audit(
+        dataset_path=common["dataset_path"],
+        regime_path=common["regime_path"],
+        evaluation_start=common["evaluation_start"],
+        artifact_dir=str(spread_dir),
+        experiment_config=spread_exp,
+    )
+
+    erp_exp = dict(common["experiment_config"])
+    erp_exp["probability_seeder"] = {"selected_features": ["erp_absolute"]}
+    backtest_module.run_v11_audit(
+        dataset_path=common["dataset_path"],
+        regime_path=common["regime_path"],
+        evaluation_start=common["evaluation_start"],
+        artifact_dir=str(erp_dir),
+        experiment_config=erp_exp,
+    )
+
+    spread_probs = pd.read_csv(spread_dir / "probability_audit.csv")
+    erp_probs = pd.read_csv(erp_dir / "probability_audit.csv")
+
+    assert spread_probs["predicted_regime"].equals(erp_probs["predicted_regime"]) is False

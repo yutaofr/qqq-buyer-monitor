@@ -2,7 +2,7 @@
 
 > **Research note:** this file is the broad factor-discovery archive.  
 > It is **not** the current production seeder contract.  
-> The production baseline is recorded in `docs/v11_bayesian_production_baseline_2026-03-30.md`.
+> The production baseline is recorded in `docs/versions/v11/v11_bayesian_production_baseline_2026-04-05.md`.
 
 **Auditor:** Senior Architect (Gemini CLI)  
 **Date:** 2026-03-30  

@@ -9,7 +9,7 @@ _DEFAULT_CLIP_RANGE = (-8.0, 8.0)
 class ProbabilitySeeder:
     """
     v12 Probability Seeder
-    Responsibility: Standardize the locked 10-factor orthogonal observation vector
+    Responsibility: Standardize the configured orthogonal observation vector
     used by the GaussianNB regime engine.
     """
 
@@ -20,16 +20,19 @@ class ProbabilitySeeder:
         clip_range: tuple[float, float] = _DEFAULT_CLIP_RANGE,
         orthogonalization_mode: str = "residualize",
         orthogonalization_strength: float = 1.0,
+        selected_features: list[str] | tuple[str, ...] | None = None,
     ):
         self.clip_range = (float(clip_range[0]), float(clip_range[1]))
         self.orthogonalization_mode = str(orthogonalization_mode)
         self.orthogonalization_strength = float(orthogonalization_strength)
         self.config = self._merge_config(self._default_config(), config_overrides or {})
+        self.selected_features = list(selected_features) if selected_features is not None else None
         self._contract_payload = {
             "config": self.config,
             "clip_range": self.clip_range,
             "orthogonalization_mode": self.orthogonalization_mode,
             "orthogonalization_strength": self.orthogonalization_strength,
+            "selected_features": self.selected_features,
         }
         self._validate_runtime_contract()
         self.diagnostics_: pd.DataFrame = pd.DataFrame()
@@ -133,6 +136,12 @@ class ProbabilitySeeder:
         if self.clip_range[0] >= self.clip_range[1]:
             raise ValueError("clip_range must be increasing")
         self.orthogonalization_strength = float(min(1.0, max(0.0, self.orthogonalization_strength)))
+        if self.selected_features is not None:
+            unknown = [name for name in self.selected_features if name not in self.config]
+            if unknown:
+                raise ValueError(f"Unknown selected_features: {unknown}")
+            if len(dict.fromkeys(self.selected_features)) != len(self.selected_features):
+                raise ValueError("selected_features must be unique")
 
     def contract_hash(self) -> str:
         canonical = json.dumps(
@@ -142,17 +151,20 @@ class ProbabilitySeeder:
         return f"sha256:{digest}"
 
     def feature_names(self) -> list[str]:
+        if self.selected_features is not None:
+            return list(self.selected_features)
         return list(self.config.keys())
 
     def generate_features(self, macro_df: pd.DataFrame) -> pd.DataFrame:
         """
-        Calculate the 10-factor Bayesian vector from raw macro data using
+        Calculate the configured Bayesian factor vector from raw macro data using
         a single deterministic code path for live and backtest.
         """
         df = self._normalize_index(macro_df).sort_index()
         features = pd.DataFrame(index=df.index)
 
-        for feature_name, cfg in self.config.items():
+        for feature_name in self.feature_names():
+            cfg = self.config[feature_name]
             src_col = str(cfg["src"])
             if src_col not in df.columns:
                 features[feature_name] = 0.0

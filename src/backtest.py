@@ -251,7 +251,12 @@ def run_v11_audit(
     macro_df["source_qqq_close"] = "direct:yfinance"
     macro_df["qqq_close_quality_score"] = 1.0
 
-    seeder = ProbabilitySeeder(**dict(experiment.get("probability_seeder", {})))
+    seeder_kwargs = dict(experiment.get("probability_seeder", {}))
+    if "selected_features" not in seeder_kwargs:
+        contract_features = audit_data.get("feature_contract", {}).get("feature_names")
+        if contract_features:
+            seeder_kwargs["selected_features"] = list(contract_features)
+    seeder = ProbabilitySeeder(**seeder_kwargs)
     feature_contract_validation = "validated"
     try:
         validate_feature_contract(
@@ -267,6 +272,19 @@ def run_v11_audit(
             raise
     features = seeder.generate_features(macro_df)
     full_df = features.join(regime_df["regime"], how="inner")
+
+    # Preserve raw macro inputs and provenance so the backtest quality gate sees the
+    # same sensor surface as the live conductor instead of zeroing feature weights.
+    quality_fields = {"build_version"}
+    for value_key, source_key, quality_key in _v12_quality_field_specs().values():
+        quality_fields.add(str(value_key))
+        if source_key:
+            quality_fields.add(str(source_key))
+        if quality_key:
+            quality_fields.add(str(quality_key))
+    for col in sorted(quality_fields):
+        if col in macro_df.columns:
+            full_df[col] = macro_df[col]
 
     full_df["qqq_close"] = macro_df["qqq_close"]
     if "qqq_volume" in macro_df.columns:
@@ -628,6 +646,7 @@ def run_v11_audit(
         "gaussian_nb_var_smoothing": float(experiment.get("var_smoothing", default_var_smoothing)),
         "posterior_mode": posterior_mode,
         "overlay_mode": str(overlay_mode or overlay_engine.default_mode),
+        "active_features": list(feature_cols),
         "beta_expectation_mae": float(
             (execution_df["target_beta"] - execution_df["expected_target_beta"]).abs().mean()
         ),
@@ -674,11 +693,11 @@ def run_v11_audit(
     execution_df.to_csv(save_dir / "execution_trace.csv", index=False)
     full_audit_df.to_csv(save_dir / "full_audit.csv", index=False)
     (save_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-
-    save_v11_fidelity_figure(execution_df, summary, [save_dir / "v12_target_beta_fidelity.png"])
-    save_v11_probabilistic_audit_figure(
-        full_audit_df, summary, [save_dir / "v12_probabilistic_audit.png"]
-    )
+    if bool(experiment.get("save_plots", True)):
+        save_v11_fidelity_figure(execution_df, summary, [save_dir / "v12_target_beta_fidelity.png"])
+        save_v11_probabilistic_audit_figure(
+            full_audit_df, summary, [save_dir / "v12_probabilistic_audit.png"]
+        )
 
     return summary
 

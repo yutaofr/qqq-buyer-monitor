@@ -47,6 +47,7 @@ def build_v12_diagnostic_report(
         "summary": _build_summary(audit),
         "critical_regime_performance": _build_critical_regime_performance(audit),
         "confusion_matrix": _build_confusion_matrix(audit),
+        "posterior_alignment": _build_posterior_alignment(audit),
         "crisis_windows": _build_crisis_window_report(audit, windows),
         "beta_comparison": _build_beta_comparison(audit, windows),
         "entropy": _build_entropy_report(audit, windows),
@@ -83,6 +84,12 @@ def write_v12_diagnostic_report(report: dict[str, Any], output_dir: str | Path) 
         crisis_rows.append({"window": window_name, **metrics})
     if crisis_rows:
         pd.DataFrame(crisis_rows).to_csv(out_dir / "crisis_windows.csv", index=False)
+
+    posterior_rows = []
+    for regime_name, metrics in report.get("posterior_alignment", {}).get("by_regime", {}).items():
+        posterior_rows.append({"actual_regime": regime_name, **metrics})
+    if posterior_rows:
+        pd.DataFrame(posterior_rows).to_csv(out_dir / "posterior_alignment.csv", index=False)
 
     beta_rows = []
     for scope_name, metrics in report.get("beta_comparison", {}).get("windows", {}).items():
@@ -158,6 +165,66 @@ def _build_confusion_matrix(audit: pd.DataFrame) -> dict[str, dict[str, int]]:
     return {
         str(actual): {str(predicted): int(count) for predicted, count in row.items()}
         for actual, row in confusion.iterrows()
+    }
+
+
+def _build_posterior_alignment(audit: pd.DataFrame) -> dict[str, Any]:
+    prob_cols = [column for column in audit.columns if column.startswith("prob_")]
+    if not prob_cols:
+        return {"overall": {}, "by_regime": {}}
+
+    regimes = [column.replace("prob_", "") for column in prob_cols]
+    aligned = audit[["actual_regime", "entropy", *prob_cols]].copy()
+    aligned = aligned.dropna(subset=["actual_regime"])
+
+    if aligned.empty:
+        return {"overall": {}, "by_regime": {}}
+
+    overall_true_prob = []
+    overall_true_rank = []
+    overall_l1_error = []
+    for _, row in aligned.iterrows():
+        actual = str(row["actual_regime"])
+        if f"prob_{actual}" not in prob_cols:
+            continue
+        posterior = pd.Series({regime: float(row[f"prob_{regime}"]) for regime in regimes})
+        posterior = posterior.sort_values(ascending=False)
+        overall_true_prob.append(float(row[f"prob_{actual}"]))
+        overall_true_rank.append(float(posterior.index.get_loc(actual) + 1))
+        expected = pd.Series({regime: (1.0 if regime == actual else 0.0) for regime in regimes})
+        overall_l1_error.append(float((posterior.sort_index() - expected.sort_index()).abs().sum()))
+
+    by_regime: dict[str, Any] = {}
+    for actual_regime, frame in aligned.groupby("actual_regime"):
+        actual = str(actual_regime)
+        mean_posterior = {
+            regime: float(pd.to_numeric(frame[f"prob_{regime}"], errors="coerce").mean())
+            for regime in regimes
+        }
+        posterior_frame = frame[prob_cols].copy()
+        ranks = posterior_frame.rank(axis=1, ascending=False, method="min")
+        true_regime_col = f"prob_{actual}"
+        true_prob = pd.to_numeric(frame[true_regime_col], errors="coerce")
+        expected = pd.DataFrame(0.0, index=posterior_frame.index, columns=prob_cols)
+        expected[true_regime_col] = 1.0
+        l1_error = (posterior_frame - expected).abs().sum(axis=1)
+        by_regime[actual] = {
+            "rows": int(len(frame)),
+            "mean_true_regime_probability": float(true_prob.mean()),
+            "mean_true_regime_rank": float(ranks[true_regime_col].mean()),
+            "mean_entropy": float(pd.to_numeric(frame["entropy"], errors="coerce").mean()),
+            "mean_expected_l1_error": float(l1_error.mean()),
+            **{f"mean_prob_{regime}": probability for regime, probability in mean_posterior.items()},
+        }
+
+    return {
+        "overall": {
+            "rows": int(len(aligned)),
+            "mean_true_regime_probability": float(np.mean(overall_true_prob)) if overall_true_prob else 0.0,
+            "mean_true_regime_rank": float(np.mean(overall_true_rank)) if overall_true_rank else 0.0,
+            "mean_expected_l1_error": float(np.mean(overall_l1_error)) if overall_l1_error else 0.0,
+        },
+        "by_regime": by_regime,
     }
 
 

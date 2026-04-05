@@ -108,7 +108,10 @@ class V11Conductor:
         self._validate_regime_coverage()
 
         # v12.0 Internal Controllers
-        self.seeder = ProbabilitySeeder()
+        expected_feature_contract = self.audit_data.get("feature_contract", {})
+        self.seeder = ProbabilitySeeder(
+            selected_features=expected_feature_contract.get("feature_names")
+        )
         self.feature_contract = self._validate_feature_contract()
 
         # SRD-v13.4: Load Weight Registry and Quality Transfer Function
