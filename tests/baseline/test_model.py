@@ -1,6 +1,7 @@
+import warnings
+
 import numpy as np
 import pandas as pd
-import warnings
 
 from src.engine.baseline.engine import predict_baseline_crisis_prob, train_baseline_model
 

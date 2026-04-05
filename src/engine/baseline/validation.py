@@ -33,10 +33,6 @@ def generate_baseline_target(
 
 
 def run_ac2_label_permutation_test(X: pd.DataFrame, y: pd.Series, n_shuffles: int = 20):
-    from src.engine.baseline.engine import (
-        predict_baseline_crisis_prob,
-        train_baseline_model,
-    )
 
     rng = np.random.default_rng(42)
     aucs = []
@@ -63,7 +59,6 @@ def run_ac2_label_permutation_test(X: pd.DataFrame, y: pd.Series, n_shuffles: in
 
 
 def run_ac2_leakage_detection():
-    from src.engine.baseline.engine import predict_baseline_crisis_prob, train_baseline_model
 
     rng = np.random.default_rng(42)
     n = 1000

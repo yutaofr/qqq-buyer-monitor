@@ -2,8 +2,7 @@ import logging
 
 import pandas as pd
 
-from src.collector.macro import fetch_fred_api, fetch_fred_data
-from src.collector.macro import FRED_HISTORY_START
+from src.collector.macro import FRED_HISTORY_START, fetch_fred_api, fetch_fred_data
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +101,7 @@ def fetch_baseline_series(series_id: str, timeout: int = 15) -> pd.DataFrame | N
             raw = yf.download(series_id, start=FRED_HISTORY_START, progress=False)
             if raw.empty:
                 return None
-            
+
             # Flatten multi-index if exists
             if isinstance(raw.columns, pd.MultiIndex):
                 # Level 0 is usually Fields (Close, etc), Level 1 is Ticker
@@ -124,7 +123,7 @@ def fetch_baseline_series(series_id: str, timeout: int = 15) -> pd.DataFrame | N
                 raw = raw.rename(columns={date_col: "observation_date"})
             else:
                 raw["observation_date"] = raw.index # Fallback
-            
+
             # Extract closing price
             close_col = next((c for c in ["Close", "Adj Close", series_id] if c in raw.columns), None)
             if close_col:
@@ -265,15 +264,15 @@ def load_all_baseline_data(timeout: int = 15) -> pd.DataFrame:
     combined = pd.concat(frames, axis=1, sort=False).sort_index()
     logger.debug(f"Combined columns before daily index: {combined.columns.tolist()}")
     logger.debug(f"Combined index sample: {combined.index[:5]}")
-    
+
     # Forward-fill only AFTER PIT alignment to daily frequency
     # We create a daily range to ensure we have a point for every trading day
     daily_idx = pd.date_range(start=combined.index.min(), end=combined.index.max(), freq="B")
     combined = combined.reindex(daily_idx).ffill()
-    
+
     logger.debug(f"Combined columns after daily reindex: {combined.columns.tolist()}")
     logger.info(f"Loaded baseline data: {len(combined)} rows, Columns: {combined.columns.tolist()}")
-    
+
     # Attach metadata as an attribute for downstream use
     unique_modes = sorted({mode for mode in vintage_modes if mode})
     metadata["vintage_mode"] = "ALFRED" if unique_modes == ["ALFRED"] else ("+".join(unique_modes) if unique_modes else "UNKNOWN")

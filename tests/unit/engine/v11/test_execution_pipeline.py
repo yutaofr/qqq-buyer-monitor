@@ -4,12 +4,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from src.engine.v11.core.entropy_controller import EntropyController
 from src.engine.v11.core.execution_pipeline import (
     apply_beta_floor,
     compute_effective_entropy,
     run_execution_pipeline,
 )
-from src.engine.v11.core.entropy_controller import EntropyController
 
 
 @pytest.fixture

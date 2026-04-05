@@ -67,21 +67,23 @@ def test_load_all_baseline_data_pit(mock_macro):
     vix = pd.DataFrame({"observation_date": ["2020-01-01", "2020-01-02", "2020-02-03"], "VIXCLS": [15.0, 16.0, 17.0]})
 
     def side_effect(series_id, **kwargs):
-        if series_id == "IPMAN": return ipman
-        if series_id == "VIXCLS": return vix
+        if series_id == "IPMAN":
+            return ipman
+        if series_id == "VIXCLS":
+            return vix
         return None
 
     mock_macro.side_effect = side_effect
 
     df = load_all_baseline_data()
-    
+
     # 1. IPMAN (Monthly) has 22-day lag. Observation 2020-01-01 -> Effective ~2020-02-03
     # 2. VIX (Daily) has 1-day lag. Observation 2020-01-01 -> Effective 2020-01-02
-    
+
     # On 2020-01-02, VIX should be 15.0, but IPMAN should be NaN (not yet effective)
     assert df.loc["2020-01-02", "VIXCLS"] == 15.0
     assert pd.isna(df.loc["2020-01-02", "IPMAN"])
-    
+
     # IPMAN (2020-01-01 observation) becomes effective 22 business days later
     # 2020-01-01 + 22 BDays approx Feb 3rd
     assert df.loc["2020-02-04", "IPMAN"] == 50.0

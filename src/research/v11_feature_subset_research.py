@@ -212,7 +212,6 @@ def run_cycle_probability_audit(
     var_smoothing: float = 1e-4,
     registry_path: str | Path = "src/engine/v11/resources/v13_4_weights_registry.json",
 ) -> pd.DataFrame:
-    import numpy as np
     from sklearn.naive_bayes import GaussianNB
 
     from src.backtest import _v12_quality_field_specs

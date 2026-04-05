@@ -65,7 +65,7 @@ def run_baseline_inference(price_history: pd.Series = None) -> dict:
         # 1. Broad Macro Data (FRED) - Now PIT-safe aligned by effective_date
         data = load_all_baseline_data(timeout=10)
         metadata = data.attrs.get("metadata", {"degraded": []})
-        
+
         if data.empty:
             logger.warning("Mud Tractor: No macro data returned from FRED.")
             return {"prob": 0.0, "status": "no_macro_data"}
@@ -139,10 +139,10 @@ def run_baseline_inference(price_history: pd.Series = None) -> dict:
                     status_s = "success"
                 else:
                     status_s = "audit_failed_overfitting"
-                
+
                 if "^VXN" in metadata["degraded"] or "^VXN" not in data.columns:
                     status_s = "degraded_missing_vxn"
-                
+
                 results["sidecar"] = {"prob": prob_s if 'prob_s' in locals() else 0.0, "status": status_s}
             else:
                 status_s = "insufficient_sample"
@@ -229,5 +229,5 @@ def calculate_baseline_oos_series(
     # Tractor prob should be ffilled as it is generally always available
     res["tractor_prob"] = res["tractor_prob"].ffill().fillna(0.0)
     # Sidecar prob should stay NaN if invalid for a given date
-    
+
     return res

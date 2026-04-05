@@ -132,7 +132,7 @@ def judge_panorama_candidate(
 
 
 def choose_production_candidate(report: pd.DataFrame) -> dict[str, Any]:
-    passed = report.loc[report["acceptance_pass"] == True].copy()
+    passed = report.loc[report["acceptance_pass"]].copy()
     if passed.empty:
         raise ValueError("No panorama scenario satisfied acceptance constraints.")
     ranked = passed.sort_values(
