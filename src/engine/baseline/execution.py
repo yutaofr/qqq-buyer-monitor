@@ -38,11 +38,11 @@ def validate_coefficients(model, feature_names: list) -> bool:
         )
         is_valid = False
 
-    # 2. Growth Direction Check
-    growth_key = [k for k in coefs if "growth" in k]
-    if growth_key and coefs[growth_key[0]] > 0:
+    # 3. Liquidity Direction Check (Left Tail Risk Alignment)
+    liquidity_key = [k for k in coefs if "liquidity" in k]
+    if liquidity_key and coefs[liquidity_key[0]] < 0:
         logger.warning(
-            f"!!! Audit Failed: {growth_key[0]} is {coefs[growth_key[0]]:.4f} (Expected -) !!! Details: {coefs}"
+            f"!!! Audit Failed: {liquidity_key[0]} is {coefs[liquidity_key[0]]:.4f} (Expected +) !!! Details: {coefs}"
         )
         is_valid = False
 

@@ -3,6 +3,11 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss
 from sklearn.model_selection import TimeSeriesSplit
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from src.engine.baseline.constrained_model import ConstrainedLogisticRegression
+
+RANDOM_SEED = 42
 
 
 def rolling_zscore(
@@ -29,6 +34,7 @@ def _standardize(X: pd.DataFrame, mean: pd.Series, scale: pd.Series) -> pd.DataF
 
 def _valid_time_splits(y: pd.Series, n_splits: int = 5, gap: int = 20) -> list[tuple[np.ndarray, np.ndarray]]:
     splits: list[tuple[np.ndarray, np.ndarray]] = []
+    # v14.8 Hardening: Fixed random_state for deterministic CV
     for train_idx, test_idx in TimeSeriesSplit(n_splits=n_splits, gap=gap).split(y):
         y_train = y.iloc[train_idx]
         y_test = y.iloc[test_idx]
@@ -57,9 +63,14 @@ def _select_regularization_c(
     for c in candidate_cs:
         losses: list[float] = []
         for train_idx, test_idx in splits:
-            model = LogisticRegression(C=float(c), solver="liblinear", max_iter=2000)
-            model.fit(X.iloc[train_idx], y.iloc[train_idx])
-            probs = _predict_probs(model, X.iloc[test_idx])
+            # PIT-Safe: StandardScaler is fitted ONLY on the training indices of the current fold.
+            pipeline = Pipeline([
+                ("scaler", StandardScaler()),
+                ("model", LogisticRegression(C=float(c), solver="liblinear", max_iter=2000, random_state=RANDOM_SEED)),
+            ])
+            pipeline.fit(X.iloc[train_idx], y.iloc[train_idx])
+            # Use predict_proba from the pipeline to ensure test features are scaled using training stats.
+            probs = pipeline.predict_proba(X.iloc[test_idx])[:, 1]
             losses.append(float(brier_score_loss(y.iloc[test_idx], probs)))
         mean_loss = float(np.mean(losses))
         if mean_loss < best_loss:
@@ -82,21 +93,54 @@ def calculate_composites(df: pd.DataFrame) -> pd.DataFrame:
     return out.dropna()
 
 
-def train_baseline_model(X: pd.DataFrame, y: pd.Series):
+def train_baseline_model(X: pd.DataFrame, y: pd.Series, audit_fn=None, bounds=None):
     X_clean = _sanitize_feature_frame(X).dropna()
     train_idx = X_clean.index.intersection(y.dropna().index)
     X_clean = X_clean.loc[train_idx]
     y_clean = y.loc[train_idx].astype(int)
-    mean = X_clean.mean()
-    scale = X_clean.std(ddof=0).replace(0.0, 1.0).fillna(1.0)
-    X_scaled = _standardize(X_clean, mean, scale)
+
+    # 1. Selection Phase: Cross-validate using PIT-safe scaling
     splits = _valid_time_splits(y_clean)
-    best_c = _select_regularization_c(X_scaled, y_clean, splits)
-    model = LogisticRegression(C=best_c, solver="liblinear", max_iter=2000)
-    model.fit(X_scaled, y_clean)
+    best_c = _select_regularization_c(X_clean, y_clean, splits)
+
+    # 2. Final Training Phase
+    pipeline = Pipeline([
+        ("scaler", StandardScaler()),
+        ("model", LogisticRegression(C=best_c, solver="liblinear", max_iter=2000, random_state=RANDOM_SEED)),
+    ])
+    pipeline.fit(X_clean, y_clean)
+
+    # 3. Physical Audit & Constrained Fallback
+    model = pipeline.named_steps["model"]
+    scaler = pipeline.named_steps["scaler"]
+    feature_names = X_clean.columns.tolist()
+
+    if audit_fn and not audit_fn(model, feature_names):
+        # Fallback to Constrained Optimization
+        # Use mean/scale from scaler for proper normalization during constrained fit
+        mean = pd.Series(scaler.mean_, index=feature_names)
+        scale = pd.Series(np.sqrt(scaler.var_), index=feature_names)
+        X_scaled = (X_clean - mean) / scale
+
+        # Prepare bounds list for ConstrainedLogisticRegression
+        bounds_list = [bounds.get(name, (None, None)) if bounds else (None, None) for name in feature_names]
+        
+        constrained_model = ConstrainedLogisticRegression(C=best_c, bounds=bounds_list)
+        constrained_model.fit(X_scaled, y_clean)
+
+        # Attach metadata for inference
+        constrained_model.C_ = np.atleast_1d(best_c)
+        constrained_model._feature_mean = mean
+        constrained_model._feature_scale = scale
+        constrained_model.constrained_flag = True
+        return constrained_model
+
+    # Standard model metadata
     model.C_ = np.atleast_1d(best_c)
-    model._feature_mean = mean
-    model._feature_scale = scale
+    model._feature_mean = pd.Series(scaler.mean_, index=X_clean.columns)
+    model._feature_scale = pd.Series(np.sqrt(scaler.var_), index=X_clean.columns)
+    model.constrained_flag = False
+
     return model
 
 

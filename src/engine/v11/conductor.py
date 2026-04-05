@@ -379,7 +379,6 @@ class V11Conductor:
                 weight_registry=active_registry,
                 feature_quality_weights=feature_weights,  # Task 6: External quality signals
                 tau=registry_tau,
-                m=registry_m,
             )
             if any(np.isnan(list(posteriors.values()))):
                 logger.warning("Bayesian Inference produced NaNs. Falling back to priors.")
