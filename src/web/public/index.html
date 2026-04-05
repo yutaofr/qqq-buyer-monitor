@@ -364,7 +364,7 @@
                 'mapping': {
                     'CRISIS': '危機', 'STRESS': '壓力', 'NEUTRAL': '中性', 'EUPHORIC': '過熱',
                     'BUST': '蕭條', 'MID_CYCLE': '中期', 'LATE_CYCLE': '後期', 'RECOVERY': '修復',
-                    'CASH': '現金', 'QQQ': '1x 倉位', 'QLD': '2x 槓桿',
+                    'CASH': '現金', 'QQQ': '標準倉位', 'QLD': '雙倍槓桿',
                     'FULL': '全量', 'SHADOW': '影子模式', 'HALF': '半量', 'QUARTER': '四分之一', 'NONE': '關閉',
                     'FAST': '快速', 'BASE': '標配', 'SLOW': '減速', 'PAUSE': '停步', 'RECOVER': '恢復',
                     'TRUE': '是', 'FALSE': '否', 'MODE': '模式', 'STATE': '狀態', 'NEGATIVE SCORE': '負向評分',
@@ -582,7 +582,7 @@
             if (currentLang === 'en') {
                 auditEl.textContent = rawRegimeKey === stableRegimeKey ? `Today's top posterior matches stable: ${rawLabel}` : `Stable: ${stableLabel} | Today's Top: ${rawLabel}`;
             } else {
-                auditEl.textContent = rawRegimeKey === stableRegimeKey ? `當日後驗 Top-1 與穩定態一致: ${rawLabel}` : `穩定態: ${stableLabel} | 當日後驗 Top-1: ${rawLabel}`;
+                auditEl.textContent = rawRegimeKey === stableRegimeKey ? `當日後驗首選與穩定態一致: ${rawLabel}` : `穩定態: ${stableLabel} | 當日後驗首選: ${rawLabel}`;
             }
             
             document.getElementById('regime-lumiere').className = `lumiere ${REGIME_COLORS[activeRegimeKey] || 'bg-slate-500'}`;
@@ -595,7 +595,7 @@
             const deployStateKey = data.signal.deployment_state_key || (String(data.signal.deployment_state || 'DEPLOY_BASE').replace('DEPLOY_', '')) || 'BASE';
             document.getElementById('deploy').textContent = String(data.signal.deployment_state || '--').replace('DEPLOY_', '').replace('入場', '').trim();
             document.getElementById('deploy').className = `text-xl sm:text-2xl font-black ${DEPLOY_COLORS[deployStateKey] || 'text-blue-400'}`;
-            document.getElementById('deploy-readiness').textContent = data.signal.deployment_readiness != null ? (currentLang === 'en' ? `Kelly Readiness ${(data.signal.deployment_readiness * 100).toFixed(1)}%` : `Kelly 就緒度 ${(data.signal.deployment_readiness * 100).toFixed(1)}%`) : '--';
+            document.getElementById('deploy-readiness').textContent = data.signal.deployment_readiness != null ? (currentLang === 'en' ? `Kelly Readiness ${(data.signal.deployment_readiness * 100).toFixed(1)}%` : `凱利就緒度 ${(data.signal.deployment_readiness * 100).toFixed(1)}%`) : '--';
             
             document.getElementById('calc-at').textContent = data.meta.calculated_at_utc.replace('T',' ').replace('Z','');
             document.getElementById('hydration-anchor').textContent = data.signal.hydration_anchor || data.meta.hydration_anchor || '2018-01-01';
@@ -630,11 +630,20 @@
                 const diag = data.diagnostics;
                 const ens = diag.ensemble_options;
                 const vText = document.getElementById('verdict-text');
-                const vIcon = document.getElementById('verdict-icon');
-                const vGlow = document.getElementById('panorama-glow');
-                const vCard = document.getElementById('panorama-panel');
-                
-                vText.textContent = ens.verdict_label || ens.verdict;
+                const vIcon = document.getElementById('indicator-icon'); // Correcting potential ID mismatch if any
+
+                // Clean up verdict text: Remove anything in parentheses if in Chinese mode
+                let verdictLabel = ens.verdict_label || ens.verdict;
+                if (currentLang === 'zh-TW') {
+                    // Mapping for common verdicts to avoid back-end English labels
+                    const VERDICT_MAP = {
+                        'PROTECTIVE': '🚨 防禦保護',
+                        'AGGRESSIVE': '🚀 積極擴張',
+                        'NEUTRAL': '⚖️ 中性平衡'
+                    };
+                    verdictLabel = VERDICT_MAP[ens.verdict] || verdictLabel.split('(')[0].trim();
+                }
+                vText.textContent = verdictLabel;
                 
                 if (ens.verdict === 'PROTECTIVE') {
                     vIcon.className = 'w-3 h-3 rounded-full animate-pulse bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.8)]';
@@ -678,7 +687,7 @@
                         data = await res.json(); 
                         const isProduction = primaryUrl === DATA_SOURCES.prod;
                         const statusMsg = TRANSLATIONS[currentLang].status.CLOUD_SYNCED;
-                        sourceLabel.textContent = isProduction ? statusMsg : `${statusMsg} (Test)`;
+                        sourceLabel.textContent = isProduction ? statusMsg : (currentLang === 'zh-TW' ? `${statusMsg}（測試）` : `${statusMsg} (Test)`);
                         sourceLabel.className = isProduction ? "text-emerald-500" : "text-blue-400"; 
                     }
                 } catch (e) {}
