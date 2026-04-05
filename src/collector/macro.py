@@ -70,7 +70,10 @@ def fetch_fred_api(
             columns.insert(len(columns), "realtime_end")
         return df[columns]
     except Exception as exc:
-        logger.warning("FRED API fetch failed for %s: %s", series_id, exc)
+        err_msg = str(exc)
+        if api_key:
+            err_msg = err_msg.replace(api_key, "***")
+        logger.warning("FRED API fetch failed for %s: %s", series_id, err_msg)
         return None
 
 

@@ -34,7 +34,10 @@ def fetch_fred_series(series_id: str, retries: int = 3):
                     f"Attempt {attempt + 1} failed for {series_id}: {response.status_code}"
                 )
         except Exception as e:
-            logger.warning(f"Attempt {attempt + 1} failed for {series_id}: {e}")
+            err_msg = str(e)
+            if FRED_API_KEY:
+                err_msg = err_msg.replace(FRED_API_KEY, "***")
+            logger.warning(f"Attempt {attempt + 1} failed for {series_id}: {err_msg}")
 
     raise ConnectionError(f"Failed to fetch {series_id} after {retries} attempts.")
 
