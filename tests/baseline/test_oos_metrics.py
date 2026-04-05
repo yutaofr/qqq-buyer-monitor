@@ -129,7 +129,7 @@ def test_sidecar_validity_tracking():
     # First part of OOS should be valid (excluding initial train/re-train window)
     # We skip the first 21 days to allow for model hydration
     valid_mask = (results.index >= dates[600+21]) & (results.index < dates[-50])
-    invalid_mask = (results.index >= dates[-50]) & (results.index < dates[-1]) 
+    invalid_mask = (results.index >= dates[-50]) & (results.index < dates[-1])
 
     assert results.loc[valid_mask, "sidecar_valid"].all()
     # In my execution.py update:

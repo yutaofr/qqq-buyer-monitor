@@ -143,12 +143,12 @@ def main():
         print("\n--- Real-world OOS Performance Audit ---")
         y_spy = artifacts["target_spy"]
         y_qqq = artifacts["target_qqq"]
-        
+
         # Tractor AUC
         t_idx = results.index.intersection(y_spy.dropna().index)
         t_auc = roc_auc_score(y_spy.loc[t_idx], results.loc[t_idx, "tractor_prob"])
         print(f"Tractor OOS AUC: {t_auc:.4f}")
-        
+
         # Sidecar AUC
         s_idx = valid_sidecar.index.intersection(y_qqq.dropna().index)
         if not s_idx.empty:
