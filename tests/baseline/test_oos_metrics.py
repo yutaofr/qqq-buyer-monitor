@@ -111,7 +111,9 @@ def test_sidecar_validity_tracking():
         "T10Y2Y": rng.standard_normal(n),
         "BAMLH0A0HYM2": rng.standard_normal(n),
         "VIXCLS": rng.standard_normal(n),
-        "^VXN": rng.standard_normal(n)
+        "^VXN": rng.standard_normal(n),
+        "QQQ": 100.0 + rng.standard_normal(n).cumsum(),
+        "SPY": 100.0 + rng.standard_normal(n).cumsum()
     }, index=dates)
 
     # Inject missing ^VXN at the end
@@ -124,9 +126,10 @@ def test_sidecar_validity_tracking():
     oos_start = dates[600].strftime("%Y-%m-%d")
     results = calculate_baseline_oos_series(data, target_spy, target_qqq, start_date=oos_start)
 
-    # First part of OOS should be valid
-    valid_mask = results.index < dates[-50]
-    invalid_mask = (results.index >= dates[-50]) & (results.index < dates[-1]) # Avoid last point which might be ffilled if I'm not careful, but execution.py now returns NaN
+    # First part of OOS should be valid (excluding initial train/re-train window)
+    # We skip the first 21 days to allow for model hydration
+    valid_mask = (results.index >= dates[600+21]) & (results.index < dates[-50])
+    invalid_mask = (results.index >= dates[-50]) & (results.index < dates[-1]) 
 
     assert results.loc[valid_mask, "sidecar_valid"].all()
     # In my execution.py update:

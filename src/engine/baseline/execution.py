@@ -198,10 +198,10 @@ def calculate_baseline_oos_series(
             train_idx_t = X_t.index[X_t.index < current_dt].intersection(target_spy.index)
             train_idx_s = X_s.index[X_s.index < current_dt].intersection(target_qqq_valid.index)
 
-            # Minimum sample size requirement
-            if len(train_idx_t) > 500:
+            # Minimum sample size requirement (inclusive threshold for first-window hydration)
+            if len(train_idx_t) >= 250:
                 model_t = train_baseline_model(X_t.loc[train_idx_t], target_spy.loc[train_idx_t])
-            if len(train_idx_s) > 500:
+            if len(train_idx_s) >= 250:
                 model_s = train_sidecar_model(X_s.loc[train_idx_s], target_qqq_valid.loc[train_idx_s])
 
         # Predict T0 with the model trained on data UP TO T-1

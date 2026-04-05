@@ -16,6 +16,8 @@ BASELINE_SERIES_MAP = {
     "stress_credit": "BAMLH0A0HYM2",
     "stress_vix": "VIXCLS",
     "stress_vxn": "^VXN",
+    "price_spy": "SPY",
+    "price_qqq": "QQQ",
 }
 
 # Conservative release lags (in business days) as per SRD / V14 PIT requirements
@@ -28,6 +30,8 @@ RELEASE_LAG_MAP = {
     "BAMLH0A0HYM2": 1,
     "VIXCLS": 1,
     "^VXN": 1,
+    "SPY": 1,
+    "QQQ": 1,
 }
 
 ALFRED_REALTIME_START = "1776-07-04"
@@ -93,7 +97,7 @@ def _build_pit_fallback_frame(raw: pd.DataFrame, series_id: str) -> pd.DataFrame
 
 def fetch_baseline_series(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
     """Fetch and normalize a baseline series (ALFRED if available, else PIT fallback)."""
-    if series_id.startswith("^"):
+    if series_id.startswith("^") or series_id in ["SPY", "QQQ"]:
         # YFinance Path
         import yfinance as yf
         try:
@@ -265,6 +269,20 @@ def load_all_baseline_data(timeout: int = 15) -> pd.DataFrame:
     else:
         metadata["degraded"].append("^VXN")
 
+    # 8. SPY Close (Daily)
+    spy = fetch_baseline_series(BASELINE_SERIES_MAP["price_spy"], timeout=timeout)
+    if spy is not None:
+        frames.append(spy[[BASELINE_SERIES_MAP["price_spy"]]])
+    else:
+        metadata["degraded"].append("SPY")
+
+    # 9. QQQ Close (Daily)
+    qqq = fetch_baseline_series(BASELINE_SERIES_MAP["price_qqq"], timeout=timeout)
+    if qqq is not None:
+        frames.append(qqq[[BASELINE_SERIES_MAP["price_qqq"]]])
+    else:
+        metadata["degraded"].append("QQQ")
+
     if not frames:
         return pd.DataFrame()
 
@@ -311,4 +329,7 @@ def fetch_qqq_technical_signals(start_date: str = "1999-01-01") -> pd.DataFrame:
     # Signal: 1 if MA50 < MA200 (Death Cross)
     signal = (ma50 < ma200).astype(int)
 
-    return pd.DataFrame({"qqq_ma_cross": signal, "qqq_close": close}, index=qqq.index).dropna()
+    # Enforce PIT alignment: T0 close is only available at T+1 Open (Effective)
+    res = pd.DataFrame({"qqq_ma_cross": signal, "qqq_close": close}, index=qqq.index).dropna()
+    res.index = res.index + pd.offsets.BDay(1)
+    return res.sort_index()
