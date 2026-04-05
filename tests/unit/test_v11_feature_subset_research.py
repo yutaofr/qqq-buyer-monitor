@@ -3,8 +3,8 @@ import pandas as pd
 from src.research.v11_feature_subset_research import (
     QQQ_CYCLE_CORE_FEATURES,
     QQQ_CYCLE_OPTIONAL_FEATURES,
-    build_research_frame,
     build_qqq_cycle_candidate_sets,
+    build_research_frame,
     flatten_window_report,
     rank_candidate_frame,
 )

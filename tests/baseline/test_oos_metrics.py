@@ -1,14 +1,14 @@
 import numpy as np
 import pandas as pd
-import pytest
-from sklearn.metrics import roc_auc_score
+
+from src.engine.baseline.execution import calculate_baseline_oos_series
+from src.engine.baseline.sidecar import generate_sidecar_target
 from src.engine.baseline.validation import (
     generate_baseline_target,
     run_ac2_label_permutation_test,
     run_ac2_leakage_detection,
 )
-from src.engine.baseline.execution import calculate_baseline_oos_series
-from src.engine.baseline.sidecar import generate_sidecar_target
+
 
 def test_ac2_random_convergence():
     """
@@ -24,12 +24,12 @@ def test_ac2_random_convergence():
         "liquidity": rng.standard_normal(n),
         "stress": rng.standard_normal(n)
     }, index=dates)
-    
+
     y = pd.Series(rng.choice([0, 1], size=n), index=dates)
-    
+
     # Run AC-2 with fewer shuffles for speed in tests
     mean_auc = run_ac2_label_permutation_test(X, y, n_shuffles=2)
-    
+
     # Check if within [0.35, 0.65] range
     assert 0.35 <= mean_auc <= 0.65, f"AC-2 failed: Random AUC was {mean_auc:.4f}"
 
@@ -40,7 +40,7 @@ def test_ac2_leakage_detection():
     results = run_ac2_leakage_detection()
     assert "pit_safe_auc" in results
     assert "leaky_auc" in results
-    # With many features, leaky AUC should be significantly higher (often > 0.8) 
+    # With many features, leaky AUC should be significantly higher (often > 0.8)
     # while PIT-safe remains near 0.5
     assert results["leaky_auc"] > results["pit_safe_auc"] + 0.1
     assert results["leakage_detected"] is True
@@ -113,26 +113,26 @@ def test_sidecar_validity_tracking():
         "VIXCLS": rng.standard_normal(n),
         "^VXN": rng.standard_normal(n)
     }, index=dates)
-    
+
     # Inject missing ^VXN at the end
     data.loc[dates[-50:], "^VXN"] = np.nan
-    
+
     target_spy = pd.Series(rng.choice([0, 1], size=n), index=dates)
     target_qqq = pd.Series(rng.choice([0, 1], size=n), index=dates)
-    
+
     # Start OOS after enough training data
     oos_start = dates[600].strftime("%Y-%m-%d")
     results = calculate_baseline_oos_series(data, target_spy, target_qqq, start_date=oos_start)
-    
+
     # First part of OOS should be valid
     valid_mask = results.index < dates[-50]
     invalid_mask = (results.index >= dates[-50]) & (results.index < dates[-1]) # Avoid last point which might be ffilled if I'm not careful, but execution.py now returns NaN
-    
+
     assert results.loc[valid_mask, "sidecar_valid"].all()
     # In my execution.py update:
     # res.loc[current_dt, "sidecar_prob"] = np.nan
     # res.loc[current_dt, "sidecar_valid"] = False
-    
+
     # Check that sidecar_valid is False for invalid mask
     assert not results.loc[invalid_mask, "sidecar_valid"].any()
     assert results.loc[invalid_mask, "sidecar_prob"].isna().all()

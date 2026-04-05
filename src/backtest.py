@@ -19,13 +19,13 @@ from typing import Any
 import pandas as pd
 import yfinance as yf
 
-from src.engine.v13.execution_overlay import ExecutionOverlayEngine
 from src.engine.v11.core.expectation_surface import (
     compute_beta_expectation,
     deployment_cash_notional,
     deployment_state_rank,
     expected_policy_for_regime,
 )
+from src.engine.v13.execution_overlay import ExecutionOverlayEngine
 from src.regime_topology import canonicalize_regime_sequence, merge_regime_weights
 
 logger = logging.getLogger(__name__)
