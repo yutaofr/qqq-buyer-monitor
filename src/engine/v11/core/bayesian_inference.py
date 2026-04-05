@@ -43,8 +43,7 @@ class BayesianInferenceEngine:
         runtime_priors: dict[str, float] | None = None,
         weight_registry: dict[str, Any] | None = None,
         feature_quality_weights: dict[str, float] | None = None,
-        tau: float = 0.5,
-        m: float = 0.35,
+        tau: float = 3.0,
     ) -> tuple[dict[str, float], dict[str, Any]]:
         """
         SRD-v13.4 Calibrated Weighted Bayesian Inference.
@@ -89,7 +88,8 @@ class BayesianInferenceEngine:
 
             # 2. SRD-v13.4: Weighted Log-Likelihood with Temperature Scaling (Tau)
             raw_log_lhs = {}
-            level_contributions = {regime: {} for regime in classifier.classes_}
+            # v14-FIX: Use stringified keys for regime indexing to avoid int/str mismatch
+            level_contributions = {str(regime): {} for regime in classifier.classes_}
 
             # v13.7-FINAL: Asymmetric Tau mapping derived from injected tau.
             base_tau = max(0.01, float(tau))
@@ -158,7 +158,6 @@ class BayesianInferenceEngine:
                 ),
                 "total_weight": total_weight_sum,
                 "tau_applied": base_tau,
-                "m_applied": m,
                 "evidence_dist": raw_evidence_dist,
                 "level_contributions": level_contributions,
             }

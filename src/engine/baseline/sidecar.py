@@ -5,6 +5,7 @@ import pandas as pd
 
 from src.engine.baseline.engine import calculate_composites, rolling_zscore, train_baseline_model
 from src.engine.baseline.targets import align_target_inputs
+from src.engine.baseline.constrained_model import ConstrainedLogisticRegression
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +94,47 @@ def generate_sidecar_target(
     return y
 
 
+def audit_sidecar_coeffs(model, feature_names: list[str]) -> bool:
+    """
+    Check if the trained model coefficients satisfy physical intuition rules.
+    Rules:
+    - growth: <= 0
+    - stress: >= 0
+    - liquidity: <= 0
+    - vxn_acceleration: >= 0
+    - relative_weakness: <= 0
+    """
+    coeffs = model.coef_[0]
+    rules = {
+        "growth_composite": lambda x: x <= 0,
+        "stress_composite_extreme": lambda x: x >= 0,
+        "liquidity_composite": lambda x: x <= 0,
+        "vxn_acceleration": lambda x: x >= 0,
+        "qqq_spy_relative_weakness": lambda x: x <= 0,
+    }
+
+    for i, name in enumerate(feature_names):
+        if name in rules:
+            rule = rules[name]
+            val = coeffs[i]
+            if not rule(val):
+                logger.warning(f"!!! Audit Failed: {name} is {val:.4f} (Expected {rule}) !!!")
+                return False
+    return True
+
+
 def train_sidecar_model(X: pd.DataFrame, y: pd.Series):
     """
-    Train the Sidecar Ridge Logistic model with Cross-Validation.
+    Train the Sidecar Ridge Logistic model with Cross-Validation and Physical Audit.
+    Leverages the centralized engine fallback to ConstrainedLogisticRegression.
     """
-    return train_baseline_model(X, y)
+    # Define bounds for each feature
+    bounds = {
+        "growth_composite": (None, 0.0),
+        "stress_composite_extreme": (0.0, None),
+        "liquidity_composite": (None, 0.0),
+        "vxn_acceleration": (0.0, None),
+        "qqq_spy_relative_weakness": (None, 0.0),
+    }
+
+    return train_baseline_model(X, y, audit_fn=audit_sidecar_coeffs, bounds=bounds)

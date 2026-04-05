@@ -281,7 +281,6 @@ def run_cycle_probability_audit(
             weight_registry=registry,
             feature_quality_weights=feature_weights,
             tau=float(registry.get("inference_tau", 3.0)),
-            m=float(registry.get("inference_momentum_m", 0.6)),
         )
         previous_raw = row
 

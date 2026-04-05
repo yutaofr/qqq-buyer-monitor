@@ -47,9 +47,12 @@ def run_ac2_label_permutation_test(X: pd.DataFrame, y: pd.Series, n_shuffles: in
         model = None
         for i in range(start_idx, n):
             if (i - start_idx) % cadence == 0:
-                y_train = y_shuffled_ser.iloc[:i]
+                # PIT Gap: Ensure training set excludes targets that 'saw' the future data at index i.
+                # v14.8 Hardening: Use horizon + 3-day buffer (23 business days).
+                effective_cutoff = i - 23 
+                y_train = y_shuffled_ser.iloc[:effective_cutoff]
                 if len(np.unique(y_train)) > 1:
-                    model = train_baseline_model(X.iloc[:i], y_train)
+                    model = train_baseline_model(X.iloc[:effective_cutoff], y_train)
             if model is not None:
                 all_oos_probs.append(float(predict_baseline_crisis_prob(model, X.iloc[[i]]).iloc[0]))
                 all_oos_targets.append(y_shuffled_ser.iloc[i])
@@ -78,7 +81,9 @@ def run_ac2_leakage_detection():
         model = None
         for i in range(start_idx, n):
             if (i - start_idx) % 100 == 0:
-                model = train_baseline_model(features.iloc[:i], y.iloc[:i])
+                # Apply horizon + 3-day gap (23 business days)
+                effective_cutoff = i - 23
+                model = train_baseline_model(features.iloc[:effective_cutoff], y.iloc[:effective_cutoff])
             if model is not None:
                 probs.append(float(predict_baseline_crisis_prob(model, features.iloc[[i]]).iloc[0]))
                 targets.append(int(y.iloc[i]))
@@ -90,7 +95,8 @@ def run_ac2_leakage_detection():
     model = None
     for i in range(start_idx, n):
         if (i - start_idx) % 100 == 0:
-            model = train_baseline_model(X_safe.iloc[:i], y.iloc[:i])
+            effective_cutoff = i - 23
+            model = train_baseline_model(X_safe.iloc[:effective_cutoff], y.iloc[:effective_cutoff])
         if model is not None:
             pit_safe_probs.append(float(predict_baseline_crisis_prob(model, X_safe.iloc[[i]]).iloc[0]))
             targets.append(int(y.iloc[i]))
