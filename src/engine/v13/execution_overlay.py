@@ -19,16 +19,28 @@ def _clip01(value: float | None) -> float:
     return float(np.clip(float(value or 0.0), 0.0, 1.0))
 
 
-def _expanding_excess_score(series: pd.Series) -> float | None:
+def _stationary_excess_score(series: pd.Series, window: int = 252) -> float | None:
+    """v14.0 stationary score with rolling normalization to prevent look-ahead scale inflation."""
     numeric = pd.to_numeric(series, errors="coerce").dropna()
     if numeric.empty:
         return None
-    baseline = numeric.expanding(min_periods=1).median()
+    # Minimum history for stats (42 day trading cycle)
+    min_p = 42
+    if numeric.count() < min_p:
+        baseline = numeric.expanding(min_periods=1).median()
+    else:
+        baseline = numeric.rolling(window=window, min_periods=min_p).median()
+
     excess = (numeric - baseline).clip(lower=0.0)
     last_excess = float(excess.iloc[-1])
     if not np.isfinite(last_excess) or last_excess <= 0.0:
         return 0.0
-    max_excess = float(excess.max())
+
+    if excess.count() < min_p:
+        max_excess = float(excess.max())
+    else:
+        max_excess = float(excess.rolling(window=window, min_periods=min_p).max().iloc[-1])
+
     if not np.isfinite(max_excess) or max_excess <= 0.0:
         return 0.0
     return float(np.clip(last_excess / max_excess, 0.0, 1.0))
@@ -147,7 +159,7 @@ class ExecutionOverlayEngine:
                 and breadth_quality >= minimum_quality
             ):
                 breadth_series = 1.0 - _coerce_series(frame, "adv_dec_ratio")
-                breadth_stress = _expanding_excess_score(breadth_series)
+                breadth_stress = _stationary_excess_score(breadth_series)
                 derived_features["breadth_stress"] = breadth_stress
                 if breadth_stress is not None and breadth_stress > 0.0:
                     negative_components.append(
@@ -179,7 +191,7 @@ class ExecutionOverlayEngine:
             and concentration_quality >= minimum_quality
         ):
             concentration_series = _coerce_series(frame, "ndx_concentration").clip(lower=0.0)
-            concentration_stress = _expanding_excess_score(concentration_series)
+            concentration_stress = _stationary_excess_score(concentration_series)
             derived_features["concentration_stress"] = concentration_stress
             if concentration_stress is not None and concentration_stress > 0.0:
                 negative_components.append(
@@ -247,8 +259,8 @@ class ExecutionOverlayEngine:
                 * volume_intensity.clip(lower=0.0)
             )
 
-            non_confirmation = _expanding_excess_score(non_confirmation_raw)
-            volume_repair = _expanding_excess_score(volume_repair_raw)
+            non_confirmation = _stationary_excess_score(non_confirmation_raw)
+            volume_repair = _stationary_excess_score(volume_repair_raw)
             derived_features["non_confirmation"] = non_confirmation
             derived_features["volume_repair"] = volume_repair
 
