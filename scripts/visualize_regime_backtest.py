@@ -44,7 +44,7 @@ def run_panorama_visualization(oos_start="2018-01-01", oos_end=None):
     if os.path.exists(prior_path):
         os.remove(prior_path)
         logger.info(f"V14-FIX: Resetting forensic prior at {prior_path}")
-        
+
     conductor = V11Conductor(
         training_cutoff=oos_start,
         prior_state_path=prior_path

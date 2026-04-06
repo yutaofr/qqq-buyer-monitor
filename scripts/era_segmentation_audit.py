@@ -1,7 +1,8 @@
 import logging
 import os
+
 import pandas as pd
-import numpy as np
+
 from src.backtest import run_v11_audit
 from src.engine.v11.probability_seeder import ProbabilitySeeder
 
@@ -16,7 +17,7 @@ def run_era_audit():
     """
     pivot_years = [2012, 2015, 2018, 2020]
     pivot_results = []
-    
+
     seeder_base = ProbabilitySeeder()
     all_features = seeder_base.feature_names()
 
@@ -25,7 +26,7 @@ def run_era_audit():
     for year in pivot_years:
         split_date = f"{year}-01-01"
         logger.info(f"Auditing Era Post-{year} with default Expanding memory...")
-        
+
         try:
             summary = run_v11_audit(
                 evaluation_start=split_date,
@@ -50,17 +51,17 @@ def run_era_audit():
     # Based on user intuition that 2018 is the break
     base_year = 2018
     logger.info(f"\n=== Phase 2: Per-Factor Sensitivity (Era: {base_year}+) ===")
-    
+
     # Baseline: All Expanding
     factor_results = []
-    
+
     for factor in all_features:
         logger.info(f"Testing Rolling Window (756d) for FACTOR: {factor} ...")
-        
+
         # Override ONLY this factor to rolling
         overrides = {f: {"z_method": "expanding"} for f in all_features}
         overrides[factor] = {"z_method": "rolling", "z_window": 756}
-        
+
         try:
             summary = run_v11_audit(
                 evaluation_start=f"{base_year}-01-01",

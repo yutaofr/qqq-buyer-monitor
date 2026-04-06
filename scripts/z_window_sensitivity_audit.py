@@ -1,10 +1,8 @@
-import json
 import logging
 import os
-from pathlib import Path
 
-import numpy as np
 import pandas as pd
+
 from src.backtest import run_v11_audit
 from src.engine.v11.probability_seeder import ProbabilitySeeder
 
@@ -25,7 +23,7 @@ def run_sensitivity_audit():
 
     for window in windows:
         logger.info(f"--- Auditing Z-Window: {window} ---")
-        
+
         # Build overrides for all features
         overrides = {}
         for feature in feature_names:
@@ -33,7 +31,7 @@ def run_sensitivity_audit():
                 overrides[feature] = {"z_method": "expanding"}
             else:
                 overrides[feature] = {"z_method": "rolling", "z_window": window}
-        
+
         experiment_config = {
             "probability_seeder": {
                 "config_overrides": overrides
@@ -49,11 +47,11 @@ def run_sensitivity_audit():
                 experiment_config=experiment_config,
                 strict_state_support=False
             )
-            
+
             summary["window"] = str(window)
             results.append(summary)
             logger.info(f"Window {window} completed. Accuracy: {summary['top1_accuracy']:.2%}, Brier: {summary['mean_brier']:.4f}")
-            
+
         except Exception as e:
             logger.error(f"Audit failed for window {window}: {e}")
             import traceback
@@ -63,14 +61,14 @@ def run_sensitivity_audit():
     report_df = pd.DataFrame(results)
     cols = ["window", "top1_accuracy", "mean_brier", "mean_entropy", "lock_incidence", "target_beta_min"]
     report_df = report_df[cols]
-    
+
     print("\n--- Z-Window Sensitivity Audit Report ---")
     print(report_df.to_string(index=False))
-    
+
     # Save results
     os.makedirs("artifacts/sensitivity_audit", exist_ok=True)
     report_df.to_csv("artifacts/sensitivity_audit/report.csv", index=False)
-    
+
     # Find optimal
     # Typically we want High Accuracy, Low Brier, and moderate Entropy (not locked at 1.0 or 0.0)
     best_brier = report_df.loc[report_df["mean_brier"].idxmin()]
