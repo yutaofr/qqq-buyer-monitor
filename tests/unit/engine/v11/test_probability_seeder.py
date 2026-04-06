@@ -24,6 +24,9 @@ def sample_macro_df():
     )
     df["net_liquidity_usd_bn"] = 4000.0 + np.linspace(0.0, 250.0, len(dates))
     df["erp_ttm_pct"] = 0.035 + np.sin(np.linspace(0.0, 12.0, len(dates))) * 0.004
+    df["qqq_close"] = 300.0 + np.cumsum(rng.normal(0.1, 1.0, len(dates)))
+    df["qqq_volume"] = 50_000_000 + rng.normal(0.0, 5_000_000, len(dates))
+    df["liquidity_roc_pct_4w"] = rng.normal(0.0, 0.02, len(dates))
     df.index.name = "date"
     return df
 
@@ -46,6 +49,10 @@ def test_seeder_factor_generation(sample_macro_df):
         "spread_absolute",
         "pmi_momentum",
         "labor_slack",
+        "qqq_ma_ratio",
+        "qqq_pv_divergence_z",
+        "credit_acceleration",
+        "liquidity_velocity",
     ]
 
     assert list(features_df.columns) == expected_cols

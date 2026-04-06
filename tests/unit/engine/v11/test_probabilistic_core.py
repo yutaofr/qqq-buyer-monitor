@@ -6,30 +6,37 @@ from src.engine.v11.core.entropy_controller import EntropyController
 
 
 @pytest.fixture
-def mock_kde_models():
-    class MockKDE:
-        def score_samples(self, X):
-            # Return some fake log-likelihood
-            return np.array([-5.0])
-
-    return {"MID_CYCLE": MockKDE(), "BUST": MockKDE()}
+def base_priors():
+    return {"MID_CYCLE": 0.8, "RECOVERY": 0.1, "LATE_CYCLE": 0.05, "BUST": 0.05}
 
 
 @pytest.fixture
-def base_priors():
-    return {"MID_CYCLE": 0.8, "BUST": 0.2}
+def mock_classifier():
+    class MockGNB:
+        classes_ = np.array(["MID_CYCLE", "RECOVERY", "LATE_CYCLE", "BUST"])
+        theta_ = np.zeros((4, 6))
+        var_ = np.ones((4, 6))
+    return MockGNB()
 
 
-def test_bayesian_inference_priors(mock_kde_models, base_priors):
+def test_bayesian_inference_priors(mock_classifier, base_priors):
     """验证推断引擎能够输出归一化的后验概率"""
-    engine = BayesianInferenceEngine(base_priors, mock_kde_models)
-    evidence = np.array([0.1, -0.2, 0.5, 0.1, -0.1, 0.0])  # 6-factor vector
+    engine = BayesianInferenceEngine(base_priors)
+    evidence = __import__("pandas").DataFrame(
+        [[0.1, -0.2, 0.5, 0.1, -0.1, 0.0]],
+        columns=["f1", "f2", "f3", "f4", "f5", "f6"]
+    )
 
-    probs = engine.infer_posterior(evidence)
+    probs, diag = engine.infer_gaussian_nb_posterior(
+        classifier=mock_classifier,
+        evidence_frame=evidence,
+        runtime_priors=base_priors,
+        feature_values={}
+    )
 
     assert sum(probs.values()) == pytest.approx(1.0)
     assert "MID_CYCLE" in probs
-    assert "BUST" in probs
+    assert len(probs) == len(base_priors)
 
 
 def test_entropy_calculation():
@@ -90,7 +97,7 @@ def test_gaussian_nb_feature_weights_can_silence_unreliable_dimensions():
         theta_ = np.array([[0.0, 4.0], [0.0, 0.0]])
         var_ = np.array([[1.0, 1.0], [1.0, 1.0]])
 
-    engine = BayesianInferenceEngine({}, {"MID_CYCLE": 0.5, "BUST": 0.5})
+    engine = BayesianInferenceEngine({"MID_CYCLE": 0.5, "BUST": 0.5})
     evidence = np.array([[0.0, 0.0]])
 
     full_weight, _ = engine.infer_gaussian_nb_posterior(
@@ -98,12 +105,14 @@ def test_gaussian_nb_feature_weights_can_silence_unreliable_dimensions():
         evidence_frame=__import__("pandas").DataFrame(evidence, columns=["signal", "breadth"]),
         runtime_priors={"MID_CYCLE": 0.5, "BUST": 0.5},
         weight_registry={"feature_weight_matrix": {"signal": 1.0, "breadth": 1.0}},
+        feature_values={"spread_21d": 2.0, "move_21d": 2.0},
     )
     muted_breadth, _ = engine.infer_gaussian_nb_posterior(
         classifier=StubGaussianNB(),
         evidence_frame=__import__("pandas").DataFrame(evidence, columns=["signal", "breadth"]),
         runtime_priors={"MID_CYCLE": 0.5, "BUST": 0.5},
         weight_registry={"feature_weight_matrix": {"signal": 1.0, "breadth": 0.0}},
+        feature_values={"spread_21d": 2.0, "move_21d": 2.0},
     )
 
     assert full_weight["BUST"] > full_weight["MID_CYCLE"]

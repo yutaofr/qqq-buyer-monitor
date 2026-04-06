@@ -16,7 +16,8 @@ def run_forensic():
 
     # 1. Initialize Conductor
     os.environ["ADAPTIVE_TAU_OVERRIDE"] = "OFF" # Ensure clean run
-    conductor = V11Conductor()
+    # v14.4 FIX: Set cutoff before 2020 so that 2020 is OOD for Mahalanobis
+    conductor = V11Conductor(training_cutoff="2019-12-31")
 
     # 2. Load Data
     data = load_all_baseline_data(timeout=30)
@@ -49,8 +50,14 @@ def run_forensic():
         # 3. Inspect intermediates from daily_run (via side-channel)
         posteriors = runtime["probabilities"]
         diagnostics = runtime["v13_4_diagnostics"]
+        
+        # Check Overdrive Status
+        is_ood, d_m = conductor.mahalanobis_guard.is_outlier(latest_vector.iloc[0].values, 
+                                                           threshold=float(conductor.v13_4_registry.get("mahalanobis_ood_threshold", 4.5)),
+                                                           return_distance=True)
 
         print(f"  Entropy: {runtime['entropy']:.4f}")
+        print(f"  Is OOD (Overdrive): {is_ood} (d_m={d_m:.4f})")
         print(f"  Evidence Uniform: {diagnostics.get('was_uniform')}")
         print(f"  Top Posteriors: { {k: round(v, 4) for k, v in list(posteriors.items())[:2]} }")
 

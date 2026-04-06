@@ -38,7 +38,17 @@ def run_panorama_visualization(oos_start="2018-01-01", oos_end=None):
     logger.info(f"Starting Panorama Visualization from {oos_start} to {oos_end or 'Latest'}...")
 
     # 1. Initialize Engines
-    conductor = V11Conductor()
+    # v14 Forensic Fix: Enforce training cutoff to prevent leakage.
+    # Use a clean prior path for backtests to avoid "Prior Poisoning" from stale counts.
+    prior_path = "data/v11_prior_forensic_backtest.json"
+    if os.path.exists(prior_path):
+        os.remove(prior_path)
+        logger.info(f"V14-FIX: Resetting forensic prior at {prior_path}")
+        
+    conductor = V11Conductor(
+        training_cutoff=oos_start,
+        prior_state_path=prior_path
+    )
     radar = TailRiskRadar()
 
     # AC-0/V12-FIX: Force reset high_entropy_streak for clean backtest/forensic report

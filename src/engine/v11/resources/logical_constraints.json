@@ -1,0 +1,46 @@
+{
+  "version": "14.3-STABLE-REMEDIATED",
+  "scenarios": {
+    "inflation_tilt": {
+      "conditions": { "real_yield_structural_z": [">", 0.5], "spread_21d": [">", 0.0] },
+      "penalties": { "RECOVERY": 0.15, "MID_CYCLE": 0.40 }
+    },
+    "volatility_shock": {
+      "conditions": { "move_21d": [">", 2.0] },
+      "penalties": { "MID_CYCLE": 0.10, "RECOVERY": 0.50 }
+    },
+    "macro_stability_anchor": {
+      "conditions": { 
+        "spread_21d_abs": ["<", 1.0], 
+        "move_21d_abs": ["<", 1.0], 
+        "qqq_ma_ratio": [">", -0.2], 
+        "qqq_pv_divergence_z": [">", -0.5] 
+      },
+      "penalties": { "RECOVERY": 0.10, "BUST": 0.10, "LATE_CYCLE": 0.10 },
+      "boosts": { "MID_CYCLE": 1.0 }
+    },
+    "death_cross_veto": {
+      "conditions": { "qqq_ma_ratio": ["<", -0.5] },
+      "penalties": { "RECOVERY": 0.05 }
+    },
+    "golden_cross_support": {
+      "conditions": { "qqq_ma_ratio": [">", 0.5], "qqq_pv_divergence_z": [">", -0.5] },
+      "penalties": { "BUST": 0.10, "LATE_CYCLE": 0.20 }
+    },
+    "cycle_decay": {
+      "conditions": { 
+        "qqq_ma_ratio": ["<", 0.0], 
+        "stress_indicator": ["or", {"qqq_pv_divergence_z": ["<", -1.0]}, {"credit_acceleration": [">", 1.0]}]
+      },
+      "penalties": { "RECOVERY": 0.05, "MID_CYCLE": 0.10 }
+    },
+    "liquidity_collapse": {
+      "conditions": { "liquidity_velocity": ["<", -2.0], "qqq_ma_ratio": ["<", 0] },
+      "penalties": { "MID_CYCLE": 0.05, "RECOVERY": 0.10, "LATE_CYCLE": 0.40 }
+    },
+    "pmi_collapse": {
+      "conditions": { "pmi_momentum": ["<", -1.5] },
+      "penalties": { "RECOVERY": 0.40, "MID_CYCLE": 0.45 }
+    }
+  }
+}

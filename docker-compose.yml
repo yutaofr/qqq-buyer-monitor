@@ -56,3 +56,14 @@ services:
     env_file:
       - .env
     command: python scripts/verify_alignment.py
+
+  audit-bayesian:
+    image: qqq-monitor:py313
+    build: .
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - .env:/app/.env
+    env_file:
+      - .env
+    command: python scripts/audit_bayesian_regime_lock.py

@@ -42,21 +42,22 @@ class ProbabilitySeeder:
         return {
             "real_yield_structural_z": {
                 "src": "real_yield_10y_pct",
-                "ewma_span": 126,
-                "z_method": "expanding",
+                "ewma_span": 21,  # Responsive to Fed pivots (1-month)
+                "z_method": "rolling",
+                "z_window": 1260,  # 5-year structural anchor
                 "min_periods": 63,
             },
             "move_21d": {
                 "src": "treasury_vol_21d",
-                "z_method": "expanding",
+                "z_method": "rolling",
+                "z_window": 1260,  # 5-year structural anchor
                 "min_periods": 63,
                 "orthogonalize_against": "spread_21d",
             },
             "breakeven_accel": {
                 "src": "breakeven_10y",
                 "diff": (21, 21),
-                "z_method": "rolling",
-                "z_window": 252,
+                "z_method": "expanding",
                 "min_periods": 42,
             },
             "core_capex_momentum": {
@@ -69,26 +70,25 @@ class ProbabilitySeeder:
                 "src": "copper_gold_ratio",
                 "diff": (126,),
                 "z_method": "rolling",
-                "z_window": 252,
+                "z_window": 756,  # 3-year medium-term sensitive
                 "min_periods": 126,
             },
             "usdjpy_roc_126d": {
                 "src": "usdjpy",
                 "diff": (126,),
                 "z_method": "rolling",
-                "z_window": 252,
+                "z_window": 756,
                 "min_periods": 126,
             },
             "spread_21d": {
                 "src": "credit_spread_bps",
                 "z_method": "rolling",
-                "z_window": 252,
+                "z_window": 1260,  # 5-year structural anchor
                 "min_periods": 21,
             },
             "liquidity_252d": {
                 "src": "net_liquidity_usd_bn",
-                "z_method": "rolling",
-                "z_window": 252,
+                "z_method": "expanding",
                 "min_periods": 63,
             },
             "erp_absolute": {
@@ -98,7 +98,8 @@ class ProbabilitySeeder:
             },
             "spread_absolute": {
                 "src": "credit_spread_bps",
-                "z_method": "expanding",
+                "z_method": "rolling",
+                "z_window": 1260,
                 "min_periods": 63,
             },
             "pmi_momentum": {
@@ -106,15 +107,40 @@ class ProbabilitySeeder:
                 "ewma_span": 21,
                 "diff": (21, 21),
                 "z_method": "rolling",
-                "z_window": 252,
+                "z_window": 756,
                 "min_periods": 63,
             },
             "labor_slack": {
                 "src": "job_openings",
                 "ewma_span": 21,
                 "z_method": "rolling",
-                "z_window": 252,
+                "z_window": 756,
                 "min_periods": 63,
+            },
+            "qqq_ma_ratio": {
+                "src": "qqq_close",
+                "z_method": "rolling",
+                "z_window": 1260,
+                "min_periods": 252,
+            },
+            "qqq_pv_divergence_z": {
+                "src": "qqq_close",
+                "z_method": "rolling",
+                "z_window": 1260,
+                "min_periods": 126,
+            },
+            "credit_acceleration": {
+                "src": "credit_spread_bps",
+                "diff": (21, 21),
+                "z_method": "rolling",
+                "z_window": 756,
+                "min_periods": 63,
+            },
+            "liquidity_velocity": {
+                "src": "liquidity_roc_pct_4w",
+                "z_method": "rolling",
+                "z_window": 252,
+                "min_periods": 21,
             },
         }
 
@@ -142,6 +168,14 @@ class ProbabilitySeeder:
                 raise ValueError(f"Unknown selected_features: {unknown}")
             if len(dict.fromkeys(self.selected_features)) != len(self.selected_features):
                 raise ValueError("selected_features must be unique")
+
+        # v14 Forensic Hardening: Validate Z-method integrity
+        for name, cfg in self.config.items():
+            method = cfg.get("z_method")
+            if method == "rolling" and cfg.get("z_window") is None:
+                raise ValueError(f"Feature '{name}' configured as 'rolling' but missing 'z_window'.")
+            if method not in {"rolling", "expanding"}:
+                raise ValueError(f"Feature '{name}' has unknown z_method: {method}")
 
     def contract_hash(self) -> str:
         canonical = json.dumps(
@@ -171,15 +205,33 @@ class ProbabilitySeeder:
                 continue
 
             series = pd.to_numeric(df[src_col], errors="coerce")
-            transformed = self._transform_series(series, cfg)
+
+            # Specialized Feature Logic (v14.3 Cycle Alignment)
+            if feature_name == "qqq_ma_ratio":
+                sma50 = series.rolling(50, min_periods=10).mean()
+                sma200 = series.rolling(200, min_periods=50).mean()
+                val = (sma50 / sma200.replace(0, pd.NA)).fillna(1.0) - 1.0
+            elif feature_name == "qqq_pv_divergence_z":
+                # Price ROC vs Volume ROC Correlation
+                # Negative correlation = Price up while Volume down (Top Divergence)
+                # or Price down while Volume up (Bottom Divergence/Capitulation)
+                p_roc = series.pct_change(21)
+                v_col = "qqq_volume" if "qqq_volume" in df.columns else src_col
+                v_roc = pd.to_numeric(df[v_col], errors="coerce").pct_change(21)
+                val = p_roc.rolling(21, min_periods=10).corr(v_roc).fillna(0.0)
+            else:
+                val = self._transform_series(series, cfg)
+
             features[feature_name] = self._compute_z(
-                transformed,
+                val,
                 method=str(cfg["z_method"]),
                 window=cfg.get("z_window"),
                 min_periods=int(cfg["min_periods"]),
             )
 
         features = features.ffill().fillna(0.0)
+        # AC-0: Store all raw Z-scores in diagnostics for TailRiskRadar visibility (v14 forensic fix)
+        self.diagnostics_ = features.copy()
         features = self._orthogonalize_move(features)
         return features.clip(*self.clip_range)
 
@@ -238,7 +290,8 @@ class ProbabilitySeeder:
         corr_21d = move_z.rolling(21, min_periods=5).corr(spread_z).fillna(0.0)
 
         out["move_21d"] = residual
-        self.diagnostics_ = pd.DataFrame(
+        # v14 forensic fix: JOIN with existing diagnostics instead of overwriting
+        ortho_diag = pd.DataFrame(
             {
                 "move_21d_raw_z": move_z,
                 "move_21d_orth_z": residual,
@@ -247,6 +300,7 @@ class ProbabilitySeeder:
             },
             index=features.index,
         )
+        self.diagnostics_ = self.diagnostics_.join(ortho_diag, how="left")
         return out
 
     def latest_diagnostics(self) -> pd.DataFrame:

@@ -55,3 +55,18 @@ class MahalanobisGuard:
             return float(np.clip(multiplier, 0.5, 1.0))
         except Exception:
             return 1.0
+
+    def is_outlier(self, current_vector: np.ndarray, threshold: float = 4.0, return_distance: bool = False) -> bool | tuple[bool, float]:
+        """
+        Binary trigger for out-of-distribution (OOD) events.
+        Default threshold of 4.0 captures extreme regimes (e.g., 2020 was 7.2).
+        """
+        if not self.is_initialized:
+            return (False, 0.0) if return_distance else False
+
+        try:
+            d_m = float(mahalanobis(current_vector, self.mean, self.inv_cov))
+            is_ood = bool(d_m > threshold)
+            return (is_ood, d_m) if return_distance else is_ood
+        except Exception:
+            return (False, 0.0) if return_distance else False
