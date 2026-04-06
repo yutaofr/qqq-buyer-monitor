@@ -55,3 +55,23 @@ def test_behavioral_guard_entropy_barrier_is_structural_not_tuned_constant():
 
     assert lower_barrier == 0.5
     assert higher_barrier == 1.0 / 3.0
+
+
+def test_behavioral_guard_can_reengage_qld_on_strong_recovery_signal_below_1x_beta():
+    guard = BehavioralGuard(initial_bucket="QQQ", evidence=0.0)
+    decisions = []
+
+    for _ in range(3):
+        decisions.append(guard.apply(_sizing(0.96, 0.10), reentry_signal=0.95))
+
+    assert decisions[-1].target_bucket == "QLD"
+    assert any(decision.action_required for decision in decisions)
+
+
+def test_behavioral_guard_reentry_boundary_relaxes_only_when_entropy_is_low():
+    low_entropy_boundary = BehavioralGuard._qld_entry_boundary(0.40, 0.10)
+    high_entropy_boundary = BehavioralGuard._qld_entry_boundary(0.40, 0.80)
+
+    assert low_entropy_boundary < high_entropy_boundary
+    assert low_entropy_boundary < 1.0
+    assert high_entropy_boundary <= 1.0

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 import logging
+import os
+from pathlib import Path
 from urllib.parse import quote
 
 import pandas as pd
@@ -13,6 +15,7 @@ from src.collector.macro import fetch_historical_fred_series
 logger = logging.getLogger(__name__)
 
 SHILLER_DATA_URL = "http://www.econ.yale.edu/~shiller/data/ie_data.xls"
+DEFAULT_MACRO_CACHE_PATH = Path("data/macro_historical_dump.csv")
 
 
 def _normalize_history_frame(frame: pd.DataFrame, value_column: str) -> pd.DataFrame:
@@ -306,11 +309,42 @@ def fetch_shiller_ttm_eps() -> dict[str, float | str | bool | None]:
     except Exception as exc:  # noqa: BLE001
         logger.warning("Shiller ERP fetch failed: %s", exc)
 
+    cached_snapshot = _load_cached_erp_snapshot()
+    if cached_snapshot is not None:
+        return cached_snapshot
+
     return {
         "eps": None,
         "price": None,
         "erp": None,
         "source": "unavailable:erp_ttm",
+        "degraded": True,
+    }
+
+
+def _load_cached_erp_snapshot() -> dict[str, float | str | bool | None] | None:
+    cache_path = Path(os.getenv("MACRO_DATA_PATH", str(DEFAULT_MACRO_CACHE_PATH)))
+    if not cache_path.exists():
+        return None
+
+    try:
+        frame = pd.read_csv(cache_path, usecols=["observation_date", "erp_ttm_pct"])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Cached ERP history load failed: %s", exc)
+        return None
+
+    frame["observation_date"] = pd.to_datetime(frame["observation_date"], errors="coerce")
+    frame["erp_ttm_pct"] = pd.to_numeric(frame["erp_ttm_pct"], errors="coerce")
+    frame = frame.dropna(subset=["observation_date", "erp_ttm_pct"]).sort_values("observation_date")
+    if frame.empty:
+        return None
+
+    latest = frame.iloc[-1]
+    return {
+        "eps": None,
+        "price": None,
+        "erp": float(latest["erp_ttm_pct"]),
+        "source": "derived:macro_history_cache",
         "degraded": True,
     }
 

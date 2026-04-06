@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 
@@ -49,6 +51,32 @@ def test_sidecar_train_audit_fallback():
     probs = model.predict_proba(X)
     assert probs.shape == (n, 2)
     assert (probs >= 0).all() and (probs <= 1).all()
+
+
+def test_sidecar_train_audit_fallback_emits_no_runtime_warnings():
+    np.random.seed(42)
+    n = 2000
+    X = pd.DataFrame(
+        {
+            "growth_composite": np.random.randn(n),
+            "stress_composite_extreme": np.random.randn(n),
+            "liquidity_composite": np.random.randn(n),
+            "vxn_acceleration": np.random.randn(n),
+            "qqq_spy_relative_weakness": np.random.randn(n),
+        }
+    )
+    y = ((X["growth_composite"] - X["stress_composite_extreme"]) > 1.0).astype(int)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = train_sidecar_model(X, pd.Series(y))
+
+    runtime_warnings = [
+        warning for warning in caught if issubclass(warning.category, RuntimeWarning)
+    ]
+
+    assert not runtime_warnings
+    assert model.constrained_flag is True
 
 
 def test_sidecar_train_no_fallback_on_valid_data():

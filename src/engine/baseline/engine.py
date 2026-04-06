@@ -27,10 +27,17 @@ def _sanitize_feature_frame(X: pd.DataFrame, clip: float = 8.0) -> pd.DataFrame:
     )
 
 
+def _safe_scale(scale: pd.Series | np.ndarray) -> pd.Series:
+    series = pd.Series(scale, copy=True)
+    series = pd.to_numeric(series, errors="coerce").replace([np.inf, -np.inf], np.nan)
+    return series.where(series.abs() > 1e-12, 1.0).fillna(1.0)
+
+
 def _standardize(X: pd.DataFrame, mean: pd.Series, scale: pd.Series) -> pd.DataFrame:
     aligned = _sanitize_feature_frame(X).reindex(columns=mean.index)
     filled = aligned.fillna(mean)
-    return (filled - mean) / scale
+    safe_scale = _safe_scale(scale).reindex(mean.index).fillna(1.0)
+    return (filled - mean) / safe_scale
 
 
 def _valid_time_splits(
@@ -68,21 +75,16 @@ def _select_regularization_c(
     for c in candidate_cs:
         losses: list[float] = []
         for train_idx, test_idx in splits:
-            # PIT-Safe: StandardScaler is fitted ONLY on the training indices of the current fold.
-            pipeline = Pipeline(
-                [
-                    ("scaler", StandardScaler()),
-                    (
-                        "model",
-                        LogisticRegression(
-                            C=float(c), solver="liblinear", max_iter=2000, random_state=RANDOM_SEED
-                        ),
-                    ),
-                ]
+            scaler = StandardScaler().fit(X.iloc[train_idx])
+            mean = pd.Series(scaler.mean_, index=X.columns)
+            scale = _safe_scale(pd.Series(np.sqrt(scaler.var_), index=X.columns))
+            X_train = _standardize(X.iloc[train_idx], mean, scale)
+            X_test = _standardize(X.iloc[test_idx], mean, scale)
+            model = LogisticRegression(
+                C=float(c), solver="liblinear", max_iter=2000, random_state=RANDOM_SEED
             )
-            pipeline.fit(X.iloc[train_idx], y.iloc[train_idx])
-            # Use predict_proba from the pipeline to ensure test features are scaled using training stats.
-            probs = pipeline.predict_proba(X.iloc[test_idx])[:, 1]
+            model.fit(X_train, y.iloc[train_idx])
+            probs = _predict_probs(model, X_test)
             losses.append(float(brier_score_loss(y.iloc[test_idx], probs)))
         mean_loss = float(np.mean(losses))
         if mean_loss < best_loss:
@@ -138,7 +140,7 @@ def train_baseline_model(X: pd.DataFrame, y: pd.Series, audit_fn=None, bounds=No
         # Fallback to Constrained Optimization
         # Use mean/scale from scaler for proper normalization during constrained fit
         mean = pd.Series(scaler.mean_, index=feature_names)
-        scale = pd.Series(np.sqrt(scaler.var_), index=feature_names)
+        scale = _safe_scale(pd.Series(np.sqrt(scaler.var_), index=feature_names))
         X_scaled = (X_clean - mean) / scale
 
         # Prepare bounds list for ConstrainedLogisticRegression
@@ -159,7 +161,7 @@ def train_baseline_model(X: pd.DataFrame, y: pd.Series, audit_fn=None, bounds=No
     # Standard model metadata
     model.C_ = np.atleast_1d(best_c)
     model._feature_mean = pd.Series(scaler.mean_, index=X_clean.columns)
-    model._feature_scale = pd.Series(np.sqrt(scaler.var_), index=X_clean.columns)
+    model._feature_scale = _safe_scale(pd.Series(np.sqrt(scaler.var_), index=X_clean.columns))
     model.constrained_flag = False
 
     return model

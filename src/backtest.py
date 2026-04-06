@@ -19,6 +19,7 @@ import pandas as pd
 import yfinance as yf
 
 from src.engine.v11.core.expectation_surface import (
+    allocate_reference_path,
     compute_beta_expectation,
     deployment_cash_notional,
     deployment_state_rank,
@@ -904,14 +905,14 @@ def run_v11_audit(
                 previous_previous=prior_execution_state.get("previous_posterior"),
             )
 
-            if final_beta > 1.0:
-                qld = (final_beta - 1.0) * 100_000.0
-                qqq = 100_000.0
-                cash = 0.0
-            else:
-                qld = 0.0
-                qqq = 100_000.0 * final_beta
-                cash = 100_000.0 - qqq
+            allocation = allocate_reference_path(
+                final_beta,
+                bucket=behavior_guard.current_bucket,
+                reference_capital=100_000.0,
+            )
+            qld = float(allocation["qld_notional_dollars"])
+            qqq = float(allocation["qqq_dollars"])
+            cash = float(allocation["cash_dollars"])
             invested = qqq + qld
             sizing = PositionSizingResult(
                 target_beta=round(float(final_beta), 6),
@@ -926,7 +927,11 @@ def run_v11_audit(
                 cash_dollars=round(cash, 6),
                 qld_share=round(qld / invested, 6) if invested > 0 else 0.0,
             )
-            execution = behavior_guard.apply(sizing)
+            reentry_signal = max(
+                float(overlay.get("positive_score", 0.0) or 0.0),
+                float(topology_state.confidence if topology_state.regime == "RECOVERY" else 0.0),
+            )
+            execution = behavior_guard.apply(sizing, reentry_signal=reentry_signal)
 
             probability_row = {
                 "date": dt,

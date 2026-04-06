@@ -50,6 +50,44 @@ def compute_beta_expectation(
     return clamp_beta(expectation, floor=floor, ceiling=ceiling)
 
 
+def allocate_reference_path(
+    beta: float,
+    *,
+    bucket: str = "QQQ",
+    reference_capital: float = DEFAULT_REFERENCE_CAPITAL,
+    floor: float = BETA_FLOOR,
+    ceiling: float = BETA_CEILING,
+) -> dict[str, float]:
+    """Map target beta into a concrete QQQ/QLD/cash reference path.
+
+    `QLD` is treated as a first-class execution bucket. Under strong, low-entropy
+    re-risking states the system may prefer partial `QLD + cash` exposure even
+    when the total target beta remains below 1.0x.
+    """
+    capital = max(0.0, float(reference_capital))
+    target_beta = clamp_beta(beta, floor=floor, ceiling=ceiling)
+    bucket_name = str(bucket or "QQQ").upper()
+
+    if bucket_name == "QLD" and target_beta < 1.0:
+        qld = capital * (target_beta / 2.0)
+        qqq = 0.0
+        cash = capital - qld
+    elif target_beta > 1.0:
+        qld = capital * (target_beta - 1.0)
+        qqq = capital
+        cash = 0.0
+    else:
+        qld = 0.0
+        qqq = capital * target_beta
+        cash = capital - qqq
+
+    return {
+        "qqq_dollars": round(float(qqq), 6),
+        "qld_notional_dollars": round(float(qld), 6),
+        "cash_dollars": round(float(cash), 6),
+    }
+
+
 def expected_policy_for_regime(
     regime: str,
     *,

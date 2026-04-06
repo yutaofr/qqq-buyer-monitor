@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
+from src.engine.v11.core.expectation_surface import allocate_reference_path
 from src.engine.v11.core.position_sizer import PositionSizingResult
 
 
@@ -51,8 +52,10 @@ class BehavioralGuard:
         forced_bucket: str | None = None,
         forced_reason: str | None = None,
         kill_switch_active: bool = False,
+        reentry_signal: float = 0.0,
     ) -> ExecutionDecision:
         previous_bucket = self.current_bucket
+        qld_entry_boundary = self._qld_entry_boundary(reentry_signal, sizing.entropy)
 
         if kill_switch_active and self.current_bucket != "QLD":
             self.current_bucket = "QLD"
@@ -71,6 +74,7 @@ class BehavioralGuard:
             self.cooldown_days_remaining -= 1
             self.last_target_beta = sizing.target_beta
             self.evidence = 0.0
+            allocation = self._execution_allocation(sizing)
             return ExecutionDecision(
                 target_bucket=self.current_bucket,
                 target_exposure=self.current_bucket,
@@ -80,9 +84,9 @@ class BehavioralGuard:
                 cooldown_days_remaining=remaining,
                 target_beta=sizing.target_beta,
                 raw_target_beta=sizing.raw_target_beta,
-                qqq_dollars=sizing.qqq_dollars,
-                qld_notional_dollars=sizing.qld_notional_dollars,
-                cash_dollars=sizing.cash_dollars,
+                qqq_dollars=float(allocation["qqq_dollars"]),
+                qld_notional_dollars=float(allocation["qld_notional_dollars"]),
+                cash_dollars=float(allocation["cash_dollars"]),
             )
 
         if forced_bucket is not None:
@@ -98,10 +102,17 @@ class BehavioralGuard:
                 lock_active=False,
             )
 
-        desired_bucket = self._bucket_from_beta(sizing.target_beta)
+        desired_bucket = self._bucket_from_beta(
+            sizing.target_beta,
+            current_bucket=previous_bucket,
+            qld_entry_boundary=qld_entry_boundary,
+        )
         if desired_bucket != previous_bucket:
             self.evidence += self._switch_margin(
-                previous_bucket, desired_bucket, sizing.target_beta
+                previous_bucket,
+                desired_bucket,
+                sizing.target_beta,
+                qld_entry_boundary=qld_entry_boundary,
             )
             barrier = self._entropy_barrier(
                 sizing.entropy,
@@ -141,8 +152,24 @@ class BehavioralGuard:
         self.current_bucket = bucket
         self.evidence = 0.0
 
-    def _bucket_from_beta(self, target_beta: float) -> str:
-        if target_beta > 1.0:
+    @staticmethod
+    def _qld_entry_boundary(reentry_signal: float, entropy: float = 1.0) -> float:
+        signal = min(1.0, max(0.0, float(reentry_signal)))
+        conviction = 1.0 - min(1.0, max(0.0, float(entropy)))
+        return max(0.80, 1.0 - (0.40 * signal * conviction))
+
+    def _bucket_from_beta(
+        self,
+        target_beta: float,
+        *,
+        current_bucket: str | None = None,
+        qld_entry_boundary: float = 1.0,
+    ) -> str:
+        qld_exit_boundary = max(0.70, qld_entry_boundary - 0.08)
+        if (current_bucket or self.current_bucket) == "QLD":
+            if target_beta >= qld_exit_boundary:
+                return "QLD"
+        elif target_beta >= qld_entry_boundary:
             return "QLD"
         if target_beta >= 0.5:
             return "QQQ"
@@ -159,7 +186,14 @@ class BehavioralGuard:
         return f"RISK_REENGAGE: target_beta {target_beta:.2f}"
 
     @classmethod
-    def _switch_margin(cls, current_bucket: str, desired_bucket: str, target_beta: float) -> float:
+    def _switch_margin(
+        cls,
+        current_bucket: str,
+        desired_bucket: str,
+        target_beta: float,
+        *,
+        qld_entry_boundary: float = 1.0,
+    ) -> float:
         current_idx = cls._BUCKET_ORDER.get(current_bucket, 1)
         desired_idx = cls._BUCKET_ORDER.get(desired_bucket, 1)
         if current_idx == desired_idx:
@@ -167,7 +201,8 @@ class BehavioralGuard:
 
         lower = min(current_idx, desired_idx)
         upper = max(current_idx, desired_idx)
-        crossed_boundaries = cls._BOUNDARIES[lower:upper]
+        boundaries = (cls._BOUNDARIES[0], float(qld_entry_boundary))
+        crossed_boundaries = boundaries[lower:upper]
         return float(sum(abs(float(target_beta) - boundary) for boundary in crossed_boundaries))
 
     @classmethod
@@ -184,6 +219,7 @@ class BehavioralGuard:
         reason: str,
         lock_active: bool,
     ) -> ExecutionDecision:
+        allocation = self._execution_allocation(sizing)
         return ExecutionDecision(
             target_bucket=self.current_bucket,
             target_exposure=self.current_bucket,
@@ -193,7 +229,14 @@ class BehavioralGuard:
             cooldown_days_remaining=self.cooldown_days_remaining,
             target_beta=sizing.target_beta,
             raw_target_beta=sizing.raw_target_beta,
-            qqq_dollars=sizing.qqq_dollars,
-            qld_notional_dollars=sizing.qld_notional_dollars,
-            cash_dollars=sizing.cash_dollars,
+            qqq_dollars=float(allocation["qqq_dollars"]),
+            qld_notional_dollars=float(allocation["qld_notional_dollars"]),
+            cash_dollars=float(allocation["cash_dollars"]),
+        )
+
+    def _execution_allocation(self, sizing: PositionSizingResult) -> dict[str, float]:
+        return allocate_reference_path(
+            sizing.target_beta,
+            bucket=self.current_bucket,
+            reference_capital=sizing.reference_capital,
         )
