@@ -7,6 +7,7 @@ from src.engine.v11.core.price_topology import (
     anchor_beta_with_topology,
     blend_posteriors_with_topology,
     infer_price_topology_state,
+    topology_likelihood_penalties,
 )
 
 
@@ -73,6 +74,50 @@ def test_price_topology_reaccelerates_recovery_structure():
     assert topology.regime == "RECOVERY"
     assert blended["RECOVERY"] > base_posteriors["RECOVERY"]
     assert anchored_beta > 0.72
+
+
+def test_price_topology_edge_regimes_receive_amplified_coupling():
+    close = np.concatenate(
+        [
+            np.linspace(100.0, 160.0, 180),
+            np.linspace(160.0, 108.0, 70),
+            np.linspace(108.0, 148.0, 70),
+        ]
+    )
+    volume = np.concatenate(
+        [
+            np.linspace(950_000.0, 1_050_000.0, 180),
+            np.linspace(1_200_000.0, 1_700_000.0, 70),
+            np.linspace(1_600_000.0, 1_250_000.0, 70),
+        ]
+    )
+    topology = infer_price_topology_state(_context_frame(close, volume))
+
+    assert topology.regime == "RECOVERY"
+    assert topology.posterior_blend_weight > 0.25 * topology.confidence
+    assert topology.beta_anchor_weight > 0.35 * topology.confidence
+
+
+def test_price_topology_edge_regime_receives_likelihood_bonus():
+    close = np.concatenate(
+        [
+            np.linspace(100.0, 160.0, 180),
+            np.linspace(160.0, 108.0, 70),
+            np.linspace(108.0, 148.0, 70),
+        ]
+    )
+    volume = np.concatenate(
+        [
+            np.linspace(950_000.0, 1_050_000.0, 180),
+            np.linspace(1_200_000.0, 1_700_000.0, 70),
+            np.linspace(1_600_000.0, 1_250_000.0, 70),
+        ]
+    )
+    topology = infer_price_topology_state(_context_frame(close, volume))
+    penalties = topology_likelihood_penalties(topology)
+
+    assert topology.regime == "RECOVERY"
+    assert penalties["RECOVERY"] > 1.0
 
 
 def test_price_topology_is_neutral_without_price_columns():

@@ -60,3 +60,27 @@ def test_fetch_breadth_tracks_ndx_concentration_provenance_independently(monkeyp
     assert payload["ndx_concentration"] is None
     assert payload["ndx_concentration_source"] == "unavailable:ndx_concentration"
     assert payload["ndx_concentration_quality"] == 0.0
+
+
+def test_fetch_breadth_derives_proxy_ratio_from_qqq_qqew_when_add_tickers_fail(monkeypatch):
+    idx = pd.date_range("2026-03-20", periods=60, freq="D")
+
+    def fake_ticker(symbol: str):
+        if symbol in {"^ADD", "^ADDN"}:
+            return _TickerStub(pd.DataFrame())
+        if symbol == "QQQ":
+            qqq = pd.Series([100.0 + (i * 0.7) for i in range(len(idx))], index=idx)
+            return _TickerStub(pd.DataFrame({"Close": qqq.values}, index=idx))
+        if symbol == "QQEW":
+            qqew = pd.Series([100.0 + (i * 0.15) for i in range(len(idx))], index=idx)
+            return _TickerStub(pd.DataFrame({"Close": qqew.values}, index=idx))
+        return _TickerStub(pd.DataFrame())
+
+    monkeypatch.setattr(breadth_module.yf, "Ticker", fake_ticker)
+
+    payload = breadth_module.fetch_breadth(as_of=date(2026, 3, 30))
+
+    assert payload["source"] == "derived:qqq-qqew-breadth"
+    assert payload["quality"] > 0.0
+    assert payload["observed"] is True
+    assert 0.0 < payload["adv_dec_ratio"] < 0.5

@@ -29,6 +29,9 @@ def fetch_real_yield_snapshot() -> dict[str, float | str | bool | None]:
     try:
         df = fetch_fred_data("DFII10")
         if df is not None and not df.empty:
+            df = df.dropna(subset=["DFII10"])
+            if df.empty:
+                raise ValueError("DFII10 contains no non-null observations")
             val = df.iloc[-1]["DFII10"]
             if pd.notnull(val):
                 return {
@@ -145,6 +148,9 @@ def fetch_net_liquidity_snapshot(series_id: str = "WDTGAL") -> dict[str, float |
         # WALCL (M), TGA (M) -> Convert to B by / 1000
         # RRP (B)
         merged["net_liq"] = (merged["WALCL"] - merged[series_id]) / 1000.0 - merged["RRPONTSYD"]
+        merged = merged.dropna(subset=["net_liq"])
+        if merged.empty:
+            raise ValueError("net liquidity inputs are missing after alignment")
 
         latest_val = float(merged["net_liq"].iloc[-1])
 

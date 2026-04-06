@@ -63,11 +63,18 @@ def fetch_breadth(as_of: date | None = None) -> dict:
     query_end = target_date + timedelta(days=1)
     query_start = target_date - timedelta(days=10)
 
-    adv_dec_ratio, source, quality, transform = _fetch_adv_dec_ratio(query_start, query_end)
-    pct_above_50d = adv_dec_ratio if quality > 0.0 else 0.50
     ndx_concentration, ndx_concentration_source, ndx_concentration_quality = (
         _fetch_ndx_concentration(query_end)
     )
+    adv_dec_ratio, source, quality, transform = _fetch_adv_dec_ratio(query_start, query_end)
+    if quality <= 0.0:
+        proxy_ratio = _derive_proxy_breadth_from_concentration(ndx_concentration)
+        if proxy_ratio is not None:
+            adv_dec_ratio = proxy_ratio
+            source = "derived:qqq-qqew-breadth"
+            quality = 0.55
+            transform = "sigmoid(-ndx_concentration/0.08)"
+    pct_above_50d = adv_dec_ratio if quality > 0.0 else 0.50
 
     logger.debug(
         "Breadth: adv_dec_ratio=%.3f pct_above_50d=%.3f ndx_concentration=%s breadth_quality=%.2f ndx_quality=%.2f source=%s ndx_source=%s as_of=%s",
@@ -91,6 +98,16 @@ def fetch_breadth(as_of: date | None = None) -> dict:
         "ndx_concentration_quality": ndx_concentration_quality,
         "observed": quality > 0.0,
     }
+
+
+def _derive_proxy_breadth_from_concentration(ndx_concentration: float | None) -> float | None:
+    if ndx_concentration is None:
+        return None
+    spread = float(ndx_concentration)
+    if abs(spread) < 0.01:
+        return None
+    scale = 0.08
+    return 1.0 / (1.0 + math.exp(spread / scale))
 
 
 def _fetch_adv_dec_ratio(start: date, end: date) -> tuple[float, str, float, str]:

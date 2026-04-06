@@ -15,7 +15,10 @@ from src.engine.v11.core.data_quality import (
 )
 from src.engine.v11.core.entropy_controller import EntropyController
 from src.engine.v11.core.execution_pipeline import run_execution_pipeline
-from src.engine.v11.core.expectation_surface import compute_beta_expectation
+from src.engine.v11.core.expectation_surface import (
+    allocate_reference_path,
+    compute_beta_expectation,
+)
 from src.engine.v11.core.mahalanobis_guard import MahalanobisGuard
 from src.engine.v11.core.model_validation import validate_feature_contract, validate_gaussian_nb
 from src.engine.v11.core.position_sizer import PositionSizingResult
@@ -725,7 +728,11 @@ class V11Conductor:
             entropy=norm_h,
             raw_t0_data=raw_t0_data,
         )
-        execution = self.behavior_guard.apply(sizing)
+        reentry_signal = max(
+            float(overlay.get("positive_score", 0.0) or 0.0),
+            float(topology_state.confidence if topology_state.regime == "RECOVERY" else 0.0),
+        )
+        execution = self.behavior_guard.apply(sizing, reentry_signal=reentry_signal)
         bucket = execution.target_bucket
 
         quality = float(quality_audit["quality_score"])
@@ -798,7 +805,10 @@ class V11Conductor:
             "deployment_readiness_overlay": overlay_deployment_readiness,
             "cdr_sharpe": e_sharpe,
             "erp_percentile": erp_percentile,
-            "target_allocation": self._calculate_dollars(final_beta),
+            "target_allocation": self._calculate_dollars(
+                final_beta,
+                preferred_bucket=bucket,
+            ),
             "deployment": deployment_decision,
             "feature_values": feature_values,
             "data_quality": quality,
@@ -921,10 +931,14 @@ class V11Conductor:
         entropy: float,
         raw_t0_data: pd.DataFrame,
     ) -> PositionSizingResult:
-        allocation = self._calculate_dollars(beta)
         latest_raw = raw_t0_data.iloc[-1]
         current_nav = float(latest_raw.get("current_nav", 100_000.0) or 100_000.0)
         reference_capital = float(latest_raw.get("reference_capital", current_nav) or current_nav)
+        allocation = allocate_reference_path(
+            beta,
+            bucket=self.behavior_guard.current_bucket,
+            reference_capital=reference_capital,
+        )
         invested = allocation["qqq_dollars"] + allocation["qld_notional_dollars"]
         qld_share = allocation["qld_notional_dollars"] / invested if invested > 0 else 0.0
 
@@ -942,16 +956,10 @@ class V11Conductor:
             qld_share=round(qld_share, 6),
         )
 
-    def _calculate_dollars(self, beta: float) -> dict:
-        """Lightweight dollar mapping for main.py."""
-        # Standard unit of $100k for the signal generator
-        NAV = 100_000.0
-        if beta > 1.0:
-            qld = (beta - 1.0) * NAV  # Exposure above 1.0 goes to QLD
-            qqq = NAV
-            cash = 0.0
-        else:
-            qld = 0.0
-            qqq = NAV * beta
-            cash = NAV - qqq
-        return {"qqq_dollars": qqq, "qld_notional_dollars": qld, "cash_dollars": cash}
+    def _calculate_dollars(self, beta: float, *, preferred_bucket: str = "QQQ") -> dict:
+        """Lightweight dollar mapping for main.py and user-facing reference paths."""
+        return allocate_reference_path(
+            beta,
+            bucket=preferred_bucket,
+            reference_capital=100_000.0,
+        )

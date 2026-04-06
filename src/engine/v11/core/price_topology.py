@@ -56,13 +56,18 @@ def infer_price_topology_state(
     ordered = sorted(probabilities.values(), reverse=True)
     margin = float(ordered[0] - ordered[1]) if len(ordered) >= 2 else 0.0
     confidence = float(np.clip(margin / max(1e-6, confidence_margin), 0.0, 1.0))
+    edge_multiplier = 1.0 + confidence if str(latest["benchmark_regime"]) in {"BUST", "RECOVERY"} else 1.0
     return PriceTopologyState(
         regime=str(latest["benchmark_regime"]),
         probabilities=probabilities,
         expected_beta=float(latest["benchmark_expected_beta"]),
         confidence=confidence,
-        posterior_blend_weight=float(max(0.0, posterior_blend_weight) * confidence),
-        beta_anchor_weight=float(max(0.0, beta_anchor_weight) * confidence),
+        posterior_blend_weight=float(
+            np.clip(max(0.0, posterior_blend_weight) * confidence * edge_multiplier, 0.0, 1.0)
+        ),
+        beta_anchor_weight=float(
+            np.clip(max(0.0, beta_anchor_weight) * confidence * edge_multiplier, 0.0, 1.0)
+        ),
     )
 
 
@@ -115,8 +120,16 @@ def topology_likelihood_penalties(
         return neutral
 
     confidence_scale = float(np.clip(0.25 + (0.75 * topology.confidence), 0.0, 1.0))
+    leader_bonus = (
+        1.0 + (0.35 * float(topology.confidence))
+        if topology.regime in {"BUST", "RECOVERY"}
+        else 1.0
+    )
     penalties: dict[str, float] = {}
     for regime in ACTIVE_REGIME_ORDER:
+        if regime == topology.regime:
+            penalties[regime] = float(leader_bonus)
+            continue
         regime_prob = float(topology.probabilities.get(regime, 0.0))
         ratio = float(np.clip(regime_prob / max_prob, 0.0, 1.0))
         shaped = max(float(floor), ratio**float(exponent))
