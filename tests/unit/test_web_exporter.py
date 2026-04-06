@@ -150,3 +150,43 @@ def test_export_web_snapshot_collapses_legacy_capitulation_into_recovery(tmp_pat
     assert payload["signal"]["regime"] == "修复 (RECOVERY)"
     assert "CAPITULATION" not in payload["signal"]["probabilities"]
     assert payload["signal"]["probabilities"]["RECOVERY"] == 0.60
+
+
+def test_export_web_snapshot_includes_probability_dynamics(tmp_path, monkeypatch):
+    result = SignalResult(
+        date=date(2026, 4, 6),
+        price=500.0,
+        target_beta=0.8,
+        probabilities={"MID_CYCLE": 0.35, "LATE_CYCLE": 0.30, "BUST": 0.20, "RECOVERY": 0.15},
+        priors={"MID_CYCLE": 0.25, "LATE_CYCLE": 0.25, "BUST": 0.25, "RECOVERY": 0.25},
+        entropy=0.88,
+        stable_regime="MID_CYCLE",
+        target_allocation=TargetAllocationState(0.2, 0.8, 0.0, 0.8),
+        logic_trace=[{"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QQQ"}}],
+        explanation="probability dynamics",
+        metadata={
+            "probability_dynamics": {
+                "MID_CYCLE": {
+                    "probability": 0.35,
+                    "delta_1d": -0.05,
+                    "acceleration_1d": 0.05,
+                    "trend": "FALLING",
+                }
+            }
+        },
+    )
+    output_path = tmp_path / "status.json"
+
+    monkeypatch.setattr(MarketCursor, "get_market_state", lambda self, now: "FROZEN")
+    monkeypatch.setattr(
+        MarketCursor,
+        "get_expires_at_utc",
+        lambda self, now: datetime(2026, 4, 7, 17, 30, tzinfo=UTC),
+    )
+
+    ok = export_web_snapshot(result, output_path=output_path)
+
+    assert ok is True
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["signal"]["probability_dynamics"]["MID_CYCLE"]["delta_1d"] == -0.05
+    assert payload["signal"]["probability_dynamics"]["MID_CYCLE"]["trend"] == "FALLING"

@@ -25,7 +25,12 @@ def logical_constraints():
     # Robust path resolution for Docker and Local
     possible_paths = [
         Path("/app/src/engine/v11/resources/logical_constraints.json"),
-        Path(__file__).parents[3] / "src" / "engine" / "v11" / "resources" / "logical_constraints.json"
+        Path(__file__).resolve().parents[4]
+        / "src"
+        / "engine"
+        / "v11"
+        / "resources"
+        / "logical_constraints.json",
     ]
     for path in possible_paths:
         if path.exists():

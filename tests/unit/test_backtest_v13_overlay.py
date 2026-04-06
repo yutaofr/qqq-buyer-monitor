@@ -102,6 +102,9 @@ def test_run_v11_audit_emits_v13_overlay_execution_trace(tmp_path, monkeypatch):
     assert "overlay_beta" in execution_trace.columns
     assert "beta_overlay_multiplier" in execution_trace.columns
     assert "deployment_overlay_multiplier" in execution_trace.columns
+    probability_trace = pd.read_csv(artifact_dir / "probability_audit.csv")
+    assert "prob_delta_MID_CYCLE" in probability_trace.columns
+    assert "prob_acceleration_MID_CYCLE" in probability_trace.columns
 
     summary_payload = json.loads((artifact_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary_payload["experiment_config"]["allow_price_download"] is False

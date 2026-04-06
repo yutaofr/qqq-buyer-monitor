@@ -136,6 +136,7 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
                 runtime_result.get("overlay", {}).get("overlay_summary", "NEUTRAL")
             ),
             "execution_overlay": runtime_result.get("overlay", {}),
+            "probability_dynamics": runtime_result.get("probability_dynamics", {}),
             "raw_regime": raw_regime,
             "deployment_state": deployment_state,
             "deployment_state_key": deployment_state_key,
@@ -531,6 +532,9 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     result.metadata["v14_s4_protective_beta"] = ensemble["s4_protective_beta"]
     result.metadata["v14_s5_aggressive_beta"] = ensemble["s5_aggressive_beta"]
     result.metadata["v14_standard_beta"] = ensemble["standard_beta"]
+    result.metadata["v14_tractor_valid"] = bool(ensemble["tractor_valid"])
+    result.metadata["v14_sidecar_valid"] = bool(ensemble["sidecar_valid"])
+    result.metadata["v14_calm_eligible"] = bool(ensemble["calm_eligible"])
     result.metadata["v14_shadow_mode"] = True
 
     # 1. Export Web Snapshot Locally (Production Baseline)

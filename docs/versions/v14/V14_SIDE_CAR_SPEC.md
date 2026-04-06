@@ -48,6 +48,7 @@ These thresholds are derived from the V14 Expert Audit and used for target label
 
 - **Coefficient Audit**: Performed after every training cycle. If any coefficient sign flips, the model falls back to the previous stable state or `ConstrainedLogisticRegression` with hard bounds.
 - **Data Gap Handling**: If `^VXN` or `SPY` sensors are missing, the Sidecar must produce a `NaN` prediction (Fail-Closed). It is better to have "Zero Signal" than a "Hallucinated Signal".
+- **Panorama Calm Gate**: A degraded Sidecar invalidates `calm` classification in the live panorama aggregator. Missing Nasdaq-native stress data may not unlock `AGGRESSIVE` beta suggestions.
 
 ---
 © 2026 QQQ Entropy AI Governance.
