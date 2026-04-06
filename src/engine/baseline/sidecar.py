@@ -117,7 +117,7 @@ def audit_sidecar_coeffs(model, feature_names: list[str]) -> bool:
             rule = rules[name]
             val = coeffs[i]
             if not rule(val):
-                logger.warning(f"!!! Audit Failed: {name} is {val:.4f} (Expected {rule}) !!!")
+                logger.debug(f"!!! Audit Failed: {name} is {val:.4f} (Expected {rule}) !!!")
                 return False
     return True
 
