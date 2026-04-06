@@ -141,9 +141,15 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "raw_regime": raw_regime,
                 "target_beta": result.target_beta,
                 "raw_target_beta": metadata.get("raw_target_beta", result.target_beta),
+                "raw_target_beta_pre_floor": metadata.get(
+                    "raw_target_beta_pre_floor",
+                    metadata.get("raw_target_beta", result.target_beta),
+                ),
                 "protected_beta": metadata.get(
                     "protected_beta", metadata.get("raw_target_beta", result.target_beta)
                 ),
+                "is_floor_active": bool(metadata.get("is_floor_active", False)),
+                "hydration_anchor": metadata.get("hydration_anchor", "2018-01-01"),
                 "overlay_beta": metadata.get("overlay_beta", result.target_beta),
                 "overlay_mode": metadata.get(
                     "overlay_mode", execution_overlay.get("overlay_mode", "FULL")
@@ -168,6 +174,8 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "deployment_state_key": deployment_state_key,
                 "execution_bucket": execution_bucket,
                 "probability_dynamics": metadata.get("probability_dynamics", {}),
+                "price_topology": metadata.get("price_topology", {}),
+                "forensic_snapshot_path": metadata.get("forensic_snapshot_path"),
                 "reference_path": {
                     "qqq_pct": result.target_allocation.target_qqq_pct,
                     "qld_pct": result.target_allocation.target_qld_pct,
@@ -178,6 +186,8 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "logic_trace": result.logic_trace,
                 "feature_values": metadata.get("feature_values", {}),
                 "execution_overlay": execution_overlay,
+                "bayesian_diagnostics": metadata.get("v13_4_diagnostics", {}),
+                "price_topology": metadata.get("price_topology", {}),
             },
             "diagnostics": {
                 "tractor": {

@@ -86,6 +86,8 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
         target_allocation=target_allocation,
         logic_trace=[
             {"step": "probabilistic_inference", "result": runtime_result["probabilities"]},
+            {"step": "price_topology", "result": runtime_result.get("price_topology", {})},
+            {"step": "bayesian_diagnostics", "result": runtime_result.get("v13_4_diagnostics", {})},
             {"step": "entropy_haircut", "result": {"entropy": runtime_result.get("entropy", 0.0)}},
             {"step": "execution_overlay", "result": runtime_result.get("overlay", {})},
             {"step": "position_sizing", "result": runtime_result["target_allocation"]},
@@ -137,11 +139,13 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
             ),
             "execution_overlay": runtime_result.get("overlay", {}),
             "probability_dynamics": runtime_result.get("probability_dynamics", {}),
+            "price_topology": runtime_result.get("price_topology", {}),
             "raw_regime": raw_regime,
             "deployment_state": deployment_state,
             "deployment_state_key": deployment_state_key,
             "execution_bucket": execution_bucket,
             "beta_ceiling": 1.2,
+            "forensic_snapshot_path": runtime_result.get("forensic_snapshot_path"),
         },
     )
 

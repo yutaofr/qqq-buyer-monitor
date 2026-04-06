@@ -625,7 +625,8 @@
             document.getElementById('calc-at').textContent = data.meta.calculated_at_utc.replace('T',' ').replace('Z','');
             document.getElementById('hydration-anchor').textContent = data.signal.hydration_anchor || data.meta.hydration_anchor || '2018-01-01';
             document.getElementById('beta-ceiling').textContent = (data.signal.beta_ceiling || 1.20).toFixed(2) + 'x';
-            document.getElementById('raw-beta').textContent = (data.signal.raw_target_beta || data.signal.target_beta).toFixed(2) + 'x';
+            const rawPreFloorBeta = data.signal.raw_target_beta_pre_floor || data.signal.raw_target_beta || data.signal.target_beta;
+            document.getElementById('raw-beta').textContent = rawPreFloorBeta.toFixed(2) + 'x';
             document.getElementById('protected-beta').textContent = (data.signal.protected_beta || data.signal.target_beta).toFixed(2) + 'x';
             document.getElementById('overlay-beta').textContent = (data.signal.overlay_beta || data.signal.target_beta).toFixed(2) + 'x';
             document.getElementById('overlay-mode').textContent = mapping[data.signal.overlay_mode] || data.signal.overlay_mode || '評估中';
@@ -646,9 +647,22 @@
 
             renderDistribution('prob-container', data.signal.probabilities, currentLang === 'en' ? 'No posterior distribution' : '暫無後驗分佈', data.signal.probability_dynamics);
             renderDistribution('prior-container', data.signal.priors, currentLang === 'en' ? 'No runtime prior' : '當前未透傳運行時先驗');
-            renderFeatureValues(data.evidence.feature_values);
+            const enrichedFeatureValues = {
+                ...(data.evidence.feature_values || {}),
+                price_topology_regime: data.signal.price_topology && data.signal.price_topology.regime,
+                price_topology_confidence: data.signal.price_topology && data.signal.price_topology.confidence,
+                forensic_snapshot_path: data.signal.forensic_snapshot_path || '--'
+            };
+            renderFeatureValues(enrichedFeatureValues);
             renderExecutionOverlay(data.evidence.execution_overlay);
-            renderLogicTrace(data.evidence.logic_trace);
+            const enrichedLogicTrace = [...(data.evidence.logic_trace || [])];
+            if (data.evidence.price_topology) {
+                enrichedLogicTrace.push({ step: 'price_topology', result: data.evidence.price_topology });
+            }
+            if (data.evidence.bayesian_diagnostics) {
+                enrichedLogicTrace.push({ step: 'bayesian_diagnostics', result: data.evidence.bayesian_diagnostics });
+            }
+            renderLogicTrace(enrichedLogicTrace);
 
             // Panorama Rendering
             if (data.diagnostics) {

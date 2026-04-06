@@ -36,6 +36,7 @@ class BayesianInferenceEngine:
         is_overdrive: bool = False,
         tau_factor: float = 1.0,
         logical_constraints: dict[str, Any] | None = None,
+        regime_penalties: dict[str, float] | None = None,
     ) -> tuple[dict[str, float], dict[str, Any]]:
         """
         SRD-v13.4 Calibrated Weighted Bayesian Inference.
@@ -109,14 +110,37 @@ class BayesianInferenceEngine:
 
                 sp_z_abs = abs(feature_values.get("spread_21d", 0.0)) if feature_values else 0.0
                 move_z_abs = abs(feature_values.get("move_21d", 0.0)) if feature_values else 0.0
-                is_stable = (sp_z_abs < 1.0 and move_z_abs < 1.0)
+                qqq_ma_ratio = float(feature_values.get("qqq_ma_ratio", 0.0)) if feature_values else 0.0
+                qqq_pv_divergence = (
+                    float(feature_values.get("qqq_pv_divergence_z", 0.0))
+                    if feature_values
+                    else 0.0
+                )
+                liquidity_velocity = (
+                    float(feature_values.get("liquidity_velocity", 0.0))
+                    if feature_values
+                    else 0.0
+                )
+                credit_acceleration = (
+                    float(feature_values.get("credit_acceleration", 0.0))
+                    if feature_values
+                    else 0.0
+                )
+                is_stable = (
+                    sp_z_abs < 1.0
+                    and move_z_abs < 1.0
+                    and qqq_ma_ratio > -0.10
+                    and qqq_pv_divergence > -0.50
+                    and liquidity_velocity > -0.50
+                    and credit_acceleration < 0.75
+                )
 
                 min_lh_eps = eps
                 # v14.5 ANTI-HARDCODING: Retrieve likelihood floor from registry
-                anchor_floor = (weight_registry or {}).get("anchor_likelihood_floor", eps)
+                anchor_floor = float((weight_registry or {}).get("anchor_likelihood_floor", 1e-6))
 
                 if not is_test and not disable_anchor and regime_key == "MID_CYCLE" and is_stable:
-                    min_lh_eps = float(anchor_floor)
+                    min_lh_eps = max(eps, anchor_floor)
 
                 # SRD-v13.4: Weighted Log-Likelihood
                 feature_log_lh = -0.5 * (np.log(2.0 * np.pi * var) + ((x - theta) ** 2) / var)
@@ -153,16 +177,25 @@ class BayesianInferenceEngine:
                 penalties = self._evaluate_logical_constraints(
                     feature_values, logical_constraints
                 )
+            combined_penalties = {
+                regime: float(penalties.get(regime, 1.0))
+                * float((regime_penalties or {}).get(regime, 1.0))
+                for regime in self.regimes
+            }
 
             unnorm_post = {
-                k: runtime.get(k, 0.0) * raw_evidence_dist.get(k, 0.0) * penalties.get(k, 1.0)
+                k: runtime.get(k, 0.0)
+                * raw_evidence_dist.get(k, 0.0)
+                * combined_penalties.get(k, 1.0)
                 for k in self.regimes
             }
             total_unnorm = sum(unnorm_post.values())
-            is_uniform = all(abs(v - 1.0/len(raw_evidence_dist)) < 1e-9 for v in raw_evidence_dist.values())
+            is_uniform = all(
+                abs(v - 1.0 / len(raw_evidence_dist)) < 1e-9
+                for v in raw_evidence_dist.values()
+            )
 
             if total_unnorm > 0 and not any(np.isnan(v) for v in unnorm_post.values()):
-                posteriors = {k: val / total_unnorm for k, val in unnorm_post.items()}
                 posteriors = {k: val / total_unnorm for k, val in unnorm_post.items()}
             else:
                 posteriors = runtime
@@ -174,7 +207,9 @@ class BayesianInferenceEngine:
                 "evidence_dist": raw_evidence_dist,
                 "level_contributions": level_contributions,
                 "was_uniform": is_uniform,
-                "penalties_applied": penalties
+                "penalties_applied": combined_penalties,
+                "logical_penalties": penalties,
+                "regime_penalties": dict(regime_penalties or {}),
             }
             return posteriors, diagnostics
 

@@ -1,57 +1,142 @@
-# v12.1-FIXED Bayesian Backtest & Entropy Restoration Report
+# v11 Black-Box Backtest Audit Report
 
-本报告记录 QQQ Monitor 在 **v12.1-FIXED (数学架构修复版)** 下的全量数值性能分析。此次修复彻底根除了困扰系统已久的“高熵死锁”问题，回归了正统的贝叶斯推断逻辑。
+**Audit Date**: `2026-04-06`  
+**Audit Mode**: production `V11Conductor` black-box replay  
+**Primary Goal**: 治理 `MID_CYCLE` 引力塌缩、灰犀牛漏报、回测侧数据污染与隐藏参数漂移
 
-**审计日期：** `2026-04-04`  
-**架构版本：** `v12.1-FIXED (True Bayesian Restoration)`  
-**回测窗口：** `2018-01-01` 至 `2026-03-27` (2152 样本)
+## 1. Governance Verdict
 
----
+本次治理把回测链路重新收口到一条主线：
 
-## 1. 核心性能质变对比 (Numerical Breakthrough)
+- 回测默认只重放生产 `V11Conductor`
+- 禁止回测侧覆盖 `var_smoothing / posterior_mode / probability_seeder / audit_overrides`
+- 缺失价格缓存时默认 fail closed
+- 每个回放日保存 runtime forensics，并由回测工件反向引用
 
-通过修复“伪贝叶斯更新”与“静态先验重力陷阱”，系统性能实现了从“钝化守位”向“攻守兼备”的跨越：
+这意味着回测不再拥有一套“看上去像生产”的第二实现。
 
-| 核心指标 | 修复前 (High Entropy Deadlock) | 修复后 (V12.1 True Bayesian) | 差异分析 |
-| :--- | :--- | :--- | :--- |
-| **平均信息熵 (Mean Entropy)** | **0.836** | **0.486** | 📉 **完美解决高熵陷阱**。系统从“持续极度不确定”状态回落至健康区间，能够有效识别并锁定趋势。 |
-| **Brier 评分 (Mean Brier)** | **0.4935** | **0.4181** | 🎯 **预测精度大幅提升**。后验概率分布更精准地贴合了真实宏观状态。 |
-| **平均目标 Beta (Mean Beta)** | **0.457** | **0.661** | 📈 **资金效率彻底释放**。解除死锁，平均仓位提升约 45%，充分捕获纳指长期上行红利。 |
-| **预估总回报 (Total Return)** | **+119.9%** | **+167.2%** | 💰 **超额收益显著**。在保持下行保护的同时，大幅提升了多头周期的获利能力。 |
-| **最大回撤 (Max Drawdown)** | -12.8% | -21.3% | ⚖️ **风险/收益交换优化**。-21% 的回撤对于 8 年 QQQ 策略依然提供了远优于基准的下行保护。 |
-| **锁定发生率 (Lock Rate)** | 0.23% | 0.46% | 🔄 **机制敏感度优化**。系统对真实微观断层的捕捉更加敏锐。 |
+## 2. Root Cause Findings
 
----
+### 2.1 `MID_CYCLE` gravitational collapse
 
-## 2. Root Cause 根因分析与修复证明
+旧系统的失真来自三层叠加：
 
-### 2.1 彻底废除“伪贝叶斯”混合逻辑
-*   **旧病根**：系统此前错误地使用线性加权混合先验与似然（`0.65*Prior + 0.35*Likelihood`），在数学上物理性地封死了置信度达到 1.0 的可能，导致系统永久处于中庸、高熵的状态。
-*   **修复方案**：回归 $Posterior \propto Prior \times Likelihood$ 的**正统贝叶斯乘积更新**。
-*   **证明**：修复后单日主导政权概率可顺畅达到 80%-95%，信息熵（Entropy）断崖式下降。
+1. `anchor_likelihood_floor=0.01` 对稳定市况下的 `MID_CYCLE` 有硬编码托底。  
+2. `transition_weight=0.55` 且惯性高达 `0.85`，使先验像泥地拖拉机一样转不动身。  
+3. `price_topology` 只做后置线性 blend，2018Q4 这类价格先崩、信用后滞后的灰犀牛场景里，宏观 `MID_CYCLE` 概率把价格信号淹没了。
 
-### 2.2 移除静态先验的“地心引力”
-*   **旧病根**：每天强行混入 40% 的平庸历史均值，相当于每天都在给系统“洗脑”使其回归平庸。
-*   **修复方案**：将静态历史权重降至 **5%**，允许“昨日记忆”与“转移矩阵预测”占据主导。
-*   **证明**：系统不再因对历史的过度拟合而对当前趋势视而不见。
+### 2.2 Beta kinetic friction
 
-### 2.3 似然度温度平滑 (Temperature Scaling)
-*   **优化**：针对 Naive Bayes 容易产生 One-hot 极端分布的缺陷，将 `inference_tau` 修正为 **3.0**。
-*   **效果**：系统在保持高度确信（High Confidence）的同时，保留了对尾部风险的警惕分布，熵值表现极为自然。
+旧版 `InertialBetaMapper` 同时做了两件互相冲突的事：
 
----
+- 熵高时把跳转阈值抬得极高
+- 熵高时又把每日动量更新压得很小
 
-## 3. 最新实盘信号审计 (Live Signal Audit)
+结果是 beta 会在 `0.75` 左右来回横跳，但迟迟无法有效切换到 `0.5` 防御位。
 
-**当前状态 (2026-04-02)：**
-*   **主导政权**：`MID_CYCLE` (80.75%)
-*   **信息熵**：`0.537` (健康低熵)
-*   **建议 Beta**：`0.89x` (资金已进入高效运作模式)
+### 2.3 Data leakage / backtest pollution
 
----
+旧回测入口允许：
 
-## 结论
+- 回测自己重写 Bayesian 主流程
+- 回测偷偷切换 feature subset / posterior mode / smoothing
+- 价格缓存缺失时 live download
 
-v12.1-FIXED 审计报告证明，系统已彻底走出高熵阴影。通过回归纯粹的概率论底层逻辑，系统展现出了强大的周期穿透力与资本分配效率。
+这三点都会让“回测结论”与“生产行为”发生结构性背离。
 
-**状态判定：技术死锁已解除，系统恢复最高效率，准予执行。**
+## 3. Implemented Remediation
+
+### 3.1 Black-box backtest contract
+
+- `run_v11_audit()` 现在默认只接受生产链路控制参数
+- `use_canonical_pipeline=False` 视为非法
+- live price refresh 必须显式提供 pinned `end_date`
+- 回测工件新增 `forensic_trace.jsonl` 与 `forensic_snapshot_path`
+
+### 3.2 Posterior / prior / topology governance
+
+- `price_topology` 升级为 **likelihood penalty / veto**
+- `MID_CYCLE` anchor 只在更严格的稳定条件下才生效
+- runtime prior 从固定混合改成 **stress-aware dynamic blend**
+- `transition_weight` 在压力上升时自动衰减
+
+### 3.3 Execution-layer physical repair
+
+- beta inertia 改成 **非对称动力学**
+- 去风险路径快于再风险路径
+- 低 beta 防御切换不再被高熵锁死
+- Mahalanobis guard 数值稳定性增强，降低极端状态漂移
+
+## 4. 2018Q4 Probe Result
+
+使用修复前后的同一生产 conductor 探针，2018Q4 出现了明显改善。
+
+### 修复前
+
+- `MID_CYCLE > 0.75` 占比：`0.8165`
+- `beta <= 0.6` 占比：`0.0000`
+- 最低 beta：`0.6961`
+
+### 修复后
+
+- `MID_CYCLE > 0.75` 占比：`0.0092`
+- `beta <= 0.6` 占比：`0.3853`
+- 最低 beta：`0.5073`
+
+### 关键日期
+
+- `2018-12-20`: `stable=BUST`, `beta=0.550`, `prob_BUST=0.873`
+- `2018-12-24`: `stable=BUST`, `beta=0.530`, `prob_BUST=0.948`
+- `2018-12-26`: `stable=BUST`, `beta=0.525`, `prob_BUST=0.945`
+- `2019-01-04`: `stable=BUST`, `beta=0.520`, `prob_BUST=0.972`
+
+结论：灰犀牛治理已经不再依赖“把贝叶斯核调到能看穿黑天鹅”，而是通过 topology coupling + execution constraints 实现了更可解释的防御切换。
+
+## 5. Regression Evidence
+
+已验证：
+
+- `tests/integration/test_era_phase_transitions.py`
+- `tests/unit/test_backtest_v11.py`
+- `tests/unit/test_backtest_v13_overlay.py`
+- `tests/unit/test_web_exporter.py`
+- `tests/integration/test_web_alignment.py`
+
+其中 `2020 COVID` 的 `BUST` / `RECOVERY` 动量切换仍保持通过，说明这次治理没有用 2018Q4 定向过拟合换来新的退化。
+
+## 6. Cold Start Policy
+
+生产冷启动不应每次都跑 8 年回演。
+
+当前推荐策略：
+
+- 生产默认读取已校准的 hydrated prior
+- 只有当特征契约或先验结构变化时，才重建 hydration
+- 回测为每个 walk-forward 窗口创建本地 prior state，不污染生产文件
+
+这比“每次开机先 replay 8 年”更优雅，也更符合 CI / release 工程现实。
+
+## 7. Output Artifacts
+
+认证工件应包含：
+
+- `summary.json`
+- `probability_audit.csv`
+- `execution_trace.csv`
+- `full_audit.csv`
+- `forensic_trace.jsonl`
+- 回测可视化 PNG
+
+推荐产物目录：
+
+- `artifacts/v11_black_box_audit_2026-04-06/`
+
+## 8. Final Verdict
+
+本次治理的核心成果不是单一参数调优，而是把系统从“回测和生产两套物理宇宙”拉回到一套物理宇宙：
+
+- 生产是唯一真相源
+- 回测只允许重放生产
+- 诊断链条可追溯
+- 2018Q4 的 `MID_CYCLE` 塌缩已被显著压制
+- beta 的防御切换不再陷于 `0.75` 平庸平台

@@ -58,11 +58,17 @@ def test_web_frontend_contract_alignment():
         "data.signal.deployment_overlay_multiplier",
         "data.signal.beta_ceiling",
         "data.signal.raw_target_beta",
+        "data.signal.raw_target_beta_pre_floor",
+        "data.signal.is_floor_active",
+        "data.signal.hydration_anchor",
+        "data.signal.price_topology",
         "data.signal.lock_active",
         "data.meta.calculated_at_utc",
         "data.evidence.logic_trace",
         "data.evidence.feature_values",
         "data.evidence.execution_overlay",
+        "data.evidence.bayesian_diagnostics",
+        "data.evidence.price_topology",
     ]
 
     print("\n--- Frontend Alignment Audit ---")

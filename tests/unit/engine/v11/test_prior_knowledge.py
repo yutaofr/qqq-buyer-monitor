@@ -193,3 +193,39 @@ def test_prior_knowledge_cold_start_does_not_use_default_regime(tmp_path):
 
     # Before the fix, this would default to "MID_CYCLE" (fallback[0])
     assert library.execution_state.get("stable_regime") is None
+
+
+def test_runtime_priors_reduce_transition_gravity_under_market_stress(tmp_path):
+    storage_path = tmp_path / "v11_prior_state.json"
+    library = PriorKnowledgeBase(
+        storage_path=storage_path,
+        regimes=["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"],
+        bootstrap_regimes=["MID_CYCLE"] * 12 + ["LATE_CYCLE"] * 4,
+    )
+    library.last_posterior = {
+        "MID_CYCLE": 0.90,
+        "LATE_CYCLE": 0.08,
+        "BUST": 0.01,
+        "RECOVERY": 0.01,
+    }
+
+    priors, details = library.runtime_priors(
+        macro_values={
+            "spread_21d": 2.5,
+            "move_21d": 2.2,
+            "qqq_ma_ratio": -1.0,
+            "liquidity_velocity": -2.5,
+            "credit_acceleration": 1.8,
+            "dynamic_beta_inertia_matrix": {
+                "MID_CYCLE": 0.80,
+                "LATE_CYCLE": 0.80,
+                "BUST": 0.70,
+                "RECOVERY": 0.70,
+                "DEFAULT": 0.80,
+            },
+        }
+    )
+
+    assert details["posterior_weight"] > details["transition_weight"]
+    assert details["transition_weight"] < 0.35
+    assert priors["MID_CYCLE"] < 0.90

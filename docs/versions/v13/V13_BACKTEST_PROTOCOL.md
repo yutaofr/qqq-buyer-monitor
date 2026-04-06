@@ -1,161 +1,144 @@
 # v13 Backtest Protocol
 
-**Status**: LOCKED FOR IMPLEMENTATION  
-**Version**: v13.0  
-**Date**: 2026-04-03  
+**Status**: LOCKED  
+**Version**: v13.4 / 2026-04-06 governance refresh  
 **Parent Spec**: `V13_EXECUTION_OVERLAY_SRD.md`
-
----
 
 ## 1. Purpose
 
-This document defines the only acceptable methodology for evaluating the v13 execution overlay.
+本协议定义唯一合法的 v13/v11 主链路回测方式。
 
-The objective is not to maximize CAGR. The objective is to verify that v13 improves execution discipline without changing the v12.1 belief engine and without introducing overfit.
+回测的目标不是“复刻一个看起来差不多的研究版引擎”，而是：
 
----
+- 用冻结历史输入重放生产 `V11Conductor`
+- 验证执行层与物理约束是否改善了真实危机场景
+- 拒绝任何通过回测侧偷偷换模型、换先验、换特征来“修漂亮成绩”的做法
 
-## 2. Scope
+## 2. Black-Box Rule
 
-This protocol covers:
+所有回测链路必须把生产链路视为黑盒。
 
-- historical data requirements
-- experiment design
-- machine learning validation discipline
-- non-regression gates
-- reproducibility requirements
+允许：
 
-It does not authorize new posterior features or new regime labels.
+- 回测构造 frozen `t0` 历史输入
+- 回测逐日实例化 `V11Conductor`
+- 回测读取生产链路输出的 posterior / beta / deployment / diagnostics / snapshot
 
----
+禁止：
+
+- 在回测模块里重写 `GaussianNB` 训练与推断主流程
+- 在回测模块里单独实现另一套 runtime prior、entropy、beta inertia、behavioral guard
+- 在回测侧用隐藏参数改写生产特征契约、似然温度、posterior mode、transition 权重
+
+如果回测需要复用生产中的某个环节，必须先把该环节重构进生产模块，再由回测调用生产函数。
 
 ## 3. Frozen Inputs
 
-Every acceptance run must use:
+每次认证回放必须冻结以下输入：
 
-- a pinned code revision
-- a pinned `execution_overlay_audit.json`
-- a pinned evaluation start date
-- a pinned evaluation end date
-- frozen price history
-- frozen archived overlay inputs for any weekly or delayed-release source
+- pinned code revision
+- pinned `regime_audit.json`
+- pinned `v13_4_weights_registry.json`
+- pinned `macro_historical_dump.csv`
+- pinned `v11_poc_phase1_results.csv`
+- pinned `qqq_history_cache.csv`
+- pinned evaluation start / end window
 
-If any frozen artifact is missing, the acceptance run must fail closed.
+任何缺失都必须 fail closed。
 
----
+## 4. Data Source Rules
 
-## 4. Prohibited Backtest Behavior
+回测不允许 mock FRED 或任何正式数据源。
 
-The following are forbidden in v13 acceptance:
+允许：
 
-- downloading fresh market history during CI or release acceptance
-- using `date.today()` or any moving end date for acceptance metrics
-- reconstructing weekly sentiment values without archived publication timestamps
-- synthetic backfill for unavailable sources
-- fabricating `fear_greed`, short-volume, or other legacy research placeholders
+- 使用已归档、已 PIT 校验的历史数据文件
+- 将云存储替换为本地 artifact 路径
 
----
+禁止：
 
-## 5. Required Experiment Matrix
+- CI / 回测运行时临时下载新市场数据
+- moving end date
+- synthetic backfill 掩盖缺失源
+- mock FRED / mock release timeline / mock publication lag
 
-Every candidate must be evaluated against all of the following:
+如果确需刷新价格缓存，必须显式提供 pinned `end_date`，不能使用动态 `today`。
 
-1. `v12.1 champion`
-2. `v13 code path with overlay disabled`
-3. `v13 negative-only overlay`
-4. `v13 full overlay`
+## 5. Config Parity Rule
 
-The difference between `1` and `2` must be zero on posterior and `raw_target_beta`.
+回测只接受生产链路控制参数：
 
----
+- `overlay_mode`
+- `price_cache_path`
+- `price_end_date`
+- `allow_price_download` 仅限显式、带 `end_date` 的缓存刷新
+- `save_plots`
 
-## 6. Validation Method
+回测禁止接受以下“研究捷径”参数：
 
-v13 tuning must use blocked chronological validation only.
+- `var_smoothing`
+- `posterior_mode`
+- `probability_seeder`
+- `audit_overrides`
 
-Required procedure:
+这些配置如果要变，必须先修改生产配置文件，再回测新的生产配置。
 
-1. Freeze signal definitions.
-2. Split data into nested walk-forward windows.
-3. Tune only on inner windows.
-4. Evaluate on outer validation windows.
-5. Keep one untouched final holdout window.
-6. Report median window performance, not best-window performance.
+## 6. Forensics Requirement
 
-Rejected procedure:
+生产主链路必须为每个回放日保存法医快照。
 
-- random shuffle validation
-- random K-fold cross-validation
-- event-picked regime slices
-- retuning until a single crisis looks good
+最小法医工件：
 
----
+- runtime priors
+- prior details / stress score
+- feature vector
+- quality audit
+- posterior penalties
+- price topology state
+- final execution payload
 
-## 7. Metrics
+回测工件必须反向引用这些快照，而不是只输出 top-1 regime。
 
-The minimum evaluation panel is:
+## 7. Validation Discipline
 
-- posterior invariance
-- `raw_target_beta` invariance
-- target beta delta distribution
-- left-tail drawdown behavior
-- max adverse excursion on adds
-- deployment timing score
-- turnover
-- state-switch frequency
-- holdout stability
-- replay determinism
+必须使用时间阻塞的 walk-forward。
 
-No candidate may be accepted using only return metrics.
+要求：
 
----
+1. 每日训练视角只能看到 `t-20BDay` 之前的信息。
+2. 回测窗口中的每一天都必须重新实例化生产 conductor。
+3. 最终报告必须区分 validation 与 OOS。
+4. 结论优先看中位稳定性与危机覆盖，而不是单一窗口收益最大化。
 
 ## 8. Overfitting Rejection
 
-A candidate is rejected if any of the following holds:
+以下任何一项成立则候选方案拒绝：
 
-- gains appear only in one crisis interval
-- gains disappear on the untouched holdout
-- signal weights or rankings are unstable across windows
-- permuted or randomized controls produce similar gains
-- the candidate needs retuning of inherited v12.1 execution thresholds
-- the candidate cannot be replayed from frozen artifacts
+- 只能修好单一危机窗口
+- 通过 lowering tau / changing feature subset / hidden override 才能工作
+- 价格侧灰犀牛只能靠“看清黑天鹅”式过拟合似然来触发
+- 不能从 frozen artifacts 重放出同样结论
 
----
+2018Q4 的治理优先级应放在执行层物理约束、价格拓扑耦合、法医诊断可解释性，而不是继续对贝叶斯核做 event-picked tuning。
 
-## 9. Backtest Environment Rules
+## 9. Acceptance Outputs
 
-Acceptance runs must use an environment that is deterministic and network-closed for market history.
+认证回测至少输出：
 
-Required environment behavior:
+- `summary.json`
+- `probability_audit.csv`
+- `execution_trace.csv`
+- `full_audit.csv`
+- `forensic_trace.jsonl`
+- fidelity / audit figures
 
-- load QQQ price history from frozen cache or checked-in artifact
-- load overlay raw history from archived files
-- reject missing artifacts immediately
-- emit enough diagnostics to replay every overlay decision
+## 10. Acceptance Gate
 
-The current repository backtest path contains a live-download escape hatch and a moving default end date. Those behaviors are incompatible with v13 acceptance and must not be used for release certification.
+只有满足以下条件才可视为通过：
 
----
-
-## 10. Acceptance Gates
-
-v13 passes backtest certification only if:
-
-- posterior outputs are unchanged versus v12.1
-- `raw_target_beta` is bit-identical versus v12.1
-- left-tail execution behavior improves or remains neutral
-- reward effects are rarer and smaller than penalty effects
-- all required artifacts are reproducible from frozen inputs
-
----
-
-## 11. Test Mapping
-
-| Test ID | Purpose |
-| :--- | :--- |
-| `AC-8` | `raw_target_beta` replay must match v12.1 |
-| `AC-9` | gains must hold in holdout and median walk-forward windows |
-| `AC-14` | acceptance run fails closed on missing frozen artifacts and does not hit live download path |
-| `tests/unit/test_backtest_v13_overlay.py` | experiment matrix, invariance, non-regression |
-| `tests/integration/engine/v13/test_v13_shadow_mode.py` | shadow-mode replay and diagnostics |
+- 回测完全走生产 `V11Conductor`
+- 无 live-download 漂移
+- 无 hidden model override
+- 生产法医快照完整可追溯
+- 危机窗口的 `MID_CYCLE` 塌缩显著缓解
+- `BUST` / `RECOVERY` 切换可通过 posterior、beta、forensics 三条证据链同时解释

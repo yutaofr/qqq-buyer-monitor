@@ -76,8 +76,7 @@ def test_v11_inference_task_uses_labeled_regime_and_curated_features():
     assert result["actual_regime"] == "LATE_CYCLE"
 
 
-def test_run_v11_audit_refits_model_for_each_evaluation_day(tmp_path, monkeypatch):
-    # v14.9 Industrial Hardening: Provide 10 years of data to be safe
+def test_run_v11_audit_rejects_model_config_overrides(tmp_path, monkeypatch):
     dates = pd.bdate_range("2014-01-01", periods=3000)
     macro_path = tmp_path / "macro.csv"
     regime_path = tmp_path / "regimes.csv"
@@ -90,31 +89,6 @@ def test_run_v11_audit_refits_model_for_each_evaluation_day(tmp_path, monkeypatc
         }
     ).to_csv(regime_path, index=False)
 
-    class FakeGaussianNB:
-        fit_calls = 0
-        init_var_smoothing: list[float] = []
-
-        def __init__(self, *args, **kwargs):
-            type(self).init_var_smoothing.append(float(kwargs.get("var_smoothing", 0.0)))
-            self.classes_ = ["BUST", "LATE_CYCLE", "MID_CYCLE"]
-            self.theta_ = np.zeros((3, 10))
-            self.var_ = np.ones((3, 10))
-            self.class_prior_ = np.full(3, 1.0 / 3.0)
-
-        def fit(self, X, y):
-            type(self).fit_calls += 1
-            self.classes_ = sorted(set(map(str, y)))
-            feature_count = len(X.columns)
-            class_count = len(self.classes_)
-            self.theta_ = np.zeros((class_count, feature_count))
-            self.var_ = np.ones((class_count, feature_count))
-            self.class_prior_ = np.full(class_count, 1.0 / class_count)
-            return self
-
-        def predict_proba(self, evidence):
-            return [[1.0 / len(self.classes_)] * len(self.classes_)]
-
-    monkeypatch.setattr("sklearn.naive_bayes.GaussianNB", FakeGaussianNB)
     monkeypatch.setattr(
         backtest_module,
         "_load_price_history",
@@ -130,33 +104,26 @@ def test_run_v11_audit_refits_model_for_each_evaluation_day(tmp_path, monkeypatc
         lambda *args, **kwargs: None,
     )
 
-    summary = backtest_module.run_v11_audit(
-        dataset_path=str(macro_path),
-        regime_path=str(regime_path),
-        evaluation_start="2025-01-02",
-        artifact_dir=str(tmp_path / "audit_artifacts"),
-        experiment_config={
-            "var_smoothing": 1e-3,
-            "probability_seeder": {
-                "config_overrides": {
-                    "copper_gold_roc_126d": {"diff": (21,), "min_periods": 21},
+    with pytest.raises(ValueError, match="Disallowed overrides: probability_seeder, var_smoothing"):
+        backtest_module.run_v11_audit(
+            dataset_path=str(macro_path),
+            regime_path=str(regime_path),
+            evaluation_start="2025-01-02",
+            artifact_dir=str(tmp_path / "audit_artifacts"),
+            experiment_config={
+                "var_smoothing": 1e-3,
+                "probability_seeder": {
+                    "config_overrides": {
+                        "copper_gold_roc_126d": {"diff": (21,), "min_periods": 21},
+                    },
+                    "clip_range": (-6.0, 6.0),
+                    "orthogonalization_mode": "none",
                 },
-                "clip_range": (-6.0, 6.0),
-                "orthogonalization_mode": "none",
             },
-        },
-    )
-
-    assert FakeGaussianNB.fit_calls >= 3
-    assert FakeGaussianNB.init_var_smoothing[0] == pytest.approx(1e-3)
-    assert "top1_accuracy" in summary
-    assert summary["audit_regimes"] == ["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"]
-    assert sorted(summary["state_support"]["unsupported_audit_regimes"]) == ["RECOVERY"]
-    assert summary["feature_contract_validation"].startswith("override:")
+        )
 
 
-def test_run_v11_audit_accepts_audit_overrides(tmp_path, monkeypatch):
-    # v14.9 Industrial Hardening: Provide 10 years of data
+def test_run_v11_audit_rejects_audit_overrides(tmp_path, monkeypatch):
     dates = pd.bdate_range("2014-01-01", periods=3000)
     macro_path = tmp_path / "macro.csv"
     regime_path = tmp_path / "regimes.csv"
@@ -169,26 +136,6 @@ def test_run_v11_audit_accepts_audit_overrides(tmp_path, monkeypatch):
         }
     ).to_csv(regime_path, index=False)
 
-    class FakeGaussianNB:
-        def __init__(self, *args, **kwargs):
-            self.classes_ = ["BUST", "LATE_CYCLE", "MID_CYCLE"]
-            self.theta_ = np.zeros((3, 10))
-            self.var_ = np.ones((3, 10))
-            self.class_prior_ = np.full(3, 1.0 / 3.0)
-
-        def fit(self, X, y):
-            self.classes_ = sorted(set(map(str, y)))
-            feature_count = len(X.columns)
-            class_count = len(self.classes_)
-            self.theta_ = np.zeros((class_count, feature_count))
-            self.var_ = np.ones((class_count, feature_count))
-            self.class_prior_ = np.full(class_count, 1.0 / class_count)
-            return self
-
-        def predict_proba(self, evidence):
-            return [[1.0 / len(self.classes_)] * len(self.classes_)]
-
-    monkeypatch.setattr("sklearn.naive_bayes.GaussianNB", FakeGaussianNB)
     monkeypatch.setattr(
         backtest_module,
         "_load_price_history",
@@ -204,33 +151,30 @@ def test_run_v11_audit_accepts_audit_overrides(tmp_path, monkeypatch):
         lambda *args, **kwargs: None,
     )
 
-    summary = backtest_module.run_v11_audit(
-        dataset_path=str(macro_path),
-        regime_path=str(regime_path),
-        evaluation_start="2024-01-02",
-        artifact_dir=str(tmp_path / "audit_artifacts"),
-        experiment_config={
-            "audit_overrides": {
-                "base_betas": {
-                    "BUST": 0.5,
-                    "LATE_CYCLE": 0.8,
-                    "MID_CYCLE": 1.0,
-                },
-                "regime_sharpes": {
-                    "BUST": -0.8,
-                    "LATE_CYCLE": 0.2,
-                    "MID_CYCLE": 1.0,
-                },
-            }
-        },
-    )
-
-    assert summary["state_support"]["unsupported_audit_regimes"] == []
-    assert summary["audit_regimes"] == ["BUST", "LATE_CYCLE", "MID_CYCLE"]
+    with pytest.raises(ValueError, match="Disallowed overrides: audit_overrides"):
+        backtest_module.run_v11_audit(
+            dataset_path=str(macro_path),
+            regime_path=str(regime_path),
+            evaluation_start="2024-01-02",
+            artifact_dir=str(tmp_path / "audit_artifacts"),
+            experiment_config={
+                "audit_overrides": {
+                    "base_betas": {
+                        "BUST": 0.5,
+                        "LATE_CYCLE": 0.8,
+                        "MID_CYCLE": 1.0,
+                    },
+                    "regime_sharpes": {
+                        "BUST": -0.8,
+                        "LATE_CYCLE": 0.2,
+                        "MID_CYCLE": 1.0,
+                    },
+                }
+            },
+        )
 
 
-def test_run_v11_audit_can_use_classifier_posteriors_directly(tmp_path, monkeypatch):
-    # v14.9 Industrial Hardening: Provide 10 years of data
+def test_run_v11_audit_rejects_posterior_mode_override(tmp_path, monkeypatch):
     dates = pd.bdate_range("2014-01-01", periods=3000)
     macro_path = tmp_path / "macro.csv"
     regime_path = tmp_path / "regimes.csv"
@@ -243,26 +187,6 @@ def test_run_v11_audit_can_use_classifier_posteriors_directly(tmp_path, monkeypa
         }
     ).to_csv(regime_path, index=False)
 
-    class FakeGaussianNB:
-        def __init__(self, *args, **kwargs):
-            self.classes_ = ["BUST", "LATE_CYCLE", "MID_CYCLE"]
-            self.theta_ = np.zeros((3, 10))
-            self.var_ = np.ones((3, 10))
-            self.class_prior_ = np.array([0.2, 0.3, 0.5])
-
-        def fit(self, X, y):
-            self.classes_ = sorted(set(map(str, y)))
-            feature_count = len(X.columns)
-            class_count = len(self.classes_)
-            self.theta_ = np.zeros((class_count, feature_count))
-            self.var_ = np.ones((class_count, feature_count))
-            self.class_prior_ = np.full(class_count, 1.0 / class_count)
-            return self
-
-        def predict_proba(self, evidence):
-            return [[0.6, 0.3, 0.1]]
-
-    monkeypatch.setattr("sklearn.naive_bayes.GaussianNB", FakeGaussianNB)
     monkeypatch.setattr(
         backtest_module,
         "_load_price_history",
@@ -278,15 +202,14 @@ def test_run_v11_audit_can_use_classifier_posteriors_directly(tmp_path, monkeypa
         lambda *args, **kwargs: None,
     )
 
-    summary = backtest_module.run_v11_audit(
-        dataset_path=str(macro_path),
-        regime_path=str(regime_path),
-        evaluation_start="2024-01-02",
-        artifact_dir=str(tmp_path / "audit_artifacts"),
-        experiment_config={"posterior_mode": "classifier_only"},
-    )
-
-    assert summary["posterior_mode"] == "classifier_only"
+    with pytest.raises(ValueError, match="Disallowed overrides: posterior_mode"):
+        backtest_module.run_v11_audit(
+            dataset_path=str(macro_path),
+            regime_path=str(regime_path),
+            evaluation_start="2024-01-02",
+            artifact_dir=str(tmp_path / "audit_artifacts"),
+            experiment_config={"posterior_mode": "classifier_only"},
+        )
 
 
 def test_run_v11_audit_emits_expectation_and_pacing_alignment_columns(tmp_path, monkeypatch):
@@ -336,6 +259,7 @@ def test_run_v11_audit_emits_expectation_and_pacing_alignment_columns(tmp_path, 
 
     execution_trace = pd.read_csv(artifact_dir / "execution_trace.csv")
     summary = pd.read_json(artifact_dir / "summary.json", typ="series")
+    forensic_trace = (artifact_dir / "forensic_trace.jsonl").read_text(encoding="utf-8")
 
     assert "beta_expectation" in execution_trace.columns
     assert "expected_target_beta" in execution_trace.columns
@@ -346,6 +270,9 @@ def test_run_v11_audit_emits_expectation_and_pacing_alignment_columns(tmp_path, 
     assert "price_topology_regime" in execution_trace.columns
     assert "price_topology_expected_beta" in execution_trace.columns
     assert "price_topology_confidence" in execution_trace.columns
+    assert "forensic_snapshot_path" in execution_trace.columns
+    assert "forensic_stress_score" in execution_trace.columns
+    assert "forensic_mid_cycle_penalty" in execution_trace.columns
     assert "deployment_pacing_abs_error_mean" in summary.index
     assert "deployment_pacing_signed_mean" in summary.index
     assert "raw_floor_breach_rate" in summary.index
@@ -356,9 +283,11 @@ def test_run_v11_audit_emits_expectation_and_pacing_alignment_columns(tmp_path, 
     assert "raw_beta_within_5pct_expected" in summary.index
     assert "target_beta_within_5pct_expected" in summary.index
     assert "active_features" in summary.index
+    assert "forensic_snapshot_count" in summary.index
+    assert '"v13_4_diagnostics"' in forensic_trace
 
 
-def test_run_v11_audit_feature_subset_changes_posteriors_when_raw_quality_fields_exist(
+def test_run_v11_audit_rejects_feature_subset_overrides_when_raw_quality_fields_exist(
     tmp_path, monkeypatch
 ):
     # v14.9 Industrial Hardening: Provide 10 years of data
@@ -403,45 +332,144 @@ def test_run_v11_audit_feature_subset_changes_posteriors_when_raw_quality_fields
         lambda *args, **kwargs: None,
     )
 
-    common = {
-        "dataset_path": str(macro_path),
-        "regime_path": str(regime_path),
-        "evaluation_start": "2024-01-02",
-        "experiment_config": {
-            "allow_price_download": False,
-            "price_end_date": "2025-12-31",
-            "save_plots": False,
-            "audit_overrides": {
-                "base_betas": {"BUST": 0.5, "LATE_CYCLE": 0.8, "MID_CYCLE": 1.0},
-                "regime_sharpes": {"BUST": -0.8, "LATE_CYCLE": 0.2, "MID_CYCLE": 1.0},
+    with pytest.raises(ValueError, match="Disallowed overrides: probability_seeder"):
+        backtest_module.run_v11_audit(
+            dataset_path=str(macro_path),
+            regime_path=str(regime_path),
+            evaluation_start="2024-01-02",
+            artifact_dir=str(tmp_path / "audit_spread"),
+            experiment_config={
+                "allow_price_download": False,
+                "price_end_date": "2025-12-31",
+                "save_plots": False,
+                "probability_seeder": {"selected_features": ["spread_absolute"]},
             },
+        )
+
+
+def test_run_v11_audit_uses_mainline_black_box_when_canonical_pipeline_enabled(
+    tmp_path, monkeypatch
+):
+    dates = pd.bdate_range("2024-01-01", periods=40)
+    macro_path = tmp_path / "macro.csv"
+    regime_path = tmp_path / "regimes.csv"
+    artifact_dir = tmp_path / "audit_artifacts"
+    cache_path = tmp_path / "qqq_cache.csv"
+
+    _build_v12_macro_frame(dates).to_csv(macro_path, index=False)
+    pd.DataFrame(
+        {
+            "observation_date": dates,
+            "regime": ["MID_CYCLE"] * 30 + ["LATE_CYCLE"] * 10,
+        }
+    ).to_csv(regime_path, index=False)
+    pd.DataFrame(
+        {
+            "Close": np.linspace(100.0, 120.0, len(dates)),
+            "Volume": np.linspace(1_000_000.0, 1_400_000.0, len(dates)),
         },
-    }
+        index=dates,
+    ).to_csv(cache_path)
 
-    spread_dir = tmp_path / "audit_spread"
-    erp_dir = tmp_path / "audit_erp"
+    calls: list[dict[str, object]] = []
 
-    spread_exp = dict(common["experiment_config"])
-    spread_exp["probability_seeder"] = {"selected_features": ["spread_absolute"]}
-    backtest_module.run_v11_audit(
-        dataset_path=common["dataset_path"],
-        regime_path=common["regime_path"],
-        evaluation_start=common["evaluation_start"],
-        artifact_dir=str(spread_dir),
-        experiment_config=spread_exp,
+    class FakeConductor:
+        def __init__(self, *args, **kwargs):
+            calls.append(dict(kwargs))
+
+        def daily_run(self, raw_t0_data):
+            dt = pd.Timestamp(raw_t0_data.index[-1])
+            return {
+                "date": dt,
+                "priors": {
+                    "MID_CYCLE": 0.60,
+                    "LATE_CYCLE": 0.25,
+                    "BUST": 0.10,
+                    "RECOVERY": 0.05,
+                },
+                "prior_details": {
+                    "base_weight": 0.05,
+                    "posterior_weight": 0.60,
+                    "transition_weight": 0.35,
+                },
+                "probabilities": {
+                    "MID_CYCLE": 0.55,
+                    "LATE_CYCLE": 0.25,
+                    "BUST": 0.15,
+                    "RECOVERY": 0.05,
+                },
+                "probability_dynamics": {},
+                "price_topology": {
+                    "regime": "LATE_CYCLE",
+                    "expected_beta": 0.8,
+                    "confidence": 0.7,
+                    "posterior_blend_weight": 0.2,
+                    "beta_anchor_weight": 0.3,
+                    "probabilities": {
+                        "MID_CYCLE": 0.20,
+                        "LATE_CYCLE": 0.60,
+                        "BUST": 0.15,
+                        "RECOVERY": 0.05,
+                    },
+                },
+                "raw_regime": "MID_CYCLE",
+                "stable_regime": "MID_CYCLE",
+                "entropy": 0.45,
+                "protected_beta": 0.82,
+                "overlay_beta": 0.78,
+                "overlay": {
+                    "beta_overlay_multiplier": 1.0,
+                    "deployment_overlay_multiplier": 1.0,
+                    "overlay_state": "NEUTRAL",
+                },
+                "target_beta": 0.78,
+                "raw_target_beta": 0.90,
+                "beta_expectation": 0.90,
+                "deployment_readiness": 0.5,
+                "deployment_readiness_overlay": 0.5,
+                "cdr_sharpe": 0.4,
+                "erp_percentile": 0.6,
+                "target_allocation": {
+                    "qqq_dollars": 78_000.0,
+                    "qld_notional_dollars": 0.0,
+                    "cash_dollars": 22_000.0,
+                },
+                "deployment": {
+                    "deployment_state": "DEPLOY_BASE",
+                    "deployment_multiplier": 1.0,
+                },
+                "feature_values": {
+                    "credit_spread": 320.0,
+                    "price_topology_confidence": 0.7,
+                    "price_topology_expected_beta": 0.8,
+                },
+                "data_quality": 1.0,
+                "quality_audit": {"quality_score": 1.0},
+                "v11_execution": {"lock_active": False, "target_bucket": "QQQ"},
+            }
+
+    monkeypatch.setattr("src.engine.v11.conductor.V11Conductor", FakeConductor)
+    monkeypatch.setattr(
+        "src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        "src.output.backtest_plots.save_v11_probabilistic_audit_figure",
+        lambda *args, **kwargs: None,
     )
 
-    erp_exp = dict(common["experiment_config"])
-    erp_exp["probability_seeder"] = {"selected_features": ["erp_absolute"]}
     backtest_module.run_v11_audit(
-        dataset_path=common["dataset_path"],
-        regime_path=common["regime_path"],
-        evaluation_start=common["evaluation_start"],
-        artifact_dir=str(erp_dir),
-        experiment_config=erp_exp,
+        dataset_path=str(macro_path),
+        regime_path=str(regime_path),
+        evaluation_start="2024-02-15",
+        artifact_dir=str(artifact_dir),
+        experiment_config={
+            "use_canonical_pipeline": True,
+            "price_cache_path": str(cache_path),
+            "allow_price_download": False,
+            "save_plots": False,
+        },
     )
 
-    spread_probs = pd.read_csv(spread_dir / "probability_audit.csv")
-    erp_probs = pd.read_csv(erp_dir / "probability_audit.csv")
-
-    assert spread_probs["predicted_regime"].equals(erp_probs["predicted_regime"]) is False
+    assert calls
+    assert all("training_cutoff" in payload for payload in calls)
+    assert all(str(artifact_dir) in str(payload["prior_state_path"]) for payload in calls)

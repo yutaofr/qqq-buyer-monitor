@@ -75,6 +75,8 @@ def build_discord_payload(result: SignalResult) -> dict:
     raw_regime = (
         canonicalize_regime_name(metadata.get("raw_regime", display_regime)) or display_regime
     )
+    price_topology = dict(metadata.get("price_topology", {}) or {})
+    forensic_snapshot_path = metadata.get("forensic_snapshot_path")
 
     if is_floor_active:
         color = COLOR_STRESS
@@ -156,7 +158,9 @@ def build_discord_payload(result: SignalResult) -> dict:
                 f"**Overlay Mode:** `{overlay_mode}`\n"
                 f"**Beta Multiplier:** `{float(beta_overlay_multiplier):.2f}x`\n"
                 f"**Pace Multiplier:** `{float(deployment_overlay_multiplier):.2f}x`\n"
-                f"**Overlay State:** `{overlay_state}`"
+                f"**Overlay State:** `{overlay_state}`\n"
+                f"**Topology:** `{price_topology.get('regime', 'MID_CYCLE')}` @ `{float(price_topology.get('confidence', 0.0)):.1%}`\n"
+                f"**Forensics:** `{'snapshot_saved' if forensic_snapshot_path else 'in_memory_only'}`"
             ),
             "inline": False,
         },

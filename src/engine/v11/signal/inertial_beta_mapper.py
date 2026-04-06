@@ -1,3 +1,5 @@
+import numpy as np
+
 from src.engine.v11.core.expectation_surface import BETA_CEILING, BETA_FLOOR, clamp_beta
 
 
@@ -29,8 +31,9 @@ class InertialBetaMapper:
 
     def calculate_inertial_beta(self, target_beta_raw: float, normalized_entropy: float) -> float:
         """
-        Updates target beta using a damped kinetic model.
-        Threshold is still entropy-derived (Odds-Ratio), but transitions are smooth.
+        Updates target beta using an asymmetric kinetic model.
+        De-risking is intentionally faster than re-risking when entropy is high,
+        which prevents the system from getting stranded at mediocre beta plateaus.
         """
         target_beta = clamp_beta(
             target_beta_raw,
@@ -51,25 +54,22 @@ class InertialBetaMapper:
             ceiling=self.beta_ceiling,
         )
 
-        # 1. Information-Theoretic Barrier (Odds Ratio)
         h = min(0.999, max(0.001, float(normalized_entropy)))
-        threshold = 1.0 + (h / (1.0 - h))
-
-        # 2. Update Kinetic Evidence
-        # Delta acts as "Force", Entropy acts as "Friction"
         delta = target_beta - self.current_beta
-        friction = 1.0 - h  # Higher entropy -> Higher friction (Lower responsiveness)
+        deleveraging = delta < 0.0
 
-        # Acceleration term (Force / Friction)
-        self.velocity = (self.velocity * 0.5) + (delta * friction)
-        self.evidence += self.velocity
+        response = (0.65 + (0.25 * h)) if deleveraging else (0.20 + (0.20 * (1.0 - h)))
+        damping = 0.25 if deleveraging else 0.55
+        max_step = 0.18 if deleveraging else 0.12
 
-        # 3. Check for Phase Shift
-        if abs(self.evidence) > threshold:
-            # Shift anchor and decay velocity to prevent overshoot
-            self.current_beta = target_beta
-            self.evidence = 0.0
-            self.velocity *= 0.2  # Momentum braking
+        self.velocity = (self.velocity * damping) + (delta * response)
+        step = float(np.clip(self.velocity, -max_step, max_step))
+        self.current_beta = clamp_beta(
+            self.current_beta + step,
+            floor=self.beta_floor,
+            ceiling=self.beta_ceiling,
+        )
+        self.evidence = (self.evidence * 0.35) + step
 
         self.current_beta = clamp_beta(
             self.current_beta,
