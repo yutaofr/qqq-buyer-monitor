@@ -94,7 +94,7 @@ class BayesianInferenceEngine:
             # v14.4 BAYESIAN OVERDRIVE: Scale Tau during out-of-distribution events
             if is_overdrive:
                 base_tau *= float(tau_factor)
-                logger.warning(f"BAYESIAN OVERDRIVE ACTIVE: Scaling Tau to {base_tau:.4f}")
+                logger.debug(f"BAYESIAN OVERDRIVE ACTIVE: Scaling Tau to {base_tau:.4f}")
 
             for idx, regime_label in enumerate(classifier.classes_):
                 regime_key = str(regime_label)
