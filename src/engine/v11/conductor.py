@@ -16,6 +16,7 @@ from src.engine.v11.core.data_quality import (
 from src.engine.v11.core.entropy_controller import EntropyController
 from src.engine.v11.core.execution_pipeline import run_execution_pipeline
 from src.engine.v11.core.expectation_surface import compute_beta_expectation
+from src.engine.v11.core.mahalanobis_guard import MahalanobisGuard
 from src.engine.v11.core.model_validation import validate_feature_contract, validate_gaussian_nb
 from src.engine.v11.core.position_sizer import PositionSizingResult
 from src.engine.v11.core.prior_knowledge import PriorKnowledgeBase
@@ -61,6 +62,7 @@ class V11Conductor:
         snapshot_dir: str = "artifacts/v12_runtime_snapshots",
         initial_model: GaussianNB | None = None,
         overlay_mode: str | None = None,
+        training_cutoff: str | datetime | None = None,
     ):
         # 0. Load Sovereign Calibration (Audit Archive)
         self.audit_path = Path(audit_path)
@@ -88,7 +90,7 @@ class V11Conductor:
             include_zeros=True,
         )
         self.gaussian_nb_var_smoothing = float(
-            self.audit_data.get("model_hyperparameters", {}).get("gaussian_nb_var_smoothing", 1e-2)
+            self.audit_data.get("model_hyperparameters", {}).get("gaussian_nb_var_smoothing", 0.1)
         )
         self.posterior_mode = str(
             self.audit_data.get("model_hyperparameters", {}).get(
@@ -124,11 +126,26 @@ class V11Conductor:
             self.v13_4_registry = {}
             logger.warning("V13.4 Weight Registry NOT found at %s. Using defaults.", registry_path)
 
+        constraints_path = Path(__file__).parent / "resources" / "logical_constraints.json"
+        if constraints_path.exists():
+            with open(constraints_path) as f:
+                self.logical_constraints = json.load(f)
+            logger.info("Bayesian Logical Constraints established.")
+        else:
+            self.logical_constraints = None
+            logger.warning("Logical Constraints NOT found at %s.", constraints_path)
+
         self.entropy_ctrl = EntropyController()
+        self.mahalanobis_guard = MahalanobisGuard()
+
+        # v14.4 FIX: For Forensic Audit, we always use the full history for the Prior book
+        # to avoid fingerprint mismatch, but we restrict the Guard and GNB to the cutoff.
+        unrestricted_bootstrap = self.regime_history["regime"].tolist()
+
         self.prior_book = PriorKnowledgeBase(
             storage_path=prior_state_path,
             regimes=self.regimes,
-            bootstrap_regimes=self.regime_history["regime"].tolist(),
+            bootstrap_regimes=unrestricted_bootstrap,
         )
 
         # v13.5-GOLD+: Initial Regime Synchronization
@@ -174,9 +191,17 @@ class V11Conductor:
         # Initial Model Training & Seeder Priming (Epic 1)
         if initial_model is not None:
             self.gnb = initial_model
+            # For cold start with initial model, we still need a baseline featureset for the guard.
+            # We use the full history available to avoid breaking the guard.
+            initial_features = self.seeder.generate_features(self.regime_history.dropna())
+            self.mahalanobis_guard.fit_baseline(initial_features)
             self._validate_model(self.gnb)
         else:
-            self.gnb = self._initialize_model(macro_data_path, regime_data_path)
+            self.gnb, training_features = self._initialize_model(
+                macro_data_path, regime_data_path, training_cutoff=training_cutoff
+            )
+            # Fit Mahalanobis Guard on EXACT matched features used for model training (v14.4)
+            self.mahalanobis_guard.fit_baseline(training_features)
 
         self.inference_engine = BayesianInferenceEngine(
             base_priors=self._get_base_priors(),
@@ -214,7 +239,12 @@ class V11Conductor:
             actual_features=self.seeder.feature_names(),
         )
 
-    def _initialize_model(self, macro_data_path: str, regime_data_path: str) -> GaussianNB:
+    def _initialize_model(
+        self,
+        macro_data_path: str,
+        regime_data_path: str,
+        training_cutoff: str | datetime | None = None,
+    ) -> GaussianNB:
         """JIT training of the Bayesian regime inference model with canonical DNA."""
 
         # 1. Load Seeding Datasets
@@ -222,6 +252,13 @@ class V11Conductor:
         regime_df = pd.read_csv(regime_data_path, parse_dates=["observation_date"]).set_index(
             "observation_date"
         )
+
+        # Apply training cutoff for PIT integrity (v14 forensic fix)
+        if training_cutoff:
+            cutoff_dt = pd.to_datetime(training_cutoff)
+            macro_df = macro_df[macro_df.index < cutoff_dt]
+            regime_df = regime_df[regime_df.index < cutoff_dt]
+            logger.info(f"V12.0 Conductor: JIT Model training constrained to < {cutoff_dt}")
 
         # Generate features via unified seeder
         features = self.seeder.generate_features(macro_df)
@@ -255,7 +292,7 @@ class V11Conductor:
             summary["var_min"],
             summary["var_max"],
         )
-        return gnb
+        return gnb, df[feature_cols]
 
     def _validate_model(
         self, gnb: GaussianNB, *, feature_count: int | None = None
@@ -307,7 +344,17 @@ class V11Conductor:
         # 2. Bayesian Inference (Epic 2)
         # Inference only on the last point
         latest_vector = features.iloc[-1:]
-        runtime_priors, prior_details = self.prior_book.runtime_priors()
+
+        # v14.2 Duration Hardening: Pass macro_values for Inertia/Mid-Cycle Anchor
+        active_registry = self.v13_4_registry
+        f_vals_for_prior = latest_vector.iloc[0].to_dict()
+
+        # v14.5: Inject inertia matrix from registry
+        f_vals_for_prior["dynamic_beta_inertia_matrix"] = active_registry.get("dynamic_beta_inertia_matrix", {})
+
+        runtime_priors, prior_details = self.prior_book.runtime_priors(
+            macro_values=f_vals_for_prior
+        )
         latest_raw = raw_t0_data.iloc[-1]
         quality_audit = assess_data_quality(
             latest_raw,
@@ -345,21 +392,25 @@ class V11Conductor:
             # v13.6-EX / v13.7-ULTIMA: Adaptive Paranoid Adjustment
             active_registry = self.v13_4_registry
 
+            if self.high_entropy_streak >= 42:
+                # v14.4 FIX: RESET DEADLOCK. If we have been blind for >42 days, we must probe for signal.
+                logger.warning("ULTIMA PERSISTENCE LIMIT REACHED (42d). Resetting high-entropy streak to restore sensors.")
+                self.high_entropy_streak = 0
+
             if self.high_entropy_streak >= 21:
                 logger.warning(
-                    f"ULTIMA CIRCUIT BREAKER ACTIVE: Streak={self.high_entropy_streak}. Cutting all non-core sensors."
+                    f"ULTIMA CIRCUIT BREAKER ACTIVE: Streak={self.high_entropy_streak}. Dampening non-core sensors."
                 )
                 import copy
                 active_registry = copy.deepcopy(self.v13_4_registry)
                 matrix = active_registry.get("feature_weight_matrix", {})
-                # Core fields for surgical preservation
                 core_fields = set(active_registry.get("core_fields", ["spread_21d", "spread_absolute", "real_yield_structural_z"]))
 
                 for k in list(matrix.keys()):
-                    # Match if the matrix key matches or is a prefix of any core field
                     is_core = any(k.startswith(cf) or cf.startswith(k) for cf in core_fields)
                     if not is_core and k != "DEFAULT_FALLBACK":
-                        matrix[k] = 0.0  # Extreme surgical cut
+                        # v14.4 FIX: Softened from 0.0 to 0.1 to prevent evidence blackout (Uniform Deadlock)
+                        matrix[k] = 0.1
             elif self.high_entropy_streak >= 5:
                 logger.warning(
                     f"PARANOID_MODE ACTIVE: High entropy streak={self.high_entropy_streak}. Damping secondary factors."
@@ -372,7 +423,16 @@ class V11Conductor:
                     if k not in core_fields:
                         matrix[k] = float(matrix[k]) * 0.7
 
-            # SRD-v13.5-PRO: Asymmetric Weighted Inference
+            # SRD-v14.3: QQQ Structural Cycle Alignment
+            # We use the standardized features from the seeder to drive Physical Gating.
+            f_values = latest_vector.iloc[0].to_dict()
+
+            # v14.4 BAYESIAN OVERDRIVE: Out-of-distribution detection
+            # Capture extreme market states (Crash/Bubble) and increase model responsiveness.
+            ood_threshold = float(active_registry.get("mahalanobis_ood_threshold", 4.0))
+            is_overdrive = self.mahalanobis_guard.is_outlier(latest_vector.iloc[0].values, threshold=ood_threshold)
+            tau_factor = float(active_registry.get("overdrive_tau_factor", 0.5))
+
             # v13.7-FINAL: Extract tau from registry (CR-1)
             registry_tau = float(active_registry.get("inference_tau", 0.5))
 
@@ -381,8 +441,12 @@ class V11Conductor:
                 evidence_frame=latest_vector,
                 runtime_priors=active_priors,
                 weight_registry=active_registry,
-                feature_quality_weights=feature_weights,  # Task 6: External quality signals
+                feature_quality_weights=feature_weights,
+                feature_values=f_values,
                 tau=registry_tau,
+                is_overdrive=is_overdrive,
+                tau_factor=tau_factor,
+                logical_constraints=self.logical_constraints,
             )
             if any(np.isnan(list(posteriors.values()))):
                 logger.warning("Bayesian Inference produced NaNs. Falling back to priors.")

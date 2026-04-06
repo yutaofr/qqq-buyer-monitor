@@ -6,7 +6,7 @@ import src.backtest as backtest_module
 
 
 def _build_v12_macro_frame(dates: pd.DatetimeIndex) -> pd.DataFrame:
-    monthly_block = np.repeat(np.linspace(8.0, 18.0, 14), 30)[: len(dates)]
+    monthly_block = np.repeat(np.linspace(8.0, 18.0, 100), 30)[: len(dates)]
     return pd.DataFrame(
         {
             "observation_date": dates,
@@ -77,7 +77,8 @@ def test_v11_inference_task_uses_labeled_regime_and_curated_features():
 
 
 def test_run_v11_audit_refits_model_for_each_evaluation_day(tmp_path, monkeypatch):
-    dates = pd.bdate_range("2024-01-01", periods=320)
+    # v14.9 Industrial Hardening: Provide 10 years of data to be safe
+    dates = pd.bdate_range("2014-01-01", periods=3000)
     macro_path = tmp_path / "macro.csv"
     regime_path = tmp_path / "regimes.csv"
 
@@ -85,7 +86,7 @@ def test_run_v11_audit_refits_model_for_each_evaluation_day(tmp_path, monkeypatc
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * 160 + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
+            "regime": ["MID_CYCLE"] * (len(dates) - 160) + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
         }
     ).to_csv(regime_path, index=False)
 
@@ -155,7 +156,8 @@ def test_run_v11_audit_refits_model_for_each_evaluation_day(tmp_path, monkeypatc
 
 
 def test_run_v11_audit_accepts_audit_overrides(tmp_path, monkeypatch):
-    dates = pd.bdate_range("2024-01-01", periods=320)
+    # v14.9 Industrial Hardening: Provide 10 years of data
+    dates = pd.bdate_range("2014-01-01", periods=3000)
     macro_path = tmp_path / "macro.csv"
     regime_path = tmp_path / "regimes.csv"
 
@@ -163,7 +165,7 @@ def test_run_v11_audit_accepts_audit_overrides(tmp_path, monkeypatch):
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * 160 + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
+            "regime": ["MID_CYCLE"] * (len(dates) - 160) + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
         }
     ).to_csv(regime_path, index=False)
 
@@ -205,7 +207,7 @@ def test_run_v11_audit_accepts_audit_overrides(tmp_path, monkeypatch):
     summary = backtest_module.run_v11_audit(
         dataset_path=str(macro_path),
         regime_path=str(regime_path),
-        evaluation_start="2025-01-02",
+        evaluation_start="2024-01-02",
         artifact_dir=str(tmp_path / "audit_artifacts"),
         experiment_config={
             "audit_overrides": {
@@ -228,7 +230,8 @@ def test_run_v11_audit_accepts_audit_overrides(tmp_path, monkeypatch):
 
 
 def test_run_v11_audit_can_use_classifier_posteriors_directly(tmp_path, monkeypatch):
-    dates = pd.bdate_range("2024-01-01", periods=320)
+    # v14.9 Industrial Hardening: Provide 10 years of data
+    dates = pd.bdate_range("2014-01-01", periods=3000)
     macro_path = tmp_path / "macro.csv"
     regime_path = tmp_path / "regimes.csv"
 
@@ -236,7 +239,7 @@ def test_run_v11_audit_can_use_classifier_posteriors_directly(tmp_path, monkeypa
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * 160 + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
+            "regime": ["MID_CYCLE"] * (len(dates) - 160) + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
         }
     ).to_csv(regime_path, index=False)
 
@@ -278,7 +281,7 @@ def test_run_v11_audit_can_use_classifier_posteriors_directly(tmp_path, monkeypa
     summary = backtest_module.run_v11_audit(
         dataset_path=str(macro_path),
         regime_path=str(regime_path),
-        evaluation_start="2025-01-02",
+        evaluation_start="2024-01-02",
         artifact_dir=str(tmp_path / "audit_artifacts"),
         experiment_config={"posterior_mode": "classifier_only"},
     )
@@ -287,7 +290,8 @@ def test_run_v11_audit_can_use_classifier_posteriors_directly(tmp_path, monkeypa
 
 
 def test_run_v11_audit_emits_expectation_and_pacing_alignment_columns(tmp_path, monkeypatch):
-    dates = pd.bdate_range("2024-01-01", periods=320)
+    # v14.9 Industrial Hardening: Provide 10 years of data
+    dates = pd.bdate_range("2014-01-01", periods=3000)
     macro_path = tmp_path / "macro.csv"
     regime_path = tmp_path / "regimes.csv"
     artifact_dir = tmp_path / "audit_artifacts"
@@ -296,7 +300,7 @@ def test_run_v11_audit_emits_expectation_and_pacing_alignment_columns(tmp_path, 
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * 120 + ["RECOVERY"] * 60 + ["LATE_CYCLE"] * 80 + ["BUST"] * 60,
+            "regime": ["MID_CYCLE"] * (len(dates) - 200) + ["RECOVERY"] * 60 + ["LATE_CYCLE"] * 80 + ["BUST"] * 60,
         }
     ).to_csv(regime_path, index=False)
 
@@ -322,7 +326,7 @@ def test_run_v11_audit_emits_expectation_and_pacing_alignment_columns(tmp_path, 
     backtest_module.run_v11_audit(
         dataset_path=str(macro_path),
         regime_path=str(regime_path),
-        evaluation_start="2025-01-02",
+        evaluation_start="2024-01-02",
         artifact_dir=str(artifact_dir),
         experiment_config={
             "allow_price_download": False,
@@ -354,16 +358,17 @@ def test_run_v11_audit_emits_expectation_and_pacing_alignment_columns(tmp_path, 
 def test_run_v11_audit_feature_subset_changes_posteriors_when_raw_quality_fields_exist(
     tmp_path, monkeypatch
 ):
-    dates = pd.bdate_range("2024-01-01", periods=320)
+    # v14.9 Industrial Hardening: Provide 10 years of data
+    dates = pd.bdate_range("2014-01-01", periods=3000)
     macro_path = tmp_path / "macro.csv"
     regime_path = tmp_path / "regimes.csv"
 
     macro = _build_v12_macro_frame(dates)
     macro["credit_spread_bps"] = np.r_[
-        np.full(160, 180.0),
+        np.full(len(dates) - 160, 180.0),
         np.full(80, 320.0),
         np.full(80, 520.0),
-    ]
+    ] + np.random.normal(0, 0.01, len(dates))
     macro["erp_ttm_pct"] = 0.03 + np.sin(np.linspace(0.0, 12.0, len(dates))) * 0.0005
     macro["source_credit_spread"] = "direct"
     macro["source_erp_ttm"] = "direct"
@@ -372,7 +377,7 @@ def test_run_v11_audit_feature_subset_changes_posteriors_when_raw_quality_fields
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * 160 + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
+            "regime": ["MID_CYCLE"] * (len(dates) - 160) + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
         }
     ).to_csv(regime_path, index=False)
 
@@ -398,7 +403,7 @@ def test_run_v11_audit_feature_subset_changes_posteriors_when_raw_quality_fields
     common = {
         "dataset_path": str(macro_path),
         "regime_path": str(regime_path),
-        "evaluation_start": "2025-01-02",
+        "evaluation_start": "2024-01-02",
         "experiment_config": {
             "allow_price_download": False,
             "price_end_date": "2025-12-31",

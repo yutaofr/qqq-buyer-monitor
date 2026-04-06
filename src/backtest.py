@@ -125,6 +125,7 @@ def _v11_inference_task(
         "predicted_regime": predicted_regime,
         "brier": brier,
         "posterior": posterior,
+        "test_type": "UNKNOWN" # Will be updated in loop
     }
 
 
@@ -227,6 +228,13 @@ def run_v11_audit(
             audit_data.get("model_hyperparameters", {}).get("posterior_mode", "runtime_reweight"),
         )
     )
+    
+    # v14.5 INDUSTRIAL GOVERNANCE: Load registry once for the entire audit
+    registry_path = Path("src/engine/v11/resources/v13_4_weights_registry.json")
+    registry = {}
+    if registry_path.exists():
+        with open(registry_path) as f:
+            registry = json.load(f)
     overlay_mode = experiment.get("overlay_mode")
     price_cache_path = str(experiment.get("price_cache_path", "data/qqq_history_cache.csv"))
     allow_price_download = bool(experiment.get("allow_price_download", True))
@@ -257,6 +265,21 @@ def run_v11_audit(
         macro_df["qqq_volume_quality_score"] = 1.0
     macro_df["source_qqq_close"] = "direct:yfinance"
     macro_df["qqq_close_quality_score"] = 1.0
+
+    # v14.9 CAUSAL ISOLATION GUARD: Enforce minimum training window
+    # The longest structural anchor is 1260 days (~5 years).
+    # Any audit starting before this threshold will have high-entropy noise.
+    eval_dt = pd.to_datetime(evaluation_start).tz_localize(None).normalize()
+    min_train_cutoff = macro_df.index[0] + pd.offsets.BDay(1260)
+
+    if eval_dt < min_train_cutoff:
+        logger.warning(
+            f"CAUSAL VIOLATION: evaluation_start {evaluation_start} is before "
+            f"the 5-year structural anchor threshold ({min_train_cutoff.date()}). "
+            "Audit results will be contaminated by initialization noise."
+        )
+        if strict_state_support:
+             raise ValueError("Strict Causal Isolation failed: Insufficient training data for 5-year anchor.")
 
     seeder_kwargs = dict(experiment.get("probability_seeder", {}))
     if "selected_features" not in seeder_kwargs:
@@ -378,6 +401,12 @@ def run_v11_audit(
             dt = row["observation_date"]
             # PIT Lag for Training Labels: Labels must be at least 20 days old.
             cutoff_dt = dt - pd.offsets.BDay(20)
+
+            # v14.9 Anti-Overfit: Define Validation vs Out-of-Sample (OOS)
+            # The last 252 days are 'Testing (OOS)', anything before is 'Validation'.
+            is_oos = dt > (macro_df.index[-1] - pd.offsets.BDay(252))
+            test_type = "TEST_OOS" if is_oos else "VALIDATION"
+
             train_window = full_df[full_df["observation_date"] < cutoff_dt].copy()
             if train_window.empty:
                 continue
@@ -404,7 +433,15 @@ def run_v11_audit(
                 str(label): float(probability)
                 for label, probability in zip(gnb.classes_, class_priors, strict=True)
             }
-            runtime_priors, prior_details = prior_book.runtime_priors()
+            # v14.2 Duration Hardening: Pass macro_values for Inertia/Mid-Cycle Anchor
+            f_vals_for_prior = evidence.iloc[0].to_dict()
+            f_vals_for_prior["is_stable"] = (abs(f_vals_for_prior.get("spread_21d", 0.0)) < 1.0 and 
+                                              abs(f_vals_for_prior.get("move_21d", 0.0)) < 1.0)
+            f_vals_for_prior["dynamic_beta_inertia_matrix"] = registry.get("dynamic_beta_inertia_matrix", {})
+            
+            runtime_priors, prior_details = prior_book.runtime_priors(
+                macro_values=f_vals_for_prior
+            )
             if posterior_mode == "classifier_only":
                 active_priors = training_priors
             elif posterior_mode == "runtime_reweight":
@@ -413,12 +450,7 @@ def run_v11_audit(
                 raise ValueError(f"Unknown posterior_mode: {posterior_mode}")
 
             # v13.7-ULTIMA: Adapt to new weighted inference signature
-            registry_path = Path("src/engine/v11/resources/v13_4_weights_registry.json")
-            if registry_path.exists():
-                with open(registry_path) as f:
-                    registry = json.load(f)
-            else:
-                registry = {}
+            # Registry is now pre-loaded outside the loop for CAUSAL consistency
 
             overlay_cols = [
                 "observation_date",

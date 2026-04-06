@@ -19,7 +19,7 @@ This repository is governed by a **v13.0 Orthogonal-Core** architecture. AI agen
 ## 🔴 CRITICAL SYSTEM REDLINES FOR ALL AI AGENTS 🔴
 
 1. **Bayesian Integrity Lock**: In `src/engine/v11/core/bayesian_inference.py`, the posterior calculation **MUST ALWAYS** use true Bayesian multiplication ($Posterior \propto Prior \times Likelihood$). **NEVER** replace this with a linear weighted average (e.g., `m * Likelihood + (1-m) * Prior`). Linear mixtures destroy confidence accumulation and cause "High Entropy Deadlock."
-2. **Temperature Scaling (Tau) Lock**: The `inference_tau` in `v13_4_weights_registry.json` is set to `3.0` to calibrate the overconfidence of Naive Bayes in high-dimensional orthogonal space. **NEVER** lower this to `< 1.0` (like the old `0.15` bug) to artificially "sharpen" probabilities.
+2. **Temperature Scaling (Tau) Lock**: The `inference_tau` in `v13_4_weights_registry.json` is set to `10.0` to calibrate the overconfidence of Naive Bayes in high-dimensional orthogonal space. **NEVER** lower this to `< 1.0` (like the old `0.15` bug) to artificially "sharpen" probabilities. Values > 5.0 are preferred for industrial stability (Brier/Entropy calibration). v14.4 "Bayesian Overdrive" uses a dynamic `tau_factor` (0.5) to temporarily increase sensitivity ONLY during extreme OOD events, while maintaining a stable 10.0 baseline.
 3. **Prior Gravity Lock**: The static baseline prior weight in `src/engine/v11/core/prior_knowledge.py` is permanently minimized to **5%**. **NEVER** increase this weight (like the old 40% bug), as it traps the system in an artificial mean-reversion gravity well.
 
 ## 3. Product & Philosophy
