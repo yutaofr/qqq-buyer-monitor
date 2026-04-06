@@ -4,8 +4,6 @@ import os
 import numpy as np
 
 from src.engine.v11.conductor import V11Conductor
-from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
-from src.engine.v11.core.prior_knowledge import PriorKnowledgeBase
 
 # Setup logging
 logging.basicConfig(level=logging.WARNING) # Reduce noise
@@ -13,15 +11,14 @@ logger = logging.getLogger(__name__)
 
 def evaluate_config(anchor_floor, mid_inertia, bleed_eps=1e-15):
     prior_path = f"tmp/prior_{anchor_floor}_{mid_inertia}.json"
-    if os.path.exists(prior_path): os.remove(prior_path)
+    if os.path.exists(prior_path):
+        os.remove(prior_path)
 
-    # Monkey-patch BayesianInferenceEngine for the floor and normalization
-    original_infer = BayesianInferenceEngine.infer_gaussian_nb_posterior
-    original_norm = BayesianInferenceEngine._normalize
-    original_prior_norm = PriorKnowledgeBase._normalize
+
 
     def patched_norm(self, weights):
-        if not weights: return {}
+        if not weights:
+            return {}
         sanitized = {str(k): max(0.0, float(v)) for k, v in weights.items()}
         total = float(sum(sanitized.values()))
         if total <= 0:
