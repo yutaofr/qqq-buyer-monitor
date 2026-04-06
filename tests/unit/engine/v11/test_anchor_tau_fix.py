@@ -1,8 +1,11 @@
 import os
 import unittest
+
 import numpy as np
 import pandas as pd
+
 from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
+
 
 class MockClassifier:
     def __init__(self, regimes):
@@ -32,7 +35,7 @@ class TestAnchorTauHallucination(unittest.TestCase):
         self.base_priors = {r: 0.25 for r in self.regimes}
         self.engine = BayesianInferenceEngine(base_priors=self.base_priors)
         self.classifier = MockClassifier(self.regimes)
-        
+
         # Registry with Normal Tau = 10.0
         self.registry = {
             "feature_weight_matrix": {"spread_21d": 1.0, "move_21d": 1.0, "DEFAULT_FALLBACK": 1.0},
@@ -42,7 +45,7 @@ class TestAnchorTauHallucination(unittest.TestCase):
 
     def test_stressed_hallucination_reproduction(self):
         """
-        Reproduce the systemic failure where 'Stressed' Tau (0.5) causes 
+        Reproduce the systemic failure where 'Stressed' Tau (0.5) causes
         the likelihood floor to wash out real evidence differences.
         """
         # Evidence is [6.0, 6.0]
@@ -50,11 +53,11 @@ class TestAnchorTauHallucination(unittest.TestCase):
         # Distance to MID_CYCLE [0,0] is 72.
         # BUST is much better evidence than MID_CYCLE.
         evidence = pd.DataFrame([[6.0, 6.0]], columns=["spread_21d", "move_21d"])
-        
+
         # Market is 'stable' for the anchor logic (Z < 1.0)
-        # Even though evidence is [3, 3], we mock feature_values to be stable 
+        # Even though evidence is [3, 3], we mock feature_values to be stable
         # to trigger the anchor. In real life, this happens when features are OOD.
-        feature_values = {"spread_21d": 0.5, "move_21d": 0.5} 
+        feature_values = {"spread_21d": 0.5, "move_21d": 0.5}
 
         # 1. NORMAL CASE (Tau = 10.0)
         # Expect BUST to be the winner because evidence is strong.
@@ -67,9 +70,9 @@ class TestAnchorTauHallucination(unittest.TestCase):
             tau=10.0,
             is_overdrive=False
         )
-        
+
         print(f"\n[Normal Tau=10] BUST: {probs_normal['BUST']:.4f}, MID_CYCLE: {probs_normal['MID_CYCLE']:.4f}")
-        
+
         # 2. STRESSED CASE (Tau = 0.5)
         # Using a very low Tau to force logarithmic washout
         probs_stressed, _ = self.engine.infer_gaussian_nb_posterior(
@@ -82,13 +85,13 @@ class TestAnchorTauHallucination(unittest.TestCase):
             tau_factor=0.5
         )
         # Effective Tau = 0.5
-        
+
         print(f"[Stress Tau=0.5] BUST: {probs_stressed['BUST']:.4f}, MID_CYCLE: {probs_stressed['MID_CYCLE']:.4f}")
 
         # The Failure: Under Tau=0.5, BUST log-likelihood is -32. MID_CYCLE is -72.
         # BOTH hit the anchor floor (-4.6) because they are compared AFTER scaling.
         # result: Tie (0.5 each). This is a Hallucination/Lock.
-        self.assertTrue(probs_stressed['BUST'] > 0.6, 
+        self.assertTrue(probs_stressed['BUST'] > 0.6,
                         f"Hallucination Detected: BUST probability ({probs_stressed['BUST']:.4f}) "
                         f"is washed out to {probs_stressed['BUST']:.4f} due to anchor floor!")
 

@@ -50,9 +50,9 @@ def run_forensic():
         # 3. Inspect intermediates from daily_run (via side-channel)
         posteriors = runtime["probabilities"]
         diagnostics = runtime["v13_4_diagnostics"]
-        
+
         # Check Overdrive Status
-        is_ood, d_m = conductor.mahalanobis_guard.is_outlier(latest_vector.iloc[0].values, 
+        is_ood, d_m = conductor.mahalanobis_guard.is_outlier(latest_vector.iloc[0].values,
                                                            threshold=float(conductor.v13_4_registry.get("mahalanobis_ood_threshold", 4.5)),
                                                            return_distance=True)
 

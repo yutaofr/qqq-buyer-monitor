@@ -228,7 +228,7 @@ def run_v11_audit(
             audit_data.get("model_hyperparameters", {}).get("posterior_mode", "runtime_reweight"),
         )
     )
-    
+
     # v14.5 INDUSTRIAL GOVERNANCE: Load registry once for the entire audit
     registry_path = Path("src/engine/v11/resources/v13_4_weights_registry.json")
     registry = {}
@@ -435,10 +435,10 @@ def run_v11_audit(
             }
             # v14.2 Duration Hardening: Pass macro_values for Inertia/Mid-Cycle Anchor
             f_vals_for_prior = evidence.iloc[0].to_dict()
-            f_vals_for_prior["is_stable"] = (abs(f_vals_for_prior.get("spread_21d", 0.0)) < 1.0 and 
+            f_vals_for_prior["is_stable"] = (abs(f_vals_for_prior.get("spread_21d", 0.0)) < 1.0 and
                                               abs(f_vals_for_prior.get("move_21d", 0.0)) < 1.0)
             f_vals_for_prior["dynamic_beta_inertia_matrix"] = registry.get("dynamic_beta_inertia_matrix", {})
-            
+
             runtime_priors, prior_details = prior_book.runtime_priors(
                 macro_values=f_vals_for_prior
             )

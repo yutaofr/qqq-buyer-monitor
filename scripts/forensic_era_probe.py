@@ -1,7 +1,7 @@
 import logging
-import os
-import numpy as np
+
 import pandas as pd
+
 from src.engine.baseline.data_loader import load_all_baseline_data
 from src.engine.v11.conductor import V11Conductor
 
@@ -29,7 +29,7 @@ def run_era_probe():
 
     for era_name, test_dates, cutoff in eras:
         print(f"\n=== ERA: {era_name} (Cutoff: {cutoff}) ===")
-        
+
         # Initialize Conductor for this era
         try:
             conductor = V11Conductor(training_cutoff=cutoff)
@@ -45,20 +45,20 @@ def run_era_probe():
 
             # Run daily loop
             runtime = conductor.daily_run(full_data.loc[:dt])
-            
+
             # Extract Overdrive Status
             latest_vector = conductor.seeder.generate_features(full_data.loc[:dt]).iloc[-1:]
             is_ood, d_m = conductor.mahalanobis_guard.is_outlier(
-                latest_vector.iloc[0].values, 
+                latest_vector.iloc[0].values,
                 threshold=float(conductor.v13_4_registry.get("mahalanobis_ood_threshold", 4.5)),
                 return_distance=True
             )
-            
+
             posteriors = runtime["probabilities"]
             top_regime = max(posteriors, key=posteriors.get)
-            
+
             print(f"  [{dt.date()}] d_m={d_m:.2f}, Overdrive={is_ood}, Top={top_regime} ({posteriors[top_regime]:.4f})")
-            
+
             results.append({
                 "era": era_name,
                 "date": dt.date(),
