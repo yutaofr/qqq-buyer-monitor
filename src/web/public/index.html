@@ -25,7 +25,7 @@
         #insights-panel.open { max-height: 4000px; opacity: 1; margin-top: 2rem; }
         .tree-line { width: 2px; background: rgba(255, 255, 255, 0.05); height: 35px; }
         .tree-line.active { background: linear-gradient(to bottom, var(--emerald), transparent); opacity: 0.6; }
-        .prob-bar { height: 8px; border-radius: 6px; background: var(--emerald); transition: width 1.8s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        .prob-bar { height: 8px; border-radius: 6px; transition: width 1.8s cubic-bezier(0.34, 1.56, 0.64, 1); }
         .overclock { background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444, #10b981); animation: flow 3s linear infinite; background-size: 300% 100%; }
         .evidence-card { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 1.5rem; padding: 1rem 1.1rem; text-align: left; transition: border-color 0.3s, background 0.3s; }
         .evidence-card[open] { border-color: rgba(16, 185, 129, 0.35); background: rgba(16, 185, 129, 0.08); }
@@ -85,13 +85,9 @@
 
         <!-- Main State Section -->
         <div class="space-y-8 sm:space-y-10 text-center mb-10 sm:mb-12">
-            <div class="space-y-3">
-                <p id="ui-regime-label" class="text-[11px] font-black uppercase opacity-50 text-slate-500 tracking-wider">穩定體制</p>
-                <div class="flex items-center justify-center space-x-4">
-                    <div id="regime-lumiere" class="lumiere bg-slate-500"></div>
-                    <p id="regime" class="text-4xl sm:text-5xl font-black tracking-tighter text-white break-words transition-colors duration-1000">--</p>
-                </div>
-                <p id="regime-audit" class="text-[11px] font-bold text-slate-400 tracking-tight">--</p>
+            <div class="factor-card p-6 rounded-[2rem] sm:rounded-[2.5rem] w-full text-left bg-white/[0.03]">
+                <p id="ui-posterior-label" class="text-[11px] text-center font-black uppercase opacity-50 text-slate-500 tracking-widest mb-6">後驗機率分佈</p>
+                <div id="prob-container" class="space-y-4 px-2 sm:px-4"></div>
             </div>
             
             <div class="grid grid-cols-2 gap-4 sm:gap-5">
@@ -177,18 +173,36 @@
                         </div>
                     </div>
 
-                    <div class="flex justify-between w-full mt-4 opacity-40">
-                        <div class="flex flex-col items-start">
-                            <span id="ui-tractor-label" class="text-[8px] font-black text-slate-500 uppercase">標普500</span>
-                            <span id="diag-tractor" class="text-[10px] font-bold text-slate-300">--</span>
-                        </div>
-                        <div class="flex flex-col items-center">
-                            <span id="ui-mode-label" class="text-[8px] font-black text-slate-500 uppercase">模式</span>
-                            <span id="overlay-mode" class="text-[9px] font-bold text-slate-300">--</span>
-                        </div>
-                        <div class="flex flex-col items-end">
-                            <span id="ui-sidecar-label" class="text-[8px] font-black text-slate-500 uppercase">納指100</span>
-                            <span id="diag-sidecar" class="text-[10px] font-bold text-slate-300">--</span>
+                    <div class="w-full mt-5 pt-3 border-t border-white/5 bg-gradient-to-b from-rose-500/5 to-transparent rounded-b-2xl p-3 border border-rose-500/10">
+                        <p id="ui-tail-risk-label" class="text-[9px] font-black uppercase text-rose-500 mb-3 text-center tracking-widest flex items-center justify-center drop-shadow-[0_0_8px_rgba(244,63,94,0.6)]">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="mr-1.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            左尾風險機率
+                        </p>
+                        <div class="flex justify-around items-center w-full relative">
+                            <!-- Tractor (Anchor) -->
+                            <div class="flex flex-col items-center gap-1.5 group" title="拖拉機 (Tractor) 左尾風險">
+                                <div class="w-8 h-8 rounded-full bg-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.4)] border border-rose-500/40 flex items-center justify-center text-rose-400 group-hover:bg-rose-500/30 transition-all">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="22" x2="12" y2="8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/></svg>
+                                </div>
+                                <span id="diag-tractor" class="text-[12px] font-bold text-rose-300 font-mono tracking-tighter drop-shadow-[0_0_5px_rgba(244,63,94,0.8)]">--</span>
+                            </div>
+                            
+                            <!-- Mode (Center) -->
+                            <div class="flex flex-col items-center justify-center px-4 z-10 bg-[#0f172a] rounded-full border border-white/5 py-1 shadow-lg">
+                                <span id="ui-mode-label" class="text-[7px] font-black text-rose-500/50 uppercase mb-0.5">聯動協議</span>
+                                <span id="overlay-mode" class="text-[9px] font-black text-rose-200 uppercase tracking-widest drop-shadow-[0_0_5px_rgba(255,255,255,0.4)]">--</span>
+                            </div>
+
+                            <!-- Sidecar (Zap) -->
+                            <div class="flex flex-col items-center gap-1.5 group" title="掛車 (Sidecar) 左尾風險">
+                                <div class="w-8 h-8 rounded-full bg-orange-500/20 shadow-[0_0_15px_rgba(249,115,22,0.4)] border border-orange-500/40 flex items-center justify-center text-orange-400 group-hover:bg-orange-500/30 transition-all">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                                </div>
+                                <span id="diag-sidecar" class="text-[12px] font-bold text-orange-300 font-mono tracking-tighter drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]">--</span>
+                            </div>
+
+                            <!-- Decorative line -->
+                            <div class="absolute top-4 left-[20%] right-[20%] h-px bg-gradient-to-r from-rose-500/0 via-rose-500/20 to-orange-500/0 -z-10"></div>
                         </div>
                     </div>
                 </div>
@@ -210,11 +224,6 @@
         <!-- Insights Panel -->
         <div id="insights-panel">
             <div class="space-y-12 sm:space-y-16 py-8 sm:py-10 border-t border-white/10 text-center">
-                <div class="space-y-6">
-                    <p id="ui-posterior-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">後驗機率分佈</p>
-                    <div id="prob-container" class="space-y-4 px-4 sm:px-6"></div>
-                </div>
-
                 <div class="space-y-6">
                     <p id="ui-prior-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">運行時先驗</p>
                     <div id="prior-container" class="space-y-4 px-4 sm:px-6"></div>
@@ -304,7 +313,7 @@
                 'ui-entropy-label': 'Entropy', 'ui-deploy-label': 'Entry Pacing', 'ui-beta-rec': 'Target Beta',
                 'ui-panorama-label': 'Panorama Ensemble Verdict',
                 'ui-model-type': 'Bayesian',
-                'ui-tractor-label': 'Tractor (SPY)', 'ui-sidecar-label': 'Sidecar (QQQ)',
+                'ui-tractor-label': 'Tractor', 'ui-sidecar-label': 'Sidecar', 'ui-tail-risk-label': 'Left-Tail Risk',
                 'ui-standard-label': 'Standard', 'ui-protective-label': 'Protective', 'ui-aggressive-label': 'Aggressive',
                 'ui-confidence': 'Confidence', 'ui-ceiling': 'Ceiling', 'ui-raw': 'Raw', 'ui-protected': 'Protected',
                 'ui-overlay': 'Overlay', 'ui-beta-mult': 'Beta Mult', 'ui-pace-mult': 'Pace Mult',
@@ -342,7 +351,7 @@
                 'ui-entropy-label': '資訊熵', 'ui-deploy-label': '佈局節奏', 'ui-beta-rec': '最終執行目標',
                 'ui-panorama-label': '全景診斷裁決',
                 'ui-model-type': '機率推斷',
-                'ui-tractor-label': '標普500', 'ui-sidecar-label': '納指100',
+                'ui-tractor-label': '拖拉機', 'ui-sidecar-label': '掛車', 'ui-tail-risk-label': '左尾風險機率',
                 'ui-standard-label': '標配', 'ui-protective-label': '防禦', 'ui-aggressive-label': '積極',
                 'ui-confidence': '信心度', 'ui-ceiling': '上限', 'ui-raw': '原始', 'ui-protected': '受保護',
                 'ui-overlay': '疊加層', 'ui-beta-mult': '倉位縮放倍率', 'ui-pace-mult': '節奏縮放倍率',
@@ -579,7 +588,14 @@
                 const pct = (val * 100).toFixed(1) + '%';
                 const localizedName = TRANSLATIONS[currentLang].mapping[name] || name;
                 const dynamics = dynamicsMap && dynamicsMap[name] ? dynamicsMap[name] : null;
-                container.innerHTML += `<div class="space-y-1.5"><div class="flex justify-between text-[10px] font-black opacity-50 uppercase tracking-tighter"><span>${localizedName}</span><span class="text-white">${pct}</span></div>${formatMotionTag(dynamics)}<div class="w-full h-2 bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5"><div class="prob-bar" style="width: ${pct}"></div></div></div>`;
+                
+                let barColorClass = 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]';
+                if (name === 'BUST') barColorClass = 'bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.8)]';
+                else if (name === 'LATE_CYCLE') barColorClass = 'bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.5)]';
+                else if (name === 'MID_CYCLE') barColorClass = 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]';
+                else if (name === 'RECOVERY') barColorClass = 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.6)]';
+                
+                container.innerHTML += `<div class="space-y-1.5"><div class="flex justify-between text-[10px] font-black opacity-50 uppercase tracking-tighter"><span>${localizedName}</span><span class="text-white">${pct}</span></div>${formatMotionTag(dynamics)}<div class="w-full h-2 bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5"><div class="prob-bar ${barColorClass}" style="width: ${pct}"></div></div></div>`;
             });
         }
 
@@ -594,23 +610,6 @@
             const stableRegimeKey = extractRegimeKey(data.signal.stable_regime || data.signal.regime);
             const rawRegimeKey = extractRegimeKey(data.signal.raw_regime || data.signal.regime);
             const mapping = TRANSLATIONS[currentLang].mapping;
-            const displayRegime = mapping[stableRegimeKey] || stableRegimeKey;
-            const activeRegimeKey = stableRegimeKey !== '--' ? stableRegimeKey : 'MID_CYCLE';
-            
-            const rText = document.getElementById('regime');
-            rText.textContent = displayRegime;
-            rText.className = `text-4xl sm:text-5xl font-black tracking-tighter break-words ${REGIME_TEXT_COLORS[activeRegimeKey] || 'text-white'}`;
-            
-            const auditEl = document.getElementById('regime-audit');
-            const stableLabel = mapping[stableRegimeKey] || stableRegimeKey;
-            const rawLabel = mapping[rawRegimeKey] || rawRegimeKey;
-            if (currentLang === 'en') {
-                auditEl.textContent = rawRegimeKey === stableRegimeKey ? `Today's top posterior matches stable: ${rawLabel}` : `Stable: ${stableLabel} | Today's Top: ${rawLabel}`;
-            } else {
-                auditEl.textContent = rawRegimeKey === stableRegimeKey ? `當日後驗首選與穩定態一致: ${rawLabel}` : `穩定態: ${stableLabel} | 當日後驗首選: ${rawLabel}`;
-            }
-            
-            document.getElementById('regime-lumiere').className = `lumiere ${REGIME_COLORS[activeRegimeKey] || 'bg-slate-500'}`;
             
             const exposureEl = document.getElementById('exposure');
             exposureEl.textContent = data.signal.target_beta.toFixed(2) + 'x';
