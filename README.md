@@ -12,9 +12,10 @@
 系统已从单纯的金融因子监控进化为 **12 因子正交矩阵**。通过引入 PMI 动量与劳动力市场松弛度特征，彻底消除了周期后期的“金融盲视”。
 
 ### 1.2 优雅冷启动 (Hydrated Cold Start)
-生产默认加载已经校准好的 `hydrated prior` 状态文件，而不是每次都从头推倒 8 年历史。
+生产默认加载已经校准好的 `hydrated prior` 种子，并在缺少运行态 state 时原地物化为可写 prior，而不是每次都从头推倒 8 年历史。
 
-- **首选路径**: 直接加载 `data/v13_6_ex_hydrated_prior.json`
+- **Canonical Seed**: `src/engine/v11/resources/v13_6_cold_start_seed.json`
+- **运行态 Prior**: `data/v13_6_ex_hydrated_prior.json`，缺失时由 canonical seed 自动恢复
 - **回测路径**: 为每次 walk-forward 窗口生成本地 prior state，不污染生产状态
 - **重建记忆**: 仅当特征契约或先验结构发生变化时，才重新跑历史 hydration
 
@@ -52,10 +53,13 @@
 ## 4. 快速开始 (Operational Guide)
 
 ### 4.1 生产启动 (Go-Live)
-系统启动前必须确保已加载最新的注水先验状态：
+系统启动前必须确保已加载最新的运行态 prior；若缺失，入口会自动从 canonical seed 恢复：
 ```bash
-# 引用 v13.7-ULTIMA 黄金先验库
+# 可选：显式指定运行态 prior
 export PRIOR_STATE_PATH="data/v13_6_ex_hydrated_prior.json"
+
+# 可选：覆盖默认 cold-start seed
+export PRIOR_SEED_PATH="src/engine/v11/resources/v13_6_cold_start_seed.json"
 ```
 
 ### 4.2 深度回演 (Re-Hydration)

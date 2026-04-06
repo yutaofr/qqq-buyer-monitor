@@ -65,3 +65,87 @@ def test_vxn_missing_degradation(mock_macro):
     assert status == "degraded_missing_vxn", (
         f"Sidecar status expected 'degraded_missing_vxn', got '{status}'"
     )
+
+
+def test_run_baseline_inference_tolerates_existing_qqq_close_column(monkeypatch):
+    dates = pd.date_range("2020-01-01", periods=260, freq="B")
+    baseline_data = pd.DataFrame(
+        {
+            "qqq_close": np.linspace(100.0, 120.0, len(dates)),
+            "VIXCLS": np.linspace(18.0, 22.0, len(dates)),
+            "^VXN": np.linspace(20.0, 24.0, len(dates)),
+        },
+        index=dates,
+    )
+    baseline_data.attrs["metadata"] = {"degraded": []}
+    tech = pd.DataFrame(
+        {
+            "qqq_ma_cross": np.zeros(len(dates)),
+            "qqq_close": np.linspace(101.0, 121.0, len(dates)),
+        },
+        index=dates,
+    )
+
+    class _DummyModel:
+        coef_ = np.array([[0.5, -0.2, -0.1]])
+
+    monkeypatch.setattr(
+        "src.engine.baseline.execution.load_all_baseline_data",
+        lambda timeout=10: baseline_data.copy(),
+    )
+    monkeypatch.setattr(
+        "src.engine.baseline.execution.fetch_qqq_technical_signals",
+        lambda: tech.copy(),
+    )
+    monkeypatch.setattr(
+        "src.engine.baseline.execution.calculate_composites",
+        lambda frame: pd.DataFrame(
+            {
+                "stress_composite": np.zeros(len(frame)),
+                "growth_composite": np.zeros(len(frame)),
+                "liquidity_composite": np.zeros(len(frame)),
+            },
+            index=frame.index,
+        ),
+    )
+    monkeypatch.setattr(
+        "src.engine.baseline.execution.calculate_sidecar_composites",
+        lambda frame: pd.DataFrame(
+            {
+                "stress_composite": np.zeros(len(frame)),
+                "growth_composite": np.zeros(len(frame)),
+                "liquidity_composite": np.zeros(len(frame)),
+            },
+            index=frame.index,
+        ),
+    )
+    monkeypatch.setattr(
+        "src.engine.baseline.execution.generate_baseline_target",
+        lambda close, vix: pd.Series(0, index=close.index),
+    )
+    monkeypatch.setattr(
+        "src.engine.baseline.execution.generate_sidecar_target",
+        lambda close, vxn: pd.Series(0, index=close.index),
+    )
+    monkeypatch.setattr(
+        "src.engine.baseline.execution.train_baseline_model",
+        lambda *args, **kwargs: _DummyModel(),
+    )
+    monkeypatch.setattr(
+        "src.engine.baseline.execution.train_sidecar_model",
+        lambda *args, **kwargs: _DummyModel(),
+    )
+    monkeypatch.setattr(
+        "src.engine.baseline.execution.predict_baseline_crisis_prob",
+        lambda model, frame: pd.Series([0.2], index=frame.index),
+    )
+    monkeypatch.setattr(
+        "yfinance.download",
+        lambda *args, **kwargs: pd.DataFrame({"Close": np.linspace(100.0, 120.0, len(dates))}, index=dates),
+    )
+
+    results = run_baseline_inference()
+
+    assert not results.get("status", "").startswith("error:")
+    assert results["tractor"]["status"].startswith("success")
+    assert results["sidecar"]["status"] == "success"

@@ -412,3 +412,28 @@ def test_conductor_training_cutoff_scopes_prior_bootstrap_history(tmp_path):
     priors = conductor.prior_book.current_priors()
 
     assert priors["MID_CYCLE"] > priors["BUST"]
+
+
+def test_conductor_uses_business_day_training_classes_for_model_validation(tmp_path):
+    regime_path = tmp_path / "regimes.csv"
+    macro_path = tmp_path / "macro.csv"
+    prior_path = tmp_path / "prior_state.json"
+
+    dates = pd.bdate_range("2022-01-03", periods=160)
+    _build_v12_macro_frame(dates).to_csv(macro_path, index=False)
+    pd.DataFrame(
+        {
+            "observation_date": pd.date_range("2022-01-01", periods=170, freq="D"),
+            "regime": ["BUST"] * 2 + ["LATE_CYCLE"] * 168,
+        }
+    ).to_csv(regime_path, index=False)
+
+    conductor = V11Conductor(
+        macro_data_path=str(macro_path),
+        regime_data_path=str(regime_path),
+        prior_state_path=str(prior_path),
+        training_cutoff="2022-04-29",
+    )
+
+    assert conductor.model_regimes == ["LATE_CYCLE"]
+    assert conductor.gnb.classes_.tolist() == ["LATE_CYCLE"]

@@ -176,3 +176,31 @@ def test_run_v11_pipeline_stops_when_cloud_pull_fails(monkeypatch):
                 no_color=True,
             )
         )
+
+
+def test_materialize_prior_state_uses_canonical_seed_when_runtime_state_missing(tmp_path):
+    seed_path = tmp_path / "canonical_seed.json"
+    runtime_path = tmp_path / "runtime" / "prior_state.json"
+    payload = {
+        "version": "v11-prior-state",
+        "regimes": ["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"],
+        "counts": {"MID_CYCLE": 10.0, "LATE_CYCLE": 5.0, "BUST": 2.0, "RECOVERY": 3.0},
+        "transition_counts": {},
+        "execution_state": {"stable_regime": "MID_CYCLE", "hydration_anchor": "2018-01-01"},
+        "bootstrap_fingerprint": "sha256:test",
+    }
+    seed_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    origin = main_module._materialize_prior_state(runtime_path, seed_path)
+
+    assert origin == "canonical_seed"
+    assert runtime_path.exists()
+    assert json.loads(runtime_path.read_text(encoding="utf-8")) == payload
+
+
+def test_materialize_prior_state_fails_closed_when_seed_is_missing(tmp_path):
+    runtime_path = tmp_path / "runtime" / "prior_state.json"
+    missing_seed = tmp_path / "missing_seed.json"
+
+    with pytest.raises(FileNotFoundError, match="canonical hydrated prior seed"):
+        main_module._materialize_prior_state(runtime_path, missing_seed)
