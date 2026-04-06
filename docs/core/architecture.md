@@ -1,30 +1,32 @@
-# Architecture Design Document: QQQ Monitor (v12.0 Orthogonal-Core)
+# Architecture Design Document: QQQ Monitor (v13.4 Black-Box Governance)
 
-This document details the **V12.0 Bayesian Orthogonal Factor Architecture**, which evolves the system from a general probabilistic engine to a high-fidelity, macro-orthogonal inference system.
+This document describes the current production architecture: a PIT-safe macro Bayesian core, coupled with price-topology vetoes, execution-layer physical constraints, and forensic snapshots that backtests must replay as a black box.
 
 ---
 
-## 1. System Philosophy: Orthogonal Reality & Information Honesty
+## 1. System Philosophy: Orthogonal Reality, Information Honesty, Black-Box Governance
 
-The v12.0 design is centered on two pillars:
+The current design is centered on three pillars:
 1.  **Physical Orthogonality**: Ensuring each macro factor represents a distinct, non-redundant dimension of the global economy (Discount, Real Economy, Sentiment).
 2.  **Information Honesty**: Acknowledging the inherent uncertainty in high-dimensional macro spaces. The system prioritizes **Shannon Entropy** as a first-class citizen to prevent "Spurious Confidence" caused by collinear factors.
+3.  **Spec-to-Code Parity**: Historical replay must call the production `V11Conductor` directly. Research-only re-implementations are not part of the certified audit path.
 
 ## 2. Component Responsibility Matrix
 
 | Layer | Component | Responsibility |
 | :--- | :--- | :--- |
-| **Inference** | `src/engine/v11/` | **The Brain**. Recursive Bayesian inference, JIT GaussianNB training, and **Orthogonalization Engine**. |
+| **Inference** | `src/engine/v11/` | **The Brain**. Recursive Bayesian inference, production JIT GaussianNB training, topology-coupled likelihood penalties, and execution-layer physical constraints. |
 | **Ingestion** | `src/collector/` | **The Sensors**. Multi-source data fetching (FRED, yf, Shiller) with strict **PIT (Point-in-Time) Lag Alignment**. |
 | **Seeding** | `ProbabilitySeeder` | **Factor Engineering**. 10-factor orthogonal matrix generation with **Gram-Schmidt post-processing** for MOVE-Spread decoupling. |
-| **Storage** | `src/store/` | **The Memory**. Managing local DNA (CSV), Prior state (JSON), and Cloud sync (Vercel Blob). |
+| **Storage** | `src/store/` | **The Memory**. Managing local DNA (CSV), hydrated prior state (JSON), and Cloud sync (Vercel Blob). |
+| **Forensics** | `snapshot_*.json` | **The Audit Trail**. Per-day runtime priors, penalties, feature vectors, quality audits, topology state, and final execution payload. |
 | **Execution** | `BehavioralGuard` | **The Armor**. Entropy-aware bucket switching and T+1 settlement locks. |
 
 ---
 
 ## 3. Data Flow: The Orthogonal Bayesian Loop
 
-The v12.0 loop introduces an explicit **Orthogonalization** step to ensure naive Bayesian independence assumptions are physically met.
+The current loop keeps orthogonalization, but now also couples `QQQ` price topology into the posterior calculation before execution sizing.
 
 ```mermaid
 graph TD
@@ -32,10 +34,11 @@ graph TD
     C[Prior State: JSON] -->|Recursive Input| D{Bayesian Core}
     E[Live Observation] -->|Standardized Vector| G[Gram-Schmidt Engine]
     G -->|Orthogonalized Evidence| D
+    P[QQQ Price Topology] -->|Likelihood Penalty / Veto| D
     D -->|Posterior Probabilities| F[Entropy Controller]
     F -->|Entropy Haircut| H[Continuous Sizing Payload]
     H -->|Inertial Smoothing| I[Behavioral Guard]
-    I -->|Final Signal| J[Output: Web/Discord]
+    I -->|Final Signal + Forensics| J[Output: Web/Discord]
     J -->|T+0 Feedback| A
     J -->|State Update| C
 ```
@@ -75,7 +78,7 @@ The system remains **Stateless** and CI/CD-native:
 2. **Run**: Execute v12.0 inference with orthogonalized sensors.
 3. **Push**: Update state and audit logs.
 
-Audit logs now include `orthogonal_residual` and `moving_beta` for post-run forensic analysis.
+Runtime snapshots now include `runtime_priors`, `prior_details`, `price_topology`, `v13_4_diagnostics`, and final execution payload for post-run forensic analysis. Certified backtests must consume these artifacts rather than reproducing the logic independently.
 
 ---
 © 2026 QQQ Entropy Architecture Group.

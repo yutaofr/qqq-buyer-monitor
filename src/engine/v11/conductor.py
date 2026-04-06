@@ -24,6 +24,7 @@ from src.engine.v11.core.price_topology import (
     blend_posteriors_with_topology,
     infer_price_topology_state,
     price_topology_payload,
+    topology_likelihood_penalties,
 )
 from src.engine.v11.core.prior_knowledge import PriorKnowledgeBase
 from src.engine.v11.probability_seeder import ProbabilitySeeder
@@ -67,9 +68,11 @@ class V11Conductor:
         audit_path: str = "src/engine/v11/resources/regime_audit.json",
         prior_state_path: str = "data/v13_6_ex_hydrated_prior.json",
         snapshot_dir: str = "artifacts/v12_runtime_snapshots",
+        price_history_path: str = "data/qqq_history_cache.csv",
         initial_model: GaussianNB | None = None,
         overlay_mode: str | None = None,
         training_cutoff: str | datetime | None = None,
+        allow_prior_bootstrap_drift: bool = False,
     ):
         # 0. Load Sovereign Calibration (Audit Archive)
         self.audit_path = Path(audit_path)
@@ -82,6 +85,10 @@ class V11Conductor:
         self.macro_data_path = str(macro_data_path)
         self.regime_data_path = str(regime_data_path)
         self.snapshot_dir = Path(snapshot_dir)
+        self.training_cutoff = pd.to_datetime(training_cutoff) if training_cutoff is not None else None
+        self.price_history_path = str(price_history_path)
+        self.price_history = self._load_price_history(price_history_path)
+        self.allow_prior_bootstrap_drift = bool(allow_prior_bootstrap_drift)
         canonical_audit_regimes = canonicalize_regime_sequence(
             self.audit_data.get("base_betas", {}).keys(),
             include_all=False,
@@ -114,7 +121,10 @@ class V11Conductor:
         self.regime_history["regime"] = self.regime_history["regime"].apply(
             canonicalize_regime_name
         )
-        self.model_regimes = sorted(self.regime_history["regime"].dropna().astype(str).unique())
+        regime_training_view = self.regime_history
+        if self.training_cutoff is not None:
+            regime_training_view = regime_training_view[regime_training_view.index < self.training_cutoff]
+        self.model_regimes = sorted(regime_training_view["regime"].dropna().astype(str).unique())
         self._validate_regime_coverage()
 
         # v12.0 Internal Controllers
@@ -146,14 +156,16 @@ class V11Conductor:
         self.entropy_ctrl = EntropyController()
         self.mahalanobis_guard = MahalanobisGuard()
 
-        # v14.4 FIX: For Forensic Audit, we always use the full history for the Prior book
-        # to avoid fingerprint mismatch, but we restrict the Guard and GNB to the cutoff.
-        unrestricted_bootstrap = self.regime_history["regime"].tolist()
+        bootstrap_history = self.regime_history
+        if self.training_cutoff is not None:
+            bootstrap_history = bootstrap_history[bootstrap_history.index < self.training_cutoff]
+        bootstrap_regimes = bootstrap_history["regime"].tolist()
 
         self.prior_book = PriorKnowledgeBase(
             storage_path=prior_state_path,
             regimes=self.regimes,
-            bootstrap_regimes=unrestricted_bootstrap,
+            bootstrap_regimes=bootstrap_regimes,
+            allow_bootstrap_fingerprint_drift=self.allow_prior_bootstrap_drift,
         )
 
         # v13.5-GOLD+: Initial Regime Synchronization
@@ -228,6 +240,83 @@ class V11Conductor:
             raise FileNotFoundError(
                 f"Canonical regime DNA missing at {regime_path}. Production cold start requires checked-in DNA, not synthetic bootstrap."
             )
+
+    @staticmethod
+    def _load_price_history(price_history_path: str) -> pd.DataFrame:
+        path = Path(price_history_path)
+        if not path.exists():
+            return pd.DataFrame()
+
+        price_df = pd.read_csv(path, index_col=0)
+        index = pd.to_datetime(price_df.index, errors="coerce", utc=True)
+        index = index.tz_convert(None)
+        price_df.index = index.normalize()
+        price_df = price_df[price_df.index.notna()]
+        if "Close" in price_df.columns:
+            price_df["Close"] = pd.to_numeric(price_df["Close"], errors="coerce")
+        if "Volume" in price_df.columns:
+            price_df["Volume"] = pd.to_numeric(price_df["Volume"], errors="coerce")
+        return price_df.sort_index()
+
+    def _augment_context_with_price_history(self, context_df: pd.DataFrame) -> pd.DataFrame:
+        if context_df.empty or self.price_history.empty:
+            return context_df
+
+        frame = context_df.copy()
+        if not isinstance(frame.index, pd.DatetimeIndex):
+            frame.index = pd.to_datetime(frame.index, errors="coerce")
+        index = pd.to_datetime(frame.index, errors="coerce")
+        if getattr(index, "tz", None) is not None:
+            index = index.tz_convert(None)
+        frame.index = index.normalize()
+        frame = frame[frame.index.notna()]
+        if frame.empty:
+            return context_df
+
+        history = self.price_history.reindex(frame.index, method="ffill")
+        if "Close" in history.columns:
+            existing_close = (
+                pd.to_numeric(frame["qqq_close"], errors="coerce")
+                if "qqq_close" in frame.columns
+                else pd.Series(index=frame.index, dtype=float)
+            )
+            frame["qqq_close"] = existing_close.combine_first(history["Close"])
+            source_close = frame.get("source_qqq_close")
+            if source_close is None:
+                frame["source_qqq_close"] = "direct:yfinance:cached"
+            else:
+                frame["source_qqq_close"] = source_close.where(
+                    source_close.notna(), "direct:yfinance:cached"
+                )
+            quality_close = (
+                pd.to_numeric(frame["qqq_close_quality_score"], errors="coerce")
+                if "qqq_close_quality_score" in frame.columns
+                else pd.Series(index=frame.index, dtype=float)
+            )
+            frame["qqq_close_quality_score"] = quality_close.fillna(1.0)
+
+        if "Volume" in history.columns:
+            existing_volume = (
+                pd.to_numeric(frame["qqq_volume"], errors="coerce")
+                if "qqq_volume" in frame.columns
+                else pd.Series(index=frame.index, dtype=float)
+            )
+            frame["qqq_volume"] = existing_volume.combine_first(history["Volume"])
+            source_volume = frame.get("source_qqq_volume")
+            if source_volume is None:
+                frame["source_qqq_volume"] = "direct:yfinance:cached"
+            else:
+                frame["source_qqq_volume"] = source_volume.where(
+                    source_volume.notna(), "direct:yfinance:cached"
+                )
+            quality_volume = (
+                pd.to_numeric(frame["qqq_volume_quality_score"], errors="coerce")
+                if "qqq_volume_quality_score" in frame.columns
+                else pd.Series(index=frame.index, dtype=float)
+            )
+            frame["qqq_volume_quality_score"] = quality_volume.fillna(1.0)
+
+        return frame
 
     def _validate_regime_coverage(self) -> None:
         missing_betas = sorted(set(self.model_regimes) - set(self.base_betas))
@@ -345,6 +434,7 @@ class V11Conductor:
             context_df = pd.concat([hist_df, t0_df], sort=False)
         else:
             context_df = raw_t0_data
+        context_df = self._augment_context_with_price_history(context_df)
 
         features = self.seeder.generate_features(context_df)
         diagnostics = self.seeder.latest_diagnostics()
@@ -352,13 +442,23 @@ class V11Conductor:
         # 2. Bayesian Inference (Epic 2)
         # Inference only on the last point
         latest_vector = features.iloc[-1:]
+        topology_state = infer_price_topology_state(
+            context_df,
+            posterior_blend_weight=float(
+                self.price_topology_contract.get("posterior_blend_weight", 0.25)
+            ),
+            beta_anchor_weight=float(self.price_topology_contract.get("beta_anchor_weight", 0.35)),
+            confidence_margin=float(self.price_topology_contract.get("confidence_margin", 0.25)),
+        )
 
         # v14.2 Duration Hardening: Pass macro_values for Inertia/Mid-Cycle Anchor
         active_registry = self.v13_4_registry
         f_vals_for_prior = latest_vector.iloc[0].to_dict()
 
         # v14.5: Inject inertia matrix from registry
-        f_vals_for_prior["dynamic_beta_inertia_matrix"] = active_registry.get("dynamic_beta_inertia_matrix", {})
+        f_vals_for_prior["dynamic_beta_inertia_matrix"] = active_registry.get(
+            "dynamic_beta_inertia_matrix", {}
+        )
 
         runtime_priors, prior_details = self.prior_book.runtime_priors(
             macro_values=f_vals_for_prior
@@ -434,11 +534,20 @@ class V11Conductor:
             # SRD-v14.3: QQQ Structural Cycle Alignment
             # We use the standardized features from the seeder to drive Physical Gating.
             f_values = latest_vector.iloc[0].to_dict()
+            regime_penalties = topology_likelihood_penalties(
+                topology_state,
+                floor=float(self.price_topology_contract.get("likelihood_penalty_floor", 0.03)),
+                exponent=float(
+                    self.price_topology_contract.get("likelihood_penalty_exponent", 0.75)
+                ),
+            )
 
             # v14.4 BAYESIAN OVERDRIVE: Out-of-distribution detection
             # Capture extreme market states (Crash/Bubble) and increase model responsiveness.
             ood_threshold = float(active_registry.get("mahalanobis_ood_threshold", 4.0))
-            is_overdrive = self.mahalanobis_guard.is_outlier(latest_vector.iloc[0].values, threshold=ood_threshold)
+            is_overdrive = self.mahalanobis_guard.is_outlier(
+                latest_vector.iloc[0].values, threshold=ood_threshold
+            )
             tau_factor = float(active_registry.get("overdrive_tau_factor", 0.5))
 
             # v13.7-FINAL: Extract tau from registry (CR-1)
@@ -455,6 +564,7 @@ class V11Conductor:
                 is_overdrive=is_overdrive,
                 tau_factor=tau_factor,
                 logical_constraints=self.logical_constraints,
+                regime_penalties=regime_penalties,
             )
             if any(np.isnan(list(posteriors.values()))):
                 logger.warning("Bayesian Inference produced NaNs. Falling back to priors.")
@@ -465,14 +575,6 @@ class V11Conductor:
             posteriors = runtime_priors
             bayesian_diagnostics = {"level_contributions": {}}
 
-        topology_state = infer_price_topology_state(
-            context_df,
-            posterior_blend_weight=float(
-                self.price_topology_contract.get("posterior_blend_weight", 0.25)
-            ),
-            beta_anchor_weight=float(self.price_topology_contract.get("beta_anchor_weight", 0.35)),
-            confidence_margin=float(self.price_topology_contract.get("confidence_margin", 0.25)),
-        )
         posteriors = blend_posteriors_with_topology(posteriors, topology_state)
         posteriors = {r: float(posteriors.get(r, 0.0)) for r in ACTIVE_REGIME_ORDER}
         posterior_entropy = self.entropy_ctrl.calculate_normalized_entropy(posteriors)
@@ -603,7 +705,7 @@ class V11Conductor:
         bucket = execution.target_bucket
 
         quality = float(quality_audit["quality_score"])
-        self._write_runtime_snapshot(
+        forensic_snapshot_path = self._write_runtime_snapshot(
             raw_t0_data=raw_t0_data,
             latest_vector=latest_vector,
             runtime_priors=runtime_priors,
@@ -680,6 +782,7 @@ class V11Conductor:
             "quality_audit": quality_audit,
             "v11_execution": execution.to_dict(),
             "v13_4_diagnostics": quality_audit.get("v13_4_diagnostics", {}),
+            "forensic_snapshot_path": forensic_snapshot_path,
         }
 
         # Save Persistent Execution State
@@ -711,7 +814,7 @@ class V11Conductor:
         feature_weights: dict[str, float],
         execution_overlay: dict[str, object],
         final_execution: dict[str, object],
-    ) -> None:
+    ) -> str | None:
         try:
             serialized_row = self._serialize_frame(raw_t0_data)
             observation_date = str(serialized_row[0].get("observation_date", "unknown"))
@@ -745,8 +848,10 @@ class V11Conductor:
             snapshot_path.write_text(
                 json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
             )
+            return str(snapshot_path)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to write v11 runtime snapshot: %s", exc)
+            return None
 
     @staticmethod
     def _serialize_frame(frame: pd.DataFrame) -> list[dict[str, object]]:

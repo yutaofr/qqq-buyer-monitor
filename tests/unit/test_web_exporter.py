@@ -23,6 +23,9 @@ def _v11_result() -> SignalResult:
         explanation="v12.0 placeholder",
         metadata={
             "feature_values": {"vix": 20.0},
+            "is_floor_active": True,
+            "hydration_anchor": "2018-01-01",
+            "raw_target_beta_pre_floor": 0.42,
             "protected_beta": 0.93,
             "overlay_beta": 0.91,
             "overlay_mode": "NEGATIVE_ONLY",
@@ -30,6 +33,9 @@ def _v11_result() -> SignalResult:
             "deployment_overlay_multiplier": 1.04,
             "overlay_state": "REWARD",
             "overlay_summary": "REWARD: neg=0.050 pos=0.220",
+            "price_topology": {"regime": "LATE_CYCLE", "confidence": 0.62},
+            "forensic_snapshot_path": "artifacts/runtime/snapshot_2026-03-27.json",
+            "v13_4_diagnostics": {"penalties_applied": {"MID_CYCLE": 0.4}},
             "execution_overlay": {
                 "overlay_mode": "NEGATIVE_ONLY",
                 "negative_score": 0.05,
@@ -68,13 +74,19 @@ def test_export_web_snapshot_v11_contract(tmp_path, monkeypatch):
     assert payload["signal"]["target_beta"] == 0.91
     assert payload["signal"]["entropy"] == 0.17
     assert payload["signal"]["probabilities"]["MID_CYCLE"] == 0.82
+    assert payload["signal"]["is_floor_active"] is True
+    assert payload["signal"]["hydration_anchor"] == "2018-01-01"
+    assert payload["signal"]["raw_target_beta_pre_floor"] == 0.42
     assert payload["signal"]["protected_beta"] == 0.93
     assert payload["signal"]["overlay_beta"] == 0.91
     assert payload["signal"]["overlay_mode"] == "NEGATIVE_ONLY"
     assert payload["signal"]["beta_overlay_multiplier"] == 0.98
     assert payload["signal"]["deployment_overlay_multiplier"] == 1.04
+    assert payload["signal"]["price_topology"]["regime"] == "LATE_CYCLE"
+    assert payload["signal"]["forensic_snapshot_path"].endswith(".json")
     assert payload["evidence"]["feature_values"]["vix"] == 20.0
     assert payload["evidence"]["execution_overlay"]["positive_score"] == 0.22
+    assert payload["evidence"]["bayesian_diagnostics"]["penalties_applied"]["MID_CYCLE"] == 0.4
 
 
 def test_export_web_snapshot_preserves_dual_surface_semantics(tmp_path, monkeypatch):

@@ -24,11 +24,23 @@ class MahalanobisGuard:
         if historical_features.empty:
             return
 
-        # We compute the core distribution of the features
-        self.mean = historical_features.mean().values
-        cov = historical_features.cov().values
+        frame = (
+            historical_features.apply(pd.to_numeric, errors="coerce")
+            .replace([np.inf, -np.inf], np.nan)
+            .dropna(axis=0, how="any")
+        )
+        if frame.empty:
+            return
+
+        self.mean = frame.mean().values
+        cov = frame.cov().values
+        if cov.ndim == 0:
+            cov = np.array([[float(cov)]], dtype=float)
+        cov = np.nan_to_num(cov, nan=0.0, posinf=0.0, neginf=0.0)
+        cov = cov + np.eye(cov.shape[0]) * 1e-6
         # Use pseudo-inverse for stability in case of collinearity
-        self.inv_cov = np.linalg.pinv(cov)
+        with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+            self.inv_cov = np.linalg.pinv(cov)
         self.is_initialized = True
 
     def calculate_outlier_multiplier(self, current_vector: np.ndarray) -> float:

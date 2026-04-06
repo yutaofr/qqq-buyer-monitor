@@ -1,8 +1,8 @@
 """
-QQQ v12.0 Bayesian Backtest & Audit (Bayesian Convergence).
+QQQ v11 production-black-box backtest and audit entrypoint.
 
-This module is the sole entry point for system validation. It enforces causal
-isolation and probabilistic fidelity audits.
+This module replays the live conductor against frozen historical inputs.
+Backtests must not re-implement the production inference chain.
 """
 
 from __future__ import annotations
@@ -11,8 +11,6 @@ import argparse
 import json
 import logging
 import os
-import tempfile
-from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -37,13 +35,12 @@ from src.regime_topology import canonicalize_regime_sequence, merge_regime_weigh
 logger = logging.getLogger(__name__)
 
 START_DATE = "1999-03-10"
-END_DATE = date.today().isoformat()
 
 
 def _load_price_history(
     cache_path: str,
     *,
-    allow_download: bool = True,
+    allow_download: bool = False,
     end_date: str | None = None,
 ) -> pd.DataFrame:
     """Load cached QQQ history, downloading only when explicitly allowed."""
@@ -66,8 +63,12 @@ def _load_price_history(
         )
 
     if qqq.empty:
+        if not end_date:
+            raise ValueError(
+                "Live price refresh requires an explicit pinned end_date to avoid moving-window drift."
+            )
         print(f"Downloading fresh data from yfinance since {cache_path} was missing or empty...")
-        qqq = yf.Ticker("QQQ").history(start=START_DATE, end=(end_date or END_DATE))
+        qqq = yf.Ticker("QQQ").history(start=START_DATE, end=end_date)
         if not qqq.empty:
             os.makedirs("data", exist_ok=True)
             qqq.to_csv(cache_path)
@@ -158,7 +159,7 @@ def run_v11_audit(
     strict_state_support: bool = False,
     experiment_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Run the unified v12 probabilistic audit with deterministic walk-forward causality."""
+    """Replay the production conductor on frozen historical inputs."""
     import numpy as np
     from sklearn.naive_bayes import GaussianNB
 
@@ -208,18 +209,31 @@ def run_v11_audit(
     )
     experiment = dict(experiment_config or {})
 
+    if experiment.get("use_canonical_pipeline", True) is False:
+        raise ValueError(
+            "Legacy backtest re-implementations are retired. Audits must replay V11Conductor."
+        )
+
+    disallowed_experiment_keys = {
+        "audit_overrides",
+        "posterior_mode",
+        "probability_seeder",
+        "var_smoothing",
+    }
+    invalid_experiment_keys = sorted(
+        key for key in disallowed_experiment_keys if key in experiment
+    )
+    if invalid_experiment_keys:
+        raise ValueError(
+            "run_v11_audit only accepts production-chain controls. "
+            f"Disallowed overrides: {', '.join(invalid_experiment_keys)}"
+        )
+
     audit_path = Path("src/engine/v11/resources/regime_audit.json")
     with open(audit_path, encoding="utf-8") as f:
         audit_data = json.load(f)
-    audit_overrides = dict(experiment.get("audit_overrides", {}))
     base_betas = dict(audit_data["base_betas"])
     regime_sharpes = dict(audit_data["regime_sharpes"])
-    if audit_overrides.get("base_betas"):
-        base_betas = {str(k): float(v) for k, v in dict(audit_overrides["base_betas"]).items()}
-    if audit_overrides.get("regime_sharpes"):
-        regime_sharpes = {
-            str(k): float(v) for k, v in dict(audit_overrides["regime_sharpes"]).items()
-        }
     ordered_regimes = canonicalize_regime_sequence(base_betas.keys(), include_all=False)
     base_betas = merge_regime_weights(base_betas, regimes=ordered_regimes, include_zeros=True)
     regime_sharpes = merge_regime_weights(
@@ -229,10 +243,7 @@ def run_v11_audit(
         audit_data.get("model_hyperparameters", {}).get("gaussian_nb_var_smoothing", 1e-2)
     )
     posterior_mode = str(
-        experiment.get(
-            "posterior_mode",
-            audit_data.get("model_hyperparameters", {}).get("posterior_mode", "runtime_reweight"),
-        )
+        audit_data.get("model_hyperparameters", {}).get("posterior_mode", "runtime_reweight")
     )
     price_topology_contract = dict(audit_data.get("price_topology_contract", {}))
 
@@ -244,9 +255,9 @@ def run_v11_audit(
             registry = json.load(f)
     overlay_mode = experiment.get("overlay_mode")
     price_cache_path = str(experiment.get("price_cache_path", "data/qqq_history_cache.csv"))
-    allow_price_download = bool(experiment.get("allow_price_download", True))
+    allow_price_download = bool(experiment.get("allow_price_download", False))
     price_end_date = experiment.get("price_end_date")
-    use_canonical_pipeline = bool(experiment.get("use_canonical_pipeline", False))
+    use_canonical_pipeline = True
     state_support = summarize_regime_state_support(regime_df, audit_regimes=ordered_regimes)
     if strict_state_support:
         validate_regime_state_support(regime_df, audit_regimes=ordered_regimes)
@@ -288,7 +299,7 @@ def run_v11_audit(
         if strict_state_support:
              raise ValueError("Strict Causal Isolation failed: Insufficient training data for 5-year anchor.")
 
-    seeder_kwargs = dict(experiment.get("probability_seeder", {}))
+    seeder_kwargs: dict[str, Any] = {}
     if "selected_features" not in seeder_kwargs:
         contract_features = audit_data.get("feature_contract", {}).get("feature_names")
         if contract_features:
@@ -355,6 +366,288 @@ def run_v11_audit(
     logger.info(
         f"v12 Audit: Training on {len(train)} days (pre-{evaluation_start}), testing on {len(test)} days."
     )
+
+    active_feature_names = list(seeder.feature_names())
+
+    def _finalize_artifacts(
+        probability_rows: list[dict[str, Any]],
+        execution_rows: list[dict[str, Any]],
+        *,
+        forensic_rows: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        probability_df = pd.DataFrame(probability_rows).sort_values("date")
+        execution_df = pd.DataFrame(execution_rows).sort_values("date")
+        full_audit_df = pd.merge(
+            execution_df,
+            probability_df,
+            on=["date", "predicted_regime", "actual_regime"],
+            how="left",
+        )
+
+        summary = {
+            "compared_points": int(len(probability_df)),
+            "top1_accuracy": float(
+                (probability_df["predicted_regime"] == probability_df["actual_regime"]).mean()
+            ),
+            "mean_brier": float(probability_df["brier"].mean()),
+            "mean_entropy": float(execution_df["entropy"].mean()),
+            "lock_incidence": float(execution_df["lock_active"].mean()),
+            "state_support": state_support,
+            "audit_regimes": ordered_regimes,
+            "feature_contract_validation": feature_contract_validation,
+            "experiment_config": experiment,
+            "gaussian_nb_var_smoothing": default_var_smoothing,
+            "posterior_mode": posterior_mode,
+            "overlay_mode": str(overlay_mode or ExecutionOverlayEngine().default_mode),
+            "active_features": active_feature_names,
+            "beta_expectation_mae": float(
+                (execution_df["target_beta"] - execution_df["expected_target_beta"]).abs().mean()
+            ),
+            "raw_beta_expectation_mae": float(
+                (execution_df["raw_target_beta"] - execution_df["expected_target_beta"]).abs().mean()
+            ),
+            "deployment_exact_match": float(
+                (
+                    execution_df["deployment_state"] == execution_df["expected_deployment_state"]
+                ).mean()
+            ),
+            "deployment_rank_abs_error_mean": float(
+                execution_df["deployment_rank_abs_error"].mean()
+            ),
+            "deployment_pacing_abs_error_mean": float(
+                execution_df["deployment_pacing_error"].abs().mean()
+            ),
+            "deployment_pacing_signed_mean": float(
+                execution_df["deployment_pacing_error"].mean()
+            ),
+            "raw_floor_breach_rate": float((execution_df["raw_target_beta"] < 0.5).mean()),
+            "expectation_floor_breach_rate": float(
+                (execution_df["beta_expectation"] < 0.5).mean()
+            ),
+            "target_floor_breach_rate": float((execution_df["target_beta"] < 0.5).mean()),
+            "raw_beta_min": float(execution_df["raw_target_beta"].min()),
+            "beta_expectation_min": float(execution_df["beta_expectation"].min()),
+            "target_beta_min": float(execution_df["target_beta"].min()),
+            "raw_beta_within_5pct_expected": float(
+                (
+                    (execution_df["raw_target_beta"] - execution_df["expected_target_beta"]).abs()
+                    <= 0.05
+                ).mean()
+            ),
+            "target_beta_within_5pct_expected": float(
+                (
+                    (execution_df["target_beta"] - execution_df["expected_target_beta"]).abs()
+                    <= 0.05
+                ).mean()
+            ),
+            "share_at_floor": float((execution_df["target_beta"] <= 0.500001).mean()),
+            "canonical_pipeline": bool(use_canonical_pipeline),
+            "mid_cycle_gt_075_rate": float(
+                (probability_df["prob_MID_CYCLE"] > 0.75).mean()
+            )
+            if "prob_MID_CYCLE" in probability_df
+            else None,
+            "bust_beta_le_060_rate": float(
+                (
+                    execution_df.loc[execution_df["actual_regime"] == "BUST", "target_beta"] <= 0.60
+                ).mean()
+            )
+            if (execution_df["actual_regime"] == "BUST").any()
+            else None,
+            "forensic_snapshot_count": int(
+                execution_df.get("forensic_snapshot_path", pd.Series(dtype=str))
+                .fillna("")
+                .astype(str)
+                .ne("")
+                .sum()
+            ),
+        }
+
+        print("\n--- v12 Unified Probabilistic Performance Audit ---")
+        print(
+            f"Accuracy: {summary['top1_accuracy']:.2%} | Brier: {summary['mean_brier']:.4f} | Entropy: {summary['mean_entropy']:.3f} | Lock: {summary['lock_incidence']:.1%}"
+        )
+
+        save_dir = Path(artifact_dir)
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        probability_df.to_csv(save_dir / "probability_audit.csv", index=False)
+        execution_df.to_csv(save_dir / "execution_trace.csv", index=False)
+        full_audit_df.to_csv(save_dir / "full_audit.csv", index=False)
+        (save_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        if forensic_rows:
+            (save_dir / "forensic_trace.jsonl").write_text(
+                "\n".join(json.dumps(row, ensure_ascii=False) for row in forensic_rows) + "\n",
+                encoding="utf-8",
+            )
+        if bool(experiment.get("save_plots", True)):
+            save_v11_fidelity_figure(
+                execution_df, summary, [save_dir / "v12_target_beta_fidelity.png"]
+            )
+            save_v11_probabilistic_audit_figure(
+                full_audit_df, summary, [save_dir / "v12_probabilistic_audit.png"]
+            )
+
+        return summary
+
+    if use_canonical_pipeline:
+        from src.engine.v11.conductor import V11Conductor
+
+        probability_rows: list[dict[str, Any]] = []
+        execution_rows: list[dict[str, Any]] = []
+        forensic_rows: list[dict[str, Any]] = []
+        runtime_state_dir = Path(artifact_dir) / "runtime_state"
+        runtime_state_dir.mkdir(parents=True, exist_ok=True)
+        prior_state_path = runtime_state_dir / "prior_state.json"
+        snapshot_dir = Path(artifact_dir) / "mainline_snapshots"
+        if prior_state_path.exists():
+            prior_state_path.unlink()
+
+        print(f"Walk-forward Audit: Replaying {len(test)} windows through V11Conductor black-box...")
+        for _, row in test.iterrows():
+            dt = pd.Timestamp(row["observation_date"]).normalize()
+            cutoff_dt = dt - pd.offsets.BDay(20)
+            train_window = full_df[full_df["observation_date"] < cutoff_dt]
+            if train_window.empty:
+                continue
+
+            is_oos = dt > (macro_df.index[-1] - pd.offsets.BDay(252))
+            test_type = "TEST_OOS" if is_oos else "VALIDATION"
+
+            conductor = V11Conductor(
+                macro_data_path=dataset_path,
+                regime_data_path=regime_path,
+                prior_state_path=str(prior_state_path),
+                snapshot_dir=str(snapshot_dir),
+                overlay_mode=overlay_mode,
+                training_cutoff=cutoff_dt,
+                price_history_path=price_cache_path,
+                allow_prior_bootstrap_drift=True,
+            )
+            t0_data = pd.DataFrame([row]).set_index("observation_date")
+            runtime = conductor.daily_run(t0_data)
+
+            actual_regime = str(row["regime"])
+            expected_policy = expected_policy_for_regime(actual_regime, base_betas=base_betas)
+            posteriors = {
+                regime: float(runtime["probabilities"].get(regime, 0.0)) for regime in ordered_regimes
+            }
+            predicted_regime = max(posteriors, key=posteriors.get)
+            brier = sum(
+                (posteriors.get(name, 0.0) - (1.0 if name == actual_regime else 0.0)) ** 2
+                for name in ordered_regimes
+            )
+            prior_details = dict(runtime.get("prior_details", {}))
+            price_topology = dict(runtime.get("price_topology", {}))
+            diagnostics = dict(runtime.get("v13_4_diagnostics", {}))
+            penalties_applied = dict(diagnostics.get("penalties_applied", {}))
+
+            probability_row = {
+                "date": dt,
+                "actual_regime": actual_regime,
+                "actual_regime_probability": float(posteriors.get(actual_regime, 0.0)),
+                "predicted_regime": predicted_regime,
+                "brier": brier,
+                "test_type": test_type,
+            }
+            for regime in ordered_regimes:
+                probability_row[f"prob_{regime}"] = float(posteriors.get(regime, 0.0))
+            probability_row.update(
+                flatten_probability_dynamics(runtime.get("probability_dynamics", {}))
+            )
+            probability_rows.append(probability_row)
+
+            execution_rows.append(
+                {
+                    "date": dt,
+                    "beta_expectation": float(
+                        runtime.get("beta_expectation", runtime["raw_target_beta"])
+                    ),
+                    "expected_target_beta": float(expected_policy["expected_target_beta"]),
+                    "protected_beta": float(runtime.get("protected_beta", runtime["target_beta"])),
+                    "overlay_beta": float(runtime.get("overlay_beta", runtime["target_beta"])),
+                    "beta_overlay_multiplier": float(
+                        runtime.get("overlay", {}).get("beta_overlay_multiplier", 1.0)
+                    ),
+                    "deployment_overlay_multiplier": float(
+                        runtime.get("overlay", {}).get("deployment_overlay_multiplier", 1.0)
+                    ),
+                    "overlay_state": str(runtime.get("overlay", {}).get("overlay_state", "NEUTRAL")),
+                    "target_beta": float(runtime["target_beta"]),
+                    "raw_target_beta": float(runtime["raw_target_beta"]),
+                    "entropy": float(runtime["entropy"]),
+                    "prior_details": runtime.get("prior_details", {}),
+                    "predicted_regime": predicted_regime,
+                    "actual_regime": actual_regime,
+                    "raw_regime": str(runtime.get("raw_regime", predicted_regime)),
+                    "stable_regime": str(runtime.get("stable_regime", predicted_regime)),
+                    "deployment_state": str(
+                        runtime.get("deployment", {}).get("deployment_state", "DEPLOY_BASE")
+                    ),
+                    "deployment_multiplier": float(
+                        runtime.get("deployment", {}).get("deployment_multiplier", 1.0)
+                    ),
+                    "expected_deployment_state": str(expected_policy["expected_deployment_state"]),
+                    "expected_deployment_multiplier": float(
+                        expected_policy["expected_deployment_multiplier"]
+                    ),
+                    "deployment_rank_abs_error": abs(
+                        deployment_state_rank(
+                            str(runtime.get("deployment", {}).get("deployment_state", "DEPLOY_BASE"))
+                        )
+                        - deployment_state_rank(str(expected_policy["expected_deployment_state"]))
+                    ),
+                    "actual_deployment_cash": deployment_cash_notional(
+                        float(runtime.get("deployment", {}).get("deployment_multiplier", 1.0))
+                    ),
+                    "expected_deployment_cash": deployment_cash_notional(
+                        float(expected_policy["expected_deployment_multiplier"])
+                    ),
+                    "deployment_pacing_error": float(
+                        runtime.get("deployment", {}).get("deployment_multiplier", 1.0)
+                    )
+                    - float(expected_policy["expected_deployment_multiplier"]),
+                    "lock_active": bool(runtime.get("v11_execution", {}).get("lock_active", False)),
+                    "target_bucket": str(runtime.get("v11_execution", {}).get("target_bucket", "QQQ")),
+                    "close": row.get("qqq_close"),
+                    "price_topology_regime": str(price_topology.get("regime", "MID_CYCLE")),
+                    "price_topology_expected_beta": float(
+                        price_topology.get("expected_beta", runtime["target_beta"])
+                    ),
+                    "price_topology_confidence": float(price_topology.get("confidence", 0.0)),
+                    "price_topology_posterior_blend_weight": float(
+                        price_topology.get("posterior_blend_weight", 0.0)
+                    ),
+                    "price_topology_beta_anchor_weight": float(
+                        price_topology.get("beta_anchor_weight", 0.0)
+                    ),
+                    "forensic_snapshot_path": str(runtime.get("forensic_snapshot_path", "")),
+                    "forensic_stress_score": float(prior_details.get("stress_score", 0.0) or 0.0),
+                    "forensic_mid_cycle_penalty": float(penalties_applied.get("MID_CYCLE", 1.0)),
+                    "forensic_bust_penalty": float(penalties_applied.get("BUST", 1.0)),
+                }
+            )
+            forensic_rows.append(
+                {
+                    "date": str(dt.date()),
+                    "test_type": test_type,
+                    "actual_regime": actual_regime,
+                    "predicted_regime": predicted_regime,
+                    "stable_regime": str(runtime.get("stable_regime", predicted_regime)),
+                    "raw_regime": str(runtime.get("raw_regime", predicted_regime)),
+                    "prior_details": prior_details,
+                    "price_topology": price_topology,
+                    "v13_4_diagnostics": diagnostics,
+                    "quality_audit": runtime.get("quality_audit", {}),
+                    "forensic_snapshot_path": str(runtime.get("forensic_snapshot_path", "")),
+                }
+            )
+
+        return _finalize_artifacts(
+            probability_rows,
+            execution_rows,
+            forensic_rows=forensic_rows,
+        )
 
     feature_cols = [c for c in seeder.feature_names() if c in train.columns]
     entropy_ctrl = EntropyController()
@@ -714,85 +1007,11 @@ def run_v11_audit(
                 previous_posterior=previous_posterior_for_state,
             )
 
-    probability_df = pd.DataFrame(probability_rows).sort_values("date")
-    execution_df = pd.DataFrame(execution_rows).sort_values("date")
-    full_audit_df = pd.merge(
-        execution_df, probability_df, on=["date", "predicted_regime", "actual_regime"], how="left"
-    )
-
-    summary = {
-        "compared_points": int(len(probability_df)),
-        "top1_accuracy": float(
-            (probability_df["predicted_regime"] == probability_df["actual_regime"]).mean()
-        ),
-        "mean_brier": float(probability_df["brier"].mean()),
-        "mean_entropy": float(execution_df["entropy"].mean()),
-        "lock_incidence": float(execution_df["lock_active"].mean()),
-        "state_support": state_support,
-        "audit_regimes": ordered_regimes,
-        "feature_contract_validation": feature_contract_validation,
-        "experiment_config": experiment,
-        "gaussian_nb_var_smoothing": float(experiment.get("var_smoothing", default_var_smoothing)),
-        "posterior_mode": posterior_mode,
-        "overlay_mode": str(overlay_mode or overlay_engine.default_mode),
-        "active_features": list(feature_cols),
-        "beta_expectation_mae": float(
-            (execution_df["target_beta"] - execution_df["expected_target_beta"]).abs().mean()
-        ),
-        "raw_beta_expectation_mae": float(
-            (execution_df["raw_target_beta"] - execution_df["expected_target_beta"]).abs().mean()
-        ),
-        "deployment_exact_match": float(
-            (execution_df["deployment_state"] == execution_df["expected_deployment_state"]).mean()
-        ),
-        "deployment_rank_abs_error_mean": float(execution_df["deployment_rank_abs_error"].mean()),
-        "deployment_pacing_abs_error_mean": float(
-            execution_df["deployment_pacing_error"].abs().mean()
-        ),
-        "deployment_pacing_signed_mean": float(execution_df["deployment_pacing_error"].mean()),
-        "raw_floor_breach_rate": float((execution_df["raw_target_beta"] < 0.5).mean()),
-        "expectation_floor_breach_rate": float((execution_df["beta_expectation"] < 0.5).mean()),
-        "target_floor_breach_rate": float((execution_df["target_beta"] < 0.5).mean()),
-        "raw_beta_min": float(execution_df["raw_target_beta"].min()),
-        "beta_expectation_min": float(execution_df["beta_expectation"].min()),
-        "target_beta_min": float(execution_df["target_beta"].min()),
-        "raw_beta_within_5pct_expected": float(
-            (
-                (execution_df["raw_target_beta"] - execution_df["expected_target_beta"]).abs()
-                <= 0.05
-            ).mean()
-        ),
-        "target_beta_within_5pct_expected": float(
-            (
-                (execution_df["target_beta"] - execution_df["expected_target_beta"]).abs() <= 0.05
-            ).mean()
-        ),
-        "share_at_floor": float((execution_df["target_beta"] <= 0.500001).mean()),
-    }
-
-    print("\n--- v12 Unified Probabilistic Performance Audit ---")
-    print(
-        f"Accuracy: {summary['top1_accuracy']:.2%} | Brier: {summary['mean_brier']:.4f} | Entropy: {summary['mean_entropy']:.3f} | Lock: {summary['lock_incidence']:.1%}"
-    )
-
-    save_dir = Path(artifact_dir)
-    save_dir.mkdir(parents=True, exist_ok=True)
-
-    probability_df.to_csv(save_dir / "probability_audit.csv", index=False)
-    execution_df.to_csv(save_dir / "execution_trace.csv", index=False)
-    full_audit_df.to_csv(save_dir / "full_audit.csv", index=False)
-    (save_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    if bool(experiment.get("save_plots", True)):
-        save_v11_fidelity_figure(execution_df, summary, [save_dir / "v12_target_beta_fidelity.png"])
-        save_v11_probabilistic_audit_figure(
-            full_audit_df, summary, [save_dir / "v12_probabilistic_audit.png"]
-        )
-
-    return summary
+    return _finalize_artifacts(probability_rows, execution_rows)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="QQQ v12.0 Bayesian Backtest Audit")
+    parser = argparse.ArgumentParser(description="QQQ v11 production-black-box backtest audit")
     parser.add_argument(
         "--evaluation-start",
         default="2018-01-01",
@@ -841,13 +1060,6 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Force frozen-artifact acceptance mode. Requires --price-cache-path and --price-end-date.",
     )
-    parser.add_argument(
-        "--no-canonical-pipeline",
-        action="store_false",
-        dest="use_canonical_pipeline",
-        help="Disable the shared v13.8 canonical quality and execution pipeline.",
-    )
-    parser.set_defaults(use_canonical_pipeline=True)
     args = parser.parse_args(argv)
 
     if args.acceptance:
@@ -874,8 +1086,6 @@ def main(argv: list[str] | None = None) -> int:
         experiment_config["price_end_date"] = args.price_end_date
     if args.no_price_download or args.acceptance:
         experiment_config["allow_price_download"] = False
-
-    experiment_config["use_canonical_pipeline"] = args.use_canonical_pipeline
 
     run_v11_audit(
         dataset_path=args.dataset_path,

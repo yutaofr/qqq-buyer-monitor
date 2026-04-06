@@ -38,10 +38,12 @@ class PriorKnowledgeBase:
         bootstrap_regimes: Iterable[str] | None = None,
         pseudo_count: float = 1.0,
         transition_blend: float = 0.35,
+        allow_bootstrap_fingerprint_drift: bool = False,
     ):
         self.storage_path = Path(storage_path)
         self.pseudo_count = float(pseudo_count)
         self.transition_blend = float(transition_blend)
+        self.allow_bootstrap_fingerprint_drift = bool(allow_bootstrap_fingerprint_drift)
         resolved_regimes = canonicalize_regime_sequence(regimes, include_all=False)
         if not resolved_regimes and bootstrap_regimes is not None:
             resolved_regimes = canonicalize_regime_sequence(bootstrap_regimes, include_all=False)
@@ -188,12 +190,43 @@ class PriorKnowledgeBase:
                     remaining_n = max(1, len(other_regimes) - (1 if next_regime else 0))
                     transition_prior[target] += weight * (1.0 - inertia) * 0.3 / remaining_n
 
-        # RATIONALE (V14.2 Duration Hardening):
-        # We use a dominant 85% weight on recent-memory + transition-inertia
-        # to ensure the model resists daily noise unless Evidence is overwhelming.
+        # The prior must stabilize noise, but it cannot overpower present-tense stress.
+        stress_components = {
+            "spread": min(1.0, max(0.0, (spread_z - 1.0) / 2.0)),
+            "move": min(1.0, max(0.0, (move_z - 1.0) / 2.0)),
+            "price": min(
+                1.0,
+                max(0.0, (-float((macro_values or {}).get("qqq_ma_ratio", 0.0)) - 0.10) / 0.90),
+            ),
+            "liquidity": min(
+                1.0,
+                max(
+                    0.0,
+                    (-float((macro_values or {}).get("liquidity_velocity", 0.0)) - 0.50) / 2.00,
+                ),
+            ),
+            "credit_acceleration": min(
+                1.0,
+                max(
+                    0.0,
+                    (float((macro_values or {}).get("credit_acceleration", 0.0)) - 0.75) / 1.50,
+                ),
+            ),
+        }
+        stress_score = min(
+            1.0,
+            (
+                (0.20 * stress_components["spread"])
+                + (0.20 * stress_components["move"])
+                + (0.25 * stress_components["price"])
+                + (0.20 * stress_components["liquidity"])
+                + (0.15 * stress_components["credit_acceleration"])
+            ),
+        )
+
         base_weight = 0.05
-        posterior_weight = 0.40
-        transition_weight = 0.55
+        posterior_weight = 0.60 + (0.20 * stress_score)
+        transition_weight = 1.0 - base_weight - posterior_weight
 
         logger.info(
             f"  V14.2-STABLE Blending: {base_weight:.1%} history | {posterior_weight:.1%} last-seen | {transition_weight:.1%} inertia-shift"
@@ -223,7 +256,8 @@ class PriorKnowledgeBase:
             "base_priors": base_priors,
             "posterior_prior": normalized_source,
             "transition_prior": self._normalize(transition_prior),
-            "is_stable": is_stable
+            "is_stable": is_stable,
+            "stress_score": stress_score,
         }
         return final_prior, details
 
@@ -398,9 +432,13 @@ class PriorKnowledgeBase:
             and self.bootstrap_fingerprint is not None
             and self.bootstrap_fingerprint != expected_bootstrap_fingerprint
         ):
-            raise ValueError(
-                "PriorKnowledgeBase bootstrap fingerprint mismatch. Canonical regime DNA drift detected."
-            )
+            if self.allow_bootstrap_fingerprint_drift:
+                self.bootstrap_fingerprint = expected_bootstrap_fingerprint
+                backfilled = True
+            else:
+                raise ValueError(
+                    "PriorKnowledgeBase bootstrap fingerprint mismatch. Canonical regime DNA drift detected."
+                )
         return backfilled
 
     @staticmethod

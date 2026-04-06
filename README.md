@@ -11,8 +11,12 @@
 ### 1.1 实体经济重力注入 (Real-Economy Gravity)
 系统已从单纯的金融因子监控进化为 **12 因子正交矩阵**。通过引入 PMI 动量与劳动力市场松弛度特征，彻底消除了周期后期的“金融盲视”。
 
-### 1.2 8 年深度锚定预热 (Deep Hydration)
-拒绝冷启动混沌。系统强制执行从 **2018-01-01** 起的 Point-in-Time (PIT) 深度回演，构建了包含 2000+ 样本的历史自洽先验分布。
+### 1.2 优雅冷启动 (Hydrated Cold Start)
+生产默认加载已经校准好的 `hydrated prior` 状态文件，而不是每次都从头推倒 8 年历史。
+
+- **首选路径**: 直接加载 `data/v13_6_ex_hydrated_prior.json`
+- **回测路径**: 为每次 walk-forward 窗口生成本地 prior state，不污染生产状态
+- **重建记忆**: 仅当特征契约或先验结构发生变化时，才重新跑历史 hydration
 
 ### 1.3 理性防御算法 (Damped Gaussian Defense)
 - **非对称似然锐化**: 针对宏观因子应用 $\tau=0.35$，实现对边际恶化的“尖锐感知”。
@@ -21,8 +25,9 @@
 
 ### 1.4 QQQ 价格拓扑对齐 (Price Topology Alignment)
 - **Worldview Benchmark**: 系统新增一个基于 `QQQ` 价格 / 成交量 trailing 结构的 4 阶段软基准，用于审计连续概率、动能与 beta 是否符合新的宏观周期世界观。
-- **Topology Prior**: 在 runtime 与 canonical backtest 中，都对 posterior 与最终 `target_beta` 施加轻量级 `price_topology` 约束，避免 `BUST` 窗口 beta 过高、`RECOVERY` 窗口 beta 过低。
-- **执行面锚定**: price topology 不替代贝叶斯主引擎，只在高置信结构出现时，作为一个 PIT-safe 的后置 beta anchor。
+- **Topology Likelihood Coupling**: price topology 已从单纯后处理升级为 **likelihood penalty / veto**，在价格拓扑崩坏时直接压制 `MID_CYCLE` 粘性。
+- **执行面锚定**: price topology 仍不替代贝叶斯主引擎，但会在高置信结构出现时，继续作为 PIT-safe 的 beta anchor。
+- **灰犀牛治理**: 2018Q4 这类“流动性收缩 + 波动率加速”场景，优先由价格拓扑与执行层物理约束共同处理，而不是靠 event-picked overfit。
 
 ---
 
@@ -63,6 +68,13 @@ python scripts/v13_sequential_replay.py --output data/v13_new_prior.json
 ### 4.3 世界观回测审计 (Worldview Audit)
 对齐新的宏观周期世界观时，建议按以下顺序执行：
 ```bash
+python -m src.backtest \
+  --evaluation-start 2018-09-01 \
+  --artifact-dir artifacts/v11_black_box_audit_2026-04-06 \
+  --price-cache-path data/qqq_history_cache.csv \
+  --price-end-date 2026-04-04 \
+  --no-price-download
+
 python scripts/run_v14_panorama_matrix.py --price-cache-path data/qqq_history_cache.csv
 python scripts/run_worldview_backtest_audit.py \
   --mainline-artifact-dir artifacts/v14_panorama/mainline \
@@ -71,9 +83,16 @@ python scripts/run_worldview_backtest_audit.py \
 ```
 
 输出工件：
+- `artifacts/v11_black_box_audit_2026-04-06/`
 - `docs/research/v14_panorama_strategy_matrix.md`
 - `docs/research/v14_macro_cycle_worldview_audit.md`
 - `artifacts/v14_worldview_audit*/`
+
+回测治理红线：
+- 回测只允许重放生产 `V11Conductor`
+- 禁止在回测侧偷偷修改 `var_smoothing / posterior_mode / feature subset`
+- 缺失价格缓存时默认 fail closed
+- 每日运行必须保存法医快照，供回测工件反向引用
 
 ---
 

@@ -93,6 +93,37 @@ def blend_posteriors_with_topology(
     )
 
 
+def topology_likelihood_penalties(
+    topology: PriceTopologyState,
+    *,
+    floor: float = 0.03,
+    exponent: float = 0.75,
+) -> dict[str, float]:
+    """Convert price-topology conviction into multiplicative likelihood penalties.
+
+    The topology signal is treated as a trailer-risk veto. When the trailer has
+    a clear state preference, low-probability macro regimes are explicitly
+    down-weighted before posterior normalization instead of being left to a
+    late-stage linear blend.
+    """
+    neutral = {regime: 1.0 for regime in ACTIVE_REGIME_ORDER}
+    if topology.confidence <= 0.0:
+        return neutral
+
+    max_prob = max(float(prob) for prob in topology.probabilities.values())
+    if max_prob <= 0.0:
+        return neutral
+
+    confidence_scale = float(np.clip(0.25 + (0.75 * topology.confidence), 0.0, 1.0))
+    penalties: dict[str, float] = {}
+    for regime in ACTIVE_REGIME_ORDER:
+        regime_prob = float(topology.probabilities.get(regime, 0.0))
+        ratio = float(np.clip(regime_prob / max_prob, 0.0, 1.0))
+        shaped = max(float(floor), ratio**float(exponent))
+        penalties[regime] = (1.0 - confidence_scale) + (confidence_scale * shaped)
+    return penalties
+
+
 def anchor_beta_with_topology(raw_beta: float, topology: PriceTopologyState) -> float:
     if topology.beta_anchor_weight <= 0.0:
         return clamp_beta(raw_beta)
