@@ -61,6 +61,8 @@ python scripts/v13_sequential_replay.py --output data/v13_new_prior.json
 
 - **Discord (#FFA500)**: 触发 0.5 底线拦截时发出橙色警报，展示 `Raw Beta` 对比。
 - **Web Dashboard**: 物理锁定态视觉反馈（Amber-400），实时透传 `Prior Anchor: 2018-01-01`。
+- **Posterior Dynamics**: 终端与 Web 同步展示 4 阶段后验分布，并输出每个阶段的 `delta_1d` / `acceleration_1d`，用于观察周期切换动能，而不再只盯单一 Top-1。
+- **Panorama Fail-Closed**: 当 `Mud Tractor` 或 `QQQ Sidecar` 任一探针处于 degraded / missing 状态时，系统禁止把该日判定为 `AGGRESSIVE`，仅保留标准轨道或保护轨道建议。
 
 ---
 

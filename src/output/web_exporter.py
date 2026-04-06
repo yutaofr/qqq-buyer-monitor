@@ -167,6 +167,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "deployment_state": deployment_state,
                 "deployment_state_key": deployment_state_key,
                 "execution_bucket": execution_bucket,
+                "probability_dynamics": metadata.get("probability_dynamics", {}),
                 "reference_path": {
                     "qqq_pct": result.target_allocation.target_qqq_pct,
                     "qld_pct": result.target_allocation.target_qld_pct,
@@ -182,10 +183,12 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "tractor": {
                     "prob": metadata.get("v14_baseline_prob", 0.0),
                     "status": metadata.get("v14_baseline_status", "unknown"),
+                    "valid": bool(metadata.get("v14_tractor_valid", False)),
                 },
                 "sidecar": {
                     "prob": metadata.get("v14_sidecar_prob", 0.0),
                     "status": metadata.get("v14_sidecar_status", "unknown"),
+                    "valid": bool(metadata.get("v14_sidecar_valid", False)),
                 },
                 "ensemble_options": {
                     "verdict": metadata.get("v14_ensemble_verdict", "NEUTRAL"),
@@ -197,6 +200,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                     "protective_beta": metadata.get("v14_s4_protective_beta", 0.5),
                     "aggressive_beta": metadata.get("v14_s5_aggressive_beta", result.target_beta),
                     "system_floor": 0.5,
+                    "calm_eligible": bool(metadata.get("v14_calm_eligible", False)),
                 },
                 "shadow_mode": bool(
                     metadata.get("v14_shadow_mode", not metadata.get("v14_baseline_active", False))

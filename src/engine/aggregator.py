@@ -1,4 +1,5 @@
 import logging
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,19 @@ class FullPanoramaAggregator:
     SIDECAR_RISK_THRESHOLD = 0.15
     CALM_THRESHOLD = 0.05
 
+    @staticmethod
+    def _coerce_prob(result: dict | None) -> float:
+        try:
+            probability = float((result or {}).get("prob", 0.0))
+        except (TypeError, ValueError):
+            return 0.0
+        return probability if math.isfinite(probability) else 0.0
+
+    @staticmethod
+    def _probe_valid(result: dict | None) -> bool:
+        status = str((result or {}).get("status", "unknown"))
+        return status.startswith("success")
+
     @classmethod
     def aggregate(cls, bayesian_runtime: dict, baseline_result: dict) -> dict:
         """
@@ -27,8 +41,14 @@ class FullPanoramaAggregator:
         standard_beta = float(bayesian_runtime.get("target_beta", 1.0))
 
         # 2. Extract Diagnostic Probes
-        t_prob = float(baseline_result.get("tractor", {}).get("prob", 0.0))
-        s_prob = float(baseline_result.get("sidecar", {}).get("prob", 0.0))
+        tractor_result = baseline_result.get("tractor", {})
+        sidecar_result = baseline_result.get("sidecar", {})
+
+        t_prob = cls._coerce_prob(tractor_result)
+        s_prob = cls._coerce_prob(sidecar_result)
+        tractor_valid = cls._probe_valid(tractor_result)
+        sidecar_valid = cls._probe_valid(sidecar_result)
+        calm_eligible = tractor_valid and sidecar_valid
 
         # 3. Indicator 2: Protective (S4)
         # S4 is standard unless risk triggers, then it's the Floor law (0.50)
@@ -39,7 +59,7 @@ class FullPanoramaAggregator:
 
         # 4. Indicator 3: Aggressive (S5)
         # S5 is Standard with ceiling unlocked if calm, but respects the S4 protective logic if risk exists
-        is_calm = t_prob < cls.CALM_THRESHOLD and s_prob < cls.CALM_THRESHOLD
+        is_calm = calm_eligible and t_prob < cls.CALM_THRESHOLD and s_prob < cls.CALM_THRESHOLD
         if risk_triggered:
             aggressive_beta = protective_beta  # Risk-override
         elif is_calm:
@@ -59,6 +79,9 @@ class FullPanoramaAggregator:
         elif is_calm:
             verdict = "AGGRESSIVE"
             verdict_label = "🚀 AGGRESSIVE (S5 Suggestion)"
+        elif not calm_eligible:
+            verdict = "NEUTRAL"
+            verdict_label = "⚠️ NEUTRAL (Diagnostics Incomplete)"
         elif overlay_floor_active and not risk_triggered:
             verdict = "DIVERGENT"
             verdict_label = "⚠️ DIVERGENT (Overlay Active / Diagnostics Calm)"
@@ -74,4 +97,7 @@ class FullPanoramaAggregator:
             "ensemble_verdict_label": verdict_label,
             "risk_triggered": risk_triggered,
             "is_calm": is_calm,
+            "tractor_valid": tractor_valid,
+            "sidecar_valid": sidecar_valid,
+            "calm_eligible": calm_eligible,
         }

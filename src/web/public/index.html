@@ -543,7 +543,31 @@
             `).join('');
         }
 
-        function renderDistribution(containerId, distribution, fallbackText) {
+        function localizeTrend(trend) {
+            if (currentLang === 'en') {
+                return trend || 'FLAT';
+            }
+            if (trend === 'RISING') return '上行';
+            if (trend === 'FALLING') return '下行';
+            return '平稳';
+        }
+
+        function formatMotionTag(dynamics) {
+            if (!dynamics) return '';
+            const delta = Number(dynamics.delta_1d || 0);
+            const accel = Number(dynamics.acceleration_1d || 0);
+            const tone = delta > 0.0005 ? 'text-emerald-400' : (delta < -0.0005 ? 'text-rose-400' : 'text-slate-400');
+            const deltaText = `${delta >= 0 ? '+' : ''}${(delta * 100).toFixed(1)}pp`;
+            const accelText = `${accel >= 0 ? '+' : ''}${(accel * 100).toFixed(1)}pp`;
+            return `
+                <div class="flex justify-between text-[9px] font-bold tracking-[0.16em] uppercase opacity-70">
+                    <span class="${tone}">${escapeHtml(localizeTrend(dynamics.trend))}</span>
+                    <span class="text-slate-400">dP ${escapeHtml(deltaText)} | d2P ${escapeHtml(accelText)}</span>
+                </div>
+            `;
+        }
+
+        function renderDistribution(containerId, distribution, fallbackText, dynamicsMap) {
             const container = document.getElementById(containerId);
             container.innerHTML = '';
             const entries = Object.entries(distribution || {}).sort((a, b) => b[1] - a[1]);
@@ -554,7 +578,8 @@
             entries.forEach(([name, val]) => {
                 const pct = (val * 100).toFixed(1) + '%';
                 const localizedName = TRANSLATIONS[currentLang].mapping[name] || name;
-                container.innerHTML += `<div class="space-y-1.5"><div class="flex justify-between text-[10px] font-black opacity-50 uppercase tracking-tighter"><span>${localizedName}</span><span class="text-white">${pct}</span></div><div class="w-full h-2 bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5"><div class="prob-bar" style="width: ${pct}"></div></div></div>`;
+                const dynamics = dynamicsMap && dynamicsMap[name] ? dynamicsMap[name] : null;
+                container.innerHTML += `<div class="space-y-1.5"><div class="flex justify-between text-[10px] font-black opacity-50 uppercase tracking-tighter"><span>${localizedName}</span><span class="text-white">${pct}</span></div>${formatMotionTag(dynamics)}<div class="w-full h-2 bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5"><div class="prob-bar" style="width: ${pct}"></div></div></div>`;
             });
         }
 
@@ -619,7 +644,7 @@
                 } else { t.className = 'tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl'; }
             });
 
-            renderDistribution('prob-container', data.signal.probabilities, currentLang === 'en' ? 'No posterior distribution' : '暫無後驗分佈');
+            renderDistribution('prob-container', data.signal.probabilities, currentLang === 'en' ? 'No posterior distribution' : '暫無後驗分佈', data.signal.probability_dynamics);
             renderDistribution('prior-container', data.signal.priors, currentLang === 'en' ? 'No runtime prior' : '當前未透傳運行時先驗');
             renderFeatureValues(data.evidence.feature_values);
             renderExecutionOverlay(data.evidence.execution_overlay);

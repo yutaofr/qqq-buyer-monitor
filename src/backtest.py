@@ -26,6 +26,7 @@ from src.engine.v11.core.expectation_surface import (
     expected_policy_for_regime,
 )
 from src.engine.v13.execution_overlay import ExecutionOverlayEngine
+from src.regime_dynamics import compute_probability_dynamics, flatten_probability_dynamics
 from src.regime_topology import canonicalize_regime_sequence, merge_regime_weights
 
 logger = logging.getLogger(__name__)
@@ -573,6 +574,13 @@ def run_v11_audit(
                 (posteriors.get(name, 0.0) - (1.0 if name == actual_regime else 0.0)) ** 2
                 for name in ordered_regimes
             )
+            prior_execution_state = prior_book.get_execution_state()
+            previous_posterior_for_state = prior_book.last_posterior
+            probability_dynamics = compute_probability_dynamics(
+                posteriors,
+                previous=previous_posterior_for_state,
+                previous_previous=prior_execution_state.get("previous_posterior"),
+            )
 
             if final_beta > 1.0:
                 qld = (final_beta - 1.0) * 100_000.0
@@ -607,6 +615,7 @@ def run_v11_audit(
             }
             for regime in ordered_regimes:
                 probability_row[f"prob_{regime}"] = float(posteriors.get(regime, 0.0))
+            probability_row.update(flatten_probability_dynamics(probability_dynamics))
             probability_rows.append(probability_row)
 
             execution_rows.append(
@@ -667,6 +676,7 @@ def run_v11_audit(
                 regime_evidence=float(regime_stabilizer.evidence),
                 deployment_state=str(deployment_decision["deployment_state"]),
                 deployment_evidence=float(deployment_policy.evidence),
+                previous_posterior=previous_posterior_for_state,
             )
 
     probability_df = pd.DataFrame(probability_rows).sort_values("date")

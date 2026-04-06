@@ -22,6 +22,24 @@ def test_full_panorama_aggregator_emits_canonical_verdict_tokens():
     assert "PROTECT" in result["ensemble_verdict_label"]
 
 
+def test_full_panorama_aggregator_disables_aggressive_when_sidecar_is_degraded():
+    runtime = {
+        "target_beta": 0.9,
+        "is_floor_active": False,
+    }
+    baseline = {
+        "tractor": {"prob": 0.01, "status": "success"},
+        "sidecar": {"prob": 0.0, "status": "degraded_missing_vxn"},
+    }
+
+    result = FullPanoramaAggregator.aggregate(runtime, baseline)
+
+    assert result["sidecar_valid"] is False
+    assert result["is_calm"] is False
+    assert result["s5_aggressive_beta"] == result["standard_beta"]
+    assert result["ensemble_verdict"] == "NEUTRAL"
+
+
 def test_web_exporter_sets_shadow_mode_from_metadata(tmp_path):
     result = SignalResult(
         date=date(2026, 3, 30),

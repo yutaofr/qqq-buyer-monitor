@@ -79,6 +79,19 @@ def print_signal(
     if ordered_probs:
         formatted = " | ".join(f"{name}={value:.2%}" for name, value in ordered_probs)
         print(f"Posterior: {formatted}")
+    probability_dynamics = metadata.get("probability_dynamics", {})
+    if probability_dynamics:
+        print("Probability Dynamics:")
+        for name, _ in ordered_probs:
+            if name not in probability_dynamics:
+                continue
+            motion = probability_dynamics[name]
+            print(
+                "  "
+                f"{name}: dP={float(motion.get('delta_1d', 0.0)):+.1%} | "
+                f"d2P={float(motion.get('acceleration_1d', 0.0)):+.1%} | "
+                f"trend={motion.get('trend', 'FLAT')}"
+            )
 
     # 3. PIPELINE DIAGNOSTIC AUDIT
     print(f"\n{c(_CYAN)}Pipeline Diagnostic Audit (v14.8):{r}")

@@ -28,7 +28,8 @@ class TestFredSensorRepro(unittest.TestCase):
         mock_get.return_value = mock_response
 
         # 2. Execute
-        result = fetch_baseline_series("VIXCLS")
+        with patch.dict(os.environ, {"FRED_API_KEY": "test-key"}, clear=False):
+            result = fetch_baseline_series("VIXCLS")
 
         # 3. Verify
         self.assertIsNotNone(result, "Expected data for VIXCLS")
@@ -63,7 +64,8 @@ class TestFredSensorRepro(unittest.TestCase):
         mock_get.return_value = mock_response
 
         # 2. Execute
-        _ = fetch_baseline_series("IPMAN")
+        with patch.dict(os.environ, {"FRED_API_KEY": "test-key"}, clear=False):
+            _ = fetch_baseline_series("IPMAN")
 
         # 3. Verify
         # It should have called FRED API with ALFRED params in the first attempt

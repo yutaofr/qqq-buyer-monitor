@@ -26,6 +26,7 @@ from src.engine.v11.signal.deployment_policy import ProbabilisticDeploymentPolic
 from src.engine.v11.signal.inertial_beta_mapper import InertialBetaMapper
 from src.engine.v11.signal.regime_stabilizer import RegimeStabilizer
 from src.engine.v13.execution_overlay import ExecutionOverlayEngine
+from src.regime_dynamics import compute_probability_dynamics
 from src.regime_topology import (
     ACTIVE_REGIME_ORDER,
     canonicalize_regime_name,
@@ -467,6 +468,13 @@ class V11Conductor:
 
         # Use canonical sorting for probabilities to prevent index shift hallucinations
         posteriors = {r: float(posteriors[r]) for r in ACTIVE_REGIME_ORDER if r in posteriors}
+        prior_execution_state = self.prior_book.get_execution_state()
+        previous_posterior_for_state = self.prior_book.last_posterior
+        probability_dynamics = compute_probability_dynamics(
+            posteriors,
+            previous=previous_posterior_for_state,
+            previous_previous=prior_execution_state.get("previous_posterior"),
+        )
 
         raw_beta_expectation = compute_beta_expectation(posteriors, self.base_betas)
 
@@ -628,6 +636,7 @@ class V11Conductor:
             "priors": runtime_priors,
             "prior_details": prior_details,
             "probabilities": posteriors,
+            "probability_dynamics": probability_dynamics,
             "raw_regime": regime_decision["raw_regime"],
             "stable_regime": regime_decision["stable_regime"],
             "entropy": norm_h,
@@ -666,6 +675,7 @@ class V11Conductor:
             deployment_evidence=float(self.deployment_policy.evidence),
             high_entropy_streak=self.high_entropy_streak,
             hydration_anchor=runtime_result.get("signal", {}).get("hydration_anchor", "2018-01-01"),
+            previous_posterior=previous_posterior_for_state,
         )
 
         return runtime_result
