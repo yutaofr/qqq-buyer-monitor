@@ -19,6 +19,12 @@ from src.engine.v11.core.expectation_surface import compute_beta_expectation
 from src.engine.v11.core.mahalanobis_guard import MahalanobisGuard
 from src.engine.v11.core.model_validation import validate_feature_contract, validate_gaussian_nb
 from src.engine.v11.core.position_sizer import PositionSizingResult
+from src.engine.v11.core.price_topology import (
+    anchor_beta_with_topology,
+    blend_posteriors_with_topology,
+    infer_price_topology_state,
+    price_topology_payload,
+)
 from src.engine.v11.core.prior_knowledge import PriorKnowledgeBase
 from src.engine.v11.probability_seeder import ProbabilitySeeder
 from src.engine.v11.signal.behavioral_guard import BehavioralGuard
@@ -98,6 +104,7 @@ class V11Conductor:
                 "posterior_mode", "runtime_reweight"
             )
         )
+        self.price_topology_contract = dict(self.audit_data.get("price_topology_contract", {}))
         self.regimes = list(self.base_betas.keys())
         self._validate_canonical_inputs()
         self.regime_history = pd.read_csv(
@@ -458,6 +465,16 @@ class V11Conductor:
             posteriors = runtime_priors
             bayesian_diagnostics = {"level_contributions": {}}
 
+        topology_state = infer_price_topology_state(
+            context_df,
+            posterior_blend_weight=float(
+                self.price_topology_contract.get("posterior_blend_weight", 0.25)
+            ),
+            beta_anchor_weight=float(self.price_topology_contract.get("beta_anchor_weight", 0.35)),
+            confidence_margin=float(self.price_topology_contract.get("confidence_margin", 0.25)),
+        )
+        posteriors = blend_posteriors_with_topology(posteriors, topology_state)
+        posteriors = {r: float(posteriors.get(r, 0.0)) for r in ACTIVE_REGIME_ORDER}
         posterior_entropy = self.entropy_ctrl.calculate_normalized_entropy(posteriors)
 
         # 3. Execution Pipeline (v13.8 Unified)
@@ -467,7 +484,6 @@ class V11Conductor:
         erp_percentile = self._resolve_erp_percentile(context_df, raw_t0_data)
 
         # Use canonical sorting for probabilities to prevent index shift hallucinations
-        posteriors = {r: float(posteriors[r]) for r in ACTIVE_REGIME_ORDER if r in posteriors}
         prior_execution_state = self.prior_book.get_execution_state()
         previous_posterior_for_state = self.prior_book.last_posterior
         probability_dynamics = compute_probability_dynamics(
@@ -526,6 +542,7 @@ class V11Conductor:
 
         # 4. Continuous Beta Surface with cross-run inertia (SRD: Floor is input to smoothing)
         final_beta = self.beta_mapper.calculate_inertial_beta(overlay_beta, norm_h)
+        final_beta = anchor_beta_with_topology(final_beta, topology_state)
 
         # 5. Bayesian Kelly Entry (v11.14 -> v11.15)
         # CDR = Information Clarity * Positive Expectation * Structural Value
@@ -562,6 +579,8 @@ class V11Conductor:
             "erp_ttm": _safe_float(latest_raw.get("erp_ttm_pct")),
             "entropy": norm_h,
             "deployment_readiness": deployment_readiness,
+            "price_topology_confidence": float(topology_state.confidence),
+            "price_topology_expected_beta": float(topology_state.expected_beta),
         }
         if not diagnostics.empty:
             latest_diag = diagnostics.iloc[-1]
@@ -637,6 +656,7 @@ class V11Conductor:
             "prior_details": prior_details,
             "probabilities": posteriors,
             "probability_dynamics": probability_dynamics,
+            "price_topology": price_topology_payload(topology_state),
             "raw_regime": regime_decision["raw_regime"],
             "stable_regime": regime_decision["stable_regime"],
             "entropy": norm_h,

@@ -9,6 +9,7 @@ import pytest
 from sklearn.naive_bayes import GaussianNB
 
 from src.engine.v11.conductor import V11Conductor
+from src.engine.v11.core.price_topology import PriceTopologyState
 from src.engine.v11.probability_seeder import ProbabilitySeeder
 
 
@@ -212,6 +213,48 @@ def test_conductor_flags_source_switch_and_writes_runtime_snapshot(tmp_path):
     assert snapshot["gaussian_nb"]["var"]
     assert snapshot["gaussian_nb"]["class_prior"]
     assert snapshot["raw_t0_data"][0]["source_erp_ttm"] == "direct:shiller"
+
+
+def test_conductor_applies_price_topology_anchor_to_final_beta(tmp_path, monkeypatch):
+    regime_path = tmp_path / "regimes.csv"
+    macro_path = tmp_path / "macro.csv"
+    prior_path = tmp_path / "prior_state.json"
+
+    dates = pd.bdate_range("2024-01-01", periods=320)
+    macro_df = _build_v12_macro_frame(dates)
+    regime_df = _build_regime_frame(dates)
+
+    macro_df.to_csv(macro_path, index=False)
+    regime_df.to_csv(regime_path, index=False)
+
+    conductor = V11Conductor(
+        macro_data_path=str(macro_path),
+        regime_data_path=str(regime_path),
+        prior_state_path=str(prior_path),
+    )
+
+    def _forced_bust_topology(*args, **kwargs):
+        return PriceTopologyState(
+            regime="BUST",
+            probabilities={
+                "MID_CYCLE": 0.0,
+                "LATE_CYCLE": 0.0,
+                "BUST": 1.0,
+                "RECOVERY": 0.0,
+            },
+            expected_beta=0.5,
+            confidence=1.0,
+            posterior_blend_weight=0.0,
+            beta_anchor_weight=1.0,
+        )
+
+    monkeypatch.setattr("src.engine.v11.conductor.infer_price_topology_state", _forced_bust_topology)
+
+    t0 = macro_df.tail(1).set_index("observation_date")
+    result = conductor.daily_run(t0)
+
+    assert result["price_topology"]["regime"] == "BUST"
+    assert result["target_beta"] == pytest.approx(0.5)
 
 
 def test_conductor_marks_missing_provenance_as_degraded(tmp_path):

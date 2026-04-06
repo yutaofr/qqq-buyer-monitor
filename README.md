@@ -19,6 +19,11 @@
 - **二阶熵值阻尼**: 应用 $exp(-0.6 \cdot H^2)$ 非线性惩罚，在认知冲突区果断减速。
 - **ULTIMA 熔断**: 认知死锁超过 21 天自动降维至信贷核心（Level 1），确保生存。
 
+### 1.4 QQQ 价格拓扑对齐 (Price Topology Alignment)
+- **Worldview Benchmark**: 系统新增一个基于 `QQQ` 价格 / 成交量 trailing 结构的 4 阶段软基准，用于审计连续概率、动能与 beta 是否符合新的宏观周期世界观。
+- **Topology Prior**: 在 runtime 与 canonical backtest 中，都对 posterior 与最终 `target_beta` 施加轻量级 `price_topology` 约束，避免 `BUST` 窗口 beta 过高、`RECOVERY` 窗口 beta 过低。
+- **执行面锚定**: price topology 不替代贝叶斯主引擎，只在高置信结构出现时，作为一个 PIT-safe 的后置 beta anchor。
+
 ---
 
 ## 2. 核心红线 (The User Redline)
@@ -54,6 +59,21 @@ export PRIOR_STATE_PATH="data/v13_6_ex_hydrated_prior.json"
 docker run --rm -v $(pwd):/app -w /app qqq-monitor:v13.4 \
 python scripts/v13_sequential_replay.py --output data/v13_new_prior.json
 ```
+
+### 4.3 世界观回测审计 (Worldview Audit)
+对齐新的宏观周期世界观时，建议按以下顺序执行：
+```bash
+python scripts/run_v14_panorama_matrix.py --price-cache-path data/qqq_history_cache.csv
+python scripts/run_worldview_backtest_audit.py \
+  --mainline-artifact-dir artifacts/v14_panorama/mainline \
+  --baseline-trace-path artifacts/v14_panorama/baseline_oos_trace.csv \
+  --price-cache-path data/qqq_history_cache.csv
+```
+
+输出工件：
+- `docs/research/v14_panorama_strategy_matrix.md`
+- `docs/research/v14_macro_cycle_worldview_audit.md`
+- `artifacts/v14_worldview_audit*/`
 
 ---
 

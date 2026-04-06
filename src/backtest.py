@@ -25,6 +25,11 @@ from src.engine.v11.core.expectation_surface import (
     deployment_state_rank,
     expected_policy_for_regime,
 )
+from src.engine.v11.core.price_topology import (
+    anchor_beta_with_topology,
+    blend_posteriors_with_topology,
+    infer_price_topology_state,
+)
 from src.engine.v13.execution_overlay import ExecutionOverlayEngine
 from src.regime_dynamics import compute_probability_dynamics, flatten_probability_dynamics
 from src.regime_topology import canonicalize_regime_sequence, merge_regime_weights
@@ -229,6 +234,7 @@ def run_v11_audit(
             audit_data.get("model_hyperparameters", {}).get("posterior_mode", "runtime_reweight"),
         )
     )
+    price_topology_contract = dict(audit_data.get("price_topology_contract", {}))
 
     # v14.5 INDUSTRIAL GOVERNANCE: Load registry once for the entire audit
     registry_path = Path("src/engine/v11/resources/v13_4_weights_registry.json")
@@ -504,6 +510,27 @@ def run_v11_audit(
             # Update previous_raw for next iteration
             previous_raw = latest_raw
 
+            topology_cols = [col for col in ("qqq_close", "qqq_volume") if col in train_window.columns]
+            if topology_cols and all(col in row.index for col in topology_cols):
+                topology_context = pd.concat(
+                    [
+                        train_window[topology_cols],
+                        pd.DataFrame([row[topology_cols]], index=[dt]),
+                    ]
+                )
+            else:
+                topology_context = pd.DataFrame()
+            topology_state = infer_price_topology_state(
+                topology_context,
+                posterior_blend_weight=float(
+                    price_topology_contract.get("posterior_blend_weight", 0.25)
+                ),
+                beta_anchor_weight=float(price_topology_contract.get("beta_anchor_weight", 0.35)),
+                confidence_margin=float(price_topology_contract.get("confidence_margin", 0.25)),
+            )
+            posteriors = blend_posteriors_with_topology(posteriors, topology_state)
+            posteriors = {r: float(posteriors.get(r, 0.0)) for r in ordered_regimes}
+
             # 3. Execution Pipeline (Identity Wiring)
             # Calculation of intermediate pieces
             posterior_entropy = entropy_ctrl.calculate_normalized_entropy(posteriors)
@@ -553,6 +580,7 @@ def run_v11_audit(
             protected_beta = pipeline_result["protected_beta"]
             overlay_beta = pipeline_result["overlay_beta"]
             final_beta = beta_mapper.calculate_inertial_beta(overlay_beta, norm_h)
+            final_beta = anchor_beta_with_topology(final_beta, topology_state)
 
             deployment_readiness = pipeline_result["deployment_readiness"]
             overlay_readiness = pipeline_result["overlay_deployment_readiness"]
@@ -659,6 +687,13 @@ def run_v11_audit(
                     "lock_active": execution.lock_active,
                     "target_bucket": execution.target_bucket,
                     "close": row["qqq_close"],
+                    "price_topology_regime": topology_state.regime,
+                    "price_topology_expected_beta": float(topology_state.expected_beta),
+                    "price_topology_confidence": float(topology_state.confidence),
+                    "price_topology_posterior_blend_weight": float(
+                        topology_state.posterior_blend_weight
+                    ),
+                    "price_topology_beta_anchor_weight": float(topology_state.beta_anchor_weight),
                 }
             )
 
