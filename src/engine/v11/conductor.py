@@ -124,7 +124,11 @@ class V11Conductor:
         regime_training_view = self.regime_history
         if self.training_cutoff is not None:
             regime_training_view = regime_training_view[regime_training_view.index < self.training_cutoff]
-        self.model_regimes = sorted(regime_training_view["regime"].dropna().astype(str).unique())
+        self.model_regimes = self._resolve_effective_model_regimes(regime_training_view)
+        if not self.model_regimes:
+            raise ValueError(
+                "No effective regime classes remain after aligning regime DNA with the canonical macro calendar."
+            )
         self._validate_regime_coverage()
 
         # v12.0 Internal Controllers
@@ -327,6 +331,25 @@ class V11Conductor:
                 f"missing base_betas={missing_betas}, missing regime_sharpes={missing_sharpes}."
             )
 
+    def _resolve_effective_model_regimes(self, regime_training_view: pd.DataFrame) -> list[str]:
+        macro_index = pd.read_csv(
+            self.macro_data_path,
+            usecols=["observation_date"],
+            parse_dates=["observation_date"],
+        )["observation_date"]
+        macro_index = pd.DatetimeIndex(macro_index)
+        if getattr(macro_index, "tz", None) is not None:
+            macro_index = macro_index.tz_convert(None)
+        macro_index = macro_index.normalize()
+
+        effective_view = regime_training_view.copy()
+        index = pd.DatetimeIndex(effective_view.index)
+        if getattr(index, "tz", None) is not None:
+            index = index.tz_convert(None)
+        effective_view.index = index.normalize()
+        effective_view = effective_view[effective_view.index.isin(macro_index)]
+        return sorted(effective_view["regime"].dropna().astype(str).unique())
+
     def _validate_feature_contract(self) -> dict[str, object]:
         expected_contract = self.audit_data.get("feature_contract", {})
         return validate_feature_contract(
@@ -349,6 +372,7 @@ class V11Conductor:
         regime_df = pd.read_csv(regime_data_path, parse_dates=["observation_date"]).set_index(
             "observation_date"
         )
+        regime_df["regime"] = regime_df["regime"].apply(canonicalize_regime_name)
 
         # Apply training cutoff for PIT integrity (v14 forensic fix)
         if training_cutoff:

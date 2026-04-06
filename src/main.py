@@ -8,8 +8,10 @@ has been removed for architecture sanity.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
+import shutil
 from pathlib import Path
 
 import pandas as pd
@@ -22,6 +24,8 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s – %(message)s",
 )
 logger = logging.getLogger("qqq_monitor")
+
+CANONICAL_PRIOR_SEED_PATH = Path("src/engine/v11/resources/v13_6_cold_start_seed.json")
 
 
 def _is_degraded_source(source: str | None) -> bool:
@@ -36,6 +40,41 @@ def _compose_derived_source(metric_name: str, *upstream_sources: str | None) -> 
     if any(_is_degraded_source(source) for source in normalized):
         return f"proxy:derived:{metric_name}[{'|'.join(normalized)}]"
     return f"derived:{metric_name}[{'|'.join(normalized)}]"
+
+
+def _materialize_prior_state(
+    prior_state_path: str | Path,
+    seed_path: str | Path = CANONICAL_PRIOR_SEED_PATH,
+) -> str:
+    """
+    Ensure production has a mutable prior state file without replaying history.
+
+    Returns the origin used:
+    - ``existing_state`` when the runtime state already exists
+    - ``canonical_seed`` when a checked-in hydrated seed was copied into place
+    """
+    runtime_path = Path(prior_state_path)
+    if runtime_path.exists():
+        return "existing_state"
+
+    canonical_seed = Path(seed_path)
+    if not canonical_seed.exists():
+        raise FileNotFoundError(
+            f"Production cold start requires a canonical hydrated prior seed at {canonical_seed}."
+        )
+
+    payload = json.loads(canonical_seed.read_text(encoding="utf-8"))
+    required_fields = {"regimes", "counts", "execution_state", "bootstrap_fingerprint"}
+    missing_fields = sorted(required_fields - set(payload))
+    if missing_fields:
+        raise ValueError(
+            "Canonical hydrated prior seed is incomplete: missing "
+            + ", ".join(missing_fields)
+        )
+
+    runtime_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(canonical_seed, runtime_path)
+    return "canonical_seed"
 
 
 def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalResult:
@@ -313,6 +352,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     cloud = CloudPersistenceBridge()
 
     prior_file_path = os.environ.get("PRIOR_STATE_PATH", "data/v13_6_ex_hydrated_prior.json")
+    prior_seed_path = os.environ.get("PRIOR_SEED_PATH", str(CANONICAL_PRIOR_SEED_PATH))
     sync_files = [
         "data/signals.db",
         "data/macro_historical_dump.csv",
@@ -323,18 +363,13 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
             "Cloud state pull failed; refusing to continue with potentially stale runtime memory."
         )
 
-    # v13.7-ULTIMA Cold Start Architecture:
-    # If the prior state file is missing after cloud pull (e.g. true cold start / 404),
-    # we trigger the 8-year deep hydration replay to generate a self-consistent state.
-    if not Path(prior_file_path).exists():
+    prior_origin = _materialize_prior_state(prior_file_path, prior_seed_path)
+    if prior_origin == "canonical_seed":
         logger.warning(
-            f"Prior state {prior_file_path} is missing. Initiating True Cold Start Replay (8-Year Hydration)..."
+            "Prior state %s was missing after cloud pull. Restored mutable runtime state from canonical seed %s.",
+            prior_file_path,
+            prior_seed_path,
         )
-        from scripts.v13_sequential_replay import run_replay
-
-        # Assuming macro data exists locally or was pulled
-        run_replay("data/macro_historical_dump.csv", prior_file_path, "2018-01-01")
-        logger.info("Cold Start Replay complete. Resuming daily pipeline.")
 
     logger.info("Fetching market data...")
     price_data = fetch_price_data()

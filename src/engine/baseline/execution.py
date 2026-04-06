@@ -81,7 +81,9 @@ def run_baseline_inference(price_history: pd.Series = None) -> dict:
         # 2. QQQ Technicals for Sidecar
         tech = fetch_qqq_technical_signals()
         if not tech.empty:
-            data = data.join(tech, how="left").ffill()
+            tech = tech.loc[:, [column for column in tech.columns if column not in data.columns]]
+            if not tech.empty:
+                data = data.join(tech, how="left").ffill()
 
         # --- A. MUD TRACTOR (SPY) ---
         try:

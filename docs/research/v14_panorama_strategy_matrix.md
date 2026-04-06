@@ -2,7 +2,7 @@
 
 ## Protocol
 
-- Diagnostics Vintage Mode: `PIT_FALLBACK`
+- Diagnostics Vintage Mode: `ALFRED+PIT_FALLBACK`
 - Calibration Window: `2011-01-01` to `2017-12-29`
 - Holdout Window: `2018-01-01` onward
 - Mainline Trace: `run_v11_audit()` canonical execution trace
@@ -13,28 +13,28 @@
 
 | scenario | rows | approx_total_return | approx_max_drawdown | mean_target_beta | mean_turnover | left_tail_mean_beta | mean_expected_beta | beta_expectation_mae | beta_expectation_rmse | beta_expectation_within_5pct | mean_raw_beta | raw_beta_expected_mae | raw_beta_expected_within_5pct | mean_standard_beta | standard_beta_expected_mae | standard_beta_expected_within_5pct | acceptance_pass | acceptance_reason | tractor_threshold | sidecar_threshold | calm_threshold |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| standard | 2069.0 | 2.1711166917970006 | -0.29865637113121113 | 0.8182868469341912 | 0.00778722464253059 | 0.8148150103157037 | 0.8747220879652006 | 0.14554209832149217 | 0.17855429808003626 | 0.18559690671822135 | 0.9543089262001663 | 0.13663597529862784 | 0.3639439342677622 | 0.8182868469341912 | 0.14554209832149217 | 0.18559690671822135 | True | PASS | 0.25 | 0.2 | 0.1 |
-| s4_sidecar | 2069.0 | 1.3723286725716544 | -0.28898207163977396 | 0.6881329610988903 | 0.01718366908542122 | 0.5937918474168811 | 0.8747220879652006 | 0.23456599410731327 | 0.30073956874669483 | 0.18124697921701305 | 0.9543089262001663 | 0.13663597529862784 | 0.3639439342677622 | 0.8182868469341912 | 0.14554209832149217 | 0.18559690671822135 | True | PASS | 0.25 | 0.2 | 0.1 |
-| s5_tractor | 2069.0 | 1.5002151412643951 | -0.29865637113121146 | 0.7552848027197439 | 0.01718016426932904 | 0.6834668557316225 | 0.8747220879652006 | 0.1919158503726631 | 0.25703340642135103 | 0.19623006283228614 | 0.9543089262001663 | 0.13663597529862784 | 0.3639439342677622 | 0.8182868469341912 | 0.14554209832149217 | 0.18559690671822135 | True | PASS | 0.25 | 0.2 | 0.1 |
-| s4s5_panorama | 2069.0 | 1.4332430534757066 | -0.3035448374360865 | 0.7483445240421019 | 0.03250241915384618 | 0.6244023930576759 | 0.8747220879652006 | 0.2826837160879981 | 0.3505546153272209 | 0.15514741420976316 | 0.9543089262001663 | 0.13663597529862784 | 0.3639439342677622 | 0.8182868469341912 | 0.14554209832149217 | 0.18559690671822135 | False | Drawdown Regression | 0.25 | 0.2 | 0.1 |
+| standard | 2070.0 | 1.7264840483581891 | -0.2266156434076102 | 0.7217219907430583 | 0.01932676453114833 | 0.6793202762187001 | 0.8747826086956522 | 0.20393837665050754 | 0.23668346747941657 | 0.09371980676328502 | 0.8422122214870955 | 0.15367677526068743 | 0.3120772946859903 | 0.7217219907430583 | 0.20393837665050754 | 0.09371980676328502 | True | PASS | 0.25 | 0.2 | 0.1 |
+| s4_sidecar | 2070.0 | 1.1560648623519598 | -0.23311380372205648 | 0.6530538479887716 | 0.0261772732018847 | 0.5859201808110949 | 0.8747826086956522 | 0.25618633824932685 | 0.31021496759146666 | 0.12173913043478261 | 0.8422122214870955 | 0.15367677526068743 | 0.3120772946859903 | 0.7217219907430583 | 0.20393837665050754 | 0.09371980676328502 | False | Drawdown Regression | 0.25 | 0.2 | 0.1 |
+| s5_tractor | 2070.0 | 1.3462689222837612 | -0.22661564340760976 | 0.6760857237471516 | 0.023939203236023245 | 0.6034298383061443 | 0.8747826086956522 | 0.23848270169901048 | 0.2911754857706669 | 0.11545893719806763 | 0.8422122214870955 | 0.15367677526068743 | 0.3120772946859903 | 0.7217219907430583 | 0.20393837665050754 | 0.09371980676328502 | True | PASS | 0.25 | 0.2 | 0.1 |
+| s4s5_panorama | 2070.0 | 1.250188662363767 | -0.31713844318289175 | 0.7739517989112428 | 0.04278962704323321 | 0.6637539934810461 | 0.8747826086956522 | 0.2984024522769289 | 0.3531984197706963 | 0.09371980676328502 | 0.8422122214870955 | 0.15367677526068743 | 0.3120772946859903 | 0.7217219907430583 | 0.20393837665050754 | 0.09371980676328502 | False | Drawdown Regression | 0.25 | 0.2 | 0.1 |
 
 ## Mainline Bayesian Audit
 
 - Mainline Audit Window: `2011-01-01` onward
-- Posterior Top-1 Accuracy: `44.49%`
-- Posterior Brier: `0.8314`
-- Mean Entropy: `0.5106`
-- Raw Beta vs Expectation MAE: `0.1646`
-- Target Beta vs Expectation MAE: `0.2008`
-- Deployment Exact Match: `42.06%`
-- Deployment Rank Error: `0.8467`
-- Deployment Pacing Abs Error: `0.5098`
-- Deployment Pacing Signed Bias: `0.0396`
-- Raw Beta Min: `0.5003`
-- Beta Expectation Min: `0.5003`
-- Target Beta Min: `0.5005`
-- Raw Beta Within 5pct Of Expected: `27.31%`
-- Target Beta Within 5pct Of Expected: `13.47%`
+- Posterior Top-1 Accuracy: `40.46%`
+- Posterior Brier: `0.8973`
+- Mean Entropy: `0.4819`
+- Raw Beta vs Expectation MAE: `0.1698`
+- Target Beta vs Expectation MAE: `0.2294`
+- Deployment Exact Match: `41.16%`
+- Deployment Rank Error: `0.7849`
+- Deployment Pacing Abs Error: `0.4708`
+- Deployment Pacing Signed Bias: `-0.1695`
+- Raw Beta Min: `0.5083`
+- Beta Expectation Min: `0.5083`
+- Target Beta Min: `0.5002`
+- Raw Beta Within 5pct Of Expected: `28.74%`
+- Target Beta Within 5pct Of Expected: `7.00%`
 - Target Floor Breach Rate: `0.00%`
 - Share At Floor: `0.00%`
 
@@ -47,10 +47,10 @@
 
 | scenario | mean_raw_beta | mean_standard_beta | mean_scenario_beta | mean_expected_beta | raw_beta_expected_mae | standard_beta_expected_mae | scenario_beta_expected_mae |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| standard | 0.9543089262001663 | 0.8182868469341912 | 0.8182868469341912 | 0.8747220879652006 | 0.13663597529862784 | 0.14554209832149217 | 0.14554209832149217 |
-| s4_sidecar | 0.9543089262001663 | 0.8182868469341912 | 0.6881329610988903 | 0.8747220879652006 | 0.13663597529862784 | 0.14554209832149217 | 0.23456599410731327 |
-| s5_tractor | 0.9543089262001663 | 0.8182868469341912 | 0.7552848027197439 | 0.8747220879652006 | 0.13663597529862784 | 0.14554209832149217 | 0.1919158503726631 |
-| s4s5_panorama | 0.9543089262001663 | 0.8182868469341912 | 0.7483445240421019 | 0.8747220879652006 | 0.13663597529862784 | 0.14554209832149217 | 0.2826837160879981 |
+| standard | 0.8422122214870955 | 0.7217219907430583 | 0.7217219907430583 | 0.8747826086956522 | 0.15367677526068743 | 0.20393837665050754 | 0.20393837665050754 |
+| s4_sidecar | 0.8422122214870955 | 0.7217219907430583 | 0.6530538479887716 | 0.8747826086956522 | 0.15367677526068743 | 0.20393837665050754 | 0.25618633824932685 |
+| s5_tractor | 0.8422122214870955 | 0.7217219907430583 | 0.6760857237471516 | 0.8747826086956522 | 0.15367677526068743 | 0.20393837665050754 | 0.23848270169901048 |
+| s4s5_panorama | 0.8422122214870955 | 0.7217219907430583 | 0.7739517989112428 | 0.8747826086956522 | 0.15367677526068743 | 0.20393837665050754 | 0.2984024522769289 |
 
 ## Calibration Winner
 
@@ -58,17 +58,17 @@
 - Tractor Threshold: `0.20`
 - Sidecar Threshold: `0.15`
 - Calm Threshold: `0.05`
-- Calibration Return: `1.4710`
-- Calibration Max Drawdown: `-0.1365`
-- Calibration Left-Tail Beta: `0.7145`
+- Calibration Return: `1.2103`
+- Calibration Max Drawdown: `-0.1071`
+- Calibration Left-Tail Beta: `0.6808`
 
 ## Holdout Result Of Frozen Winner
 
 | scenario | rows | approx_total_return | approx_max_drawdown | mean_target_beta | mean_turnover | left_tail_mean_beta | mean_expected_beta | beta_expectation_mae | beta_expectation_rmse | beta_expectation_within_5pct | mean_raw_beta | raw_beta_expected_mae | raw_beta_expected_within_5pct | mean_standard_beta | standard_beta_expected_mae | standard_beta_expected_within_5pct | acceptance_pass | acceptance_reason | tractor_threshold | sidecar_threshold | calm_threshold |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| standard | 2069.0 | 2.1711166917970006 | -0.29865637113121113 | 0.8182868469341912 | 0.00778722464253059 | 0.8148150103157037 | 0.8747220879652006 | 0.14554209832149217 | 0.17855429808003626 | 0.18559690671822135 | 0.9543089262001663 | 0.13663597529862784 | 0.3639439342677622 | 0.8182868469341912 | 0.14554209832149217 | 0.18559690671822135 | True | PASS | 0.2 | 0.15 | 0.05 |
+| standard | 2070.0 | 1.7264840483581891 | -0.2266156434076102 | 0.7217219907430583 | 0.01932676453114833 | 0.6793202762187001 | 0.8747826086956522 | 0.20393837665050754 | 0.23668346747941657 | 0.09371980676328502 | 0.8422122214870955 | 0.15367677526068743 | 0.3120772946859903 | 0.7217219907430583 | 0.20393837665050754 | 0.09371980676328502 | True | PASS | 0.2 | 0.15 | 0.05 |
 
 ## Production Recommendation
 
 - Promote `standard` with thresholds `tractor=0.20`, `sidecar=0.15`, `calm=0.05`.
-- Structural note: the mainline holdout trace now stays above the `0.5x` floor (min `0.5016`, mean `0.8183`, below-floor share `0.00%`).
+- Structural note: the mainline holdout trace now stays above the `0.5x` floor (min `0.5065`, mean `0.7217`, below-floor share `0.00%`).
