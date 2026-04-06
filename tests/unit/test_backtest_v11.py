@@ -343,6 +343,9 @@ def test_run_v11_audit_emits_expectation_and_pacing_alignment_columns(tmp_path, 
     assert "deployment_multiplier" in execution_trace.columns
     assert "expected_deployment_multiplier" in execution_trace.columns
     assert "deployment_pacing_error" in execution_trace.columns
+    assert "price_topology_regime" in execution_trace.columns
+    assert "price_topology_expected_beta" in execution_trace.columns
+    assert "price_topology_confidence" in execution_trace.columns
     assert "deployment_pacing_abs_error_mean" in summary.index
     assert "deployment_pacing_signed_mean" in summary.index
     assert "raw_floor_breach_rate" in summary.index
