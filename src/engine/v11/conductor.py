@@ -741,10 +741,6 @@ class V11Conductor:
 
         # 7. QLD Resonance Detector (v14.5)
         # Extract inputs for triple-resonance
-        vix_cls = _safe_float(latest_raw.get("stress_vix"))
-        vix_3m = _safe_float(latest_raw.get("stress_vix3m"))
-        vix_ratio = vix_cls / vix_3m if (vix_3m and vix_3m > 0) else 1.0
-
         tractor_prob = 0.0
         sidecar_prob = 0.0
         if baseline_result:
@@ -757,8 +753,7 @@ class V11Conductor:
             effective_entropy=norm_h,
             high_entropy_streak=self.high_entropy_streak,
             tractor_prob=tractor_prob,
-            sidecar_prob=sidecar_prob,
-            vix_ratio=vix_ratio
+            sidecar_prob=sidecar_prob
         )
 
         forensic_snapshot_path = self._write_runtime_snapshot(

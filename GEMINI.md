@@ -10,6 +10,7 @@ This repository is governed by a **v13.0 Orthogonal-Core** architecture. AI agen
 - **[Project Structure](./docs/core/v12_structure.md)**: Module roles and directory mapping.
 - **[Expert Spec (Macro)](./docs/versions/v12/V12_ORTHOGONAL_FACTOR_SPEC.md)**: Technical factor specifications for the Mud Tractor.
 - **[Expert Spec (Sidecar)](./docs/versions/v14/V14_SIDE_CAR_SPEC.md)**: Physical rules and thresholds for the QQQ Sidecar.
+- **[Expert Spec (Resonance)](./docs/versions/v14/V14_5_RESONANCE_DETECTOR_SPEC.md)**: Physical rules and tactical thresholds for the QLD Resonance Detector.
 
 ## 2. Implementation & Quality (The "How")
 
