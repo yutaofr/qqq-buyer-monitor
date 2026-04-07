@@ -627,6 +627,9 @@ def run_v11_audit(
                     "forensic_stress_score": float(prior_details.get("stress_score", 0.0) or 0.0),
                     "forensic_mid_cycle_penalty": float(penalties_applied.get("MID_CYCLE", 1.0)),
                     "forensic_bust_penalty": float(penalties_applied.get("BUST", 1.0)),
+                    "resonance_action": str(runtime.get("signal", {}).get("resonance", {}).get("action", "HOLD")),
+                    "resonance_confidence": float(runtime.get("signal", {}).get("resonance", {}).get("confidence", 0.0)),
+                    "resonance_reason": str(runtime.get("signal", {}).get("resonance", {}).get("reason", "No Resonance")),
                 }
             )
             forensic_rows.append(
