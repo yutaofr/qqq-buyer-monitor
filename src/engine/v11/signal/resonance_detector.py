@@ -7,7 +7,7 @@ class ResonanceDetector:
     """
     V14.5 QLD Triple-Resonance Detector Engine.
     Orchestrates tactical signals based on:
-    1. Risk Clearance (Mud Tractor + Sidecar + VIX Term Structure)
+    1. Risk Clearance (Mud Tractor + Sidecar Probability)
     2. Entropy Collapse (Information Precision)
     3. Regime Dominance (Bayesian Mid-Cycle Momentum)
     """
@@ -22,8 +22,7 @@ class ResonanceDetector:
         effective_entropy: float,
         high_entropy_streak: int,
         tractor_prob: float,
-        sidecar_prob: float,
-        vix_ratio: float
+        sidecar_prob: float
     ) -> dict[str, Any]:
         """
         Evaluate the current market state for resonance actions.
@@ -54,8 +53,8 @@ class ResonanceDetector:
             }
 
         # 2. BUY Conditions (Resonance)
-        # Risk Clearance
-        risk_clear = (tractor_prob + sidecar_prob < 0.05) and (vix_ratio < 1.0)
+        # Risk Clearance (Strictly derived from Bayesian engines)
+        risk_clear = (tractor_prob + sidecar_prob < 0.05)
         # Entropy Collapse
         entropy_collapse = (effective_entropy < 0.65) and (high_entropy_streak == 0)
         # Mid-Cycle Dominance

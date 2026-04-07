@@ -16,6 +16,7 @@ BASELINE_SERIES_MAP = {
     "stress_credit": "BAMLH0A0HYM2",
     "stress_vix": "VIXCLS",
     "stress_vxn": "^VXN",
+    "stress_vix3m": "VXVCLS",
     "price_spy": "SPY",
     "price_qqq": "QQQ",
     "real_yield": "DFII10",
@@ -31,6 +32,7 @@ RELEASE_LAG_MAP = {
     "BAMLH0A0HYM2": 1,
     "VIXCLS": 1,
     "^VXN": 1,
+    "VXVCLS": 1,
     "SPY": 1,
     "QQQ": 1,
     "DFII10": 1,
@@ -245,6 +247,7 @@ def load_all_baseline_data(timeout: int = 15) -> pd.DataFrame:
         "growth_margin": "growth_margin",
         "SPY": "spy_close",
         "QQQ": "qqq_close",
+        "VXVCLS": "stress_vix3m",
     }
 
     # 1. IPMAN (Monthly)
@@ -309,6 +312,13 @@ def load_all_baseline_data(timeout: int = 15) -> pd.DataFrame:
         frames.append(vxn[[BASELINE_SERIES_MAP["stress_vxn"]]])
     else:
         metadata["degraded"].append("^VXN")
+
+    # 7.5 VIX3M (Daily)
+    vix3m = fetch_baseline_series(BASELINE_SERIES_MAP["stress_vix3m"], timeout=timeout)
+    if vix3m is not None:
+        frames.append(vix3m[[BASELINE_SERIES_MAP["stress_vix3m"]]])
+    else:
+        metadata["degraded"].append("VXVCLS")
 
     # 8. SPY Close (Daily)
     spy = fetch_baseline_series(BASELINE_SERIES_MAP["price_spy"], timeout=timeout)

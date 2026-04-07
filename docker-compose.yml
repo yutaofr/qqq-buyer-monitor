@@ -67,3 +67,16 @@ services:
     env_file:
       - .env
     command: python scripts/audit_bayesian_regime_lock.py
+
+  v14-audit:
+    image: qqq-monitor:py313
+    build: .
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - .env:/app/.env
+    env_file:
+      - .env
+    command: >
+      sh -c "python scripts/run_v14_panorama_matrix.py && 
+             python scripts/run_worldview_backtest_audit.py"

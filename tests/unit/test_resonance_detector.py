@@ -24,8 +24,7 @@ def test_triple_resonance_triggers_buy_qld(detector):
         effective_entropy=0.60,
         high_entropy_streak=0,
         tractor_prob=0.02,
-        sidecar_prob=0.02,
-        vix_ratio=0.95
+        sidecar_prob=0.02
     )
     
     assert result["action"] == "BUY_QLD"
@@ -45,8 +44,7 @@ def test_single_risk_spike_triggers_sell_qld(detector):
         effective_entropy=0.70,
         high_entropy_streak=0,
         tractor_prob=0.16,
-        sidecar_prob=0.02,
-        vix_ratio=1.05
+        sidecar_prob=0.02
     )
     assert result["action"] == "SELL_QLD"
 
@@ -57,8 +55,7 @@ def test_single_risk_spike_triggers_sell_qld(detector):
         effective_entropy=0.80,
         high_entropy_streak=5,
         tractor_prob=0.02,
-        sidecar_prob=0.02,
-        vix_ratio=0.90
+        sidecar_prob=0.02
     )
     assert result["action"] == "SELL_QLD"
 
@@ -73,7 +70,6 @@ def test_messy_state_triggers_hold(detector):
         effective_entropy=0.70,
         high_entropy_streak=0,
         tractor_prob=0.04,
-        sidecar_prob=0.04,
-        vix_ratio=0.98
+        sidecar_prob=0.04
     )
     assert result["action"] == "HOLD"

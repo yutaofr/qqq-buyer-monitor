@@ -225,6 +225,41 @@ def fetch_core_capex_momentum() -> dict[str, float | str | bool | None]:
         logger.warning("Core capex fetch failed: %s", exc)
 
     return {"delta": None, "source": "unavailable:core_capex", "degraded": True}
+    
+
+def fetch_vix_term_structure_snapshot(timeout: int = 15) -> dict[str, float | str | bool | None]:
+    """Fetch VIX (1m) and VXV (3m) to calculate term structure ratio."""
+    try:
+        vix_frame = fetch_historical_fred_series("VIXCLS", timeout=timeout)
+        vxv_frame = fetch_historical_fred_series("VXVCLS", timeout=timeout)
+        
+        vix = None
+        vxv = None
+        
+        if vix_frame is not None and not vix_frame.empty:
+            vix = float(pd.to_numeric(vix_frame["VIXCLS"], errors="coerce").iloc[-1])
+            
+        if vxv_frame is not None and not vxv_frame.empty:
+            vxv = float(pd.to_numeric(vxv_frame["VXVCLS"], errors="coerce").iloc[-1])
+            
+        if vix is not None and vxv is not None:
+            return {
+                "vix": vix,
+                "vxv": vxv,
+                "ratio": vix / vxv,
+                "source": "direct:fred_vix_vxv",
+                "degraded": False
+            }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("VIX term structure fetch failed: %s", exc)
+
+    return {
+        "vix": None,
+        "vxv": None,
+        "ratio": None,
+        "source": "unavailable:vix_term_structure",
+        "degraded": True
+    }
 
 
 def _load_shiller_sheet(timeout: int = 20) -> pd.DataFrame:
