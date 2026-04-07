@@ -224,8 +224,10 @@ def _build_v12_live_macro_row(
     ndx_concentration: float | None = None,
     ndx_concentration_source: str = "unavailable:ndx_concentration",
     ndx_concentration_quality_score: float | None = None,
-    reference_capital: float,
-    current_nav: float,
+    vix_1m: float | None = None,
+    vix_3m: float | None = None,
+    reference_capital: float = 100000.0,
+    current_nav: float = 100000.0,
 ) -> pd.DataFrame:
     observation_ts = pd.Timestamp(observation_date).normalize()
     effective_ts = pd.Timestamp(effective_date or observation_ts).normalize()
@@ -248,6 +250,8 @@ def _build_v12_live_macro_row(
                 "copper_gold_ratio": float(copper_gold_ratio)
                 if copper_gold_ratio is not None
                 else None,
+                "stress_vix": float(vix_1m) if vix_1m is not None else None,
+                "stress_vix3m": float(vix_3m) if vix_3m is not None else None,
                 "source_copper_gold": str(copper_gold_source),
                 "breakeven_10y": (float(breakeven_pct_points) / 100.0)
                 if breakeven_pct_points is not None
@@ -339,6 +343,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         fetch_shiller_ttm_eps,
         fetch_treasury_realized_vol,
         fetch_usdjpy_snapshot,
+        fetch_vix_term_structure_snapshot,
     )
     from src.collector.macro import fetch_credit_spread_snapshot
     from src.collector.macro_v3 import fetch_net_liquidity_snapshot, fetch_real_yield_snapshot
@@ -499,6 +504,15 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     reference_capital = float(os.environ.get("V11_REFERENCE_CAPITAL", "100000"))
     current_nav = float(os.environ.get("V11_CURRENT_NAV", str(reference_capital)))
 
+    try:
+        vix_snapshot = fetch_vix_term_structure_snapshot()
+        vix_1m = vix_snapshot.get("vix")
+        vix_3m = vix_snapshot.get("vxv")
+    except Exception as exc:
+        logger.warning("VIX term structure fetch failed: %s", exc)
+        vix_1m = None
+        vix_3m = None
+
     raw_row = _build_v12_live_macro_row(
         observation_date=pd.Timestamp(price_data["date"]),
         build_version="v12_live_feedback",
@@ -532,14 +546,20 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         ndx_concentration=ndx_concentration,
         ndx_concentration_source=ndx_concentration_source,
         ndx_concentration_quality_score=ndx_concentration_quality,
+        vix_1m=vix_1m,
+        vix_3m=vix_3m,
         reference_capital=reference_capital,
         current_nav=current_nav,
     )
 
-    runtime = V11Conductor(prior_state_path=prior_file_path).daily_run(raw_row)
-
     # 3. Running Mud Tractor (V_Baseline) Shadow Model
+    # Reordered to provide baseline_result to conductor (v14.5)
     baseline_result = run_baseline_inference(price_history=price_history["Close"])
+
+    # 4. Bayesian Execution (v11)
+    runtime = V11Conductor(prior_state_path=prior_file_path).daily_run(
+        raw_row, baseline_result=baseline_result
+    )
 
     # 4. Shadow Mode Diagnostics (Reference Only)
     # Both Tractor and Sidecar results will be stored in metadata.
