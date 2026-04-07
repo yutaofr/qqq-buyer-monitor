@@ -181,6 +181,11 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                     "qld_pct": result.target_allocation.target_qld_pct,
                     "cash_pct": result.target_allocation.target_cash_pct,
                 },
+                "resonance": metadata.get("signal", {}).get("resonance", {
+                    "action": "HOLD",
+                    "confidence": 0.0,
+                    "reason": "Resonance Engine Initializing"
+                }),
             },
             "evidence": {
                 "logic_trace": result.logic_trace,

@@ -58,6 +58,21 @@
 
         .lang-toggle { cursor: pointer; transition: all 0.3s; }
         .lang-toggle.active { color: var(--emerald); opacity: 1; border-bottom: 2px solid var(--emerald); }
+
+        /* Resonance Pulse Animations */
+        @keyframes resonance-pulse-buy {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        @keyframes resonance-pulse-sell {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .resonance-buy { border: 2px solid var(--emerald) !important; animation: resonance-pulse-buy 2s infinite; background: rgba(16, 185, 129, 0.1) !important; }
+        .resonance-sell { border: 2px solid var(--red) !important; animation: resonance-pulse-sell 1.5s infinite; background: rgba(239, 68, 68, 0.1) !important; }
+        .resonance-hold { border: 1px solid rgba(255, 255, 255, 0.1) !important; }
     </style>
 </head>
 <body id="body" class="min-h-screen flex items-center justify-center p-3 sm:p-4">
@@ -107,6 +122,18 @@
         <div id="panorama-panel" class="factor-card p-6 sm:p-8 rounded-[2.5rem] mb-8 border-2 border-white/5 bg-gradient-to-br from-white/[0.08] to-transparent relative overflow-hidden transition-all duration-1000">
             <div id="panorama-glow" class="absolute -top-24 -right-24 w-48 h-48 rounded-full blur-[80px] opacity-20"></div>
             
+            <!-- NEW: Resonance Banner -->
+            <div id="resonance-radar" class="mb-6 py-2 px-4 rounded-2xl flex items-center justify-between border border-white/5 transition-all duration-500">
+                <div class="flex items-center space-x-3">
+                    <div id="resonance-dot" class="w-3 h-3 rounded-full bg-slate-500"></div>
+                    <span id="ui-resonance-label" class="text-[10px] font-black uppercase text-slate-500 tracking-widest">共振雷達</span>
+                </div>
+                <div class="text-right">
+                    <p id="resonance-action" class="text-xs font-black text-white italic">--</p>
+                    <p id="resonance-reason" class="text-[9px] font-bold text-slate-400">--</p>
+                </div>
+            </div>
+
             <div class="flex flex-col items-center text-center space-y-4 relative z-10">
                 <!-- Verdict Section -->
                 <p id="ui-panorama-label" class="text-[11px] font-black uppercase text-slate-500 tracking-widest">全景診斷裁決</p>
@@ -323,6 +350,7 @@
                 'ui-logic-tree-label': 'Logic Tree', 'ui-logic-trace-label': 'Logic Trace',
                 'ui-execution-overlay-label': 'Execution Overlay', 'ui-feature-values-label': 'Feature Values',
                 'ui-engine-label': 'Engine', 'ui-anchor-label': 'Prior Anchor', 'ui-generated-label': 'Generated (UTC)',
+                'ui-resonance-label': 'Resonance Radar',
                 'ui-step': 'Step',
                 'status': {
                     'CLOUD_SYNCED': 'Synced', 'LOCAL_FALLBACK': 'LocalStorage', 'SYNC_ERROR': 'Sync Error'
@@ -361,6 +389,7 @@
                 'ui-logic-tree-label': '聯動決策樹', 'ui-logic-trace-label': '邏輯下鑽分析',
                 'ui-execution-overlay-label': '執行疊加層', 'ui-feature-values-label': '特徵數值明細',
                 'ui-engine-label': '核心引擎版本', 'ui-anchor-label': '資料血緣回溯', 'ui-generated-label': '更新時間',
+                'ui-resonance-label': '戰術共振雷達',
                 'ui-step': '第',
                 'status': {
                     'CLOUD_SYNCED': '同步成功', 'LOCAL_FALLBACK': '本地備份', 'SYNC_ERROR': '同步出錯'
@@ -621,9 +650,10 @@
             document.getElementById('deploy').className = `text-xl sm:text-2xl font-black ${DEPLOY_COLORS[deployStateKey] || 'text-blue-400'}`;
             document.getElementById('deploy-readiness').textContent = data.signal.deployment_readiness != null ? (currentLang === 'en' ? `Kelly Readiness ${(data.signal.deployment_readiness * 100).toFixed(1)}%` : `凱利就緒度 ${(data.signal.deployment_readiness * 100).toFixed(1)}%`) : '--';
             
-            document.getElementById('calc-at').textContent = data.meta.calculated_at_utc.replace('T',' ').replace('Z','');
-            document.getElementById('hydration-anchor').textContent = data.signal.hydration_anchor || data.meta.hydration_anchor || '2018-01-01';
-            document.getElementById('beta-ceiling').textContent = (data.signal.beta_ceiling || 1.20).toFixed(2) + 'x';
+            const calcAt = data.meta && data.meta.calculated_at_utc ? data.meta.calculated_at_utc.replace('T',' ').replace('Z','') : '--';
+            document.getElementById('calc-at').textContent = calcAt;
+            document.getElementById('hydration-anchor').textContent = (data.signal && data.signal.hydration_anchor) || (data.meta && data.meta.hydration_anchor) || '2018-01-01';
+            document.getElementById('beta-ceiling').textContent = ((data.signal && data.signal.beta_ceiling) || 1.20).toFixed(2) + 'x';
             const rawPreFloorBeta = data.signal.raw_target_beta_pre_floor || data.signal.raw_target_beta || data.signal.target_beta;
             document.getElementById('raw-beta').textContent = rawPreFloorBeta.toFixed(2) + 'x';
             document.getElementById('protected-beta').textContent = (data.signal.protected_beta || data.signal.target_beta).toFixed(2) + 'x';
@@ -636,7 +666,8 @@
             const bar = document.getElementById('exposure-bar'); const beta = data.signal.target_beta;
             bar.style.width = Math.min(100, beta * 83.33) + '%'; bar.className = beta > 1.0 ? 'h-full overclock' : 'h-full bg-emerald-500';
             
-            const bucket = data.signal.execution_bucket || (data.signal.reference_path.qld_pct > 0 ? "QLD" : (data.signal.reference_path.qqq_pct > 0.1 ? "QQQ" : "CASH"));
+            const ref = data.signal.reference_path || {};
+            const bucket = data.signal.execution_bucket || (ref.qld_pct > 0 ? "QLD" : (ref.qqq_pct > 0.1 ? "QQQ" : "CASH"));
             document.querySelectorAll('.tag').forEach(t => {
                 const key = t.getAttribute('data-key');
                 if (key === stableRegimeKey || key === rawRegimeKey || key === bucket || (data.signal.probabilities && data.signal.probabilities[key] > 0.4)) {
@@ -711,6 +742,31 @@
                 
                 document.getElementById('diag-tractor').textContent = (diag.tractor.prob * 100).toFixed(1) + '%';
                 document.getElementById('diag-sidecar').textContent = (diag.sidecar.prob * 100).toFixed(1) + '%';
+            }
+
+            // Resonance Radar Rendering
+            const resonance = data.signal.resonance || { action: 'HOLD', confidence: 0, reason: 'Scanning...' };
+            const radar = document.getElementById('resonance-radar');
+            const rDot = document.getElementById('resonance-dot');
+            const rAction = document.getElementById('resonance-action');
+            const rReason = document.getElementById('resonance-reason');
+
+            rAction.textContent = (resonance.action || 'HOLD');
+            rReason.textContent = (resonance.reason || '--');
+
+            radar.className = 'mb-6 py-3 px-4 rounded-2xl flex items-center justify-between border transition-all duration-1000 ';
+            if (resonance.action === 'BUY') {
+                radar.classList.add('resonance-buy');
+                rDot.className = 'w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.9)]';
+                rAction.className = 'text-base font-black text-emerald-400 tracking-tighter italic';
+            } else if (resonance.action === 'SELL') {
+                radar.classList.add('resonance-sell');
+                rDot.className = 'w-3 h-3 rounded-full bg-red-400 shadow-[0_0_12px_rgba(239,68,68,0.9)]';
+                rAction.className = 'text-base font-black text-red-400 tracking-tighter italic';
+            } else {
+                radar.classList.add('resonance-hold');
+                rDot.className = 'w-3 h-3 rounded-full bg-slate-500';
+                rAction.className = 'text-sm font-black text-slate-300 italic';
             }
         }
 

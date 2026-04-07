@@ -35,6 +35,7 @@ from src.engine.v11.signal.behavioral_guard import BehavioralGuard
 from src.engine.v11.signal.deployment_policy import ProbabilisticDeploymentPolicy
 from src.engine.v11.signal.inertial_beta_mapper import InertialBetaMapper
 from src.engine.v11.signal.regime_stabilizer import RegimeStabilizer
+from src.engine.v11.signal.resonance_detector import ResonanceDetector
 from src.engine.v13.execution_overlay import ExecutionOverlayEngine
 from src.regime_dynamics import compute_probability_dynamics
 from src.regime_topology import (
@@ -214,6 +215,7 @@ class V11Conductor:
             ),
             evidence=float(execution_state.get("deployment_evidence", 0.0) or 0.0),
         )
+        self.resonance_detector = ResonanceDetector()
 
         # Initial Model Training & Seeder Priming (Epic 1)
         if initial_model is not None:
@@ -431,7 +433,7 @@ class V11Conductor:
         """Returns deterministic priors from the persistent knowledge base."""
         return self.prior_book.current_priors()
 
-    def daily_run(self, raw_t0_data: pd.DataFrame) -> dict:
+    def daily_run(self, raw_t0_data: pd.DataFrame, baseline_result: dict | None = None) -> dict:
         """
         Main execution loop for v12.0 probabilistic inference.
         """
@@ -736,6 +738,29 @@ class V11Conductor:
         bucket = execution.target_bucket
 
         quality = float(quality_audit["quality_score"])
+
+        # 7. QLD Resonance Detector (v14.5)
+        # Extract inputs for triple-resonance
+        vix_cls = _safe_float(latest_raw.get("stress_vix"))
+        vix_3m = _safe_float(latest_raw.get("stress_vix3m"))
+        vix_ratio = vix_cls / vix_3m if (vix_3m and vix_3m > 0) else 1.0
+
+        tractor_prob = 0.0
+        sidecar_prob = 0.0
+        if baseline_result:
+            tractor_prob = float(baseline_result.get("tractor", {}).get("prob", 0.0))
+            sidecar_prob = float(baseline_result.get("sidecar", {}).get("prob", 0.0))
+
+        resonance_result = self.resonance_detector.evaluate(
+            posteriors=posteriors,
+            dynamics=probability_dynamics,
+            effective_entropy=norm_h,
+            high_entropy_streak=self.high_entropy_streak,
+            tractor_prob=tractor_prob,
+            sidecar_prob=sidecar_prob,
+            vix_ratio=vix_ratio
+        )
+
         forensic_snapshot_path = self._write_runtime_snapshot(
             raw_t0_data=raw_t0_data,
             latest_vector=latest_vector,
@@ -754,6 +779,9 @@ class V11Conductor:
                 "behavioral_guard_input_beta": round(float(final_beta), 6),
                 "behavioral_guard_output_bucket": bucket,
                 "final_target_beta": round(float(final_beta), 6),
+                "resonance_action": resonance_result["action"],
+                "resonance_confidence": resonance_result["confidence"],
+                "resonance_reason": resonance_result["reason"],
             },
         )
 
@@ -784,6 +812,7 @@ class V11Conductor:
                     "hydration_anchor", "2018-01-01"
                 ),
                 "high_entropy_streak": self.high_entropy_streak,
+                "resonance": resonance_result,
             },
             "priors": runtime_priors,
             "prior_details": prior_details,
