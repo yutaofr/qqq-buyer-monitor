@@ -80,3 +80,25 @@ services:
     command: >
       sh -c "python scripts/run_v14_panorama_matrix.py && 
              python scripts/run_worldview_backtest_audit.py"
+
+  forensic:
+    image: qqq-monitor:py313
+    build: .
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - .env:/app/.env
+    env_file:
+      - .env
+    command: python tests/forensic/test_pit_leakage.py
+
+  ortho-audit:
+    image: qqq-monitor:py313
+    build: .
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - .env:/app/.env
+    env_file:
+      - .env
+    command: python scripts/forensic_ortho_audit.py
