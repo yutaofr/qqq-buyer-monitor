@@ -1,13 +1,14 @@
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 import os
+
+import matplotlib.pyplot as plt
+import pandas as pd
+
 
 def generate_report():
     trace_path = "artifacts/v14_panorama/mainline/full_audit.csv"
     start_date = "2025-05-01"
     end_date = "2026-04-07"
-    
+
     if not os.path.exists(trace_path):
          print(f"Error: {trace_path} does not exist.")
          return
@@ -17,11 +18,11 @@ def generate_report():
     if df.empty:
         print("No data in the specified range.")
         return
-    
+
     # Merge baseline trace if Tractor/Sidecar absent
     tractor_prob_col = 'tractor_prob'
     sidecar_prob_col = 'sidecar_prob'
-    
+
     if tractor_prob_col not in df.columns:
         if os.path.exists("artifacts/v14_panorama/baseline_oos_trace.csv"):
             baseline = pd.read_csv("artifacts/v14_panorama/baseline_oos_trace.csv")
@@ -37,7 +38,7 @@ def generate_report():
     # 1. Regime Probabilities Distribution over Time Check
     regimes = ["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"]
     deadlocks = []
-    
+
     # Deadlock = Std dev < 0.001
     for regime in regimes:
         std_val = df[f"prob_{regime}"].std()
@@ -47,11 +48,11 @@ def generate_report():
     entropy_std = df["entropy"].std()
     if entropy_std < 0.001:
         deadlocks.append(f"**系统熵** (死锁检测: 标准差 {entropy_std:.6f})")
-        
+
     tractor_std = df[tractor_prob_col].std()
     if tractor_std < 0.001:
         deadlocks.append(f"**拖拉机概率** (死锁检测: 标准差 {tractor_std:.6f})")
-        
+
     sidecar_std = df[sidecar_prob_col].std()
     if sidecar_std < 0.001:
         deadlocks.append(f"**QQQ挂车概率** (死锁检测: 标准差 {sidecar_std:.6f})")
@@ -59,7 +60,7 @@ def generate_report():
     # Plot creation
     os.makedirs("artifacts/analysis", exist_ok=True)
     fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(14, 20), sharex=True)
-    
+
     ax1.plot(df["date"], df["prob_MID_CYCLE"], label="MID_CYCLE (Blue)", color="blue")
     ax1.plot(df["date"], df["prob_LATE_CYCLE"], label="LATE_CYCLE (Yellow)", color="y")
     ax1.plot(df["date"], df["prob_BUST"], label="BUST (Red)", color="red")
@@ -67,32 +68,32 @@ def generate_report():
     ax1.set_title("1. Regime Probabilities Distribution over Time")
     ax1.legend()
     ax1.grid(True)
-    
+
     ax2.plot(df["date"], df["entropy"], label="System Entropy", color="purple")
     ax2.set_title("2. System Entropy Evolution")
     ax2.legend()
     ax2.grid(True)
-    
+
     ax3.plot(df["date"], df[tractor_prob_col], label="Tractor Left-Tail Risk Prob", color="orange")
     ax3.plot(df["date"], df[sidecar_prob_col], label="QQQ Sidecar Risk Prob", color="cyan")
     ax3.set_title("3. Left-Tail Risk Probabilities (Tractor & Sidecar)")
     ax3.legend()
     ax3.grid(True)
-    
+
     ax4.plot(df["date"], df["close"], label="QQQ Close Price", color="black")
     ax4.set_title("4. QQQ Market Price Trend")
     ax4.legend()
     ax4.grid(True)
-    
+
     plt.tight_layout()
     plt.savefig("artifacts/analysis/panorama_analysis_plot.png")
-    
+
     # Calculate some summary stats for the markdown
     max_drawdown = (df["close"] / df["close"].cummax() - 1.0).min()
     qqq_return = df["close"].iloc[-1] / df["close"].iloc[0] - 1.0
-    
+
     # Prepare markdown report
-    report = f"""# 系统全景回测日志分析报告 (2025.05 - 2026.04.07)
+    report = """# 系统全景回测日志分析报告 (2025.05 - 2026.04.07)
 
 > **任务背景**
 > 分析系统全景回测，特别关注预热窗口后的 OOS 数据，重点审核周期四阶段分布、系统熵、拖拉机和挂车的左尾概率，重点排查是否存在系统死锁。

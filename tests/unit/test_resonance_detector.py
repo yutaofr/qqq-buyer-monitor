@@ -1,5 +1,7 @@
 import pytest
+
 from src.engine.v11.signal.resonance_detector import ResonanceDetector
+
 
 @pytest.fixture
 def detector():
@@ -17,7 +19,7 @@ def test_triple_resonance_triggers_buy_qld(detector):
         "MID_CYCLE": {"delta_1d": 0.02, "acceleration_1d": 0.01},
         "LATE_CYCLE": {"delta_1d": -0.01, "acceleration_1d": -0.01}
     }
-    
+
     result = detector.evaluate(
         posteriors=posteriors,
         dynamics=dynamics,
@@ -26,7 +28,7 @@ def test_triple_resonance_triggers_buy_qld(detector):
         tractor_prob=0.02,
         sidecar_prob=0.02
     )
-    
+
     assert result["action"] == "BUY_QLD"
     assert result["confidence"] > 0.70
 
