@@ -2,45 +2,45 @@
 
 ## Summary
 
-- Audit Window: `2011-01-03` to `2026-03-26`
-- Rows: `3830`
-- Stable Regime vs Worldview Benchmark: `37.44%`
-- Target Beta vs Worldview Benchmark MAE: `0.1060`
-- Left-Tail Event Coverage: `72.19%`
-- Transition-Window Regime Match: `42.49%`
+- Audit Window: `2011-01-03` to `2026-03-27`
+- Rows: `3831`
+- Stable Regime vs Worldview Benchmark: `69.30%`
+- Target Beta vs Worldview Benchmark MAE: `0.1244`
+- Left-Tail Event Coverage: `52.41%`
+- Transition-Window Regime Match: `51.63%`
 
 ## Probability Alignment
 
 | regime | probability_mae | probability_correlation | delta_sign_alignment | model_mean_probability | benchmark_mean_probability |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| MID_CYCLE | 0.4773 | 0.2409 | 0.5084 | 0.6775 | 0.2251 |
-| LATE_CYCLE | 0.2689 | 0.0886 | 0.5042 | 0.128 | 0.3701 |
-| BUST | 0.1511 | 0.3288 | 0.5389 | 0.1249 | 0.1969 |
-| RECOVERY | 0.1625 | 0.1252 | 0.518 | 0.0696 | 0.2079 |
+| MID_CYCLE | 0.2351 | 0.6536 | 0.5944 | 0.3673 | 0.2251 |
+| LATE_CYCLE | 0.204 | 0.6645 | 0.65 | 0.3673 | 0.3701 |
+| BUST | 0.1063 | 0.9028 | 0.6434 | 0.1868 | 0.1969 |
+| RECOVERY | 0.163 | 0.2766 | 0.5904 | 0.0786 | 0.2078 |
 
 ## Beta Alignment By Worldview Regime
 
 | benchmark_regime | rows | mean_target_beta | mean_benchmark_beta | beta_mae |
 | :--- | :--- | :--- | :--- | :--- |
-| BUST | 608 | 0.7628 | 0.694 | 0.1246 |
-| LATE_CYCLE | 1563 | 0.7651 | 0.8143 | 0.0973 |
-| MID_CYCLE | 1344 | 0.8113 | 0.8966 | 0.101 |
-| RECOVERY | 315 | 0.7494 | 0.8671 | 0.1347 |
+| BUST | 609 | 0.6025 | 0.6941 | 0.1024 |
+| LATE_CYCLE | 1563 | 0.694 | 0.8143 | 0.1266 |
+| MID_CYCLE | 1344 | 0.7926 | 0.8966 | 0.1218 |
+| RECOVERY | 315 | 0.7119 | 0.8671 | 0.1672 |
 
 ## Crisis Windows
 
 | window | rows | stable_vs_benchmark_regime | beta_mae | tractor_prob_mean | sidecar_prob_mean | left_tail_cover |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| 2018Q4 | 63 | 0.3492 | 0.1354 | 0.1884 | 0.1317 | 0.0556 |
-| 2020COVID | 52 | 0.2885 | 0.1626 | 0.8375 | 0.6822 | 1.0 |
-| 2022H1 | 124 | 0.1048 | 0.121 | 0.1152 | 0.282 | 0.7632 |
+| 2018Q4 | 63 | 0.7937 | 0.106 | 0.2219 | 0.0952 | 0.3333 |
+| 2020COVID | 52 | 0.7308 | 0.1405 | 0.7486 | 0.6936 | 1.0 |
+| 2022H1 | 124 | 0.9355 | 0.0814 | 0.1232 | 0.1159 | 0.0 |
 
 ## Left-Tail Audit
 
 - Event Rows: `187`
-- Tractor Hit Share: `32.09%`
-- Sidecar Hit Share: `72.19%`
-- Combined Coverage: `72.19%`
+- Tractor Hit Share: `41.71%`
+- Sidecar Hit Share: `48.66%`
+- Combined Coverage: `52.41%`
 
 ## Interpretation
 
