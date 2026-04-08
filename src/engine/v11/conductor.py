@@ -674,6 +674,7 @@ class V11Conductor:
             entropy=norm_h,
             release_hint={
                 "topology_regime": topology_state.regime,
+                "topology_confidence": topology_state.confidence,
                 "recovery_impulse": topology_state.recovery_impulse,
                 "damage_memory": topology_state.damage_memory,
                 "bust_pressure": topology_state.bust_pressure,

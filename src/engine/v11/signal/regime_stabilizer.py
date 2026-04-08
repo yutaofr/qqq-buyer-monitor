@@ -115,6 +115,8 @@ class RegimeStabilizer:
         bearish_divergence = float(release_hint.get("bearish_divergence", 0.0) or 0.0)
         transition_intensity = float(release_hint.get("transition_intensity", 0.0) or 0.0)
         repair_persistence = float(release_hint.get("repair_persistence", 0.0) or 0.0)
+        topology_confidence = float(release_hint.get("topology_confidence", 0.0) or 0.0)
+        recovery_edge = max(0.0, recovery_prob - current_prob)
 
         release_score = (
             0.24 * recovery_impulse
@@ -122,14 +124,28 @@ class RegimeStabilizer:
             + 0.18 * transition_intensity
             + 0.32 * recovery_prob
             + 0.18 * repair_persistence
+            + 0.18 * topology_confidence
+            + 0.12 * recovery_edge
             - 0.22 * bust_pressure
             - 0.12 * bearish_divergence
         )
         if release_score < 0.32:
             return None
 
-        bonus = max(0.0, release_score - 0.30)
-        entropy_scale = max(0.30, 0.60 - (0.30 * min(1.0, max(0.0, entropy))))
+        confirmed_release = (
+            recovery_prob > current_prob
+            and topology_confidence >= 0.25
+            and repair_persistence >= 0.30
+        )
+        bonus = max(0.0, release_score - 0.30) + (
+            0.10 * topology_confidence if confirmed_release else 0.0
+        )
+        entropy_scale = 0.60 - (0.30 * min(1.0, max(0.0, entropy)))
+        entropy_scale -= 0.18 * topology_confidence
+        entropy_scale -= 0.16 * repair_persistence
+        if confirmed_release:
+            entropy_scale -= 0.08 * recovery_edge
+        entropy_scale = max(0.18, entropy_scale)
         return {
             "candidate_regime": "RECOVERY",
             "barrier_scale": entropy_scale,

@@ -151,3 +151,32 @@ def test_regime_stabilizer_preserves_release_evidence_through_bust_retests():
     assert third["raw_regime"] == "BUST"
     assert third["stable_regime"] == "RECOVERY"
     assert third["switched"] is True
+
+
+def test_regime_stabilizer_releases_when_recovery_is_fully_confirmed_but_barrier_is_still_high():
+    stabilizer = RegimeStabilizer(initial_regime="BUST")
+    release_hint = {
+        "topology_regime": "RECOVERY",
+        "topology_confidence": 0.42,
+        "recovery_impulse": 0.35,
+        "damage_memory": 0.82,
+        "bust_pressure": 0.12,
+        "bearish_divergence": 0.0,
+        "transition_intensity": 0.31,
+        "repair_persistence": 0.45,
+    }
+
+    result = stabilizer.update(
+        posteriors={
+            "MID_CYCLE": 0.07,
+            "LATE_CYCLE": 0.26,
+            "BUST": 0.28,
+            "RECOVERY": 0.39,
+        },
+        entropy=0.89,
+        release_hint=release_hint,
+    )
+
+    assert result["raw_regime"] == "RECOVERY"
+    assert result["stable_regime"] == "RECOVERY"
+    assert result["switched"] is True
