@@ -40,27 +40,27 @@ Each failure row is classified into one root cause bucket:
 
 Window: `2023-01-01` to `2023-06-30`
 
-- failure rows: `24`
-- raw recovery share: `45.83%`
-- mean barrier gap: `0.3657`
+- failure rows: `18`
+- raw recovery share: `38.89%`
+- mean barrier gap: `0.4417`
 
 Root causes:
 
-- `posterior_trapped_in_bust`: `7`
-- `recovery_acceleration_fade`: `7`
-- `stabilizer_barrier_hold`: `5`
+- `posterior_trapped_in_bust`: `6`
+- `recovery_acceleration_fade`: `4`
+- `stabilizer_barrier_hold`: `3`
 - `topology_not_confirmed`: `5`
 
 Interpretation:
 
-1. The release-timing fix worked:
-   - `stabilizer_barrier_hold` dropped from `11` to `5`
-   - total failure rows dropped from `34` to `24`
-2. The remaining blockers are now balanced:
-   - `posterior_trapped_in_bust = 7`
-   - `recovery_acceleration_fade = 7`
-   - `topology_not_confirmed = 5`
-3. The lower `raw recovery share` is not a regression in this context. It means more rows that previously had `raw_regime = RECOVERY` are no longer stuck in failure at all.
+1. The latest posterior-path tightening worked:
+   - total failure rows dropped from `24` to `18`
+   - `stabilizer_barrier_hold` dropped from `5` to `3`
+   - `recovery_acceleration_fade` dropped from `7` to `4`
+2. The worst `posterior_trapped_in_bust` tail also improved:
+   - `posterior_trapped_in_bust = 6`
+   - `2023-03-15` is no longer trapped in `BUST`; it now advances to `raw_regime = RECOVERY`
+3. The lower `raw recovery share` is still not a regression in this context. It means more failure rows were removed entirely rather than merely being re-labeled inside the failure set.
 
 ## Rejected Variant
 
@@ -83,13 +83,13 @@ The next justified optimization target has changed again.
 
 `stabilizer_barrier_hold` is no longer the first problem to solve.
 
-It is now these two:
+The next justified target has shifted again:
 
-1. `posterior_trapped_in_bust`
+1. `topology_not_confirmed`
+   - these are now the single largest unchanged bucket
+   - many of them are early-February low-confidence dates where the benchmark is already in `RECOVERY` but topology confidence is still near zero
+
+2. residual `posterior_trapped_in_bust`
    - finish the remaining low-confidence entrapment cases without broadening the uplift too much
 
-2. `recovery_acceleration_fade`
-   - preserve repair continuity through mild second-derivative pullbacks
-   - without reintroducing the old `BUST` entrapment problem
-
-Operationally, the next round should start from the updated forensic buckets above, not from another large release-timing rewrite.
+Operationally, the next round should start from topology-confidence construction, not from another broad stabilizer rewrite.

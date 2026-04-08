@@ -175,13 +175,21 @@ def align_posteriors_with_recovery_process(
     current_late = float(normalized.get("LATE_CYCLE", 0.0))
     benchmark_late = float(topology.probabilities.get("LATE_CYCLE", 0.0))
     repair_persistence = _topology_repair_persistence(topology)
-    if weight <= 0.0 or benchmark_recovery <= current_recovery + 1e-9:
+    if weight <= 0.0:
         return normalized
 
-    desired_uplift = benchmark_recovery - current_recovery
     bust_overhang = max(0.0, current_bust - benchmark_bust)
     late_overhang = max(0.0, current_late - benchmark_late)
     pair_dislocation = bust_overhang + (0.60 * late_overhang)
+    release_credit = _recovery_release_credit(
+        topology=topology,
+        bust_overhang=bust_overhang,
+        late_overhang=late_overhang,
+    )
+    desired_uplift = max(0.0, benchmark_recovery - current_recovery) + release_credit
+    if desired_uplift <= 0.0:
+        return normalized
+
     adaptive_max_shift = max_shift + (0.06 * repair_persistence) + (0.10 * bust_overhang)
     release_scale = 1.0 + (0.45 * repair_persistence)
     uplift_capacity = max(adaptive_max_shift * weight, pair_dislocation * weight * release_scale)
@@ -310,6 +318,33 @@ def _topology_repair_persistence(topology: PriceTopologyState) -> float:
         recovery_prob_delta=float(topology.recovery_prob_delta),
         recovery_prob_acceleration=float(topology.recovery_prob_acceleration),
     )
+
+
+def _recovery_release_credit(
+    *,
+    topology: PriceTopologyState,
+    bust_overhang: float,
+    late_overhang: float,
+) -> float:
+    dislocation = max(0.0, bust_overhang + (0.40 * late_overhang))
+    if dislocation <= 0.0:
+        return 0.0
+
+    repair_persistence = _topology_repair_persistence(topology)
+    confidence = float(np.clip(topology.confidence, 0.0, 1.0))
+    if repair_persistence < 0.25 or confidence < 0.15:
+        return 0.0
+
+    acceleration = float(topology.recovery_prob_acceleration)
+    delta = float(topology.recovery_prob_delta)
+    fade_tolerance = float(np.clip((0.03 + acceleration) / 0.03, 0.0, 1.0))
+    delta_tolerance = float(np.clip((0.02 + delta) / 0.03, 0.0, 1.0))
+    release_support = max(fade_tolerance, delta_tolerance)
+    if release_support <= 0.0:
+        return 0.0
+
+    scale = (0.35 + (0.65 * repair_persistence)) * (0.35 + (0.65 * confidence))
+    return dislocation * scale * (0.82 + (0.35 * release_support))
 
 
 def _repair_persistence_score(
