@@ -182,6 +182,89 @@ def test_price_topology_dampens_when_transition_band_is_wide(monkeypatch):
     assert high_transition.beta_anchor_weight < low_transition.beta_anchor_weight
 
 
+def test_price_topology_preserves_recovery_confidence_during_repair_confirmed_transition(monkeypatch):
+    dates = pd.bdate_range("2024-01-01", periods=5)
+    frame = pd.DataFrame(
+        {
+            "observation_date": dates,
+            "qqq_close": np.linspace(100.0, 110.0, len(dates)),
+            "qqq_volume": np.linspace(1_000_000.0, 1_100_000.0, len(dates)),
+        }
+    )
+
+    benchmark = pd.DataFrame(
+        {
+            "benchmark_regime": ["RECOVERY"],
+            "benchmark_expected_beta": [0.78],
+            "benchmark_transition_intensity": [0.95],
+            "benchmark_prob_MID_CYCLE": [0.03],
+            "benchmark_prob_LATE_CYCLE": [0.09],
+            "benchmark_prob_BUST": [0.42],
+            "benchmark_prob_RECOVERY": [0.46],
+            "benchmark_recovery_impulse": [0.38],
+            "benchmark_recent_damage": [0.82],
+            "benchmark_bust_pressure": [0.28],
+            "benchmark_bullish_rsi_divergence": [0.0],
+            "benchmark_bearish_rsi_divergence": [0.0],
+            "benchmark_prob_delta_RECOVERY": [-0.01],
+            "benchmark_prob_acceleration_RECOVERY": [0.01],
+        },
+        index=[dates[-1]],
+    )
+
+    monkeypatch.setattr(
+        "src.engine.v11.core.price_topology.build_worldview_benchmark",
+        lambda _: benchmark,
+    )
+    topology = infer_price_topology_state(frame)
+
+    assert topology.regime == "RECOVERY"
+    assert topology.repair_persistence > 0.30
+    assert topology.confidence >= 0.12
+    assert topology.posterior_blend_weight >= 0.015
+
+
+def test_price_topology_promotes_recovery_when_bust_lead_is_only_transition_noise(monkeypatch):
+    dates = pd.bdate_range("2024-01-01", periods=5)
+    frame = pd.DataFrame(
+        {
+            "observation_date": dates,
+            "qqq_close": np.linspace(100.0, 110.0, len(dates)),
+            "qqq_volume": np.linspace(1_000_000.0, 1_100_000.0, len(dates)),
+        }
+    )
+
+    benchmark = pd.DataFrame(
+        {
+            "benchmark_regime": ["BUST"],
+            "benchmark_expected_beta": [0.76],
+            "benchmark_transition_intensity": [0.95],
+            "benchmark_prob_MID_CYCLE": [0.03],
+            "benchmark_prob_LATE_CYCLE": [0.06],
+            "benchmark_prob_BUST": [0.46],
+            "benchmark_prob_RECOVERY": [0.45],
+            "benchmark_recovery_impulse": [0.39],
+            "benchmark_recent_damage": [0.82],
+            "benchmark_bust_pressure": [0.28],
+            "benchmark_bullish_rsi_divergence": [0.0],
+            "benchmark_bearish_rsi_divergence": [0.0],
+            "benchmark_prob_delta_RECOVERY": [-0.01],
+            "benchmark_prob_acceleration_RECOVERY": [0.01],
+        },
+        index=[dates[-1]],
+    )
+
+    monkeypatch.setattr(
+        "src.engine.v11.core.price_topology.build_worldview_benchmark",
+        lambda _: benchmark,
+    )
+    topology = infer_price_topology_state(frame)
+
+    assert topology.repair_persistence > 0.30
+    assert topology.regime == "RECOVERY"
+    assert topology.probabilities["RECOVERY"] > topology.probabilities["BUST"]
+
+
 def test_recovery_process_alignment_moves_posterior_toward_confirmed_repair():
     topology = PriceTopologyState(
         regime="RECOVERY",
