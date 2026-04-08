@@ -79,3 +79,43 @@ Interpretation:
 - The most meaningful divergence versus the production trace is earlier recovery release, not a breach of the `0.5` floor.
 - This qualifies the work for formal production-upgrade review, but does not by itself justify mutating the live execution path without that review.
 - The accepted candidate is now exported into the production `status.json` diagnostics surface as `diagnostics.recovery_hmm_shadow` for parallel runtime audit.
+
+## 2026-04-08 Eight-Year Review
+
+An extended review window was generated to mirror the existing 8-year four-panel regime study and test whether the shadow line should actually replace the live regime path.
+
+- Review window:
+  - train cutoff: `2017-12-31`
+  - evaluation: `2018-01-01` to `2026-04-02`
+- Artifacts:
+  - `artifacts/recovery_hmm_shadow/review_8yr/recovery_hmm_8yr_four_panel.png`
+  - `artifacts/recovery_hmm_shadow/review_8yr/review.md`
+  - `artifacts/recovery_hmm_shadow/review_8yr/review_summary.json`
+- Result:
+  - `decision = DO_NOT_LIVE_INTEGRATE_YET`
+
+Performance snapshot:
+
+- Shadow:
+  - `total_return = 1.7031`
+  - `cagr = 0.1357`
+  - `max_drawdown = -0.2462`
+  - `sharpe = 0.8568`
+- Production beta replay:
+  - `total_return = 1.7613`
+  - `cagr = 0.1388`
+  - `max_drawdown = -0.2372`
+  - `sharpe = 0.8619`
+- `2022 Q1` weight min/avg/max:
+  - `0.5000 / 0.7060 / 1.0000`
+- `2023 Q1` weight min/avg/max:
+  - `0.5000 / 0.5874 / 1.0000`
+
+Interpretation:
+
+- The shadow line passes the narrow `2022-2024` feasibility gate, but fails the broader 8-year promotion gate.
+- Relative to the current production beta replay, the shadow line is still too slow to compress risk in `2022 Q1` and too reluctant to re-risk in `2023 Q1`.
+- The shadow line also underperforms the current production replay on both total return and Sharpe over the full review horizon.
+- Therefore the correct status is:
+  - keep `recovery_hmm_shadow` in diagnostics and research artifacts
+  - do not wire it into live execution yet
