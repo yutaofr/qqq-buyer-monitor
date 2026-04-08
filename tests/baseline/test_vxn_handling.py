@@ -137,7 +137,7 @@ def test_run_baseline_inference_tolerates_existing_qqq_close_column(monkeypatch)
     )
     monkeypatch.setattr(
         "src.engine.baseline.execution.predict_baseline_crisis_prob",
-        lambda model, frame: pd.Series([0.2], index=frame.index),
+        lambda model, frame: pd.Series([0.2] * len(frame), index=frame.index),
     )
     monkeypatch.setattr(
         "yfinance.download",
