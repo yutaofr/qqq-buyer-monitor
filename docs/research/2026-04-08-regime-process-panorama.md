@@ -163,3 +163,7 @@ Interpretation:
   - lingering bearish divergence
   - insufficient topology confidence
   - or residual posterior mass still trapped in `BUST`
+
+Detailed follow-up findings now live in:
+
+- `docs/research/2026-04-08-stabilizer-release-forensics.md`
