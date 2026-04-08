@@ -40,27 +40,27 @@ Each failure row is classified into one root cause bucket:
 
 Window: `2023-01-01` to `2023-06-30`
 
-- failure rows: `18`
-- raw recovery share: `38.89%`
-- mean barrier gap: `0.4417`
+- failure rows: `17`
+- raw recovery share: `41.18%`
+- mean barrier gap: `0.3401`
 
 Root causes:
 
-- `posterior_trapped_in_bust`: `6`
+- `posterior_trapped_in_bust`: `8`
 - `recovery_acceleration_fade`: `4`
 - `stabilizer_barrier_hold`: `3`
-- `topology_not_confirmed`: `5`
+- `topology_not_confirmed`: `2`
 
 Interpretation:
 
-1. The latest posterior-path tightening worked:
-   - total failure rows dropped from `24` to `18`
-   - `stabilizer_barrier_hold` dropped from `5` to `3`
-   - `recovery_acceleration_fade` dropped from `7` to `4`
-2. The worst `posterior_trapped_in_bust` tail also improved:
-   - `posterior_trapped_in_bust = 6`
-   - `2023-03-15` is no longer trapped in `BUST`; it now advances to `raw_regime = RECOVERY`
-3. The lower `raw recovery share` is still not a regression in this context. It means more failure rows were removed entirely rather than merely being re-labeled inside the failure set.
+1. The new topology tie-break worked in the exact area it targeted:
+   - `topology_not_confirmed` dropped from `5` to `2`
+   - total failure rows dropped from `18` to `17`
+2. The residual problem shifted categories rather than disappearing:
+   - `posterior_trapped_in_bust` increased from `6` to `8`
+   - this is an improvement in diagnosability, not a free win
+   - several dates that were previously failing because topology stayed in `BUST/LATE_CYCLE` are now explicitly recognized as repair windows, but the posterior path still fails to release enough mass
+3. The higher `raw recovery share` is directionally good here. More remaining failures now at least have `raw_regime = RECOVERY` before stabilizer or posterior friction blocks full release.
 
 ## Rejected Variant
 
@@ -85,11 +85,11 @@ The next justified optimization target has changed again.
 
 The next justified target has shifted again:
 
-1. `topology_not_confirmed`
-   - these are now the single largest unchanged bucket
-   - many of them are early-February low-confidence dates where the benchmark is already in `RECOVERY` but topology confidence is still near zero
+1. residual `posterior_trapped_in_bust`
+   - this is now the clear first blocker
+   - especially the early-February cluster where topology now recognizes repair but posterior mass remains stuck in `BUST`
 
-2. residual `posterior_trapped_in_bust`
-   - finish the remaining low-confidence entrapment cases without broadening the uplift too much
+2. residual `topology_not_confirmed`
+   - now only two dates remain: `2023-02-10` and `2023-04-14`
 
-Operationally, the next round should start from topology-confidence construction, not from another broad stabilizer rewrite.
+Operationally, the next round should move back to posterior release capacity, not another broad stabilizer rewrite.

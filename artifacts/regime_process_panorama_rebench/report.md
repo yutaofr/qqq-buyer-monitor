@@ -3,19 +3,19 @@
 ## mainline
 
 - Rows: `2070`
-- Stable vs benchmark regime: `72.66%`
-- Probability within 1-delta share: `51.11%`
-- Delta within 1-delta share: `73.21%`
-- Acceleration within 1-delta share: `57.22%`
+- Stable vs benchmark regime: `72.71%`
+- Probability within 1-delta share: `51.15%`
+- Delta within 1-delta share: `73.30%`
+- Acceleration within 1-delta share: `57.25%`
 - Transition rows: `516`
-- Transition probability within 1-delta share: `74.13%`
+- Transition probability within 1-delta share: `74.18%`
 
 | window | rows | stable_vs_benchmark_regime | probability_within_band_share | delta_within_band_share | acceleration_within_band_share | transition_intensity_mean |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | 2018_Q4 | 103 | 0.7379 | 0.5534 | 0.6796 | 0.5049 | 0.2472 |
-| 2020_COVID | 63 | 0.6667 | 0.5198 | 0.6548 | 0.4683 | 0.202 |
+| 2020_COVID | 63 | 0.6667 | 0.5198 | 0.6548 | 0.4722 | 0.202 |
 | 2022_TIGHTENING | 146 | 0.9315 | 0.5753 | 0.7568 | 0.5908 | 0.1931 |
-| 2023_RECOVERY | 113 | 0.7965 | 0.6681 | 0.6416 | 0.4314 | 0.3163 |
+| 2023_RECOVERY | 113 | 0.8053 | 0.6726 | 0.6504 | 0.427 | 0.3163 |
 | 2024_PULLBACK | 98 | 0.6633 | 0.5536 | 0.75 | 0.6173 | 0.2808 |
 
 ## shadow

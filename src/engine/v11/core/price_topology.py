@@ -70,14 +70,7 @@ def infer_price_topology_state(
         include_zeros=True,
         normalize=True,
     )
-    ordered = sorted(probabilities.values(), reverse=True)
-    margin = float(ordered[0] - ordered[1]) if len(ordered) >= 2 else 0.0
     transition_intensity = float(np.clip(latest.get("benchmark_transition_intensity", 0.0), 0.0, 1.0))
-    confidence = float(
-        np.clip((margin / max(1e-6, confidence_margin)) * (1.0 - (0.55 * transition_intensity)), 0.0, 1.0)
-    )
-    edge_multiplier = 1.0 + confidence if str(latest["benchmark_regime"]) in {"BUST", "RECOVERY"} else 1.0
-    transition_dampener = 1.0 - (0.35 * transition_intensity)
     recovery_impulse = float(np.clip(latest.get("benchmark_recovery_impulse", 0.0), 0.0, 1.5))
     damage_memory = float(np.clip(latest.get("benchmark_recent_damage", 0.0), 0.0, 1.5))
     bust_pressure = float(np.clip(latest.get("benchmark_bust_pressure", 0.0), 0.0, 1.5))
@@ -89,8 +82,44 @@ def infer_price_topology_state(
     )
     recovery_prob_delta = float(latest.get("benchmark_prob_delta_RECOVERY", 0.0))
     recovery_prob_acceleration = float(latest.get("benchmark_prob_acceleration_RECOVERY", 0.0))
-    return PriceTopologyState(
+    repair_persistence = _repair_persistence_score(
+        recovery_impulse=recovery_impulse,
+        damage_memory=damage_memory,
+        bust_pressure=bust_pressure,
+        bullish_divergence=bullish_divergence,
+        bearish_divergence=bearish_divergence,
+        recovery_prob_delta=recovery_prob_delta,
+        recovery_prob_acceleration=recovery_prob_acceleration,
+    )
+    regime, probabilities = _promote_recovery_transition_regime(
         regime=str(latest["benchmark_regime"]),
+        probabilities=probabilities,
+        transition_intensity=transition_intensity,
+        repair_persistence=repair_persistence,
+        damage_memory=damage_memory,
+        bust_pressure=bust_pressure,
+    )
+    ordered = sorted(probabilities.values(), reverse=True)
+    margin = float(ordered[0] - ordered[1]) if len(ordered) >= 2 else 0.0
+    confidence = float(
+        np.clip((margin / max(1e-6, confidence_margin)) * (1.0 - (0.55 * transition_intensity)), 0.0, 1.0)
+    )
+    edge_multiplier = 1.0 + confidence if regime in {"BUST", "RECOVERY"} else 1.0
+    transition_dampener = 1.0 - (0.35 * transition_intensity)
+    confidence = max(
+        confidence,
+        _repair_confirmed_confidence_floor(
+            regime=regime,
+            benchmark_recovery=float(probabilities.get("RECOVERY", 0.0)),
+            benchmark_bust=float(probabilities.get("BUST", 0.0)),
+            transition_intensity=transition_intensity,
+            repair_persistence=repair_persistence,
+            damage_memory=damage_memory,
+            bust_pressure=bust_pressure,
+        ),
+    )
+    return PriceTopologyState(
+        regime=regime,
         probabilities=probabilities,
         expected_beta=float(latest["benchmark_expected_beta"]),
         confidence=confidence,
@@ -116,15 +145,7 @@ def infer_price_topology_state(
         bearish_divergence=bearish_divergence,
         recovery_prob_delta=recovery_prob_delta,
         recovery_prob_acceleration=recovery_prob_acceleration,
-        repair_persistence=_repair_persistence_score(
-            recovery_impulse=recovery_impulse,
-            damage_memory=damage_memory,
-            bust_pressure=bust_pressure,
-            bullish_divergence=bullish_divergence,
-            bearish_divergence=bearish_divergence,
-            recovery_prob_delta=recovery_prob_delta,
-            recovery_prob_acceleration=recovery_prob_acceleration,
-        ),
+        repair_persistence=repair_persistence,
     )
 
 
@@ -318,6 +339,67 @@ def _topology_repair_persistence(topology: PriceTopologyState) -> float:
         recovery_prob_delta=float(topology.recovery_prob_delta),
         recovery_prob_acceleration=float(topology.recovery_prob_acceleration),
     )
+
+
+def _promote_recovery_transition_regime(
+    *,
+    regime: str,
+    probabilities: dict[str, float],
+    transition_intensity: float,
+    repair_persistence: float,
+    damage_memory: float,
+    bust_pressure: float,
+) -> tuple[str, dict[str, float]]:
+    if regime not in {"BUST", "LATE_CYCLE"}:
+        return regime, probabilities
+    if transition_intensity < 0.75 or repair_persistence < 0.32 or damage_memory < 0.45:
+        return regime, probabilities
+
+    recovery = float(probabilities.get("RECOVERY", 0.0))
+    current = float(probabilities.get(regime, 0.0))
+    if recovery <= 0.0 or current <= recovery:
+        return regime, probabilities
+
+    gap = current - recovery
+    if gap > 0.03 or bust_pressure > 0.45:
+        return regime, probabilities
+
+    shift = min(gap + 0.0025, 0.02)
+    corrected = dict(probabilities)
+    corrected[regime] = max(0.0, current - shift)
+    corrected["RECOVERY"] = recovery + shift
+    corrected = merge_regime_weights(
+        corrected,
+        regimes=ACTIVE_REGIME_ORDER,
+        include_zeros=True,
+        normalize=True,
+    )
+    return "RECOVERY", corrected
+
+
+def _repair_confirmed_confidence_floor(
+    *,
+    regime: str,
+    benchmark_recovery: float,
+    benchmark_bust: float,
+    transition_intensity: float,
+    repair_persistence: float,
+    damage_memory: float,
+    bust_pressure: float,
+) -> float:
+    if regime != "RECOVERY":
+        return 0.0
+    if repair_persistence < 0.30 or damage_memory < 0.40:
+        return 0.0
+    if benchmark_recovery <= benchmark_bust:
+        return 0.0
+
+    recovery_edge = float(np.clip((benchmark_recovery - benchmark_bust) / 0.08, 0.0, 1.0))
+    transition_support = float(np.clip((transition_intensity - 0.45) / 0.55, 0.0, 1.0))
+    pressure_relief = float(np.clip((0.45 - bust_pressure) / 0.30, 0.0, 1.0))
+    floor = 0.08 + (0.05 * transition_support) + (0.04 * recovery_edge) + (0.04 * pressure_relief)
+    floor *= 0.70 + (0.30 * float(np.clip(repair_persistence, 0.0, 1.0)))
+    return float(np.clip(floor, 0.0, 0.22))
 
 
 def _recovery_release_credit(

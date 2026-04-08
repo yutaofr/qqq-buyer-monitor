@@ -97,21 +97,21 @@ Artifacts:
 
 After applying the transition-aware `price_topology` change, promoting the accepted `RECOVERY` posterior-path correction, tightening the posterior-path around `posterior_trapped_in_bust` plus `recovery_acceleration_fade`, recalibrating release timing for `stabilizer_barrier_hold`, and then adding a narrow release-credit for mild `BUST` overhangs and mild fade windows, the canonical mainline backtest on `2018-01-01` to `2026-04-07` now reads:
 
-- `stable_vs_benchmark_regime = 72.66%`
-- `probability_within_band_share = 51.11%`
-- `delta_within_band_share = 73.21%`
-- `acceleration_within_band_share = 57.22%`
-- `transition_probability_within_band_share = 74.13%`
+- `stable_vs_benchmark_regime = 72.71%`
+- `probability_within_band_share = 51.15%`
+- `delta_within_band_share = 73.30%`
+- `acceleration_within_band_share = 57.25%`
+- `transition_probability_within_band_share = 74.18%`
 - `RECOVERY probability_within_band_share = 48.36%`
 - `RECOVERY probability_mae = 0.1139`
 
 Compared on the same `2018+` window against the previously promoted mainline:
 
-- stable regime match: `67.83% -> 72.66%`
-- probability-within-band: `49.95% -> 51.11%`
-- delta-within-band: `74.32% -> 73.21%`
-- acceleration-within-band: `58.26% -> 57.22%`
-- transition probability-within-band: `73.01% -> 74.13%`
+- stable regime match: `67.83% -> 72.71%`
+- probability-within-band: `49.95% -> 51.15%`
+- delta-within-band: `74.32% -> 73.30%`
+- acceleration-within-band: `58.26% -> 57.25%`
+- transition probability-within-band: `73.01% -> 74.18%`
 - `RECOVERY` probability-within-band: `45.75% -> 48.36%`
 - `RECOVERY` probability MAE: `0.1189 -> 0.1139`
 
@@ -124,11 +124,15 @@ Interpretation:
 - The new fifth step, adding release-credit for mild `BUST` overhang plus mild fade windows, is narrower than a broad barrier rewrite:
   - it further improves stable label realization and overall probability-in-band share
   - it does so at the cost of a small amount of derivative-process slippage, which remains acceptable under the current gate
+- The new sixth step adds a repair-confirmed, high-transition tie-break inside `price_topology`:
+  - this does not change `2022_TIGHTENING`
+  - it slightly improves overall process truth
+  - it converts several former `topology_not_confirmed` dates into explicit `RECOVERY` topology calls
 - `2023_RECOVERY` is now materially better on labels and still better on probability path:
-  - stable-regime match: `61.95% -> 79.65%`
-  - probability-within-band: `60.84% -> 66.81%`
-  - delta-within-band: `67.70% -> 64.16%`
-  - acceleration-within-band: `47.79% -> 43.14%`
+  - stable-regime match: `61.95% -> 80.53%`
+  - probability-within-band: `60.84% -> 67.26%`
+  - delta-within-band: `67.70% -> 65.04%`
+  - acceleration-within-band: `47.79% -> 42.70%`
 
 ## Final Conclusion
 
@@ -136,13 +140,13 @@ Interpretation:
 2. Under this stricter and more realistic standard, the upgraded production mainline remains clearly ahead of the current shadow chain.
 3. The upgraded mainline now clears the process gate for production promotion more comfortably:
    - `2022_TIGHTENING stable_vs_benchmark_regime = 93.15%`
-   - `2023_RECOVERY probability_within_band_share = 66.81%`
-   - overall `transition_probability_within_band_share = 74.13%`
+   - `2023_RECOVERY probability_within_band_share = 67.26%`
+   - overall `transition_probability_within_band_share = 74.18%`
 4. The shadow chain is still not eligible for live integration.
 5. Residual risk has narrowed again:
    - `stabilizer_barrier_hold` has been materially reduced
-   - `posterior_trapped_in_bust` and `recovery_acceleration_fade` are both lower in absolute count
-   - the next research target is now the low-confidence `topology_not_confirmed` bucket, plus the remaining early-2023 entrapment tail
+   - `topology_not_confirmed` has now narrowed from `5` to `2`
+   - the remaining frontier has shifted back to early-2023 `posterior_trapped_in_bust` cleanup
 
 ## Stabilizer Follow-Up
 
