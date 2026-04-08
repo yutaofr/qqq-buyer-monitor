@@ -21,6 +21,7 @@ class PriceTopologyState:
     confidence: float
     posterior_blend_weight: float
     beta_anchor_weight: float
+    transition_intensity: float = 0.0
 
     @property
     def enabled(self) -> bool:
@@ -43,6 +44,7 @@ def infer_price_topology_state(
             confidence=0.0,
             posterior_blend_weight=0.0,
             beta_anchor_weight=0.0,
+            transition_intensity=0.0,
         )
 
     benchmark = build_worldview_benchmark(price_frame)
@@ -55,19 +57,32 @@ def infer_price_topology_state(
     )
     ordered = sorted(probabilities.values(), reverse=True)
     margin = float(ordered[0] - ordered[1]) if len(ordered) >= 2 else 0.0
-    confidence = float(np.clip(margin / max(1e-6, confidence_margin), 0.0, 1.0))
+    transition_intensity = float(np.clip(latest.get("benchmark_transition_intensity", 0.0), 0.0, 1.0))
+    confidence = float(
+        np.clip((margin / max(1e-6, confidence_margin)) * (1.0 - (0.55 * transition_intensity)), 0.0, 1.0)
+    )
     edge_multiplier = 1.0 + confidence if str(latest["benchmark_regime"]) in {"BUST", "RECOVERY"} else 1.0
+    transition_dampener = 1.0 - (0.35 * transition_intensity)
     return PriceTopologyState(
         regime=str(latest["benchmark_regime"]),
         probabilities=probabilities,
         expected_beta=float(latest["benchmark_expected_beta"]),
         confidence=confidence,
         posterior_blend_weight=float(
-            np.clip(max(0.0, posterior_blend_weight) * confidence * edge_multiplier, 0.0, 1.0)
+            np.clip(
+                max(0.0, posterior_blend_weight) * confidence * edge_multiplier * transition_dampener,
+                0.0,
+                1.0,
+            )
         ),
         beta_anchor_weight=float(
-            np.clip(max(0.0, beta_anchor_weight) * confidence * edge_multiplier, 0.0, 1.0)
+            np.clip(
+                max(0.0, beta_anchor_weight) * confidence * edge_multiplier * transition_dampener,
+                0.0,
+                1.0,
+            )
         ),
+        transition_intensity=transition_intensity,
     )
 
 
@@ -186,6 +201,7 @@ def price_topology_payload(topology: PriceTopologyState) -> dict[str, Any]:
         "regime": topology.regime,
         "expected_beta": float(topology.expected_beta),
         "confidence": float(topology.confidence),
+        "transition_intensity": float(topology.transition_intensity),
         "posterior_blend_weight": float(topology.posterior_blend_weight),
         "beta_anchor_weight": float(topology.beta_anchor_weight),
         "probabilities": {regime: float(topology.probabilities.get(regime, 0.0)) for regime in ACTIVE_REGIME_ORDER},

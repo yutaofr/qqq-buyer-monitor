@@ -134,3 +134,45 @@ def test_price_topology_is_neutral_without_price_columns():
     assert topology.posterior_blend_weight == 0.0
     assert topology.beta_anchor_weight == 0.0
     assert blended["MID_CYCLE"] == 0.6
+
+
+def test_price_topology_dampens_when_transition_band_is_wide(monkeypatch):
+    dates = pd.bdate_range("2024-01-01", periods=5)
+    frame = pd.DataFrame(
+        {
+            "observation_date": dates,
+            "qqq_close": np.linspace(100.0, 110.0, len(dates)),
+            "qqq_volume": np.linspace(1_000_000.0, 1_100_000.0, len(dates)),
+        }
+    )
+
+    def _benchmark_with_transition(transition_intensity: float) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "benchmark_regime": ["RECOVERY"],
+                "benchmark_expected_beta": [1.0],
+                "benchmark_transition_intensity": [transition_intensity],
+                "benchmark_prob_MID_CYCLE": [0.18],
+                "benchmark_prob_LATE_CYCLE": [0.07],
+                "benchmark_prob_BUST": [0.10],
+                "benchmark_prob_RECOVERY": [0.65],
+            },
+            index=[dates[-1]],
+        )
+
+    monkeypatch.setattr(
+        "src.engine.v11.core.price_topology.build_worldview_benchmark",
+        lambda _: _benchmark_with_transition(0.05),
+    )
+    low_transition = infer_price_topology_state(frame)
+
+    monkeypatch.setattr(
+        "src.engine.v11.core.price_topology.build_worldview_benchmark",
+        lambda _: _benchmark_with_transition(0.90),
+    )
+    high_transition = infer_price_topology_state(frame)
+
+    assert high_transition.transition_intensity > low_transition.transition_intensity
+    assert high_transition.confidence < low_transition.confidence
+    assert high_transition.posterior_blend_weight < low_transition.posterior_blend_weight
+    assert high_transition.beta_anchor_weight < low_transition.beta_anchor_weight

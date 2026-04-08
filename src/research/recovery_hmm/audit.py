@@ -192,6 +192,16 @@ def run_shadow_audit(
         )
 
     trace = pd.DataFrame(rows)
+    for regime in ("RECOVERY", "MID_CYCLE", "LATE_CYCLE", "BUST"):
+        prob_col = f"prob_{regime}"
+        delta_col = f"prob_delta_{regime}"
+        accel_col = f"prob_acceleration_{regime}"
+        trend_col = f"prob_trend_{regime}"
+        trace[delta_col] = pd.to_numeric(trace[prob_col], errors="coerce").diff().fillna(0.0)
+        trace[accel_col] = trace[delta_col].diff().fillna(0.0)
+        trace[trend_col] = trace[delta_col].map(
+            lambda value: "RISING" if value > 1e-9 else ("FALLING" if value < -1e-9 else "FLAT")
+        )
     q1_2022 = trace[(trace["date"] >= "2022-01-01") & (trace["date"] <= "2022-03-31")]
     q1_2023 = trace[(trace["date"] >= "2023-01-01") & (trace["date"] <= "2023-02-28")]
     acceptance = {
