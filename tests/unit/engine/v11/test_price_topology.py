@@ -326,6 +326,79 @@ def test_recovery_process_alignment_preserves_repair_persistence_through_mild_fa
     assert corrected["BUST"] <= 0.19
 
 
+def test_recovery_process_alignment_flips_realistic_bust_overhang_when_repair_is_confirmed():
+    topology = PriceTopologyState(
+        regime="RECOVERY",
+        probabilities={
+            "MID_CYCLE": 0.08,
+            "LATE_CYCLE": 0.26,
+            "BUST": 0.285,
+            "RECOVERY": 0.378,
+        },
+        expected_beta=0.75,
+        confidence=0.27,
+        posterior_blend_weight=0.04,
+        beta_anchor_weight=0.06,
+        transition_intensity=0.77,
+        recovery_impulse=0.21,
+        damage_memory=0.82,
+        bust_pressure=0.17,
+        bullish_divergence=0.0,
+        bearish_divergence=0.0,
+        recovery_prob_delta=-0.009,
+        recovery_prob_acceleration=-0.027,
+        repair_persistence=0.33,
+    )
+    posteriors = {
+        "MID_CYCLE": 0.078,
+        "LATE_CYCLE": 0.165,
+        "BUST": 0.379,
+        "RECOVERY": 0.378,
+    }
+
+    corrected = align_posteriors_with_recovery_process(posteriors, topology)
+
+    assert corrected["RECOVERY"] > corrected["BUST"]
+    assert corrected["RECOVERY"] >= 0.40
+    assert corrected["BUST"] <= 0.355
+
+
+def test_recovery_process_alignment_extends_recovery_edge_through_mild_negative_acceleration():
+    topology = PriceTopologyState(
+        regime="RECOVERY",
+        probabilities={
+            "MID_CYCLE": 0.084,
+            "LATE_CYCLE": 0.325,
+            "BUST": 0.188,
+            "RECOVERY": 0.403,
+        },
+        expected_beta=0.78,
+        confidence=0.44,
+        posterior_blend_weight=0.06,
+        beta_anchor_weight=0.10,
+        transition_intensity=0.80,
+        recovery_impulse=0.267,
+        damage_memory=0.82,
+        bust_pressure=0.13,
+        bullish_divergence=0.0,
+        bearish_divergence=0.0,
+        recovery_prob_delta=0.0013,
+        recovery_prob_acceleration=-0.0233,
+        repair_persistence=0.359,
+    )
+    posteriors = {
+        "MID_CYCLE": 0.084,
+        "LATE_CYCLE": 0.187,
+        "BUST": 0.325,
+        "RECOVERY": 0.403,
+    }
+
+    corrected = align_posteriors_with_recovery_process(posteriors, topology)
+
+    assert corrected["RECOVERY"] >= 0.44
+    assert corrected["RECOVERY"] - corrected["BUST"] >= 0.12
+
+
 def test_price_topology_payload_exposes_release_diagnostics():
     topology = PriceTopologyState(
         regime="RECOVERY",
