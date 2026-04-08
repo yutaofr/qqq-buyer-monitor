@@ -83,7 +83,11 @@ def test_worldview_benchmark_emits_multiframe_rsi_and_transition_bands():
     assert "benchmark_weekly_rsi" in benchmark.columns
     assert "benchmark_monthly_rsi" in benchmark.columns
     assert "benchmark_transition_intensity" in benchmark.columns
+    assert "benchmark_recent_damage" in benchmark.columns
+    assert "benchmark_recovery_impulse" in benchmark.columns
+    assert "benchmark_bust_pressure" in benchmark.columns
     assert "benchmark_prob_lower_LATE_CYCLE" in benchmark.columns
     assert "benchmark_prob_upper_LATE_CYCLE" in benchmark.columns
     assert latest["benchmark_transition_intensity"] >= 0.0
+    assert latest["benchmark_recovery_impulse"] >= 0.0
     assert latest["benchmark_prob_upper_LATE_CYCLE"] >= latest["benchmark_prob_LATE_CYCLE"]

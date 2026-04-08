@@ -22,6 +22,13 @@ class PriceTopologyState:
     posterior_blend_weight: float
     beta_anchor_weight: float
     transition_intensity: float = 0.0
+    recovery_impulse: float = 0.0
+    damage_memory: float = 0.0
+    bust_pressure: float = 0.0
+    bullish_divergence: float = 0.0
+    bearish_divergence: float = 0.0
+    recovery_prob_delta: float = 0.0
+    recovery_prob_acceleration: float = 0.0
 
     @property
     def enabled(self) -> bool:
@@ -45,6 +52,13 @@ def infer_price_topology_state(
             posterior_blend_weight=0.0,
             beta_anchor_weight=0.0,
             transition_intensity=0.0,
+            recovery_impulse=0.0,
+            damage_memory=0.0,
+            bust_pressure=0.0,
+            bullish_divergence=0.0,
+            bearish_divergence=0.0,
+            recovery_prob_delta=0.0,
+            recovery_prob_acceleration=0.0,
         )
 
     benchmark = build_worldview_benchmark(price_frame)
@@ -83,6 +97,17 @@ def infer_price_topology_state(
             )
         ),
         transition_intensity=transition_intensity,
+        recovery_impulse=float(np.clip(latest.get("benchmark_recovery_impulse", 0.0), 0.0, 1.5)),
+        damage_memory=float(np.clip(latest.get("benchmark_recent_damage", 0.0), 0.0, 1.5)),
+        bust_pressure=float(np.clip(latest.get("benchmark_bust_pressure", 0.0), 0.0, 1.5)),
+        bullish_divergence=float(
+            np.clip(latest.get("benchmark_bullish_rsi_divergence", 0.0), 0.0, 1.5)
+        ),
+        bearish_divergence=float(
+            np.clip(latest.get("benchmark_bearish_rsi_divergence", 0.0), 0.0, 1.5)
+        ),
+        recovery_prob_delta=float(latest.get("benchmark_prob_delta_RECOVERY", 0.0)),
+        recovery_prob_acceleration=float(latest.get("benchmark_prob_acceleration_RECOVERY", 0.0)),
     )
 
 
@@ -107,6 +132,63 @@ def blend_posteriors_with_topology(
     }
     return merge_regime_weights(
         blended,
+        regimes=ACTIVE_REGIME_ORDER,
+        include_zeros=True,
+        normalize=True,
+    )
+
+
+def align_posteriors_with_recovery_process(
+    posteriors: dict[str, float],
+    topology: PriceTopologyState,
+    *,
+    max_shift: float = 0.22,
+) -> dict[str, float]:
+    normalized = merge_regime_weights(
+        posteriors,
+        regimes=ACTIVE_REGIME_ORDER,
+        include_zeros=True,
+        normalize=True,
+    )
+    weight = _recovery_process_alignment_weight(topology)
+    benchmark_recovery = float(topology.probabilities.get("RECOVERY", 0.0))
+    benchmark_bust = float(topology.probabilities.get("BUST", 0.0))
+    current_recovery = float(normalized.get("RECOVERY", 0.0))
+    current_bust = float(normalized.get("BUST", 0.0))
+    current_late = float(normalized.get("LATE_CYCLE", 0.0))
+    benchmark_late = float(topology.probabilities.get("LATE_CYCLE", 0.0))
+    if weight <= 0.0 or benchmark_recovery <= current_recovery + 1e-9:
+        return normalized
+
+    desired_uplift = benchmark_recovery - current_recovery
+    pair_dislocation = max(0.0, current_bust - benchmark_bust) + (0.60 * max(0.0, current_late - benchmark_late))
+    uplift_capacity = max(max_shift * weight, pair_dislocation * weight)
+    uplift = float(min(desired_uplift, uplift_capacity))
+    if uplift <= 0.0:
+        return normalized
+
+    donor_candidates = {
+        regime: max(0.0, float(normalized.get(regime, 0.0)) - float(topology.probabilities.get(regime, 0.0)))
+        for regime in ACTIVE_REGIME_ORDER
+        if regime != "RECOVERY"
+    }
+    donor_total = float(sum(donor_candidates.values()))
+    if donor_total <= 1e-9:
+        donor_candidates = {
+            regime: float(normalized.get(regime, 0.0))
+            for regime in ACTIVE_REGIME_ORDER
+            if regime != "RECOVERY"
+        }
+        donor_total = float(sum(donor_candidates.values()))
+        if donor_total <= 1e-9:
+            return normalized
+
+    corrected = dict(normalized)
+    corrected["RECOVERY"] = current_recovery + uplift
+    for regime, donor_weight in donor_candidates.items():
+        corrected[regime] = max(0.0, corrected[regime] - (uplift * (donor_weight / donor_total)))
+    return merge_regime_weights(
+        corrected,
         regimes=ACTIVE_REGIME_ORDER,
         include_zeros=True,
         normalize=True,
@@ -160,6 +242,38 @@ def anchor_beta_with_topology(raw_beta: float, topology: PriceTopologyState) -> 
     return clamp_beta(anchored)
 
 
+def _recovery_process_alignment_weight(topology: PriceTopologyState) -> float:
+    if float(topology.recovery_impulse) < 0.15 or float(topology.damage_memory) < 0.20:
+        return 0.0
+    positive_delta = float(np.clip(topology.recovery_prob_delta / 0.04, 0.0, 1.5))
+    positive_accel = float(np.clip(topology.recovery_prob_acceleration / 0.02, 0.0, 1.5))
+    benchmark_recovery = float(topology.probabilities.get("RECOVERY", 0.0))
+    benchmark_bust = float(topology.probabilities.get("BUST", 0.0))
+    recovery_edge = max(
+        0.0,
+        benchmark_recovery
+        - max(
+            benchmark_bust,
+            float(topology.probabilities.get("LATE_CYCLE", 0.0)),
+        ),
+    )
+    pair_gap = float(np.clip((benchmark_recovery - benchmark_bust) / 0.12, 0.0, 1.5))
+    repair_score = (
+        0.30 * float(topology.recovery_impulse)
+        + 0.25 * float(topology.damage_memory)
+        + 0.10 * float(topology.bullish_divergence)
+        + 0.15 * positive_delta
+        + 0.10 * positive_accel
+        + 0.10 * recovery_edge
+        + 0.20 * pair_gap
+        + (0.15 if topology.regime == "RECOVERY" else 0.0)
+        + (0.15 if pair_gap > 0.0 else 0.0)
+    )
+    headwind = (0.15 * float(topology.bust_pressure)) + (0.10 * float(topology.bearish_divergence))
+    transition_support = 0.75 + (0.25 * float(topology.transition_intensity))
+    return float(np.clip((repair_score - headwind) * transition_support, 0.0, 1.0))
+
+
 def _extract_price_frame(context_df: pd.DataFrame) -> pd.DataFrame | None:
     if context_df is None or context_df.empty:
         return None
@@ -202,6 +316,10 @@ def price_topology_payload(topology: PriceTopologyState) -> dict[str, Any]:
         "expected_beta": float(topology.expected_beta),
         "confidence": float(topology.confidence),
         "transition_intensity": float(topology.transition_intensity),
+        "recovery_impulse": float(topology.recovery_impulse),
+        "damage_memory": float(topology.damage_memory),
+        "bust_pressure": float(topology.bust_pressure),
+        "recovery_process_weight": float(_recovery_process_alignment_weight(topology)),
         "posterior_blend_weight": float(topology.posterior_blend_weight),
         "beta_anchor_weight": float(topology.beta_anchor_weight),
         "probabilities": {regime: float(topology.probabilities.get(regime, 0.0)) for regime in ACTIVE_REGIME_ORDER},

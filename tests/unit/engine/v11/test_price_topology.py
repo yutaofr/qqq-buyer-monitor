@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from src.engine.v11.core.price_topology import (
+    PriceTopologyState,
+    align_posteriors_with_recovery_process,
     anchor_beta_with_topology,
     blend_posteriors_with_topology,
     infer_price_topology_state,
@@ -176,3 +179,75 @@ def test_price_topology_dampens_when_transition_band_is_wide(monkeypatch):
     assert high_transition.confidence < low_transition.confidence
     assert high_transition.posterior_blend_weight < low_transition.posterior_blend_weight
     assert high_transition.beta_anchor_weight < low_transition.beta_anchor_weight
+
+
+def test_recovery_process_alignment_moves_posterior_toward_confirmed_repair():
+    topology = PriceTopologyState(
+        regime="RECOVERY",
+        probabilities={
+            "MID_CYCLE": 0.17,
+            "LATE_CYCLE": 0.12,
+            "BUST": 0.16,
+            "RECOVERY": 0.55,
+        },
+        expected_beta=0.95,
+        confidence=0.55,
+        posterior_blend_weight=0.18,
+        beta_anchor_weight=0.22,
+        transition_intensity=0.72,
+        recovery_impulse=0.92,
+        damage_memory=0.84,
+        bust_pressure=0.18,
+        bullish_divergence=0.63,
+        bearish_divergence=0.08,
+        recovery_prob_delta=0.045,
+        recovery_prob_acceleration=0.018,
+    )
+    posteriors = {
+        "MID_CYCLE": 0.22,
+        "LATE_CYCLE": 0.31,
+        "BUST": 0.29,
+        "RECOVERY": 0.18,
+    }
+
+    corrected = align_posteriors_with_recovery_process(posteriors, topology)
+
+    assert corrected["RECOVERY"] > posteriors["RECOVERY"]
+    assert corrected["RECOVERY"] <= topology.probabilities["RECOVERY"]
+    assert corrected["LATE_CYCLE"] < posteriors["LATE_CYCLE"]
+    assert corrected["BUST"] < posteriors["BUST"]
+    assert sum(corrected.values()) == pytest.approx(1.0)
+
+
+def test_recovery_process_alignment_stays_neutral_without_repair_confirmation():
+    topology = PriceTopologyState(
+        regime="RECOVERY",
+        probabilities={
+            "MID_CYCLE": 0.16,
+            "LATE_CYCLE": 0.14,
+            "BUST": 0.20,
+            "RECOVERY": 0.50,
+        },
+        expected_beta=0.9,
+        confidence=0.4,
+        posterior_blend_weight=0.12,
+        beta_anchor_weight=0.16,
+        transition_intensity=0.68,
+        recovery_impulse=0.08,
+        damage_memory=0.11,
+        bust_pressure=0.76,
+        bullish_divergence=0.05,
+        bearish_divergence=0.44,
+        recovery_prob_delta=-0.01,
+        recovery_prob_acceleration=-0.01,
+    )
+    posteriors = {
+        "MID_CYCLE": 0.24,
+        "LATE_CYCLE": 0.30,
+        "BUST": 0.27,
+        "RECOVERY": 0.19,
+    }
+
+    corrected = align_posteriors_with_recovery_process(posteriors, topology)
+
+    assert corrected == pytest.approx(posteriors)

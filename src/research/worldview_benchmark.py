@@ -89,6 +89,21 @@ def build_worldview_benchmark(price_frame: pd.DataFrame) -> pd.DataFrame:
         * _positive(_bounded(52.0 - monthly_rsi, 12.0))
         * _positive(_bounded(monthly_rsi_change, 3.0))
     )
+    recovery_impulse = (
+        0.35 * recovery_rebound
+        + 0.20 * gap_improving
+        + 0.15 * short_up
+        + 0.20 * bullish_rsi_divergence
+        + 0.10 * monthly_repair
+    ).clip(lower=0.0, upper=1.5)
+    bust_pressure = (
+        0.32 * trend_down
+        + 0.20 * momentum_down
+        + 0.18 * deep_drawdown
+        + 0.12 * selloff_volume
+        + 0.10 * gap_worsening
+        + 0.08 * monthly_rollover
+    ).clip(lower=0.0, upper=1.5)
     transition_tension = (
         0.45 * divergence
         + 0.35 * bearish_rsi_divergence
@@ -208,6 +223,9 @@ def build_worldview_benchmark(price_frame: pd.DataFrame) -> pd.DataFrame:
     benchmark["benchmark_monthly_rsi"] = monthly_rsi.fillna(50.0)
     benchmark["benchmark_bearish_rsi_divergence"] = bearish_rsi_divergence
     benchmark["benchmark_bullish_rsi_divergence"] = bullish_rsi_divergence
+    benchmark["benchmark_recent_damage"] = recent_damage
+    benchmark["benchmark_recovery_impulse"] = recovery_impulse
+    benchmark["benchmark_bust_pressure"] = bust_pressure
     benchmark["benchmark_transition_intensity"] = transition_intensity
     return benchmark
 

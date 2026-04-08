@@ -26,6 +26,8 @@ This readout follows the locked regime-process mandate:
 - `src/engine/v11/core/price_topology.py`
   - topology confidence is now transition-aware
   - posterior blend and beta anchor are damped when the benchmark transition band is wide
+  - confirmed repair windows now get a dedicated `RECOVERY` posterior-path correction
+  - the correction is pairwise: it removes stale `BUST/LATE_CYCLE` mass only when the benchmark shows damage-memory plus repair-impulse confirmation
 
 ### Shadow chain
 
@@ -93,34 +95,42 @@ Artifacts:
 - `artifacts/regime_process_panorama_rebench/summary.json`
 - `artifacts/regime_process_panorama_rebench/report.md`
 
-After applying the transition-aware `price_topology` change and rerunning the mainline backtest on `2018-01-01` to `2026-04-07`:
+After applying the transition-aware `price_topology` change and then promoting the accepted `RECOVERY` posterior-path correction, the canonical mainline backtest on `2018-01-01` to `2026-04-07` now reads:
 
-- `stable_vs_benchmark_regime = 67.63%`
-- `probability_within_band_share = 46.24%`
-- `delta_within_band_share = 75.12%`
-- `acceleration_within_band_share = 60.65%`
-- `transition_probability_within_band_share = 65.94%`
+- `stable_vs_benchmark_regime = 67.83%`
+- `probability_within_band_share = 49.95%`
+- `delta_within_band_share = 74.32%`
+- `acceleration_within_band_share = 58.26%`
+- `transition_probability_within_band_share = 73.01%`
+- `RECOVERY probability_within_band_share = 45.75%`
+- `RECOVERY probability_mae = 0.1189`
 
 Compared on the same `2018+` window against the old mainline:
 
-- stable regime match: `68.74% -> 67.63%`
-- probability-within-band: `46.09% -> 46.24%`
-- delta-within-band: `75.82% -> 75.12%`
-- acceleration-within-band: `60.79% -> 60.65%`
-- transition probability-within-band: `65.89% -> 65.94%`
+- stable regime match: `68.74% -> 67.83%`
+- probability-within-band: `46.09% -> 49.95%`
+- delta-within-band: `75.82% -> 74.32%`
+- acceleration-within-band: `60.79% -> 58.26%`
+- transition probability-within-band: `65.89% -> 73.01%`
+- `RECOVERY` probability-within-band: `37.92% -> 45.75%`
+- `RECOVERY` probability MAE: `0.1531 -> 0.1189`
 
 Interpretation:
 
-- The transition-aware topology dampener is directionally correct.
-- But it is only a marginal improvement, not a decisive fix.
-- The current main engine still needs a deeper posterior-process correction rather than another shallow blending tweak.
+- The transition-aware topology dampener alone was only marginal.
+- The accepted fix was the second step: a repair-confirmed, pairwise `BUST/LATE -> RECOVERY` posterior correction.
+- This materially improves process realism in transition windows without breaking `2022_TIGHTENING`.
+- `2023_RECOVERY` still shows stable-regime lag (`61.95%`), but the probability path now sits inside the benchmark 1-delta band much more often (`60.84%` for the window), which satisfies the locked process-first mandate.
 
 ## Final Conclusion
 
 1. The new regime-process standard is superior to the old return-first promotion gate.
-2. Under this stricter and more realistic standard, the current production mainline remains clearly ahead of the current shadow chain.
-3. The shadow chain is still not eligible for live integration.
-4. The production engine change is safe and modest, but it does not yet unlock a major upgrade.
-5. The next real research target is:
-   - rebuild the `RECOVERY` posterior path itself
-   - not just relax entropy or speed up release
+2. Under this stricter and more realistic standard, the upgraded production mainline remains clearly ahead of the current shadow chain.
+3. The upgraded mainline now clears the process gate for production promotion:
+   - `2022_TIGHTENING stable_vs_benchmark_regime = 93.15%`
+   - `2023_RECOVERY probability_within_band_share = 60.84%`
+   - overall `transition_probability_within_band_share = 73.01%`
+4. The shadow chain is still not eligible for live integration.
+5. Residual risk remains at the label level, not the probability-process level:
+   - stable regime switching through the 2023 repair window is still slower than the benchmark regime argmax
+   - the next research target is therefore stabilizer-state release, not another `RECOVERY` amplitude hack
