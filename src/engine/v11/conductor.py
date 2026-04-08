@@ -679,6 +679,7 @@ class V11Conductor:
                 "bust_pressure": topology_state.bust_pressure,
                 "bearish_divergence": topology_state.bearish_divergence,
                 "transition_intensity": topology_state.transition_intensity,
+                "repair_persistence": topology_state.repair_persistence,
             },
         )
 

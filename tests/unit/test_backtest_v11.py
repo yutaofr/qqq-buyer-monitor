@@ -476,3 +476,8 @@ def test_run_v11_audit_uses_mainline_black_box_when_canonical_pipeline_enabled(
     assert calls
     assert all("training_cutoff" in payload for payload in calls)
     assert all(str(artifact_dir) in str(payload["prior_state_path"]) for payload in calls)
+
+
+def test_backtest_module_imports_topology_alignment_helpers_for_replay_parity():
+    assert callable(backtest_module.align_posteriors_with_recovery_process)
+    assert callable(backtest_module.topology_likelihood_penalties)

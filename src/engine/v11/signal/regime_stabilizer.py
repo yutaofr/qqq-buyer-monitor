@@ -114,12 +114,14 @@ class RegimeStabilizer:
         bust_pressure = float(release_hint.get("bust_pressure", 0.0) or 0.0)
         bearish_divergence = float(release_hint.get("bearish_divergence", 0.0) or 0.0)
         transition_intensity = float(release_hint.get("transition_intensity", 0.0) or 0.0)
+        repair_persistence = float(release_hint.get("repair_persistence", 0.0) or 0.0)
 
         release_score = (
             0.24 * recovery_impulse
             + 0.26 * damage_memory
             + 0.18 * transition_intensity
             + 0.32 * recovery_prob
+            + 0.18 * repair_persistence
             - 0.22 * bust_pressure
             - 0.12 * bearish_divergence
         )

@@ -29,6 +29,7 @@ class PriceTopologyState:
     bearish_divergence: float = 0.0
     recovery_prob_delta: float = 0.0
     recovery_prob_acceleration: float = 0.0
+    repair_persistence: float = 0.0
 
     @property
     def enabled(self) -> bool:
@@ -77,6 +78,17 @@ def infer_price_topology_state(
     )
     edge_multiplier = 1.0 + confidence if str(latest["benchmark_regime"]) in {"BUST", "RECOVERY"} else 1.0
     transition_dampener = 1.0 - (0.35 * transition_intensity)
+    recovery_impulse = float(np.clip(latest.get("benchmark_recovery_impulse", 0.0), 0.0, 1.5))
+    damage_memory = float(np.clip(latest.get("benchmark_recent_damage", 0.0), 0.0, 1.5))
+    bust_pressure = float(np.clip(latest.get("benchmark_bust_pressure", 0.0), 0.0, 1.5))
+    bullish_divergence = float(
+        np.clip(latest.get("benchmark_bullish_rsi_divergence", 0.0), 0.0, 1.5)
+    )
+    bearish_divergence = float(
+        np.clip(latest.get("benchmark_bearish_rsi_divergence", 0.0), 0.0, 1.5)
+    )
+    recovery_prob_delta = float(latest.get("benchmark_prob_delta_RECOVERY", 0.0))
+    recovery_prob_acceleration = float(latest.get("benchmark_prob_acceleration_RECOVERY", 0.0))
     return PriceTopologyState(
         regime=str(latest["benchmark_regime"]),
         probabilities=probabilities,
@@ -97,17 +109,22 @@ def infer_price_topology_state(
             )
         ),
         transition_intensity=transition_intensity,
-        recovery_impulse=float(np.clip(latest.get("benchmark_recovery_impulse", 0.0), 0.0, 1.5)),
-        damage_memory=float(np.clip(latest.get("benchmark_recent_damage", 0.0), 0.0, 1.5)),
-        bust_pressure=float(np.clip(latest.get("benchmark_bust_pressure", 0.0), 0.0, 1.5)),
-        bullish_divergence=float(
-            np.clip(latest.get("benchmark_bullish_rsi_divergence", 0.0), 0.0, 1.5)
+        recovery_impulse=recovery_impulse,
+        damage_memory=damage_memory,
+        bust_pressure=bust_pressure,
+        bullish_divergence=bullish_divergence,
+        bearish_divergence=bearish_divergence,
+        recovery_prob_delta=recovery_prob_delta,
+        recovery_prob_acceleration=recovery_prob_acceleration,
+        repair_persistence=_repair_persistence_score(
+            recovery_impulse=recovery_impulse,
+            damage_memory=damage_memory,
+            bust_pressure=bust_pressure,
+            bullish_divergence=bullish_divergence,
+            bearish_divergence=bearish_divergence,
+            recovery_prob_delta=recovery_prob_delta,
+            recovery_prob_acceleration=recovery_prob_acceleration,
         ),
-        bearish_divergence=float(
-            np.clip(latest.get("benchmark_bearish_rsi_divergence", 0.0), 0.0, 1.5)
-        ),
-        recovery_prob_delta=float(latest.get("benchmark_prob_delta_RECOVERY", 0.0)),
-        recovery_prob_acceleration=float(latest.get("benchmark_prob_acceleration_RECOVERY", 0.0)),
     )
 
 
@@ -157,12 +174,17 @@ def align_posteriors_with_recovery_process(
     current_bust = float(normalized.get("BUST", 0.0))
     current_late = float(normalized.get("LATE_CYCLE", 0.0))
     benchmark_late = float(topology.probabilities.get("LATE_CYCLE", 0.0))
+    repair_persistence = _topology_repair_persistence(topology)
     if weight <= 0.0 or benchmark_recovery <= current_recovery + 1e-9:
         return normalized
 
     desired_uplift = benchmark_recovery - current_recovery
-    pair_dislocation = max(0.0, current_bust - benchmark_bust) + (0.60 * max(0.0, current_late - benchmark_late))
-    uplift_capacity = max(max_shift * weight, pair_dislocation * weight)
+    bust_overhang = max(0.0, current_bust - benchmark_bust)
+    late_overhang = max(0.0, current_late - benchmark_late)
+    pair_dislocation = bust_overhang + (0.60 * late_overhang)
+    adaptive_max_shift = max_shift + (0.06 * repair_persistence) + (0.10 * bust_overhang)
+    release_scale = 1.0 + (0.45 * repair_persistence)
+    uplift_capacity = max(adaptive_max_shift * weight, pair_dislocation * weight * release_scale)
     uplift = float(min(desired_uplift, uplift_capacity))
     if uplift <= 0.0:
         return normalized
@@ -247,6 +269,7 @@ def _recovery_process_alignment_weight(topology: PriceTopologyState) -> float:
         return 0.0
     positive_delta = float(np.clip(topology.recovery_prob_delta / 0.04, 0.0, 1.5))
     positive_accel = float(np.clip(topology.recovery_prob_acceleration / 0.02, 0.0, 1.5))
+    repair_persistence = _topology_repair_persistence(topology)
     benchmark_recovery = float(topology.probabilities.get("RECOVERY", 0.0))
     benchmark_bust = float(topology.probabilities.get("BUST", 0.0))
     recovery_edge = max(
@@ -266,12 +289,57 @@ def _recovery_process_alignment_weight(topology: PriceTopologyState) -> float:
         + 0.10 * positive_accel
         + 0.10 * recovery_edge
         + 0.20 * pair_gap
+        + 0.18 * repair_persistence
         + (0.15 if topology.regime == "RECOVERY" else 0.0)
         + (0.15 if pair_gap > 0.0 else 0.0)
     )
     headwind = (0.15 * float(topology.bust_pressure)) + (0.10 * float(topology.bearish_divergence))
     transition_support = 0.75 + (0.25 * float(topology.transition_intensity))
     return float(np.clip((repair_score - headwind) * transition_support, 0.0, 1.0))
+
+
+def _topology_repair_persistence(topology: PriceTopologyState) -> float:
+    if float(topology.repair_persistence) > 0.0:
+        return float(topology.repair_persistence)
+    return _repair_persistence_score(
+        recovery_impulse=float(topology.recovery_impulse),
+        damage_memory=float(topology.damage_memory),
+        bust_pressure=float(topology.bust_pressure),
+        bullish_divergence=float(topology.bullish_divergence),
+        bearish_divergence=float(topology.bearish_divergence),
+        recovery_prob_delta=float(topology.recovery_prob_delta),
+        recovery_prob_acceleration=float(topology.recovery_prob_acceleration),
+    )
+
+
+def _repair_persistence_score(
+    *,
+    recovery_impulse: float,
+    damage_memory: float,
+    bust_pressure: float,
+    bullish_divergence: float,
+    bearish_divergence: float,
+    recovery_prob_delta: float,
+    recovery_prob_acceleration: float,
+) -> float:
+    if recovery_impulse < 0.15 or damage_memory < 0.20:
+        return 0.0
+    positive_delta = float(np.clip(recovery_prob_delta / 0.03, 0.0, 1.5))
+    if recovery_prob_acceleration >= 0.0:
+        mild_fade_support = positive_delta
+    else:
+        fade_window = float(np.clip((0.012 + recovery_prob_acceleration) / 0.012, 0.0, 1.0))
+        mild_fade_support = positive_delta * fade_window
+    persistence_score = (
+        0.38 * float(recovery_impulse)
+        + 0.32 * float(damage_memory)
+        + 0.12 * float(bullish_divergence)
+        + 0.14 * positive_delta
+        + 0.12 * mild_fade_support
+        - 0.10 * float(bearish_divergence)
+        - 0.08 * float(bust_pressure)
+    )
+    return float(np.clip(persistence_score, 0.0, 1.0))
 
 
 def _extract_price_frame(context_df: pd.DataFrame) -> pd.DataFrame | None:
@@ -323,6 +391,7 @@ def price_topology_payload(topology: PriceTopologyState) -> dict[str, Any]:
         "bearish_divergence": float(topology.bearish_divergence),
         "recovery_prob_delta": float(topology.recovery_prob_delta),
         "recovery_prob_acceleration": float(topology.recovery_prob_acceleration),
+        "repair_persistence": float(_topology_repair_persistence(topology)),
         "recovery_process_weight": float(_recovery_process_alignment_weight(topology)),
         "posterior_blend_weight": float(topology.posterior_blend_weight),
         "beta_anchor_weight": float(topology.beta_anchor_weight),

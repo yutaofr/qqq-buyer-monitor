@@ -26,9 +26,11 @@ from src.engine.v11.core.expectation_surface import (
     expected_policy_for_regime,
 )
 from src.engine.v11.core.price_topology import (
+    align_posteriors_with_recovery_process,
     anchor_beta_with_topology,
     blend_posteriors_with_topology,
     infer_price_topology_state,
+    topology_likelihood_penalties,
 )
 from src.engine.v13.execution_overlay import ExecutionOverlayEngine
 from src.regime_dynamics import compute_probability_dynamics, flatten_probability_dynamics
@@ -795,20 +797,9 @@ def run_v11_audit(
                 seeder_config=seeder.config,
             )
             quality_score = float(quality_audit.get("overall_quality", 1.0))
+            f_values = latest_vector.iloc[0].to_dict()
 
             # 2. Bayesian Inference (With Quality Gating)
-            posteriors, bayesian_diagnostics = inference_engine.infer_gaussian_nb_posterior(
-                classifier=gnb,
-                evidence_frame=evidence,
-                runtime_priors=active_priors,
-                weight_registry=registry,
-                feature_quality_weights=feature_weights,
-                tau=float(registry.get("inference_tau", 3.0)),
-            )
-
-            # Update previous_raw for next iteration
-            previous_raw = latest_raw
-
             topology_cols = [col for col in ("qqq_close", "qqq_volume") if col in train_window.columns]
             if topology_cols and all(col in row.index for col in topology_cols):
                 topology_context = pd.concat(
@@ -827,7 +818,26 @@ def run_v11_audit(
                 beta_anchor_weight=float(price_topology_contract.get("beta_anchor_weight", 0.35)),
                 confidence_margin=float(price_topology_contract.get("confidence_margin", 0.25)),
             )
+            regime_penalties = topology_likelihood_penalties(
+                topology_state,
+                floor=float(price_topology_contract.get("likelihood_penalty_floor", 0.03)),
+                exponent=float(price_topology_contract.get("likelihood_penalty_exponent", 0.75)),
+            )
+            posteriors, bayesian_diagnostics = inference_engine.infer_gaussian_nb_posterior(
+                classifier=gnb,
+                evidence_frame=evidence,
+                runtime_priors=active_priors,
+                weight_registry=registry,
+                feature_quality_weights=feature_weights,
+                feature_values=f_values,
+                tau=float(registry.get("inference_tau", 3.0)),
+                regime_penalties=regime_penalties,
+            )
+
+            # Update previous_raw for next iteration
+            previous_raw = latest_raw
             posteriors = blend_posteriors_with_topology(posteriors, topology_state)
+            posteriors = align_posteriors_with_recovery_process(posteriors, topology_state)
             posteriors = {r: float(posteriors.get(r, 0.0)) for r in ordered_regimes}
 
             # 3. Execution Pipeline (Identity Wiring)
