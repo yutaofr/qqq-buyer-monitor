@@ -1,0 +1,23 @@
+name: Daily Golden Snapshot Runtime
+
+on:
+  schedule:
+    # 02:00 UTC = 10:00 PM EST (Standard) / 9:00 PM EDT (Summer).
+    # 1. Monday 02:00 UTC: US Futures Market Open (Sunday 09:00 PM ET).
+    # 2. Tuesday-Saturday 02:00 UTC: Post-market of Mon-Fri trading days.
+    - cron: '0 02 * * 1-6'
+  workflow_dispatch:
+
+# CONCURRENCY MUFFLING: Prevent dirty writes by canceling previous runs
+concurrency:
+  group: deploy-blob
+  cancel-in-progress: true
+
+jobs:
+  execute:
+    uses: ./.github/workflows/runtime.yml
+    with:
+      job_name: QQQ Monitor Daily Update
+      command: python -m src.main
+      timeout_minutes: 30
+    secrets: inherit
