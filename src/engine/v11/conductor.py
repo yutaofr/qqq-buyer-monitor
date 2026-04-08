@@ -489,6 +489,20 @@ class V11Conductor:
         f_vals_for_prior["dynamic_beta_inertia_matrix"] = active_registry.get(
             "dynamic_beta_inertia_matrix", {}
         )
+        f_vals_for_prior.update(
+            {
+                "price_topology_regime": str(topology_state.regime),
+                "price_topology_confidence": float(topology_state.confidence),
+                "price_topology_transition_intensity": float(topology_state.transition_intensity),
+                "price_topology_repair_persistence": float(topology_state.repair_persistence),
+                "price_topology_recovery_impulse": float(topology_state.recovery_impulse),
+                "price_topology_damage_memory": float(topology_state.damage_memory),
+                "price_topology_recovery_prob_delta": float(topology_state.recovery_prob_delta),
+                "price_topology_recovery_prob_acceleration": float(
+                    topology_state.recovery_prob_acceleration
+                ),
+            }
+        )
 
         runtime_priors, prior_details = self.prior_book.runtime_priors(
             macro_values=f_vals_for_prior
@@ -564,6 +578,20 @@ class V11Conductor:
             # SRD-v14.3: QQQ Structural Cycle Alignment
             # We use the standardized features from the seeder to drive Physical Gating.
             f_values = latest_vector.iloc[0].to_dict()
+            f_values.update(
+                {
+                    "price_topology_regime": str(topology_state.regime),
+                    "price_topology_confidence": float(topology_state.confidence),
+                    "price_topology_transition_intensity": float(topology_state.transition_intensity),
+                    "price_topology_repair_persistence": float(topology_state.repair_persistence),
+                    "price_topology_recovery_impulse": float(topology_state.recovery_impulse),
+                    "price_topology_damage_memory": float(topology_state.damage_memory),
+                    "price_topology_recovery_prob_delta": float(topology_state.recovery_prob_delta),
+                    "price_topology_recovery_prob_acceleration": float(
+                        topology_state.recovery_prob_acceleration
+                    ),
+                }
+            )
             regime_penalties = topology_likelihood_penalties(
                 topology_state,
                 floor=float(self.price_topology_contract.get("likelihood_penalty_floor", 0.03)),
@@ -606,7 +634,11 @@ class V11Conductor:
             bayesian_diagnostics = {"level_contributions": {}}
 
         posteriors = blend_posteriors_with_topology(posteriors, topology_state)
-        posteriors = align_posteriors_with_recovery_process(posteriors, topology_state)
+        posteriors = align_posteriors_with_recovery_process(
+            posteriors,
+            topology_state,
+            runtime_priors=runtime_priors,
+        )
         posteriors = {r: float(posteriors.get(r, 0.0)) for r in ACTIVE_REGIME_ORDER}
         posterior_entropy = self.entropy_ctrl.calculate_normalized_entropy(posteriors)
 

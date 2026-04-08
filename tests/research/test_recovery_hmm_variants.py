@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from src.research.recovery_hmm.variants import LOCKED_CANDIDATE_VARIANT, WORLDVIEW_OPTIMIZATION_VARIANTS
+from src.research.recovery_hmm.variants import (
+    LOCKED_CANDIDATE_VARIANT,
+    WORLDVIEW_OPTIMIZATION_VARIANTS,
+)
 
 
 def test_worldview_variant_catalog_exposes_five_distinct_optimization_tracks():

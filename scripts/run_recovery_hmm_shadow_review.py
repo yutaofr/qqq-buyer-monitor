@@ -9,11 +9,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import pandas as pd
+import pandas as pd  # noqa: E402
 
-from src.research.recovery_hmm.audit import run_shadow_audit
-from src.research.recovery_hmm.dataset_builder import build_shadow_dataset
-from src.research.recovery_hmm.reporting import (
+from src.research.recovery_hmm.audit import run_shadow_audit  # noqa: E402
+from src.research.recovery_hmm.dataset_builder import build_shadow_dataset  # noqa: E402
+from src.research.recovery_hmm.reporting import (  # noqa: E402
     build_performance_summary,
     build_review_frame,
     plot_four_panel,

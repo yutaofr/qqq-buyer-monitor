@@ -119,3 +119,92 @@ def test_liquidity_shock_forces_bust(engine, logical_constraints):
     # BUST should be the dominant regime
     assert post_shock["BUST"] == max(post_shock.values())
     assert post_shock["MID_CYCLE"] < 0.05
+
+
+def test_repair_confirmed_release_softens_death_cross_recovery_veto(
+    engine, logical_constraints
+):
+    """A confirmed repair window should not let death-cross veto crush RECOVERY to noise."""
+    classifier = MockClassifier(engine.regimes)
+    evidence = pd.DataFrame([np.zeros(5)], columns=["f1", "f2", "f3", "f4", "f5"])
+
+    runtime_priors = {
+        "RECOVERY": 0.31,
+        "MID_CYCLE": 0.15,
+        "LATE_CYCLE": 0.19,
+        "BUST": 0.35,
+    }
+    feature_values = {
+        "qqq_ma_ratio": -0.90,
+        "qqq_pv_divergence_z": 3.50,
+        "spread_21d": -0.20,
+        "move_21d": 0.40,
+        "liquidity_velocity": 0.05,
+        "credit_acceleration": -0.45,
+        "real_yield_structural_z": 1.55,
+        "price_topology_regime": "RECOVERY",
+        "price_topology_confidence": 0.12,
+        "price_topology_transition_intensity": 0.95,
+        "price_topology_repair_persistence": 0.37,
+        "price_topology_recovery_impulse": 0.39,
+        "price_topology_damage_memory": 0.82,
+        "price_topology_recovery_prob_delta": -0.019,
+        "price_topology_recovery_prob_acceleration": 0.003,
+    }
+
+    posteriors, diagnostics = engine.infer_gaussian_nb_posterior(
+        classifier=classifier,
+        evidence_frame=evidence,
+        feature_values=feature_values,
+        runtime_priors=runtime_priors,
+        tau=1.0,
+        logical_constraints=logical_constraints,
+    )
+
+    assert diagnostics["logical_penalties"]["RECOVERY"] >= 0.22
+    assert posteriors["RECOVERY"] >= 0.17
+    assert posteriors["BUST"] > posteriors["RECOVERY"]
+
+
+def test_repair_confirmed_release_does_not_override_true_liquidity_collapse(
+    engine, logical_constraints
+):
+    """Repair relief must stay constrained when crash-like liquidity stress is still active."""
+    classifier = MockClassifier(engine.regimes)
+    evidence = pd.DataFrame([np.zeros(5)], columns=["f1", "f2", "f3", "f4", "f5"])
+
+    runtime_priors = {
+        "RECOVERY": 0.33,
+        "MID_CYCLE": 0.12,
+        "LATE_CYCLE": 0.18,
+        "BUST": 0.37,
+    }
+    feature_values = {
+        "qqq_ma_ratio": -0.95,
+        "qqq_pv_divergence_z": 3.20,
+        "spread_21d": -0.25,
+        "move_21d": 0.55,
+        "liquidity_velocity": -3.0,
+        "credit_acceleration": -0.30,
+        "price_topology_regime": "RECOVERY",
+        "price_topology_confidence": 0.14,
+        "price_topology_transition_intensity": 0.92,
+        "price_topology_repair_persistence": 0.39,
+        "price_topology_recovery_impulse": 0.42,
+        "price_topology_damage_memory": 0.84,
+        "price_topology_recovery_prob_delta": -0.012,
+        "price_topology_recovery_prob_acceleration": 0.004,
+    }
+
+    posteriors, diagnostics = engine.infer_gaussian_nb_posterior(
+        classifier=classifier,
+        evidence_frame=evidence,
+        feature_values=feature_values,
+        runtime_priors=runtime_priors,
+        tau=1.0,
+        logical_constraints=logical_constraints,
+    )
+
+    assert diagnostics["logical_penalties"]["RECOVERY"] <= 0.12
+    assert posteriors["BUST"] == max(posteriors.values())
+    assert posteriors["RECOVERY"] < 0.10

@@ -124,6 +124,83 @@ def test_price_topology_edge_regime_receives_likelihood_bonus():
     assert penalties["RECOVERY"] > 1.0
 
 
+def test_price_topology_likelihood_penalties_apply_repair_confirmed_bust_veto():
+    topology = PriceTopologyState(
+        regime="RECOVERY",
+        probabilities={
+            "MID_CYCLE": 0.03,
+            "LATE_CYCLE": 0.06,
+            "BUST": 0.447,
+            "RECOVERY": 0.463,
+        },
+        expected_beta=0.76,
+        confidence=0.109,
+        posterior_blend_weight=0.02,
+        beta_anchor_weight=0.03,
+        transition_intensity=0.95,
+        recovery_impulse=0.385,
+        damage_memory=0.82,
+        bust_pressure=0.425,
+        bullish_divergence=0.0,
+        bearish_divergence=0.0,
+        recovery_prob_delta=-0.019,
+        recovery_prob_acceleration=0.0037,
+        repair_persistence=0.373,
+    )
+
+    penalties = topology_likelihood_penalties(topology)
+
+    assert penalties["RECOVERY"] >= 1.08
+    assert penalties["BUST"] <= 0.90
+
+
+def test_price_topology_likelihood_penalties_use_runtime_priors_to_veto_stale_bust_memory():
+    topology = PriceTopologyState(
+        regime="RECOVERY",
+        probabilities={
+            "MID_CYCLE": 0.04,
+            "LATE_CYCLE": 0.09,
+            "BUST": 0.44,
+            "RECOVERY": 0.45,
+        },
+        expected_beta=0.76,
+        confidence=0.11,
+        posterior_blend_weight=0.02,
+        beta_anchor_weight=0.03,
+        transition_intensity=0.94,
+        recovery_impulse=0.39,
+        damage_memory=0.82,
+        bust_pressure=0.42,
+        bullish_divergence=0.0,
+        bearish_divergence=0.0,
+        recovery_prob_delta=-0.01,
+        recovery_prob_acceleration=0.01,
+        repair_persistence=0.37,
+    )
+    posteriors = {
+        "MID_CYCLE": 0.12,
+        "LATE_CYCLE": 0.18,
+        "BUST": 0.47,
+        "RECOVERY": 0.23,
+    }
+
+    corrected = align_posteriors_with_recovery_process(posteriors, topology)
+    guided = align_posteriors_with_recovery_process(
+        posteriors,
+        topology,
+        runtime_priors={
+            "MID_CYCLE": 0.09,
+            "LATE_CYCLE": 0.10,
+            "BUST": 0.34,
+            "RECOVERY": 0.47,
+        },
+    )
+
+    assert guided["RECOVERY"] > corrected["RECOVERY"]
+    assert guided["BUST"] < corrected["BUST"]
+    assert guided["LATE_CYCLE"] <= corrected["LATE_CYCLE"]
+
+
 def test_price_topology_is_neutral_without_price_columns():
     dates = pd.bdate_range("2024-01-01", periods=40)
     frame = pd.DataFrame({"observation_date": dates, "credit_spread_bps": np.linspace(300.0, 350.0, 40)})
@@ -480,6 +557,42 @@ def test_recovery_process_alignment_extends_recovery_edge_through_mild_negative_
 
     assert corrected["RECOVERY"] >= 0.44
     assert corrected["RECOVERY"] - corrected["BUST"] >= 0.12
+
+
+def test_recovery_process_alignment_releases_early_february_bust_entrapment_cluster():
+    topology = PriceTopologyState(
+        regime="RECOVERY",
+        probabilities={
+            "MID_CYCLE": 0.03,
+            "LATE_CYCLE": 0.06,
+            "BUST": 0.447,
+            "RECOVERY": 0.463,
+        },
+        expected_beta=0.76,
+        confidence=0.109,
+        posterior_blend_weight=0.02,
+        beta_anchor_weight=0.03,
+        transition_intensity=0.95,
+        recovery_impulse=0.385,
+        damage_memory=0.82,
+        bust_pressure=0.425,
+        bullish_divergence=0.0,
+        bearish_divergence=0.0,
+        recovery_prob_delta=-0.019,
+        recovery_prob_acceleration=0.0037,
+        repair_persistence=0.373,
+    )
+    posteriors = {
+        "MID_CYCLE": 0.04,
+        "LATE_CYCLE": 0.115,
+        "BUST": 0.57,
+        "RECOVERY": 0.275,
+    }
+
+    corrected = align_posteriors_with_recovery_process(posteriors, topology)
+
+    assert corrected["RECOVERY"] >= 0.40
+    assert corrected["BUST"] <= 0.46
 
 
 def test_price_topology_payload_exposes_release_diagnostics():

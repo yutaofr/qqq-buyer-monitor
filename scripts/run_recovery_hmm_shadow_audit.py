@@ -11,9 +11,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.research.recovery_hmm.audit import run_shadow_audit
-from src.research.recovery_hmm.comparison import compare_shadow_vs_production
-from src.research.recovery_hmm.dataset_builder import build_shadow_dataset
+from src.research.recovery_hmm.audit import run_shadow_audit  # noqa: E402
+from src.research.recovery_hmm.comparison import compare_shadow_vs_production  # noqa: E402
+from src.research.recovery_hmm.dataset_builder import build_shadow_dataset  # noqa: E402
 
 
 def main() -> int:

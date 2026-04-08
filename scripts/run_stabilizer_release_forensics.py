@@ -5,13 +5,13 @@ import json
 import sys
 from pathlib import Path
 
-import pandas as pd
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.research.stabilizer_release_forensics import (
+import pandas as pd  # noqa: E402
+
+from src.research.stabilizer_release_forensics import (  # noqa: E402
     build_release_failure_frame,
     load_forensic_trace,
     render_release_failure_report,

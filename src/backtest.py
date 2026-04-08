@@ -797,7 +797,7 @@ def run_v11_audit(
                 seeder_config=seeder.config,
             )
             quality_score = float(quality_audit.get("overall_quality", 1.0))
-            f_values = latest_vector.iloc[0].to_dict()
+            f_values = evidence.iloc[0].to_dict()
 
             # 2. Bayesian Inference (With Quality Gating)
             topology_cols = [col for col in ("qqq_close", "qqq_volume") if col in train_window.columns]
