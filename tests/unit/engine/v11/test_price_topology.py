@@ -10,6 +10,7 @@ from src.engine.v11.core.price_topology import (
     anchor_beta_with_topology,
     blend_posteriors_with_topology,
     infer_price_topology_state,
+    price_topology_payload,
     topology_likelihood_penalties,
 )
 
@@ -251,3 +252,34 @@ def test_recovery_process_alignment_stays_neutral_without_repair_confirmation():
     corrected = align_posteriors_with_recovery_process(posteriors, topology)
 
     assert corrected == pytest.approx(posteriors)
+
+
+def test_price_topology_payload_exposes_release_diagnostics():
+    topology = PriceTopologyState(
+        regime="RECOVERY",
+        probabilities={
+            "MID_CYCLE": 0.18,
+            "LATE_CYCLE": 0.14,
+            "BUST": 0.21,
+            "RECOVERY": 0.47,
+        },
+        expected_beta=0.88,
+        confidence=0.42,
+        posterior_blend_weight=0.11,
+        beta_anchor_weight=0.17,
+        transition_intensity=0.61,
+        recovery_impulse=0.29,
+        damage_memory=0.73,
+        bust_pressure=0.22,
+        bullish_divergence=0.41,
+        bearish_divergence=0.06,
+        recovery_prob_delta=0.032,
+        recovery_prob_acceleration=0.014,
+    )
+
+    payload = price_topology_payload(topology)
+
+    assert payload["bullish_divergence"] == pytest.approx(0.41)
+    assert payload["bearish_divergence"] == pytest.approx(0.06)
+    assert payload["recovery_prob_delta"] == pytest.approx(0.032)
+    assert payload["recovery_prob_acceleration"] == pytest.approx(0.014)

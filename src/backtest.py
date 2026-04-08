@@ -642,6 +642,7 @@ def run_v11_audit(
                     "raw_regime": str(runtime.get("raw_regime", predicted_regime)),
                     "prior_details": prior_details,
                     "price_topology": price_topology,
+                    "regime_stabilizer": runtime.get("regime_stabilizer", {}),
                     "v13_4_diagnostics": diagnostics,
                     "quality_audit": runtime.get("quality_audit", {}),
                     "forensic_snapshot_path": str(runtime.get("forensic_snapshot_path", "")),

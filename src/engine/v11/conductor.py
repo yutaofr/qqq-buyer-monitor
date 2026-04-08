@@ -669,7 +669,18 @@ class V11Conductor:
 
         # 3. Probabilistic Exposure Mapping (v13.5-GOLD)
         # SRD-v13.5-GOLD: Precision Stabilizer Update
-        regime_decision = self.regime_stabilizer.update(posteriors=posteriors, entropy=norm_h)
+        regime_decision = self.regime_stabilizer.update(
+            posteriors=posteriors,
+            entropy=norm_h,
+            release_hint={
+                "topology_regime": topology_state.regime,
+                "recovery_impulse": topology_state.recovery_impulse,
+                "damage_memory": topology_state.damage_memory,
+                "bust_pressure": topology_state.bust_pressure,
+                "bearish_divergence": topology_state.bearish_divergence,
+                "transition_intensity": topology_state.transition_intensity,
+            },
+        )
 
         # Expert Audit: Log level contributions to resolve conflict (H=0.87)
         top_regime = regime_decision["raw_regime"]
@@ -833,6 +844,7 @@ class V11Conductor:
             "probabilities": posteriors,
             "probability_dynamics": probability_dynamics,
             "price_topology": price_topology_payload(topology_state),
+            "regime_stabilizer": dict(regime_decision),
             "raw_regime": regime_decision["raw_regime"],
             "stable_regime": regime_decision["stable_regime"],
             "entropy": norm_h,

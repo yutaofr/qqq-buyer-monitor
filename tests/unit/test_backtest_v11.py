@@ -285,6 +285,9 @@ def test_run_v11_audit_emits_expectation_and_pacing_alignment_columns(tmp_path, 
     assert "active_features" in summary.index
     assert "forensic_snapshot_count" in summary.index
     assert '"v13_4_diagnostics"' in forensic_trace
+    assert '"regime_stabilizer"' in forensic_trace
+    assert '"bearish_divergence"' in forensic_trace
+    assert '"recovery_prob_acceleration"' in forensic_trace
 
 
 def test_run_v11_audit_rejects_feature_subset_overrides_when_raw_quality_fields_exist(

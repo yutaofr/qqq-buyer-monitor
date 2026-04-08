@@ -83,6 +83,9 @@ def test_conductor_persists_posterior_back_into_prior_state(tmp_path):
 
     assert sum(result["probabilities"].values()) == pytest.approx(1.0)
     assert prior_path.exists()
+    assert "regime_stabilizer" in result
+    assert "barrier" in result["regime_stabilizer"]
+    assert "evidence" in result["regime_stabilizer"]
 
     payload = json.loads(prior_path.read_text())
     assert payload["last_observation_date"] == str(t0.index[-1].date())
