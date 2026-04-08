@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from src.research.recovery_hmm.audit import run_shadow_audit
+from src.research.recovery_hmm.variants import WORLDVIEW_OPTIMIZATION_VARIANTS
 
 
 def _acceptance_frame() -> pd.DataFrame:
@@ -46,3 +47,16 @@ def test_shadow_audit_writes_readout_ready_summary(tmp_path):
     )
 
     assert "decision_gate" in summary
+
+
+def test_shadow_audit_records_variant_metadata(tmp_path):
+    summary = run_shadow_audit(
+        training_end="2021-12-31",
+        evaluation_start="2022-01-01",
+        evaluation_end="2024-12-31",
+        artifact_dir=tmp_path,
+        raw_frame=_acceptance_frame(),
+        variant=WORLDVIEW_OPTIMIZATION_VARIANTS[0],
+    )
+
+    assert summary["variant"]["name"] == "stress_hardened"

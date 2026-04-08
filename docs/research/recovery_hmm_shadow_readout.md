@@ -119,3 +119,60 @@ Interpretation:
 - Therefore the correct status is:
   - keep `recovery_hmm_shadow` in diagnostics and research artifacts
   - do not wire it into live execution yet
+
+## 2026-04-08 Five-Variant Panorama
+
+To evaluate future optimization directions without violating the current worldview contract, five bounded variants were tested on the same 8-year window and the same `0.5` production floor:
+
+- `stress_hardened`
+- `recovery_accelerated`
+- `orthogonal_consensus`
+- `barbell_balance`
+- `fdas_guardrail`
+
+Artifacts:
+
+- `artifacts/recovery_hmm_shadow/variant_panorama_8yr/variant_matrix.csv`
+- `artifacts/recovery_hmm_shadow/variant_panorama_8yr/variant_report.md`
+- `artifacts/recovery_hmm_shadow/variant_panorama_8yr/variant_nav_8yr.png`
+- per-variant four-panel plots under `artifacts/recovery_hmm_shadow/variant_panorama_8yr/<variant>/`
+
+Ranking summary:
+
+- `recovery_accelerated`
+  - `total_return = 2.1803`
+  - `sharpe = 0.9062`
+  - `2022 Q1 avg_weight = 0.7710`
+  - `2023 Q1 avg_weight = 0.8160`
+  - verdict: fails only because defense is too late in `2022 Q1`
+- `orthogonal_consensus`
+  - `total_return = 1.8103`
+  - `sharpe = 0.8645`
+  - `2022 Q1 avg_weight = 0.7164`
+  - `2023 Q1 avg_weight = 0.6771`
+  - verdict: still misses both defense and release thresholds
+- `barbell_balance`
+  - `total_return = 1.7303`
+  - `sharpe = 0.8509`
+  - verdict: no longer beats production and still misses both critical windows
+- `stress_hardened`
+  - `total_return = 1.5657`
+  - `sharpe = 0.8519`
+  - `2022 Q1 avg_weight = 0.6596`
+  - `2023 Q1 avg_weight = 0.5000`
+  - verdict: closest to fixing defense, but it kills recovery release
+- `fdas_guardrail`
+  - `total_return = 1.4609`
+  - `sharpe = 0.8104`
+  - `2022 Q1 avg_weight = 0.6102`
+  - `2023 Q1 avg_weight = 0.5874`
+  - verdict: strongest protection, but too expensive in return and still too slow to re-risk
+
+Conclusion:
+
+- Best performer: `recovery_accelerated`
+- Promotion gate result: `KEEP_SHADOW_ONLY_AND_CONTINUE_RESEARCH`
+- Why no live integration:
+  - fast-release variants improve full-period return, but they become too tolerant in `2022 Q1`
+  - hard-defense variants reduce `2022` weight, but they suppress `2023` release too much
+  - the unresolved problem is no longer simple threshold tuning; it is the lack of a state path that defends earlier without trapping the system in post-crisis ambiguity
