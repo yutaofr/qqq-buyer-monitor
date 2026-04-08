@@ -23,6 +23,7 @@ from src.engine.v11.core.mahalanobis_guard import MahalanobisGuard
 from src.engine.v11.core.model_validation import validate_feature_contract, validate_gaussian_nb
 from src.engine.v11.core.position_sizer import PositionSizingResult
 from src.engine.v11.core.price_topology import (
+    align_posteriors_with_recovery_process,
     anchor_beta_with_topology,
     blend_posteriors_with_topology,
     infer_price_topology_state,
@@ -605,6 +606,7 @@ class V11Conductor:
             bayesian_diagnostics = {"level_contributions": {}}
 
         posteriors = blend_posteriors_with_topology(posteriors, topology_state)
+        posteriors = align_posteriors_with_recovery_process(posteriors, topology_state)
         posteriors = {r: float(posteriors.get(r, 0.0)) for r in ACTIVE_REGIME_ORDER}
         posterior_entropy = self.entropy_ctrl.calculate_normalized_entropy(posteriors)
 
