@@ -71,3 +71,19 @@ def test_worldview_benchmark_emits_late_cycle_momentum_on_price_volume_divergenc
     assert latest["benchmark_prob_LATE_CYCLE"] > latest["benchmark_prob_BUST"]
     assert latest["benchmark_prob_delta_LATE_CYCLE"] > 0.0
     assert benchmark["benchmark_prob_acceleration_LATE_CYCLE"].tail(60).max() > 0.0
+
+
+def test_worldview_benchmark_emits_multiframe_rsi_and_transition_bands():
+    close = np.concatenate([np.linspace(100.0, 155.0, 220), np.linspace(155.0, 158.0, 40), np.linspace(158.0, 150.0, 40)])
+    volume = np.concatenate([np.linspace(1_100_000.0, 1_050_000.0, 220), np.linspace(1_000_000.0, 700_000.0, 40), np.linspace(720_000.0, 760_000.0, 40)])
+
+    benchmark = build_worldview_benchmark(_series_frame(close, volume))
+    latest = benchmark.iloc[-1]
+
+    assert "benchmark_weekly_rsi" in benchmark.columns
+    assert "benchmark_monthly_rsi" in benchmark.columns
+    assert "benchmark_transition_intensity" in benchmark.columns
+    assert "benchmark_prob_lower_LATE_CYCLE" in benchmark.columns
+    assert "benchmark_prob_upper_LATE_CYCLE" in benchmark.columns
+    assert latest["benchmark_transition_intensity"] >= 0.0
+    assert latest["benchmark_prob_upper_LATE_CYCLE"] >= latest["benchmark_prob_LATE_CYCLE"]

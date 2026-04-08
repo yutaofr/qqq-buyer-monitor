@@ -77,3 +77,18 @@ def test_orthogonal_consensus_variant_uses_projected_signal_to_sharpen_posterior
     orthogonal = _domain_scores(row, WORLDVIEW_OPTIMIZATION_VARIANTS[2], projected_row=projected_row)
 
     assert max(orthogonal.values()) > max(baseline.values())
+
+
+def test_shadow_audit_emits_probability_dynamics_columns(tmp_path):
+    summary = run_shadow_audit(
+        training_end="2021-12-31",
+        evaluation_start="2022-01-01",
+        evaluation_end="2024-12-31",
+        artifact_dir=tmp_path,
+        raw_frame=_sample_raw_frame(),
+    )
+
+    trace = pd.read_csv(summary["trace_path"])
+
+    assert "prob_delta_MID_CYCLE" in trace.columns
+    assert "prob_acceleration_RECOVERY" in trace.columns
