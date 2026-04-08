@@ -111,13 +111,21 @@ def run_baseline_inference(price_history: pd.Series = None) -> dict:
                     bounds=bounds_t,
                 )
 
-                prob_t = float(predict_baseline_crisis_prob(model_t, X_tractor.iloc[[-1]]).iloc[0])
+                tractor_window = X_tractor.iloc[-2:] if len(X_tractor) >= 2 else X_tractor.iloc[[-1]]
+                tractor_probs = predict_baseline_crisis_prob(model_t, tractor_window)
+                prob_t = float(tractor_probs.iloc[-1])
+                prev_prob_t = float(tractor_probs.iloc[-2]) if len(tractor_probs) >= 2 else prob_t
                 status_t = "success"
                 if getattr(model_t, "constrained_flag", False):
                     status_t = "success_constrained_audit"
                 if "BAMLH0A0HYM2" in metadata["degraded"] or "VIXCLS" in metadata["degraded"]:
                     status_t = "degraded_inputs"
-                results["tractor"] = {"prob": prob_t, "status": status_t}
+                results["tractor"] = {
+                    "prob": prob_t,
+                    "prev_prob": prev_prob_t,
+                    "delta_1d": prob_t - prev_prob_t,
+                    "status": status_t,
+                }
             else:
                 results["tractor"]["status"] = "insufficient_sample"
         except Exception as e:
@@ -151,9 +159,10 @@ def run_baseline_inference(price_history: pd.Series = None) -> dict:
                 model_s = train_sidecar_model(X_sidecar.loc[c_idx_s], y_sidecar.loc[c_idx_s])
                 # Physical Audit
                 if validate_coefficients(model_s, X_sidecar.columns.tolist()):
-                    prob_s = float(
-                        predict_baseline_crisis_prob(model_s, X_sidecar.iloc[[-1]]).iloc[0]
-                    )
+                    sidecar_window = X_sidecar.iloc[-2:] if len(X_sidecar) >= 2 else X_sidecar.iloc[[-1]]
+                    sidecar_probs = predict_baseline_crisis_prob(model_s, sidecar_window)
+                    prob_s = float(sidecar_probs.iloc[-1])
+                    prev_prob_s = float(sidecar_probs.iloc[-2]) if len(sidecar_probs) >= 2 else prob_s
                     status_s = "success"
                 else:
                     status_s = "audit_failed_overfitting"
@@ -163,6 +172,12 @@ def run_baseline_inference(price_history: pd.Series = None) -> dict:
 
                 results["sidecar"] = {
                     "prob": prob_s if "prob_s" in locals() else 0.0,
+                    "prev_prob": prev_prob_s if "prev_prob_s" in locals() else 0.0,
+                    "delta_1d": (
+                        (prob_s - prev_prob_s)
+                        if "prob_s" in locals() and "prev_prob_s" in locals()
+                        else 0.0
+                    ),
                     "status": status_s,
                 }
             else:

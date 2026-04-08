@@ -61,6 +61,7 @@ def test_web_frontend_contract_alignment():
         "data.signal.raw_target_beta_pre_floor",
         "data.signal.is_floor_active",
         "data.signal.hydration_anchor",
+        "data.signal.resonance",
         "data.signal.price_topology",
         "data.signal.lock_active",
         "data.meta.calculated_at_utc",
