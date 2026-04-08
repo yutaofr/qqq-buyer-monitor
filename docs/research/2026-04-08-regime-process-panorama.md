@@ -134,3 +134,32 @@ Interpretation:
 5. Residual risk remains at the label level, not the probability-process level:
    - stable regime switching through the 2023 repair window is still slower than the benchmark regime argmax
    - the next research target is therefore stabilizer-state release, not another `RECOVERY` amplitude hack
+
+## Stabilizer Follow-Up
+
+Follow-up work on `stabilizer release timing` produced two hard findings:
+
+- a release-aware `BUST/LATE -> RECOVERY` path inside `RegimeStabilizer` is directionally correct and is now part of the mainline runtime path
+- simply lowering the release barrier under high entropy did not improve the 8-year process panorama enough to justify promotion
+
+The failed tuning attempt was deliberately not retained. It improved synthetic unit scenarios but did not move the canonical `2023_RECOVERY` window metrics beyond the current `61.95%` stable-regime match.
+
+To stop future iterations from turning into blind threshold tuning, the audit surface was expanded:
+
+- `price_topology` forensic payload now exports
+  - `bullish_divergence`
+  - `bearish_divergence`
+  - `recovery_prob_delta`
+  - `recovery_prob_acceleration`
+- canonical backtest forensic traces now export
+  - `regime_stabilizer`
+  - full topology release diagnostics
+
+Interpretation:
+
+- the remaining lag is not well described by a single entropy barrier coefficient
+- the next iteration should use the newly exposed forensic series to identify which days fail release because of
+  - negative recovery acceleration
+  - lingering bearish divergence
+  - insufficient topology confidence
+  - or residual posterior mass still trapped in `BUST`
