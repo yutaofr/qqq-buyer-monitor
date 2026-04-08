@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from src.research.recovery_hmm.audit import _domain_scores, run_shadow_audit
+from src.research.recovery_hmm.variants import LOCKED_CANDIDATE_VARIANT, WORLDVIEW_OPTIMIZATION_VARIANTS
 
 
 def _sample_raw_frame() -> pd.DataFrame:
@@ -55,3 +56,24 @@ def test_domain_scores_sharpen_recovery_when_velocity_turns_positive_under_bad_l
 
     assert probabilities["RECOVERY"] > 0.7
     assert probabilities["RECOVERY"] > probabilities["BUST"]
+
+
+def test_orthogonal_consensus_variant_uses_projected_signal_to_sharpen_posterior():
+    row = pd.Series(
+        {
+            "L1_hy_ig_spread": 4.1,
+            "L2_curve_10y_2y": 0.4,
+            "L3_chicago_fci": -0.1,
+            "V1_spread_compression_velocity": 0.25,
+            "V2_real_yield_velocity": -0.15,
+            "V3_orders_inventory_gap": 6.0,
+            "S1_vix_term_ratio": 1.08,
+            "S2_qqq_skew_mean": 0.42,
+        }
+    )
+    projected_row = pd.Series({"PC1": 2.8, "PC2": 0.4, "PC3": 0.1})
+
+    baseline = _domain_scores(row, LOCKED_CANDIDATE_VARIANT, projected_row=projected_row)
+    orthogonal = _domain_scores(row, WORLDVIEW_OPTIMIZATION_VARIANTS[2], projected_row=projected_row)
+
+    assert max(orthogonal.values()) > max(baseline.values())
