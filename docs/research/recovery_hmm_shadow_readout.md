@@ -78,3 +78,4 @@ Interpretation:
 - The shadow line now demonstrates the intended 2022 defensive compression and 2023 recovery release.
 - The most meaningful divergence versus the production trace is earlier recovery release, not a breach of the `0.5` floor.
 - This qualifies the work for formal production-upgrade review, but does not by itself justify mutating the live execution path without that review.
+- The accepted candidate is now exported into the production `status.json` diagnostics surface as `diagnostics.recovery_hmm_shadow` for parallel runtime audit.
