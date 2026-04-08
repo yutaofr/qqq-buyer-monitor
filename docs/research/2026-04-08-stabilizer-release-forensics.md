@@ -40,25 +40,27 @@ Each failure row is classified into one root cause bucket:
 
 Window: `2023-01-01` to `2023-06-30`
 
-- failure rows: `46`
-- raw recovery share: `39.13%`
-- mean barrier gap: `0.5410`
+- failure rows: `34`
+- raw recovery share: `58.82%`
+- mean barrier gap: `0.5275`
 
 Root causes:
 
-- `posterior_trapped_in_bust`: `14`
-- `recovery_acceleration_fade`: `14`
-- `stabilizer_barrier_hold`: `10`
+- `posterior_trapped_in_bust`: `7`
+- `recovery_acceleration_fade`: `10`
+- `stabilizer_barrier_hold`: `11`
 - `topology_not_confirmed`: `5`
-- `unclassified_release_failure`: `3`
+- `unclassified_release_failure`: `1`
 
 Interpretation:
 
-1. Stabilizer thresholding is not the dominant blocker.
-2. The largest problem set is upstream of the stable-state switch:
-   - either `RECOVERY` posterior mass is still trapped under `BUST`
-   - or `RECOVERY` momentum fades too quickly after the first lift
-3. Bearish divergence is not currently the limiting factor in this window; representative failure rows showed it near zero.
+1. The upstream posterior-path fix worked:
+   - `posterior_trapped_in_bust` was cut in half (`14 -> 7`)
+   - raw `RECOVERY` share improved from `39.13%` to `58.82%`
+2. The dominant blocker is no longer posterior entrapment. It has shifted to:
+   - `stabilizer_barrier_hold`
+   - `recovery_acceleration_fade`
+3. Bearish divergence is still not the limiting factor in this window; representative failure rows remain near zero on that axis.
 
 ## Rejected Variant
 
@@ -77,16 +79,18 @@ Decision:
 
 ## Next Direction
 
-The next justified optimization target is not `stabilizer barrier` tuning.
+The next justified optimization target has changed.
 
-It is one of these two:
+It is no longer `posterior_trapped_in_bust` first. That bucket has already been materially compressed.
 
-1. `posterior_trapped_in_bust`
-   - refine the pairwise `BUST/LATE -> RECOVERY` uplift capacity
-   - but only in windows where topology confidence is not trivially low
+It is now these two, in this order:
+
+1. `stabilizer_barrier_hold`
+   - recalibrate release timing on top of the stronger posterior-path
+   - but only where topology confidence and repair persistence are already confirmed
 
 2. `recovery_acceleration_fade`
-   - add `repair persistence` on the posterior-path side, not the stable-state side
-   - specifically for cases where recovery remains dominant over bust but second derivative turns slightly negative
+   - preserve repair continuity through mild second-derivative pullbacks
+   - without reintroducing the old `BUST` entrapment problem
 
-Operationally, the next round should start from the forensic buckets above, not from new stabilizer heuristics.
+Operationally, the next round should start from the updated forensic buckets above, not from a fresh amplitude rewrite.

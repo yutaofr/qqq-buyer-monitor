@@ -95,45 +95,48 @@ Artifacts:
 - `artifacts/regime_process_panorama_rebench/summary.json`
 - `artifacts/regime_process_panorama_rebench/report.md`
 
-After applying the transition-aware `price_topology` change and then promoting the accepted `RECOVERY` posterior-path correction, the canonical mainline backtest on `2018-01-01` to `2026-04-07` now reads:
+After applying the transition-aware `price_topology` change, promoting the accepted `RECOVERY` posterior-path correction, and then tightening the posterior-path around `posterior_trapped_in_bust` plus `recovery_acceleration_fade`, the canonical mainline backtest on `2018-01-01` to `2026-04-07` now reads:
 
-- `stable_vs_benchmark_regime = 67.83%`
-- `probability_within_band_share = 49.95%`
-- `delta_within_band_share = 74.32%`
-- `acceleration_within_band_share = 58.26%`
-- `transition_probability_within_band_share = 73.01%`
-- `RECOVERY probability_within_band_share = 45.75%`
-- `RECOVERY probability_mae = 0.1189`
+- `stable_vs_benchmark_regime = 71.16%`
+- `probability_within_band_share = 50.94%`
+- `delta_within_band_share = 73.53%`
+- `acceleration_within_band_share = 57.58%`
+- `transition_probability_within_band_share = 74.13%`
+- `RECOVERY probability_within_band_share = 48.60%`
+- `RECOVERY probability_mae = 0.1131`
 
-Compared on the same `2018+` window against the old mainline:
+Compared on the same `2018+` window against the previously promoted mainline:
 
-- stable regime match: `68.74% -> 67.83%`
-- probability-within-band: `46.09% -> 49.95%`
-- delta-within-band: `75.82% -> 74.32%`
-- acceleration-within-band: `60.79% -> 58.26%`
-- transition probability-within-band: `65.89% -> 73.01%`
-- `RECOVERY` probability-within-band: `37.92% -> 45.75%`
-- `RECOVERY` probability MAE: `0.1531 -> 0.1189`
+- stable regime match: `67.83% -> 71.16%`
+- probability-within-band: `49.95% -> 50.94%`
+- delta-within-band: `74.32% -> 73.53%`
+- acceleration-within-band: `58.26% -> 57.58%`
+- transition probability-within-band: `73.01% -> 74.13%`
+- `RECOVERY` probability-within-band: `45.75% -> 48.60%`
+- `RECOVERY` probability MAE: `0.1189 -> 0.1131`
 
 Interpretation:
 
 - The transition-aware topology dampener alone was only marginal.
-- The accepted fix was the second step: a repair-confirmed, pairwise `BUST/LATE -> RECOVERY` posterior correction.
-- This materially improves process realism in transition windows without breaking `2022_TIGHTENING`.
-- `2023_RECOVERY` still shows stable-regime lag (`61.95%`), but the probability path now sits inside the benchmark 1-delta band much more often (`60.84%` for the window), which satisfies the locked process-first mandate.
+- The accepted second step was the repair-confirmed, pairwise `BUST/LATE -> RECOVERY` posterior correction.
+- The new third step, targeting `posterior_trapped_in_bust` and `recovery_acceleration_fade`, further improves process realism without breaking `2022_TIGHTENING`.
+- `2023_RECOVERY` is now materially better on both labels and probability path:
+  - stable-regime match: `61.95% -> 66.37%`
+  - probability-within-band: `60.84% -> 64.16%`
+- The tradeoff is small and localized: delta / acceleration alignment softened slightly, but the overall process gate remains stronger because the regime path is closer to the benchmark truth where it mattered most.
 
 ## Final Conclusion
 
 1. The new regime-process standard is superior to the old return-first promotion gate.
 2. Under this stricter and more realistic standard, the upgraded production mainline remains clearly ahead of the current shadow chain.
-3. The upgraded mainline now clears the process gate for production promotion:
+3. The upgraded mainline now clears the process gate for production promotion more comfortably:
    - `2022_TIGHTENING stable_vs_benchmark_regime = 93.15%`
-   - `2023_RECOVERY probability_within_band_share = 60.84%`
-   - overall `transition_probability_within_band_share = 73.01%`
+   - `2023_RECOVERY probability_within_band_share = 64.16%`
+   - overall `transition_probability_within_band_share = 74.13%`
 4. The shadow chain is still not eligible for live integration.
-5. Residual risk remains at the label level, not the probability-process level:
-   - stable regime switching through the 2023 repair window is still slower than the benchmark regime argmax
-   - the next research target is therefore stabilizer-state release, not another `RECOVERY` amplitude hack
+5. Residual risk has narrowed and shifted:
+   - the largest remaining blocker in `2023_RECOVERY` is now `stabilizer_barrier_hold`, not `posterior_trapped_in_bust`
+   - the next research target is therefore release timing calibration on top of the stronger posterior-path, not another broad `RECOVERY` amplitude hack
 
 ## Stabilizer Follow-Up
 
