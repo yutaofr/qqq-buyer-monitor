@@ -41,9 +41,15 @@ def fetch_price_data(ticker: str = "QQQ", as_of: date | None = None) -> dict:
 
     close = hist["Close"]
 
+    # Defensive: yfinance may return trailing rows with NaN close
+    # (e.g., during pre-market or intraday queries). Drop them.
+    valid_close = close.dropna()
+    if valid_close.empty:
+        raise RuntimeError(f"No valid close prices for {ticker} ending {target_date}")
+
     # Most recent close
-    price = float(close.iloc[-1])
-    record_date = close.index[-1].date()
+    price = float(valid_close.iloc[-1])
+    record_date = valid_close.index[-1].date()
 
     # 200-day moving average (use all available, max 200 rows)
     ma200 = float(close.rolling(200, min_periods=150).mean().iloc[-1])
@@ -74,5 +80,5 @@ def fetch_price_data(ticker: str = "QQQ", as_of: date | None = None) -> dict:
         "high_52w": high_52w,
         "days_since_high": days_since_high,
         "date": record_date,
-        "history": hist,  # Return full history for indicator calculations
+        "history": hist.loc[hist["Close"].notna()],  # PIT-safe: exclude incomplete rows
     }

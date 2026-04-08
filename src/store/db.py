@@ -98,6 +98,14 @@ def _to_json_dict(result: SignalResult) -> dict:
 
 def save_signal(result: SignalResult, path: str = DEFAULT_DB_PATH) -> None:
     """Upsert a SignalResult into the database."""
+    import math
+
+    if not math.isfinite(result.price) or not math.isfinite(result.target_beta):
+        raise ValueError(
+            f"Refusing to persist signal with non-finite values: "
+            f"price={result.price}, target_beta={result.target_beta}"
+        )
+
     conn = init_db(path)
     blob = _to_json_dict(result)
     conn.execute(
