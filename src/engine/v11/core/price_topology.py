@@ -180,6 +180,7 @@ def align_posteriors_with_recovery_process(
     posteriors: dict[str, float],
     topology: PriceTopologyState,
     *,
+    runtime_priors: dict[str, float] | None = None,
     max_shift: float = 0.22,
 ) -> dict[str, float]:
     normalized = merge_regime_weights(
@@ -196,6 +197,10 @@ def align_posteriors_with_recovery_process(
     current_late = float(normalized.get("LATE_CYCLE", 0.0))
     benchmark_late = float(topology.probabilities.get("LATE_CYCLE", 0.0))
     repair_persistence = _topology_repair_persistence(topology)
+    prior_release_support = _recovery_prior_alignment_support(
+        topology,
+        runtime_priors=runtime_priors,
+    )
     if weight <= 0.0:
         return normalized
 
@@ -207,22 +212,31 @@ def align_posteriors_with_recovery_process(
         bust_overhang=bust_overhang,
         late_overhang=late_overhang,
     )
-    desired_uplift = max(0.0, benchmark_recovery - current_recovery) + release_credit
+    desired_uplift = (
+        max(0.0, benchmark_recovery - current_recovery)
+        + release_credit
+        + (0.08 * prior_release_support)
+    )
     if desired_uplift <= 0.0:
         return normalized
 
-    adaptive_max_shift = max_shift + (0.06 * repair_persistence) + (0.10 * bust_overhang)
-    release_scale = 1.0 + (0.45 * repair_persistence)
+    adaptive_max_shift = (
+        max_shift
+        + (0.06 * repair_persistence)
+        + (0.10 * bust_overhang)
+        + (0.08 * prior_release_support)
+    )
+    release_scale = 1.0 + (0.45 * repair_persistence) + (0.35 * prior_release_support)
     uplift_capacity = max(adaptive_max_shift * weight, pair_dislocation * weight * release_scale)
     uplift = float(min(desired_uplift, uplift_capacity))
     if uplift <= 0.0:
         return normalized
 
-    donor_candidates = {
-        regime: max(0.0, float(normalized.get(regime, 0.0)) - float(topology.probabilities.get(regime, 0.0)))
-        for regime in ACTIVE_REGIME_ORDER
-        if regime != "RECOVERY"
-    }
+    donor_candidates = _recovery_donor_candidates(
+        posteriors=normalized,
+        topology=topology,
+        prior_release_support=prior_release_support,
+    )
     donor_total = float(sum(donor_candidates.values()))
     if donor_total <= 1e-9:
         donor_candidates = {
@@ -268,11 +282,14 @@ def topology_likelihood_penalties(
         return neutral
 
     confidence_scale = float(np.clip(0.25 + (0.75 * topology.confidence), 0.0, 1.0))
+    repair_veto = _repair_confirmed_penalty_veto(topology)
     leader_bonus = (
         1.0 + (0.35 * float(topology.confidence))
         if topology.regime in {"BUST", "RECOVERY"}
         else 1.0
     )
+    if topology.regime == "RECOVERY" and repair_veto > 0.0:
+        leader_bonus += 0.28 * repair_veto
     penalties: dict[str, float] = {}
     for regime in ACTIVE_REGIME_ORDER:
         if regime == topology.regime:
@@ -282,6 +299,8 @@ def topology_likelihood_penalties(
         ratio = float(np.clip(regime_prob / max_prob, 0.0, 1.0))
         shaped = max(float(floor), ratio**float(exponent))
         penalties[regime] = (1.0 - confidence_scale) + (confidence_scale * shaped)
+        if regime == "BUST" and topology.regime == "RECOVERY" and repair_veto > 0.0:
+            penalties[regime] *= max(0.68, 1.0 - (0.28 * repair_veto))
     return penalties
 
 
@@ -339,6 +358,84 @@ def _topology_repair_persistence(topology: PriceTopologyState) -> float:
         recovery_prob_delta=float(topology.recovery_prob_delta),
         recovery_prob_acceleration=float(topology.recovery_prob_acceleration),
     )
+
+
+def _repair_confirmed_penalty_veto(topology: PriceTopologyState) -> float:
+    if topology.regime != "RECOVERY":
+        return 0.0
+    repair_persistence = _topology_repair_persistence(topology)
+    if repair_persistence < 0.30 or float(topology.damage_memory) < 0.40:
+        return 0.0
+
+    benchmark_recovery = float(topology.probabilities.get("RECOVERY", 0.0))
+    benchmark_bust = float(topology.probabilities.get("BUST", 0.0))
+    if benchmark_recovery <= 0.0:
+        return 0.0
+
+    edge = float(np.clip((benchmark_recovery - benchmark_bust + 0.03) / 0.06, 0.0, 1.0))
+    transition = float(np.clip((float(topology.transition_intensity) - 0.55) / 0.40, 0.0, 1.0))
+    pressure = float(np.clip((0.46 - float(topology.bust_pressure)) / 0.18, 0.0, 1.0))
+    return float(np.clip(0.45 * edge + 0.30 * transition + 0.25 * pressure, 0.0, 1.0))
+
+
+def _recovery_prior_alignment_support(
+    topology: PriceTopologyState,
+    *,
+    runtime_priors: dict[str, float] | None,
+) -> float:
+    if topology.regime != "RECOVERY" or not runtime_priors:
+        return 0.0
+    repair_persistence = _topology_repair_persistence(topology)
+    if repair_persistence < 0.30 or float(topology.damage_memory) < 0.40:
+        return 0.0
+
+    recovery_prior = float(runtime_priors.get("RECOVERY", 0.0))
+    bust_prior = float(runtime_priors.get("BUST", 0.0))
+    late_prior = float(runtime_priors.get("LATE_CYCLE", 0.0))
+    if recovery_prior < 0.24:
+        return 0.0
+
+    recovery_level = float(np.clip((recovery_prior - 0.24) / 0.18, 0.0, 1.0))
+    bust_relief = float(np.clip((0.44 - bust_prior) / 0.14, 0.0, 1.0))
+    late_relief = float(np.clip((0.24 - late_prior) / 0.14, 0.0, 1.0))
+    transition = float(np.clip((float(topology.transition_intensity) - 0.60) / 0.30, 0.0, 1.0))
+    confidence = float(np.clip((float(topology.confidence) - 0.08) / 0.10, 0.0, 1.0))
+    return float(
+        np.clip(
+            (0.28 * recovery_level)
+            + (0.24 * bust_relief)
+            + (0.18 * late_relief)
+            + (0.18 * transition)
+            + (0.12 * confidence),
+            0.0,
+            1.0,
+        )
+    )
+
+
+def _recovery_donor_candidates(
+    *,
+    posteriors: dict[str, float],
+    topology: PriceTopologyState,
+    prior_release_support: float,
+) -> dict[str, float]:
+    donors: dict[str, float] = {}
+    for regime in ACTIVE_REGIME_ORDER:
+        if regime == "RECOVERY":
+            continue
+        overhang = max(
+            0.0,
+            float(posteriors.get(regime, 0.0)) - float(topology.probabilities.get(regime, 0.0)),
+        )
+        base = overhang
+        if regime == "BUST":
+            base *= 1.45 + (0.50 * prior_release_support)
+        elif regime == "LATE_CYCLE":
+            base *= 1.15 + (0.30 * prior_release_support)
+        else:
+            base *= 0.35
+        donors[regime] = max(0.0, base)
+    return donors
 
 
 def _promote_recovery_transition_regime(

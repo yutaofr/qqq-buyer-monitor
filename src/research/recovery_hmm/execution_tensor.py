@@ -1,7 +1,5 @@
 """Hardcoded shadow execution tensor for the recovery HMM research track."""
-
 from __future__ import annotations
-
 
 BASE_WEIGHTS = {
     "RECOVERY": 1.0,

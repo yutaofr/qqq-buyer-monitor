@@ -175,7 +175,9 @@ class BayesianInferenceEngine:
             penalties = {r: 1.0 for r in self.regimes}
             if feature_values is not None and logical_constraints:
                 penalties = self._evaluate_logical_constraints(
-                    feature_values, logical_constraints
+                    feature_values,
+                    logical_constraints,
+                    runtime_priors=runtime,
                 )
             combined_penalties = {
                 regime: float(penalties.get(regime, 1.0))
@@ -218,7 +220,10 @@ class BayesianInferenceEngine:
             return runtime_priors or self.base_priors, {"error": str(e)}
 
     def _evaluate_logical_constraints(
-        self, feature_values: dict[str, float], constraints: dict[str, Any]
+        self,
+        feature_values: dict[str, float],
+        constraints: dict[str, Any],
+        runtime_priors: dict[str, float] | None = None,
     ) -> dict[str, float]:
         """Evaluates external logical constraints JSON against current macro features."""
         penalties = {r: 1.0 for r in self.regimes}
@@ -276,6 +281,82 @@ class BayesianInferenceEngine:
                     if regime in penalties:
                         penalties[regime] = max(penalties[regime], float(boost))
 
+        penalties = self._apply_repair_confirmed_recovery_relief(
+            penalties=penalties,
+            feature_values=feature_values,
+            runtime_priors=runtime_priors,
+        )
+        return penalties
+
+    def _apply_repair_confirmed_recovery_relief(
+        self,
+        *,
+        penalties: dict[str, float],
+        feature_values: dict[str, float],
+        runtime_priors: dict[str, float] | None,
+    ) -> dict[str, float]:
+        """Allow limited RECOVERY mass when repair is confirmed and crash stress is absent."""
+        if not penalties or not runtime_priors:
+            return penalties
+        if str(feature_values.get("price_topology_regime", "")) != "RECOVERY":
+            return penalties
+
+        liquidity_velocity = float(feature_values.get("liquidity_velocity", 0.0) or 0.0)
+        move_21d = abs(float(feature_values.get("move_21d", 0.0) or 0.0))
+        spread_21d = abs(float(feature_values.get("spread_21d", 0.0) or 0.0))
+        credit_acceleration = float(feature_values.get("credit_acceleration", 0.0) or 0.0)
+
+        if (
+            liquidity_velocity <= -2.0
+            or move_21d >= 2.0
+            or spread_21d >= 2.0
+            or credit_acceleration >= 1.0
+        ):
+            return penalties
+
+        confidence = float(feature_values.get("price_topology_confidence", 0.0) or 0.0)
+        transition = float(feature_values.get("price_topology_transition_intensity", 0.0) or 0.0)
+        persistence = float(feature_values.get("price_topology_repair_persistence", 0.0) or 0.0)
+        impulse = float(feature_values.get("price_topology_recovery_impulse", 0.0) or 0.0)
+        damage = float(feature_values.get("price_topology_damage_memory", 0.0) or 0.0)
+        delta = float(feature_values.get("price_topology_recovery_prob_delta", 0.0) or 0.0)
+        acceleration = float(
+            feature_values.get("price_topology_recovery_prob_acceleration", 0.0) or 0.0
+        )
+        recovery_prior = float(runtime_priors.get("RECOVERY", 0.0) or 0.0)
+        bust_prior = float(runtime_priors.get("BUST", 0.0) or 0.0)
+
+        if (
+            confidence < 0.08
+            or transition < 0.75
+            or persistence < 0.30
+            or impulse < 0.20
+            or damage < 0.40
+            or recovery_prior < 0.20
+        ):
+            return penalties
+
+        prior_release = float(np.clip((recovery_prior - 0.20) / 0.16, 0.0, 1.0))
+        bust_relief = float(np.clip((0.55 - bust_prior) / 0.20, 0.0, 1.0))
+        confidence_support = float(np.clip((confidence - 0.08) / 0.12, 0.0, 1.0))
+        delta_support = float(np.clip((0.02 + delta) / 0.04, 0.0, 1.0))
+        acceleration_support = float(np.clip((0.01 + acceleration) / 0.02, 0.0, 1.0))
+        release_signal = float(
+            np.clip(
+                (0.25 * prior_release)
+                + (0.20 * bust_relief)
+                + (0.20 * confidence_support)
+                + (0.20 * persistence)
+                + (0.15 * max(delta_support, acceleration_support)),
+                0.0,
+                1.0,
+            )
+        )
+        if release_signal <= 0.0:
+            return penalties
+
+        recovery_floor = 0.25 + (0.35 * release_signal)
+        penalties["RECOVERY"] = max(float(penalties.get("RECOVERY", 1.0)), recovery_floor)
         return penalties
 
     @staticmethod

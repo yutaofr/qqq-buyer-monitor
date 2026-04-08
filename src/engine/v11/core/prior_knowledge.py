@@ -8,6 +8,8 @@ import logging
 from collections.abc import Iterable
 from pathlib import Path
 
+import numpy as np
+
 from src.regime_topology import (
     canonicalize_regime_name,
     canonicalize_regime_sequence,
@@ -132,6 +134,12 @@ class PriorKnowledgeBase:
                 include_zeros=True,
             )
         )
+        recovery_release_score = self._recovery_prior_release_score(macro_values)
+        if recovery_release_score > 0.0:
+            normalized_source = self._apply_recovery_release_to_posterior_prior(
+                normalized_source,
+                release_score=recovery_release_score,
+            )
 
         # V14.2: Construct Structural Transition Matrix (Inertia)
         # --------------------------------------------------------
@@ -227,6 +235,10 @@ class PriorKnowledgeBase:
         base_weight = 0.05
         posterior_weight = 0.60 + (0.20 * stress_score)
         transition_weight = 1.0 - base_weight - posterior_weight
+        if recovery_release_score > 0.0:
+            release_weight_shift = 0.10 * recovery_release_score
+            posterior_weight = max(0.48, posterior_weight - release_weight_shift)
+            transition_weight = 1.0 - base_weight - posterior_weight
 
         logger.info(
             f"  V14.2-STABLE Blending: {base_weight:.1%} history | {posterior_weight:.1%} last-seen | {transition_weight:.1%} inertia-shift"
@@ -258,8 +270,81 @@ class PriorKnowledgeBase:
             "transition_prior": self._normalize(transition_prior),
             "is_stable": is_stable,
             "stress_score": stress_score,
+            "recovery_release_score": recovery_release_score,
         }
         return final_prior, details
+
+    @staticmethod
+    def _recovery_prior_release_score(macro_values: dict[str, float] | None) -> float:
+        context = macro_values or {}
+        if str(context.get("price_topology_regime", "")) != "RECOVERY":
+            return 0.0
+
+        confidence = float(context.get("price_topology_confidence", 0.0) or 0.0)
+        transition_intensity = float(context.get("price_topology_transition_intensity", 0.0) or 0.0)
+        repair_persistence = float(context.get("price_topology_repair_persistence", 0.0) or 0.0)
+        recovery_impulse = float(context.get("price_topology_recovery_impulse", 0.0) or 0.0)
+        damage_memory = float(context.get("price_topology_damage_memory", 0.0) or 0.0)
+        recovery_prob_delta = float(context.get("price_topology_recovery_prob_delta", 0.0) or 0.0)
+        recovery_prob_acceleration = float(
+            context.get("price_topology_recovery_prob_acceleration", 0.0) or 0.0
+        )
+
+        if (
+            transition_intensity < 0.60
+            or repair_persistence < 0.30
+            or recovery_impulse < 0.20
+            or damage_memory < 0.35
+        ):
+            return 0.0
+
+        confidence_support = np.clip((confidence - 0.08) / 0.22, 0.0, 1.0)
+        transition_support = np.clip((transition_intensity - 0.60) / 0.30, 0.0, 1.0)
+        repair_support = np.clip((repair_persistence - 0.30) / 0.35, 0.0, 1.0)
+        impulse_support = np.clip((recovery_impulse - 0.20) / 0.45, 0.0, 1.0)
+        damage_support = np.clip((damage_memory - 0.35) / 0.45, 0.0, 1.0)
+        delta_support = np.clip((recovery_prob_delta - 0.005) / 0.03, 0.0, 1.0)
+        acceleration_support = np.clip(recovery_prob_acceleration / 0.03, 0.0, 1.0)
+
+        score = (
+            0.16 * float(confidence_support)
+            + 0.20 * float(transition_support)
+            + 0.22 * float(repair_support)
+            + 0.16 * float(impulse_support)
+            + 0.12 * float(damage_support)
+            + 0.08 * float(delta_support)
+            + 0.06 * float(acceleration_support)
+        )
+        return float(np.clip(score, 0.0, 1.0))
+
+    def _apply_recovery_release_to_posterior_prior(
+        self,
+        posterior_prior: dict[str, float],
+        *,
+        release_score: float,
+    ) -> dict[str, float]:
+        adjusted = dict(posterior_prior)
+        bust_mass = float(adjusted.get("BUST", 0.0))
+        late_mass = float(adjusted.get("LATE_CYCLE", 0.0))
+        recovery_mass = float(adjusted.get("RECOVERY", 0.0))
+        mid_mass = float(adjusted.get("MID_CYCLE", 0.0))
+
+        bust_shift = min(
+            bust_mass * (0.10 + 0.12 * release_score),
+            max(0.0, bust_mass - (recovery_mass * 0.78)),
+        )
+        late_shift = min(
+            late_mass * (0.06 + 0.08 * release_score),
+            max(0.0, late_mass - (mid_mass * 0.70)),
+        )
+        if bust_shift <= 0.0 and late_shift <= 0.0:
+            return adjusted
+
+        adjusted["BUST"] = max(0.0, bust_mass - bust_shift)
+        adjusted["LATE_CYCLE"] = max(0.0, late_mass - late_shift)
+        adjusted["RECOVERY"] = recovery_mass + (0.88 * bust_shift) + (0.55 * late_shift)
+        adjusted["MID_CYCLE"] = mid_mass + (0.12 * bust_shift) + (0.45 * late_shift)
+        return self._normalize(adjusted)
 
     def update_with_posterior(
         self,

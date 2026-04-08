@@ -6,14 +6,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.research.regime_process_audit import compute_regime_process_alignment
-from src.research.worldview_benchmark import build_worldview_benchmark
+import pandas as pd  # noqa: E402
+
+from src.research.regime_process_audit import compute_regime_process_alignment  # noqa: E402
+from src.research.worldview_benchmark import build_worldview_benchmark  # noqa: E402
 
 REGIMES = ("MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY")
 WINDOWS: dict[str, tuple[str, str]] = {

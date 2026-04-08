@@ -11,9 +11,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.research.recovery_hmm.audit import run_shadow_audit
-from src.research.recovery_hmm.dataset_builder import build_shadow_dataset
-from src.research.recovery_hmm.reporting import (
+from src.research.recovery_hmm.audit import run_shadow_audit  # noqa: E402
+from src.research.recovery_hmm.dataset_builder import build_shadow_dataset  # noqa: E402
+from src.research.recovery_hmm.reporting import (  # noqa: E402
     build_performance_summary,
     build_review_frame,
     build_variant_matrix,
@@ -23,7 +23,10 @@ from src.research.recovery_hmm.reporting import (
     write_review_markdown,
     write_summary,
 )
-from src.research.recovery_hmm.variants import LOCKED_CANDIDATE_VARIANT, WORLDVIEW_OPTIMIZATION_VARIANTS
+from src.research.recovery_hmm.variants import (  # noqa: E402
+    LOCKED_CANDIDATE_VARIANT,
+    WORLDVIEW_OPTIMIZATION_VARIANTS,
+)
 
 
 def _nav_series(frame: pd.DataFrame, *, weight_column: str) -> pd.Series:

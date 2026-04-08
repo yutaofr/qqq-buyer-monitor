@@ -1,9 +1,7 @@
 """Locked factor-domain feature builder for the recovery HMM research track."""
-
 from __future__ import annotations
 
 import pandas as pd
-
 
 REQUIRED_COLUMNS = {
     "hy_ig_spread",

@@ -3,8 +3,14 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from src.research.recovery_hmm.audit import _domain_scores, run_shadow_audit
-from src.research.recovery_hmm.variants import LOCKED_CANDIDATE_VARIANT, WORLDVIEW_OPTIMIZATION_VARIANTS
+from src.research.recovery_hmm.audit import (
+    _domain_scores,
+    run_shadow_audit,
+)
+from src.research.recovery_hmm.variants import (
+    LOCKED_CANDIDATE_VARIANT,
+    WORLDVIEW_OPTIMIZATION_VARIANTS,
+)
 
 
 def _sample_raw_frame() -> pd.DataFrame:

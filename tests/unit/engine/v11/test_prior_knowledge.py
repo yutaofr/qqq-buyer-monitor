@@ -229,3 +229,73 @@ def test_runtime_priors_reduce_transition_gravity_under_market_stress(tmp_path):
     assert details["posterior_weight"] > details["transition_weight"]
     assert details["transition_weight"] < 0.35
     assert priors["MID_CYCLE"] < 0.90
+
+
+def test_runtime_priors_release_stale_bust_memory_during_repair_confirmed_recovery(tmp_path):
+    storage_path = tmp_path / "v11_prior_state.json"
+    library = PriorKnowledgeBase(
+        storage_path=storage_path,
+        regimes=["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"],
+        bootstrap_regimes=["BUST"] * 10 + ["LATE_CYCLE"] * 4 + ["MID_CYCLE"] * 3 + ["RECOVERY"],
+    )
+    library.counts = {
+        "MID_CYCLE": 17.34328128490912,
+        "LATE_CYCLE": 18.566178068448966,
+        "BUST": 56.71070629086742,
+        "RECOVERY": 7.379834355774499,
+    }
+    library.last_posterior = {
+        "MID_CYCLE": 0.0,
+        "LATE_CYCLE": 0.06898884113292443,
+        "BUST": 0.5588,
+        "RECOVERY": 0.2820,
+    }
+
+    without_release, without_details = library.runtime_priors(
+        macro_values={
+            "spread_21d": 0.9,
+            "move_21d": 0.8,
+            "qqq_ma_ratio": -0.18,
+            "liquidity_velocity": -0.2,
+            "credit_acceleration": 0.2,
+            "dynamic_beta_inertia_matrix": {
+                "MID_CYCLE": 0.80,
+                "LATE_CYCLE": 0.80,
+                "BUST": 0.70,
+                "RECOVERY": 0.70,
+                "DEFAULT": 0.80,
+            },
+        }
+    )
+
+    with_release, with_details = library.runtime_priors(
+        macro_values={
+            "spread_21d": 0.9,
+            "move_21d": 0.8,
+            "qqq_ma_ratio": -0.18,
+            "liquidity_velocity": -0.2,
+            "credit_acceleration": 0.2,
+            "dynamic_beta_inertia_matrix": {
+                "MID_CYCLE": 0.80,
+                "LATE_CYCLE": 0.80,
+                "BUST": 0.70,
+                "RECOVERY": 0.70,
+                "DEFAULT": 0.80,
+            },
+            "price_topology_regime": "RECOVERY",
+            "price_topology_confidence": 0.11,
+            "price_topology_transition_intensity": 0.94,
+            "price_topology_repair_persistence": 0.51,
+            "price_topology_recovery_impulse": 0.62,
+            "price_topology_damage_memory": 0.88,
+            "price_topology_recovery_prob_delta": 0.031,
+            "price_topology_recovery_prob_acceleration": 0.014,
+        }
+    )
+
+    assert without_details["recovery_release_score"] == pytest.approx(0.0)
+    assert with_details["recovery_release_score"] > 0.45
+    assert with_details["posterior_weight"] < without_details["posterior_weight"]
+    assert with_release["RECOVERY"] > without_release["RECOVERY"]
+    assert with_release["BUST"] < without_release["BUST"]
+    assert with_release["RECOVERY"] > 0.35
