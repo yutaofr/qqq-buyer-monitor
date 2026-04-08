@@ -242,3 +242,46 @@ def test_export_web_snapshot_preserves_resonance_payload(tmp_path, monkeypatch):
     assert payload["signal"]["resonance"]["action"] == "BUY_QLD"
     assert payload["signal"]["resonance"]["reason_code"] == "TRIPLE_RESONANCE_BUY"
     assert "QLD" in payload["signal"]["resonance"]["prompt"]
+
+
+def test_export_web_snapshot_includes_recovery_hmm_shadow_diagnostics(tmp_path, monkeypatch):
+    result = SignalResult(
+        date=date(2026, 4, 8),
+        price=510.0,
+        target_beta=0.9,
+        probabilities={"MID_CYCLE": 0.5, "RECOVERY": 0.2, "LATE_CYCLE": 0.2, "BUST": 0.1},
+        priors={"MID_CYCLE": 0.25, "RECOVERY": 0.25, "LATE_CYCLE": 0.25, "BUST": 0.25},
+        entropy=0.42,
+        stable_regime="MID_CYCLE",
+        target_allocation=TargetAllocationState(0.1, 0.9, 0.0, 0.9),
+        logic_trace=[{"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QQQ"}}],
+        explanation="recovery hmm shadow diagnostics",
+        metadata={
+            "recovery_hmm_shadow": {
+                "decision_gate": "CANDIDATE_FOR_INTEGRATION",
+                "acceptance": {
+                    "q1_2022_below_or_equal_0_5": True,
+                    "q1_2023_above_or_equal_0_85": True,
+                },
+                "comparison": {
+                    "rows_compared": 686,
+                    "recovery_release_gap": 122,
+                },
+            }
+        },
+    )
+    output_path = tmp_path / "status.json"
+
+    monkeypatch.setattr(MarketCursor, "get_market_state", lambda self, now: "FROZEN")
+    monkeypatch.setattr(
+        MarketCursor,
+        "get_expires_at_utc",
+        lambda self, now: datetime(2026, 4, 9, 17, 30, tzinfo=UTC),
+    )
+
+    assert export_web_snapshot(result, output_path=output_path) is True
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    shadow = payload["diagnostics"]["recovery_hmm_shadow"]
+    assert shadow["decision_gate"] == "CANDIDATE_FOR_INTEGRATION"
+    assert shadow["acceptance"]["q1_2023_above_or_equal_0_85"] is True
+    assert shadow["comparison"]["recovery_release_gap"] == 122

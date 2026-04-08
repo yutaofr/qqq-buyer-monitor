@@ -26,6 +26,9 @@ logging.basicConfig(
 logger = logging.getLogger("qqq_monitor")
 
 CANONICAL_PRIOR_SEED_PATH = Path("src/engine/v11/resources/v13_6_cold_start_seed.json")
+RECOVERY_HMM_SHADOW_SUMMARY_PATH = Path("artifacts/recovery_hmm_shadow/mainline/summary.json")
+RECOVERY_HMM_SHADOW_COMPARISON_PATH = Path("artifacts/recovery_hmm_shadow/mainline/comparison.json")
+RECOVERY_HMM_SHADOW_LINEAGE_PATH = Path("artifacts/recovery_hmm_shadow/mainline/source_lineage.json")
 
 
 def _is_degraded_source(source: str | None) -> bool:
@@ -75,6 +78,30 @@ def _materialize_prior_state(
     runtime_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(canonical_seed, runtime_path)
     return "canonical_seed"
+
+
+def _load_recovery_hmm_shadow_diagnostics() -> dict[str, object]:
+    summary_path = RECOVERY_HMM_SHADOW_SUMMARY_PATH
+    if not summary_path.exists():
+        return {}
+
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    out: dict[str, object] = {
+        "decision_gate": summary.get("decision_gate", "UNKNOWN"),
+        "acceptance": summary.get("acceptance", {}),
+        "component_count": summary.get("component_count"),
+        "explained_variance_ratio_sum": summary.get("explained_variance_ratio_sum"),
+        "trace_path": summary.get("trace_path"),
+    }
+    if RECOVERY_HMM_SHADOW_COMPARISON_PATH.exists():
+        out["comparison"] = json.loads(
+            RECOVERY_HMM_SHADOW_COMPARISON_PATH.read_text(encoding="utf-8")
+        )
+    if RECOVERY_HMM_SHADOW_LINEAGE_PATH.exists():
+        lineage = json.loads(RECOVERY_HMM_SHADOW_LINEAGE_PATH.read_text(encoding="utf-8"))
+        out["source_notes"] = lineage.get("source_notes", {})
+        out["coverage"] = lineage.get("coverage", {})
+    return out
 
 
 def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalResult:
@@ -596,6 +623,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     result.metadata["v14_sidecar_valid"] = bool(ensemble["sidecar_valid"])
     result.metadata["v14_calm_eligible"] = bool(ensemble["calm_eligible"])
     result.metadata["v14_shadow_mode"] = True
+    result.metadata["recovery_hmm_shadow"] = _load_recovery_hmm_shadow_diagnostics()
 
     # 1. Export Web Snapshot Locally (Production Baseline)
     from src.output.web_exporter import export_web_snapshot

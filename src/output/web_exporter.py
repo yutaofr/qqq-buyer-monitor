@@ -220,6 +220,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "shadow_mode": bool(
                     metadata.get("v14_shadow_mode", not metadata.get("v14_baseline_active", False))
                 ),
+                "recovery_hmm_shadow": metadata.get("recovery_hmm_shadow", {}),
             },
         }
         path = Path(output_path) if output_path else Path("src/web/public/status.json")
