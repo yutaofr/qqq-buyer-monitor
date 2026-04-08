@@ -616,6 +616,13 @@ class V11Conductor:
 
         # Use canonical sorting for probabilities to prevent index shift hallucinations
         prior_execution_state = self.prior_book.get_execution_state()
+        previous_effective_entropy = pd.to_numeric(
+            pd.Series([prior_execution_state.get("effective_entropy")]),
+            errors="coerce",
+        ).iloc[0]
+        previous_effective_entropy = (
+            None if pd.isna(previous_effective_entropy) else float(previous_effective_entropy)
+        )
         previous_posterior_for_state = self.prior_book.last_posterior
         probability_dynamics = compute_probability_dynamics(
             posteriors,
@@ -746,6 +753,14 @@ class V11Conductor:
         if baseline_result:
             tractor_prob = float(baseline_result.get("tractor", {}).get("prob", 0.0))
             sidecar_prob = float(baseline_result.get("sidecar", {}).get("prob", 0.0))
+        risk_context = {
+            "tractor_prev": float(baseline_result.get("tractor", {}).get("prev_prob", tractor_prob))
+            if baseline_result
+            else tractor_prob,
+            "sidecar_prev": float(baseline_result.get("sidecar", {}).get("prev_prob", sidecar_prob))
+            if baseline_result
+            else sidecar_prob,
+        }
 
         resonance_result = self.resonance_detector.evaluate(
             posteriors=posteriors,
@@ -753,7 +768,9 @@ class V11Conductor:
             effective_entropy=norm_h,
             high_entropy_streak=self.high_entropy_streak,
             tractor_prob=tractor_prob,
-            sidecar_prob=sidecar_prob
+            sidecar_prob=sidecar_prob,
+            previous_effective_entropy=previous_effective_entropy,
+            risk_context=risk_context,
         )
 
         forensic_snapshot_path = self._write_runtime_snapshot(
@@ -857,6 +874,7 @@ class V11Conductor:
             high_entropy_streak=self.high_entropy_streak,
             hydration_anchor=runtime_result.get("signal", {}).get("hydration_anchor", "2018-01-01"),
             previous_posterior=previous_posterior_for_state,
+            effective_entropy=float(norm_h),
         )
 
         return runtime_result

@@ -202,3 +202,43 @@ def test_export_web_snapshot_includes_probability_dynamics(tmp_path, monkeypatch
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["signal"]["probability_dynamics"]["MID_CYCLE"]["delta_1d"] == -0.05
     assert payload["signal"]["probability_dynamics"]["MID_CYCLE"]["trend"] == "FALLING"
+
+
+def test_export_web_snapshot_preserves_resonance_payload(tmp_path, monkeypatch):
+    result = SignalResult(
+        date=date(2026, 4, 7),
+        price=505.0,
+        target_beta=1.1,
+        probabilities={"MID_CYCLE": 0.61, "LATE_CYCLE": 0.15, "BUST": 0.09, "RECOVERY": 0.15},
+        priors={"MID_CYCLE": 0.25, "LATE_CYCLE": 0.25, "BUST": 0.25, "RECOVERY": 0.25},
+        entropy=0.56,
+        stable_regime="MID_CYCLE",
+        target_allocation=TargetAllocationState(0.0, 0.9, 0.1, 1.1),
+        logic_trace=[{"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QLD"}}],
+        explanation="resonance payload",
+        metadata={
+            "signal": {
+                "resonance": {
+                    "action": "BUY_QLD",
+                    "confidence": 0.91,
+                    "reason_code": "TRIPLE_RESONANCE_BUY",
+                    "reason": "Risk cliff + entropy waterfall + MID expansion",
+                    "prompt": "三重共振成立，允许切入 QLD。",
+                }
+            }
+        },
+    )
+    output_path = tmp_path / "status.json"
+
+    monkeypatch.setattr(MarketCursor, "get_market_state", lambda self, now: "FROZEN")
+    monkeypatch.setattr(
+        MarketCursor,
+        "get_expires_at_utc",
+        lambda self, now: datetime(2026, 4, 8, 17, 30, tzinfo=UTC),
+    )
+
+    assert export_web_snapshot(result, output_path=output_path) is True
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["signal"]["resonance"]["action"] == "BUY_QLD"
+    assert payload["signal"]["resonance"]["reason_code"] == "TRIPLE_RESONANCE_BUY"
+    assert "QLD" in payload["signal"]["resonance"]["prompt"]

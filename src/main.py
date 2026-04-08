@@ -185,6 +185,7 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
             "execution_bucket": execution_bucket,
             "beta_ceiling": 1.2,
             "forensic_snapshot_path": runtime_result.get("forensic_snapshot_path"),
+            "signal": runtime_result.get("signal", {}),
         },
     )
 
