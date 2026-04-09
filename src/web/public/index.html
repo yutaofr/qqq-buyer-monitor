@@ -44,6 +44,8 @@
         .flip-card-front, .flip-card-back { position: absolute; width: 100%; height: 100%; -webkit-backface-visibility: hidden; backface-visibility: hidden; border-radius: 2.5rem; overflow: hidden; }
         .flip-card-back { transform: rotateY(180deg); }
         .chart-path { transition: d 1.5s ease-out; }
+        @keyframes vitality { 0%, 100% { filter: brightness(1) drop-shadow(0 0 2px rgba(16,185,129,0.2)); } 50% { filter: brightness(1.4) drop-shadow(0 0 8px rgba(16,185,129,0.6)); } }
+        .vitality-layer { animation: vitality 3s ease-in-out infinite; }
 
         /* Lumiere Point Animation */
         .lumiere { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; position: relative; }
@@ -866,40 +868,60 @@
                 const xStep = width / (steps - 1);
                 
                 const regimes = ['RECOVERY', 'MID_CYCLE', 'LATE_CYCLE', 'BUST'];
-                const colors = ['#3b82f6', '#10b981', '#f59e0b', '#f43f5e'];
-                const grads = ['grad-recovery', 'grad-mid', 'grad-late', 'grad-bust'];
+                const colors = ['#10b981', '#3b82f6', '#f59e0b', '#f43f5e'];
+                const grads = ['grad-mid', 'grad-recovery', 'grad-late', 'grad-bust'];
                 
                 g.innerHTML = '';
                 
                 let previousBaselines = new Array(steps).fill(height);
                 
                 regimes.forEach((regime, rIdx) => {
-                    let points = [];
+                    let topPoints = [];
                     let nextBaselines = [];
                     
-                    // Top path (current regime + previous baselines)
                     for (let i = 0; i < steps; i++) {
-                        const prob = history[i].probabilities[regime] || 0;
-                        const y = previousBaselines[i] - (prob * height);
-                        points.push(`${i * xStep},${y}`);
+                        const probs = history[i].probabilities;
+                        // Normalize ONLY against the 4 displayed regimes to ensure sum is exactly 1.0
+                        const total = regimes.reduce((sum, r) => sum + (probs[r] || 0), 0) || 1;
+                        const prob = (probs[regime] || 0) / total;
+                        
+                        const y = Math.max(0, Math.min(height, previousBaselines[i] - (prob * height)));
+                        topPoints.push({x: i * xStep, y: y});
                         nextBaselines.push(y);
                     }
                     
-                    // Bottom path (previous baselines in reverse)
-                    let reversePoints = [];
-                    for (let i = steps - 1; i >= 0; i--) {
-                        reversePoints.push(`${i * xStep},${previousBaselines[i]}`);
+                    // Generate smooth path string
+                    const getLine = (p1, p2) => `${p2.x},${p2.y}`;
+                    const getBezier = (p1, p2, p3, p4) => {
+                        const cp1x = p1.x + (p2.x - p1.x) / 2;
+                        const cp2x = p1.x + (p2.x - p1.x) / 2;
+                        return `C ${cp1x},${p1.y} ${cp2x},${p2.y} ${p2.x},${p2.y}`;
+                    };
+                    
+                    let d = `M 0,${topPoints[0].y}`;
+                    for (let i = 1; i < topPoints.length; i++) {
+                        d += ` ${getBezier(topPoints[i-1], topPoints[i])}`;
                     }
                     
-                    const pathD = `M ${points.join(' L ')} L ${reversePoints.join(' L ')} Z`;
+                    // Bottom edge (reverse of previous baseline)
+                    d += ` L ${width},${previousBaselines[steps-1]}`;
+                    for (let i = steps - 2; i >= 0; i--) {
+                        d += ` L ${i * xStep},${previousBaselines[i]}`;
+                    }
+                    d += " Z";
                     
                     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                    path.setAttribute('d', pathD);
+                    path.setAttribute('d', d);
                     path.setAttribute('fill', `url(#${grads[rIdx]})`);
-                    path.setAttribute('class', 'chart-path');
+                    
+                    let cls = 'chart-path';
+                    if (regime === 'RECOVERY') cls += ' vitality-layer';
+                    path.setAttribute('class', cls);
+                    
                     path.setAttribute('stroke', colors[rIdx]);
-                    path.setAttribute('stroke-width', '1');
-                    path.setAttribute('stroke-opacity', '0.5');
+                    path.setAttribute('stroke-width', '2');
+                    path.setAttribute('stroke-opacity', '0.8');
+                    path.setAttribute('stroke-linejoin', 'round');
                     
                     g.appendChild(path);
                     previousBaselines = nextBaselines;
