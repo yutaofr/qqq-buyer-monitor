@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import requests
 
 from src.regime_topology import ACTIVE_REGIME_ORDER, canonicalize_regime_name, merge_regime_weights
+from src.constants import ENGINE_VERSION
 
 if TYPE_CHECKING:
     from src.models import SignalResult
@@ -59,7 +60,7 @@ def _discord_timestamp(value: object) -> str:
 
 
 def build_discord_payload(result: SignalResult) -> dict:
-    """Build a Discord payload for v13.7-ULTIMA signals with full transparency."""
+    """Build a Discord payload for ENGINE_VERSION signals with full transparency."""
     display_regime = canonicalize_regime_name(result.stable_regime) or result.stable_regime
     color = REGIME_COLORS.get(display_regime, COLOR_DEFAULT)
     macro_emoji = _get_regime_emoji(display_regime)
@@ -121,7 +122,7 @@ def build_discord_payload(result: SignalResult) -> dict:
         "> v13.7 概率核心决定方向；执行 overlay 只条件化动作，不改写后验。\n\n"
         f"**Briefing:** {result.explanation}"
     )
-    title = f"QQQ v13.7-ULTIMA | Bayesian Decision - {result.date}"
+    title = f"QQQ {ENGINE_VERSION} | Bayesian Decision - {result.date}"
 
     # Probabilities Distribution
     sorted_probs = sorted(probabilities.items(), key=lambda x: x[1], reverse=True)
@@ -129,7 +130,7 @@ def build_discord_payload(result: SignalResult) -> dict:
 
     fields = [
         {
-            "name": "🔭 Ensemble Implementation Options (v14.8)",
+            "name": f"🔭 Ensemble Implementation Options ({ENGINE_VERSION})",
             "value": (
                 f"**Verdict:** `{metadata.get('v14_ensemble_verdict', 'NEUTRAL')}`\n"
                 f"1️⃣ **Standard (Official):** `{metadata.get('v14_standard_beta', result.target_beta):.2f}x`\n"
@@ -205,7 +206,7 @@ def build_discord_payload(result: SignalResult) -> dict:
 
 
 def send_discord_signal(result: SignalResult, webhook_url: str) -> bool:
-    """Send a Discord embed for the v12.0 Bayesian signal."""
+    """Send a Discord embed for the current ENGINE_VERSION Bayesian signal."""
     if not webhook_url:
         return False
 

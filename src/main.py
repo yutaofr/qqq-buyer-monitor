@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.constants import ENGINE_VERSION
 from src.models import SignalResult, TargetAllocationState
 from src.store.cloud_manager import CloudPersistenceBridge
 
@@ -135,7 +136,7 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
     execution_bucket = str(runtime_result.get("signal", {}).get("target_bucket", "QQQ"))
 
     explanation = (
-        f"v13.0 Orthogonal Bayesian Conductor: beta={runtime_result['target_beta']:.2f}x | "
+        f"{ENGINE_VERSION} Orthogonal Bayesian Conductor: beta={runtime_result['target_beta']:.2f}x | "
         f"entropy={runtime_result.get('entropy', 0.0):.3f} | "
         f"stable={stable_regime} | raw={raw_regime} ({ordered_probs[0][1]:.1%}) | "
         f"deploy={deployment_state_key}"
@@ -162,7 +163,7 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
         ],
         explanation=explanation,
         metadata={
-            "engine_version": "v13.4",
+            "engine_version": ENGINE_VERSION,
             "quality_audit": runtime_result.get("quality_audit", {}),
             "feature_values": runtime_result.get("feature_values", {}),
             "prior_details": runtime_result.get("prior_details", {}),

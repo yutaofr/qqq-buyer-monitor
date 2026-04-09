@@ -298,7 +298,7 @@
 
                 
                 <div class="pt-10 border-t border-white/5 text-[10px] font-black text-slate-600 uppercase text-left">
-                    <div class="flex justify-between"><span id="ui-engine-label">核心引擎版本</span><span class="text-slate-400">v13.7-ULTIMA</span></div>
+                    <div class="flex justify-between"><span id="ui-engine-label">核心引擎版本</span><span id="engine-version" class="text-slate-400">v13.7-ULTIMA</span></div>
                     <div class="flex justify-between"><span id="ui-anchor-label">資料血緣回溯</span><span id="hydration-anchor" class="text-slate-400">2018-01-01</span></div>
                     <div class="flex justify-between"><span id="ui-generated-label">更新時間</span><span id="calc-at" class="text-slate-400">--</span></div>
                     <div class="flex justify-between"><span id="ui-data-status-label">數據狀態</span><span id="data-source" class="text-slate-400">--</span></div>
@@ -334,7 +334,7 @@
         const TRANSLATIONS = {
             'en': {
                 'ui-page-title': 'QQQ Barometer - Probabilistic Dashboard',
-                'ui-title': 'QQQ Barometer', 'ui-subtitle': 'v13.0 Probabilistic', 
+                'ui-title': 'QQQ Barometer', 'ui-subtitle': 'v13.7-ULTIMA Probabilistic', 
                 'ui-version-tag': 'V14 Panorama Ensemble',
                 'ui-regime-label': 'Stable Regime',
                 'ui-entropy-label': 'Entropy', 'ui-deploy-label': 'Entry Pacing', 'ui-beta-rec': 'Target Beta',
@@ -368,12 +368,13 @@
                 'steps': {
                     'probabilistic_inference': 'Inference', 'entropy_haircut': 'Entropy Haircut',
                     'execution_overlay': 'Execution Overlay', 'position_sizing': 'Sizing Map',
-                    'deployment_policy': 'Entry Pacing', 'behavioral_guard': 'Guard'
+                    'deployment_policy': 'Entry Pacing', 'behavioral_guard': 'Guard',
+                    'price_topology': 'Price Topology', 'bayesian_diagnostics': 'Bayesian Diagnostics'
                 }
             },
             'zh-TW': {
                 'ui-page-title': 'QQQ 氣象觀測站 - 機率目標係數儀表板',
-                'ui-title': '趨勢氣象站', 'ui-subtitle': 'v13.0 機率推斷版', 
+                'ui-title': '趨勢氣象站', 'ui-subtitle': 'v13.7-ULTIMA 機率推斷版', 
                 'ui-version-tag': 'V14 全景集成版',
                 'ui-regime-label': '穩定體制',
                 'ui-entropy-label': '資訊熵', 'ui-deploy-label': '佈局節奏', 'ui-beta-rec': '最終執行目標',
@@ -414,7 +415,8 @@
                 'steps': {
                     'probabilistic_inference': '後驗推斷', 'entropy_haircut': '資訊熵懲罰',
                     'execution_overlay': '執行疊加層', 'position_sizing': '連續倉位對照',
-                    'deployment_policy': '佈局節奏', 'behavioral_guard': '行為守衛'
+                    'deployment_policy': '佈局節奏', 'behavioral_guard': '行為守衛',
+                    'price_topology': '價格拓撲', 'bayesian_diagnostics': '貝葉斯診斷'
                 }
             }
         };
@@ -652,6 +654,7 @@
             
             const calcAt = data.meta && data.meta.calculated_at_utc ? data.meta.calculated_at_utc.replace('T',' ').replace('Z','') : '--';
             document.getElementById('calc-at').textContent = calcAt;
+            document.getElementById('engine-version').textContent = (data.meta && data.meta.version) || 'v13.7-ULTIMA';
             document.getElementById('hydration-anchor').textContent = (data.signal && data.signal.hydration_anchor) || (data.meta && data.meta.hydration_anchor) || '2018-01-01';
             document.getElementById('beta-ceiling').textContent = ((data.signal && data.signal.beta_ceiling) || 1.20).toFixed(2) + 'x';
             const rawPreFloorBeta = data.signal.raw_target_beta_pre_floor || data.signal.raw_target_beta || data.signal.target_beta;
@@ -764,7 +767,11 @@
                 rAction.textContent = 'SELL_QLD';
                 rReason.textContent = (resonance.prompt || resonance.reason || '--');
             } else {
-                radar.className = 'hidden';
+                radar.className = 'mb-6 py-3 px-4 rounded-2xl flex items-center justify-between border transition-all duration-1000 resonance-hold opacity-50 grayscale';
+                rDot.className = 'w-3 h-3 rounded-full bg-slate-500 shadow-none';
+                rAction.className = 'text-base font-bold text-slate-400 tracking-tighter italic';
+                rAction.textContent = currentLang === 'en' ? 'SCANNING...' : '掃描中...';
+                rReason.textContent = `Confidence: ${(resonance.confidence * 100).toFixed(1)}%`;
             }
         }
 
