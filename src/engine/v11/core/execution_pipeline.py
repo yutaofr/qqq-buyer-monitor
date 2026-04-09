@@ -6,10 +6,11 @@ from src.engine.v11.core.expectation_surface import BETA_FLOOR, clamp_beta
 
 
 def compute_effective_entropy(*, posterior_entropy: float, quality_score: float) -> float:
-    """Calculates effective entropy by penalizing low data quality."""
+    """Calculates effective entropy by penalizing low data quality with an additive shift."""
     h = float(np.clip(posterior_entropy, 0.0, 1.0))
     q = float(np.clip(quality_score, 0.0, 1.0))
-    return 1.0 - ((1.0 - h) * q)
+    # V14.6: Switch to additive penalty to prevent 'Quality Paralysis'
+    return float(np.clip(h + (1.0 - q) * 0.15, 0.0, 1.0))
 
 
 def compute_pre_floor_beta(

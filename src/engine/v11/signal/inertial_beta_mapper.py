@@ -58,9 +58,15 @@ class InertialBetaMapper:
         delta = target_beta - self.current_beta
         deleveraging = delta < 0.0
 
-        response = (0.65 + (0.25 * h)) if deleveraging else (0.20 + (0.20 * (1.0 - h)))
+        response = (0.65 + (0.25 * h)) if deleveraging else (0.30 + (0.20 * (1.0 - h)))
+
+        # V14.6: Regime-Conditional Smoothing (High-Conviction Boost)
+        # If we have low entropy (high conviction) and we are re-risking, speed up the process.
+        if not deleveraging and h < 0.5:
+            response += 0.15
+
         damping = 0.25 if deleveraging else 0.55
-        max_step = 0.18 if deleveraging else 0.12
+        max_step = 0.18 if deleveraging else 0.15
 
         self.velocity = (self.velocity * damping) + (delta * response)
         step = float(np.clip(self.velocity, -max_step, max_step))

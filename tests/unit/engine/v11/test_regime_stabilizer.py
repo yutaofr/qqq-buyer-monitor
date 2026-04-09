@@ -71,10 +71,11 @@ def test_regime_stabilizer_can_release_from_bust_into_recovery_with_confirmed_re
     )
 
     assert first["raw_regime"] == "BUST"
-    assert first["stable_regime"] == "BUST"
-    assert second["raw_regime"] == "BUST"
+    # V14.6: Switches on Day 1 due to 0.4x recovery discount
+    assert first["stable_regime"] == "RECOVERY"
+    assert first["switched"] is True
     assert second["stable_regime"] == "RECOVERY"
-    assert second["switched"] is True
+    assert second["switched"] is False
 
 
 def test_regime_stabilizer_does_not_release_without_repair_confirmation():
@@ -146,11 +147,11 @@ def test_regime_stabilizer_preserves_release_evidence_through_bust_retests():
         release_hint=release_hint,
     )
 
-    assert first["stable_regime"] == "BUST"
-    assert second["stable_regime"] == "BUST"
-    assert third["raw_regime"] == "BUST"
+    # V14.6: Faster release
+    assert first["stable_regime"] == "RECOVERY"
+    assert first["switched"] is True
+    assert second["stable_regime"] == "RECOVERY"
     assert third["stable_regime"] == "RECOVERY"
-    assert third["switched"] is True
 
 
 def test_regime_stabilizer_releases_when_recovery_is_fully_confirmed_but_barrier_is_still_high():

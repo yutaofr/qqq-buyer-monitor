@@ -1,14 +1,11 @@
 import logging
 import os
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import yfinance as yf
+import matplotlib.dates as mdates
 
-from src.engine.baseline.data_loader import load_all_baseline_data
-from src.engine.baseline.execution import calculate_baseline_oos_series
-from src.engine.baseline.sidecar import generate_sidecar_target
-from src.engine.baseline.validation import generate_baseline_target
 from src.engine.v11.conductor import V11Conductor
 from src.engine.v14.tail_risk_radar import TailRiskRadar
 from src.regime_topology import ACTIVE_REGIME_ORDER, REGIME_HEX_COLORS
@@ -18,211 +15,251 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 def _get_close_series(df: pd.DataFrame) -> pd.Series:
-    """Helper to extract a clean Close series from yfinance MultiIndex or Flat frame."""
-    if df.empty:
-        return pd.Series(dtype=float)
+    if df.empty: return pd.Series(dtype=float)
     if isinstance(df.columns, pd.MultiIndex):
-        if "Close" in df.columns.get_level_values(0):
-            ser = df["Close"]
-        else:
-            ser = df.iloc[:, 0]
+        ser = df["Close"] if "Close" in df.columns.get_level_values(0) else df.iloc[:, 0]
     else:
         close_col = next((c for c in ["Close", "Adj Close"] if c in df.columns), df.columns[0])
         ser = df[close_col]
-    if isinstance(ser, pd.DataFrame):
-        ser = ser.iloc[:, 0]
+    if isinstance(ser, pd.DataFrame): ser = ser.iloc[:, 0]
     ser.index = pd.to_datetime(ser.index).tz_localize(None)
     return ser
 
-def run_panorama_visualization(oos_start="2018-01-01", oos_end=None):
-    logger.info(f"Starting Panorama Visualization from {oos_start} to {oos_end or 'Latest'}...")
-
-    # 1. Initialize Engines
-    # v14 Forensic Fix: Enforce training cutoff to prevent leakage.
-    # Use a clean prior path for backtests to avoid "Prior Poisoning" from stale counts.
-    prior_path = "data/v11_prior_forensic_backtest.json"
-    if os.path.exists(prior_path):
-        os.remove(prior_path)
-        logger.info(f"V14-FIX: Resetting forensic prior at {prior_path}")
-
-    conductor = V11Conductor(
-        training_cutoff=oos_start,
-        prior_state_path=prior_path
-    )
-    radar = TailRiskRadar()
-
-    # AC-0/V12-FIX: Force reset high_entropy_streak for clean backtest/forensic report
-    conductor.high_entropy_streak = 0
-    # Industrial Hardening: Ensure conductor uses the same shared DNA loader instead of its own files
-    # This prevents 'Source Drift' between backtest loop and JIT training.
-    conductor.macro_data_path = "data/macro_historical_dump.csv"
-
-    # 2. Load Data
-    data = load_all_baseline_data(timeout=30)
-    if data.empty:
-        raise ValueError("Macro data empty.")
-
-    # Filter by date range
-    if oos_end:
-        data = data[data.index <= oos_end]
-
-    # Simulate Price History
-    import yfinance as yf
-    # Download enough data for the targets
-    dl_end = (pd.to_datetime(oos_end) + pd.Timedelta(days=10)).strftime("%Y-%m-%d") if oos_end else None
-    spy_raw = yf.download("SPY", start="2010-01-01", end=dl_end, progress=False)
-    qqq_raw = yf.download("QQQ", start="2010-01-01", end=dl_end, progress=False)
-
-    spy_close = _get_close_series(spy_raw).tz_localize(None)
-    qqq_close = _get_close_series(qqq_raw).tz_localize(None)
-
-    qqq_close = _get_close_series(qqq_raw).tz_localize(None)
-
-    vix = data["stress_vix"]
-    vxn = data.get("stress_vxn", pd.Series(np.nan, index=data.index))
-
-    target_spy = generate_baseline_target(spy_close, vix)
-    target_qqq = generate_sidecar_target(qqq_close, vxn)
-
-    # 3. Run Baseline (The "Percentages" shown in UI)
-    logger.info("Executing Baseline OOS (UI Percentages)...")
-    baseline_results = calculate_baseline_oos_series(
-        data, target_spy, target_qqq, start_date=oos_start
-    )
-    if oos_end:
-        baseline_results = baseline_results[baseline_results.index <= oos_end]
-
-    # 4. Run Bayesian 4-Regime & Tail Risk Radar
-    logger.info("Executing Bayesian 4-Regime & Tail Risk Radar Loop...")
-    dates = data.index[(data.index >= oos_start)]
-    if oos_end:
-        dates = dates[dates <= oos_end]
-    dates = dates.unique()
-
-    regime_probs = []
-    radar_spy = []
-    radar_qqq = []
-
-    # V14-FIX: Removing the mock nonexistent path to allow conductor to access ground-truth context
-    # if it fails to receive sufficient rolling history from the daily_run slice.
-
-    for dt in dates:
-        # T+0 snapshot for conductor
-        # Bayesian 4-Regime
-        try:
-            # FORCE RESET STREAK FOR FORENSIC BACKTEST
-            conductor.high_entropy_streak = 0
-
-            # Pass only the context up to DT
-            runtime = conductor.daily_run(data.loc[:dt])
-            probs = runtime["probabilities"]
-
-            # Check for fallback
-            if "bayesian_diagnostics" in runtime and not runtime["bayesian_diagnostics"].get("level_contributions"):
-                 # This usually flags a fallback to priors
-                 pass
-
-            regime_probs.append({r: probs.get(r, 0.0) for r in ACTIVE_REGIME_ORDER})
-        except Exception as e:
-            logger.warning(f"Conductor failed at {dt}: {e}")
-            regime_probs.append({r: 0.0 for r in ACTIVE_REGIME_ORDER})
-
-        # Tail Risk Radar
-        diag = conductor.seeder.latest_diagnostics()
-        if not diag.empty:
-            zscores = diag.iloc[-1].to_dict()
-            spy_radar_res = radar.compute(zscores)
-            radar_spy.append({k: v["probability"] for k, v in spy_radar_res.items()})
-            radar_qqq.append({k: v["probability"] for k, v in spy_radar_res.items()})
-        else:
-            radar_spy.append({k: 0.0 for k in radar.SCENARIOS})
-            radar_qqq.append({k: 0.0 for k in radar.SCENARIOS})
-
-    # Conductor path restored implicitly by removing temporary change
-
-    # Combine results
-    df_regime = pd.DataFrame(regime_probs, index=dates)
-    df_radar_spy = pd.DataFrame(radar_spy, index=dates)
-    df_radar_qqq = pd.DataFrame(radar_qqq, index=dates)
-
-    # 5. Plotting
-    logger.info("Generating multi-panel visualization...")
-    fig, axes = plt.subplots(4, 1, figsize=(18, 24), sharex=True, gridspec_kw={'height_ratios': [1, 0.8, 1, 1]})
-    plt.subplots_adjust(hspace=0.4)
-
-    # Common X-axis dates
+def render_full_panorama(df_regime, df_radar_spy, df_radar_qqq, series_entropy, df_betas, df_signals, baseline_results, qqq_close, spy_close, output_path="artifacts/regime_backtest_panorama.png"):
+    logger.info(f"V20-ULTIMATE: Rendering High-Fidelity Panorama to {output_path}...")
     plot_dates = df_regime.index
+    
+    # DISABLE sharex for absolute label independence
+    fig, axes = plt.subplots(10, 1, figsize=(20, 65), sharex=False,
+                             gridspec_kw={'height_ratios': [0.8, 1, 0.8, 1, 1, 0.8, 1, 0.7, 0.7, 0.7]})
+    plt.subplots_adjust(hspace=1.5)
 
-    # Panel A: 4-Regime Stacked Area
-    colors = [REGIME_HEX_COLORS.get(r, "#cccccc") for r in ACTIVE_REGIME_ORDER]
-    axes[0].stackplot(plot_dates, df_regime.values.T, labels=ACTIVE_REGIME_ORDER, colors=colors, alpha=0.8)
+    PRICE_COLOR = "#00d2ff"
+    qqq_aligned = qqq_close.reindex(plot_dates).ffill()
+    spy_aligned = spy_close.reindex(plot_dates).ffill()
 
-    # Overlay Ground Truth (SPY Crisis)
-    y_target = target_spy.reindex(plot_dates).ffill().fillna(0)
-    axes[0].fill_between(plot_dates, 0, 1, where=(y_target > 0.5), color='black', alpha=0.15, label='Actual Crisis (SPY)')
-    axes[0].set_title("Panel A: 4-Regime Posterior Probabilities (MID/LATE/BUST/RECOVERY)", fontsize=16, fontweight='bold')
-    axes[0].set_ylim(0, 1)
-    axes[0].legend(loc='upper left', ncol=5, frameon=True)
-    axes[0].grid(axis='y', linestyle='--', alpha=0.3)
+    def add_price_overlay(ax, series):
+        axp = ax.twinx()
+        axp.plot(series.index, series.values, color=PRICE_COLOR, alpha=0.3, linewidth=1.0)
+        axp.tick_params(axis='y', labelsize=8)
 
-    # Panel B: UI Diagnostic Percentages
-    # Reindex baseline results to match plot_dates
-    bl_aligned = baseline_results.reindex(plot_dates).ffill()
-    axes[1].plot(plot_dates, bl_aligned["tractor_prob"], label="Mud Tractor (SPY %)", color="#e74c3c", linewidth=2.5)
-    axes[1].plot(plot_dates, bl_aligned["sidecar_prob"], label="QQQ Sidecar (%)", color="#3498db", linewidth=2, linestyle='--')
-    axes[1].axhline(0.20, color="#e74c3c", linestyle=":", alpha=0.6, label="Tractor Threshold (0.20)")
-    axes[1].axhline(0.15, color="#3498db", linestyle=":", alpha=0.6, label="Sidecar Threshold (0.15)")
-    axes[1].set_title("Panel B: Aggregate Crisis Probabilities (UI Percentages)", fontsize=16, fontweight='bold')
-    axes[1].set_ylim(0, 1)
-    axes[1].legend(loc='upper left', frameon=True)
-    axes[1].grid(linestyle='--', alpha=0.3)
+    # Panel 0: Price
+    axes[0].plot(plot_dates, qqq_aligned, color="#2c3e50", linewidth=3, label="QQQ Raw")
+    axes[0].set_title("Panel 0: QQQ Price Momentum", fontsize=18, fontweight='bold')
 
-    # Helper for Heatmaps
-    def plot_heatmap(ax, df, title, cmap):
-        # Transpose data: columns become Y, index becomes X
-        data = df.values.T
-        y_labels = df.columns
+    # Panel 1: Regimes
+    cols = [c for c in ACTIVE_REGIME_ORDER if c in df_regime.columns]
+    colors = [REGIME_HEX_COLORS.get(c, "#cccccc") for c in cols]
+    axes[1].stackplot(plot_dates, df_regime[cols].values.T, labels=cols, colors=colors, alpha=0.8)
+    axes[1].set_title("Panel 1: 4-Regime Probabilities", fontsize=18, fontweight='bold')
+    axes[1].legend(loc='upper left', ncol=4, fontsize=12)
 
-        # pcolormesh with shading='auto' or 'nearest'
-        Y = np.arange(len(y_labels))
-        mesh = ax.pcolormesh(plot_dates, Y, data, cmap=cmap, shading='auto', vmin=0, vmax=0.8)
+    # Panel 2: Crisis
+    if "tractor_prob" in baseline_results.columns:
+        axes[2].plot(plot_dates, baseline_results["tractor_prob"], color="#e74c3c", label="Tractor")
+        axes[2].plot(plot_dates, baseline_results["sidecar_prob"], color="#3498db", linestyle="--", label="Sidecar")
+    axes[2].set_title("Panel 2: Crisis Probabilities", fontsize=18, fontweight='bold')
 
-        ax.set_yticks(np.arange(len(y_labels)) + 0.5)
-        ax.set_yticklabels(y_labels)
-        ax.set_title(title, fontsize=16, fontweight='bold')
-        fig.colorbar(mesh, ax=ax, label='Intensity', pad=0.01)
-        return mesh
+    # Panel 3 & 4: Radar
+    def plot_radar(ax, df, tit, cm):
+        if df.empty:
+            # Fallback if no radar columns found
+            dummy_cols = ["melt_up", "growth_bust", "credit_crisis", "liquidity_drain"]
+            df = pd.DataFrame(0, index=plot_dates, columns=dummy_cols)
+        
+        ax.pcolormesh(plot_dates, np.arange(len(df.columns)), df.values.T, cmap=cm, shading='auto', vmin=0, vmax=0.8)
+        ax.set_yticks(np.arange(len(df.columns)) + 0.5)
+        ax.set_yticklabels(df.columns)
+        ax.set_title(tit, fontsize=18, fontweight='bold')
 
-    # Panel C: Fat-Tail Radar (Mud Tractor)
-    plot_heatmap(axes[2], df_radar_spy, "Panel C: Fat-Tail Radar Intensity (Mud Tractor - Macro)", "YlOrRd")
+    plot_radar(axes[3], df_radar_spy, "Panel 3: Fat-Tail Radar (Macro)", "YlOrRd")
+    plot_radar(axes[4], df_radar_qqq, "Panel 4: Fat-Tail Radar (Tech)", "YlOrBr")
 
-    # Panel D: Fat-Tail Radar (QQQ Sidecar)
-    plot_heatmap(axes[3], df_radar_qqq, "Panel D: Fat-Tail Radar Intensity (QQQ Sidecar - Tech Tech)", "YlOrBr")
+    # Panel 5: Entropy
+    axes[5].plot(plot_dates, series_entropy, color="#9b59b6", linewidth=2.5)
+    axes[5].axhline(0.8, color="#e74c3c", linestyle="--")
+    axes[5].set_title("Panel 5: Info Entropy", fontsize=18, fontweight='bold')
 
-    # Format X-axis with nice dates
-    import matplotlib.dates as mdates
-    if len(plot_dates) > 500:
-        axes[3].xaxis.set_major_locator(mdates.YearLocator())
-        axes[3].xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+    # Panel 6: Beta
+    axes[6].plot(plot_dates, df_betas["raw"], color="#bdc3c7", linestyle="--", alpha=0.6, label="Raw Bayesian Beta")
+    axes[6].plot(plot_dates, df_betas["target"], color="#2c3e50", linewidth=3, label="Final Target Beta")
+    axes[6].set_title("Panel 6: Beta Surface Dynamics (Strategic De-risking)", fontsize=18, fontweight='bold')
+    axes[6].legend(loc='upper left', fontsize=12)
+    axes[6].axhline(1.0, color='gray', linestyle=':', alpha=0.5)
+    axes[6].axhline(0.5, color='#e74c3c', linestyle=':', alpha=0.5, label="Floor (0.5)")
+
+    # Panel 7: Signals
+    axes[7].step(plot_dates, df_signals["res_action"], color="#27ae60", where='post', linewidth=2.5)
+    axes[7].set_title("Panel 7: QLD Resonance Signals", fontsize=18, fontweight='bold')
+
+    # Panel 8: Tactical
+    sm = {"DEPLOY_PAUSE": 0, "DEPLOY_SLOW": 1, "DEPLOY_BASE": 2, "DEPLOY_FAST": 3}
+    num_states = df_signals["deployment_state"].map(sm).fillna(0).values
+    axes[8].step(plot_dates, num_states, where='post', color="#2980b9", linewidth=2.5)
+    axes[8].set_yticks([0, 1, 2, 3])
+    axes[8].set_yticklabels(["STOP", "SLOW", "DCA", "FAST"])
+    axes[8].set_title("Panel 8: Tactical Commands", fontsize=18, fontweight='bold')
+
+    # Panel 9: Kelly
+    axes[9].plot(plot_dates, df_signals["cdr"], color="#d35400", linewidth=2.5)
+    axes[9].set_title("Panel 9: Bayesian Kelly", fontsize=18, fontweight='bold')
+
+    # FORCED AXIS AUDIT
+    for i, ax in enumerate(axes):
+        add_price_overlay(ax, qqq_aligned)
+        ax.set_xlim(plot_dates.min(), plot_dates.max())
+        ax.xaxis.set_major_locator(mdates.YearLocator())
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+        plt.setp(ax.get_xticklabels(), visible=True, rotation=45, ha='right', fontsize=12)
+        ax.tick_params(axis='x', which='both', labelbottom=True, length=6, color='black')
+        ax.set_xlabel(f"Timeline", fontsize=10, color='gray')
+        ax.grid(True, linestyle='--', alpha=0.3)
+
+    plt.savefig(output_path, bbox_inches='tight', dpi=130)
+    logger.info(f"V20 Panorama EXPORTED to {output_path}")
+
+def run_backtest_simulation(start_date="2018-01-01", end_date="2026-04-09"):
+    logger.info(f"V22-ULTIMATE: Running full 8-year forensic simulation from {start_date} to {end_date}...")
+    
+    # Initialize Conductor ONCE to preserve state (Resonance Detector timers, etc.)
+    conductor = V11Conductor(
+        macro_data_path="data/macro_historical_dump.csv",
+        regime_data_path="data/v11_poc_phase1_results.csv",
+        prior_state_path="artifacts/v11_prior_state_backtest.json",
+        price_history_path="data/qqq_history_cache.csv",
+        allow_prior_bootstrap_drift=True
+    )
+    
+    # Clear previous backtest state if exists
+    if os.path.exists("artifacts/v11_prior_state_backtest.json"):
+        os.remove("artifacts/v11_prior_state_backtest.json")
+
+    regime_df = pd.read_csv("data/v11_poc_phase1_results.csv", parse_dates=["observation_date"]).set_index("observation_date")
+    macro_df = pd.read_csv("data/macro_historical_dump.csv", parse_dates=["observation_date"]).set_index("observation_date")
+    
+    test_dates = regime_df[(regime_df.index >= start_date) & (regime_df.index <= end_date)].index
+    test_dates = [d for d in test_dates if d in macro_df.index]
+    
+    # Action Mapping: BUY_QLD=1, HOLD=0, SELL_QLD=-1
+    action_map = {"BUY_QLD": 1.0, "HOLD": 0.0, "SELL_QLD": -1.0}
+    
+    trace_rows = []
+    for dt in test_dates:
+        # Update training cutoff for realistic walk-forward
+        conductor.training_cutoff = dt - pd.offsets.BDay(20)
+        
+        t0_data = macro_df.loc[[dt]]
+        try:
+            runtime = conductor.daily_run(t0_data)
+            
+            res_action_str = runtime.get("signal", {}).get("resonance", {}).get("action", "HOLD")
+            
+            # 2. Crisis Inference via TailRiskRadar
+            # Mapping Layer: Conductor Z-scores -> TailRiskRadar naming
+            raw_z = runtime.get("v13_4_diagnostics", {}).get("z_scores", {})
+            if not raw_z:
+                raw_z = {k: v for k, v in runtime.get("feature_values", {}).items() if isinstance(v, (int, float))}
+            
+            # Map V11 features to V14 Radar expected factor keys
+            z_scores = {
+                "spread_21d": raw_z.get("credit_acceleration", 0.0),
+                "spread_absolute": raw_z.get("spread_absolute", 0.0),
+                "liquidity_252d": raw_z.get("liquidity_velocity", 0.0),
+                "erp_absolute": raw_z.get("erp_absolute", 0.0),
+                "move_21d": raw_z.get("move_21d_raw_z", 0.0),
+                "real_yield_structural_z": raw_z.get("real_yield", 0.0),
+                "breakeven_accel": raw_z.get("breakeven", 0.0),
+                "core_capex_momentum": raw_z.get("core_capex", 0.0),
+                "usdjpy_roc_126d": raw_z.get("usdjpy", 0.0),
+            }
+            
+            radar_results = TailRiskRadar.compute(z_scores)
+            
+            # Map Scenarios to Tractor/Sidecar for Subplot 2
+            # Tractor (Main Risk): Deflationary Bust, Credit Crisis, Growth Bust, Valuation Compression
+            tractor_val = max(
+                radar_results.get("deflationary_bust", {}).get("probability", 0.0),
+                radar_results.get("credit_crisis", {}).get("probability", 0.0),
+                radar_results.get("growth_bust", {}).get("probability", 0.0),
+                radar_results.get("valuation_compression", {}).get("probability", 0.0)
+            )
+            # Sidecar (Supporting Risk): Carry Unwind, Liquidity Drain, Treasury Dislocation
+            sidecar_val = max(
+                radar_results.get("carry_unwind", {}).get("probability", 0.0),
+                radar_results.get("liquidity_drain", {}).get("probability", 0.0),
+                radar_results.get("treasury_dislocation", {}).get("probability", 0.0)
+            )
+
+            row = {
+                "date": dt,
+                "entropy": runtime["entropy"],
+                "raw_target_beta": runtime["raw_target_beta"],
+                "target_beta": runtime["target_beta"],
+                "res_action": action_map.get(res_action_str, 0.0), 
+                "deployment_state": runtime["deployment"]["deployment_state"],
+                "cdr": runtime.get("cdr_sharpe", 0.0),
+                "tractor_prob": tractor_val,
+                "sidecar_prob": sidecar_val
+            }
+            
+            # Add Radar Individual Probabilities for Panel 3/4
+            for scenario, res in radar_results.items():
+                row[f"radar_{scenario}"] = res.get("probability", 0.0)
+
+            # Add Posteriors (Panel 1) - RESTORED
+            for r in ACTIVE_REGIME_ORDER:
+                row[r] = runtime["probabilities"].get(r, 0.0)
+                
+            trace_rows.append(row)
+            if len(trace_rows) % 100 == 0:
+                logger.info(f"Simulated {len(trace_rows)} days...")
+        except Exception as e:
+            logger.warning(f"Error at {dt}: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            
+    df_trace = pd.DataFrame(trace_rows).set_index("date")
+    df_trace.to_csv("artifacts/panorama_trace.csv")
+    logger.info("Trace REGENERATED.")
+    return df_trace
+
+def run_panorama_visualization(force_simulation=False):
+    output_png = "artifacts/regime_backtest_panorama.png"
+    trace_path = "artifacts/panorama_trace.csv"
+    
+    if force_simulation or not os.path.exists(trace_path) or os.getenv("PLOT_ONLY") != "1":
+        df = run_backtest_simulation()
     else:
-        axes[3].xaxis.set_major_locator(mdates.MonthLocator())
-        axes[3].xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+        logger.info("Loading trace from cache.")
+        df = pd.read_csv(trace_path, index_col=0, parse_dates=True)
+    
+    df_regime = df[[c for c in ACTIVE_REGIME_ORDER if c in df.columns]]
+    df_radar = df[[c for c in df.columns if "radar_" in c]].rename(columns=lambda x: x.replace("radar_", ""))
+    series_entropy = df["entropy"]
 
-    for ax in axes:
-        ax.set_xlabel("Timeline")
-        ax.tick_params(labelsize=12)
+    df_betas = pd.DataFrame({
+        "raw": df["raw_target_beta"],
+        "target": df["target_beta"]
+    }, index=df.index)
+    
+    # Check for missing res_action if loading from old trace
+    if "res_action" not in df.columns:
+        df["res_action"] = 0.0
 
-    output_path = "artifacts/regime_backtest_panorama.png"
-    os.makedirs("artifacts", exist_ok=True)
-    plt.savefig(output_path, bbox_inches='tight', dpi=120)
-    logger.info(f"Panorama updated at {output_path}")
-
-    # Export data for forensic report
-    trace_df = pd.concat([df_regime, bl_aligned, df_radar_spy.add_prefix("radar_")], axis=1)
-    trace_df.to_csv("artifacts/panorama_trace.csv")
+    df_signals = df[["res_action", "deployment_state", "cdr"]]
+    baseline_results = df[["tractor_prob", "sidecar_prob"]]
+    
+    qqq_raw = yf.download("QQQ", start=df.index.min().strftime("%Y-%m-%d"), progress=False)
+    spy_raw = yf.download("SPY", start=df.index.min().strftime("%Y-%m-%d"), progress=False)
+    
+    render_full_panorama(
+        df_regime, df_radar, df_radar, series_entropy, df_betas, 
+        df_signals, baseline_results, 
+        _get_close_series(qqq_raw), _get_close_series(spy_raw),
+        output_path=output_png
+    )
 
 if __name__ == "__main__":
     import sys
-    start_date = sys.argv[1] if len(sys.argv) > 1 else "2018-01-01"
-    end_date = sys.argv[2] if len(sys.argv) > 2 else None
-    run_panorama_visualization(start_date, end_date)
+    force = len(sys.argv) > 1 or os.getenv("PLOT_ONLY") != "1"
+    run_panorama_visualization(force_simulation=force)
