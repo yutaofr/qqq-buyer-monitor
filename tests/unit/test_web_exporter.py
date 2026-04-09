@@ -69,7 +69,7 @@ def test_export_web_snapshot_v11_contract(tmp_path, monkeypatch):
 
     assert ok is True
     payload = json.loads(output_path.read_text(encoding="utf-8"))
-    assert payload["meta"]["version"] == "v13.0"
+    assert payload["meta"]["version"] == "v14.0-ULTIMA"
     assert payload["signal"]["regime"] == "中期平稳 (MID_CYCLE)"
     assert payload["signal"]["target_beta"] == 0.91
     assert payload["signal"]["entropy"] == 0.17

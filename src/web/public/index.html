@@ -43,6 +43,11 @@
         .flip-card.flipped .flip-card-inner { transform: rotateY(180deg); }
         .flip-card-front, .flip-card-back { position: absolute; width: 100%; height: 100%; -webkit-backface-visibility: hidden; backface-visibility: hidden; border-radius: 2.5rem; overflow: hidden; }
         .flip-card-back { transform: rotateY(180deg); }
+        .beta-flip-card { background-color: transparent; width: 100%; height: 210px; perspective: 1000px; margin-top: 1rem; }
+        .beta-flip-card-inner { position: relative; width: 100%; height: 100%; text-align: center; transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1); transform-style: preserve-3d; cursor: pointer; }
+        .beta-flip-card.flipped .beta-flip-card-inner { transform: rotateY(180deg); }
+        .beta-flip-card-front, .beta-flip-card-back { position: absolute; width: 100%; height: 100%; -webkit-backface-visibility: hidden; backface-visibility: hidden; border-radius: 1.5rem; overflow: hidden; display: flex; flex-col; items-center; justify-content: center; }
+        .beta-flip-card-back { transform: rotateY(180deg); background: rgba(255, 255, 255, 0.02); }
         .chart-path { transition: d 1.5s ease-out; }
         @keyframes vitality { 0%, 100% { filter: brightness(1) drop-shadow(0 0 2px rgba(16,185,129,0.2)); } 50% { filter: brightness(1.4) drop-shadow(0 0 8px rgba(16,185,129,0.6)); } }
         .vitality-layer { animation: vitality 3s ease-in-out infinite; }
@@ -170,17 +175,6 @@
         <div id="panorama-panel" class="factor-card p-6 sm:p-8 rounded-[2.5rem] mb-8 border-2 border-white/5 bg-gradient-to-br from-white/[0.08] to-transparent relative overflow-hidden transition-all duration-1000">
             <div id="panorama-glow" class="absolute -top-24 -right-24 w-48 h-48 rounded-full blur-[80px] opacity-20"></div>
             
-            <!-- NEW: Resonance Banner -->
-            <div id="resonance-radar" class="mb-6 py-2 px-4 rounded-2xl flex items-center justify-between border border-white/5 transition-all duration-500">
-                <div class="flex items-center space-x-3">
-                    <div id="resonance-dot" class="w-3 h-3 rounded-full bg-slate-500"></div>
-                    <span id="ui-resonance-label" class="text-[10px] font-black uppercase text-slate-500 tracking-widest">共振雷達</span>
-                </div>
-                <div class="text-right">
-                    <p id="resonance-action" class="text-xs font-black text-white italic">--</p>
-                    <p id="resonance-reason" class="text-[9px] font-bold text-slate-400">--</p>
-                </div>
-            </div>
 
             <div class="flex flex-col items-center text-center space-y-4 relative z-10">
                 <!-- Verdict Section -->
@@ -205,48 +199,58 @@
                     </div>
                 </div>
 
-                <!-- Execution Target (Merged Beta) -->
-                <div class="w-full pt-6 border-t border-white/5 mt-4 flex flex-col items-center">
-                    <p id="ui-beta-rec" class="text-[11px] font-black uppercase text-emerald-400/80 mb-2">最終執行目標</p>
-                    <div class="flex items-end justify-center space-x-4 mb-4">
-                        <p id="exposure" class="text-6xl font-black text-white leading-none">--</p>
-                        <div class="text-right pb-1">
-                            <p id="ui-confidence" class="text-[9px] font-bold text-slate-500 uppercase">信心度</p>
-                            <p id="ui-model-type" class="text-[9px] font-black text-white bg-emerald-500/20 px-2 py-0.5 rounded">機率推斷</p>
+                <!-- Execution Target (Beta Flip Card) -->
+                <div class="beta-flip-card">
+                    <div class="beta-flip-card-inner" onclick="this.parentElement.classList.toggle('flipped')">
+                        <!-- FRONT: Main Beta Display -->
+                        <div class="beta-flip-card-front flex flex-col items-center">
+                            <p id="ui-beta-rec" class="text-[11px] font-black uppercase text-emerald-400/80 mb-2">最終執行目標</p>
+                            <div class="flex items-end justify-center space-x-4 mb-4">
+                                <p id="exposure" class="text-6xl font-black text-white leading-none">--</p>
+                                <div class="text-right pb-1">
+                                    <p id="ui-confidence" class="text-[9px] font-bold text-slate-500 uppercase">信心度</p>
+                                    <p id="ui-model-type" class="text-[9px] font-black text-white bg-emerald-500/20 px-2 py-0.5 rounded">機率推斷</p>
+                                </div>
+                            </div>
+                            
+                            <div class="w-full h-3 bg-white/5 rounded-full overflow-hidden mb-2 p-0.5 border border-white/5">
+                                <div id="exposure-bar" class="h-full rounded-full transition-all duration-2000 ease-out" style="width: 0%"></div>
+                            </div>
+                            <p class="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em] mt-2 opacity-50">點擊查看計算細節</p>
                         </div>
-                    </div>
-                    
-                    <div class="w-full h-3 bg-white/5 rounded-full overflow-hidden mb-6 p-0.5 border border-white/5">
-                        <div id="exposure-bar" class="h-full rounded-full transition-all duration-2000 ease-out" style="width: 0%"></div>
-                    </div>
 
-                    <!-- Metrics Grid -->
-                    <div class="grid grid-cols-2 gap-x-8 gap-y-3 w-full text-[10px] font-black text-slate-500">
-                        <div class="flex justify-between border-b border-white/5 pb-1">
-                            <span id="ui-ceiling">上限</span>
-                            <span id="beta-ceiling" class="text-slate-200">--</span>
-                        </div>
-                        <div class="flex justify-between border-b border-white/5 pb-1">
-                            <span id="ui-raw">原始</span>
-                            <span id="raw-beta" class="text-emerald-500/80">--</span>
-                        </div>
-                        <div class="flex justify-between border-b border-white/5 pb-1">
-                            <span id="ui-protected">受保護</span>
-                            <span id="protected-beta" class="text-slate-200">--</span>
-                        </div>
-                        <div class="flex justify-between border-b border-white/5 pb-1">
-                            <span id="ui-overlay">疊加層</span>
-                            <span id="overlay-beta" class="text-slate-200">--</span>
-                        </div>
-                        <div class="flex justify-between border-b border-white/5 pb-1">
-                            <span id="ui-beta-mult">倉位縮放</span>
-                            <span id="beta-overlay-multiplier" class="text-emerald-400/80">--</span>
-                        </div>
-                        <div class="flex justify-between border-b border-white/5 pb-1">
-                            <span id="ui-pace-mult">節奏縮放</span>
-                            <span id="deployment-overlay-multiplier" class="text-emerald-400/80">--</span>
+                        <!-- BACK: Metrics Grid -->
+                        <div class="beta-flip-card-back p-4">
+                            <div class="grid grid-cols-2 gap-x-8 gap-y-3 w-full text-[10px] font-black text-slate-500">
+                                <div class="flex justify-between border-b border-white/5 pb-1">
+                                    <span id="ui-ceiling">上限</span>
+                                    <span id="beta-ceiling" class="text-slate-200">--</span>
+                                </div>
+                                <div class="flex justify-between border-b border-white/5 pb-1">
+                                    <span id="ui-raw">原始</span>
+                                    <span id="raw-beta" class="text-emerald-500/80">--</span>
+                                </div>
+                                <div class="flex justify-between border-b border-white/5 pb-1">
+                                    <span id="ui-protected">受保護</span>
+                                    <span id="protected-beta" class="text-slate-200">--</span>
+                                </div>
+                                <div class="flex justify-between border-b border-white/5 pb-1">
+                                    <span id="ui-overlay">疊加層</span>
+                                    <span id="overlay-beta" class="text-slate-200">--</span>
+                                </div>
+                                <div class="flex justify-between border-b border-white/5 pb-1">
+                                    <span id="ui-beta-mult">倉位縮放</span>
+                                    <span id="beta-overlay-multiplier" class="text-emerald-400/80">--</span>
+                                </div>
+                                <div class="flex justify-between border-b border-white/5 pb-1">
+                                    <span id="ui-pace-mult">節奏縮放</span>
+                                    <span id="deployment-overlay-multiplier" class="text-emerald-400/80">--</span>
+                                </div>
+                            </div>
+                            <p class="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em] mt-6 opacity-50">點擊返回主視圖</p>
                         </div>
                     </div>
+                </div>
 
                     <div class="w-full mt-5 pt-3 border-t border-white/5 bg-gradient-to-b from-rose-500/5 to-transparent rounded-b-2xl p-3 border border-rose-500/10">
                         <p id="ui-tail-risk-label" class="text-[9px] font-black uppercase text-rose-500 mb-3 text-center tracking-widest flex items-center justify-center drop-shadow-[0_0_8px_rgba(244,63,94,0.6)]">
@@ -279,6 +283,18 @@
                             <!-- Decorative line -->
                             <div class="absolute top-4 left-[20%] right-[20%] h-px bg-gradient-to-r from-rose-500/0 via-rose-500/20 to-orange-500/0 -z-10"></div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Resonance Radar (Moved & Shrunk) -->
+                <div id="resonance-radar" class="mt-3 py-1.5 px-4 rounded-xl flex items-center justify-between border border-white/5 bg-white/5 transition-all duration-500 opacity-60">
+                    <div class="flex items-center space-x-2">
+                        <div id="resonance-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></div>
+                        <span id="ui-resonance-label" class="text-[8px] font-black uppercase text-slate-500 tracking-widest leading-none">共振雷達</span>
+                    </div>
+                    <div class="text-right leading-tight">
+                        <p id="resonance-action" class="text-[10px] font-black text-white italic">--</p>
+                        <p id="resonance-reason" class="text-[7px] font-bold text-slate-500 uppercase">--</p>
                     </div>
                 </div>
             </div>
@@ -817,7 +833,7 @@
                 document.getElementById('diag-sidecar').textContent = (diag.sidecar.prob * 100).toFixed(1) + '%';
             }
 
-            // Resonance Radar Rendering
+            // Resonance Radar Rendering (Moved & Prescriptive Labels)
             const resonance = data.signal.resonance || { action: 'HOLD', confidence: 0, reason: 'Scanning...' };
             const radar = document.getElementById('resonance-radar');
             const rDot = document.getElementById('resonance-dot');
@@ -825,21 +841,21 @@
             const rReason = document.getElementById('resonance-reason');
 
             if (resonance.action === 'BUY_QLD') {
-                radar.className = 'mb-6 py-3 px-4 rounded-2xl flex items-center justify-between border transition-all duration-1000 resonance-buy';
-                rDot.className = 'w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.9)]';
-                rAction.className = 'text-base font-black text-emerald-400 tracking-tighter italic';
-                rAction.textContent = 'BUY_QLD';
+                radar.className = 'mt-3 py-1.5 px-4 rounded-xl flex items-center justify-between border transition-all duration-1000 resonance-buy opacity-100';
+                rDot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]';
+                rAction.className = 'text-[11px] font-black text-emerald-400 tracking-tighter';
+                rAction.textContent = currentLang === 'en' ? 'ADD LEVERAGE' : '建議加槓桿';
                 rReason.textContent = (resonance.prompt || resonance.reason || '--');
             } else if (resonance.action === 'SELL_QLD') {
-                radar.className = 'mb-6 py-3 px-4 rounded-2xl flex items-center justify-between border transition-all duration-1000 resonance-sell';
-                rDot.className = 'w-3 h-3 rounded-full bg-red-400 shadow-[0_0_12px_rgba(239,68,68,0.9)]';
-                rAction.className = 'text-base font-black text-red-400 tracking-tighter italic';
-                rAction.textContent = 'SELL_QLD';
+                radar.className = 'mt-3 py-1.5 px-4 rounded-xl flex items-center justify-between border transition-all duration-1000 resonance-sell opacity-100';
+                rDot.className = 'w-1.5 h-1.5 rounded-full bg-red-400 shadow-[0_0_8px_rgba(239,68,68,0.8)]';
+                rAction.className = 'text-[11px] font-black text-red-400 tracking-tighter';
+                rAction.textContent = currentLang === 'en' ? 'REDUCE LEVERAGE' : '建議降槓桿';
                 rReason.textContent = (resonance.prompt || resonance.reason || '--');
             } else {
-                radar.className = 'mb-6 py-3 px-4 rounded-2xl flex items-center justify-between border transition-all duration-1000 resonance-hold opacity-50 grayscale';
-                rDot.className = 'w-3 h-3 rounded-full bg-slate-500 shadow-none';
-                rAction.className = 'text-base font-bold text-slate-400 tracking-tighter italic';
+                radar.className = 'mt-3 py-1.5 px-4 rounded-xl flex items-center justify-between border transition-all duration-1000 resonance-hold opacity-40 grayscale';
+                rDot.className = 'w-1.5 h-1.5 rounded-full bg-slate-500 shadow-none';
+                rAction.className = 'text-[10px] font-bold text-slate-400 tracking-tighter italic';
                 rAction.textContent = currentLang === 'en' ? 'SCANNING...' : '掃描中...';
                 rReason.textContent = `Confidence: ${(resonance.confidence * 100).toFixed(1)}%`;
             }

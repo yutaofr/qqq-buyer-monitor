@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
+
 @dataclass
 class MacroGap:
     missing_date: date

@@ -22,6 +22,10 @@ from src.engine.v11.core.expectation_surface import (
     deployment_state_rank,
     expected_policy_for_regime,
 )
+from src.engine.v11.core.price_topology import (
+    align_posteriors_with_recovery_process,  # noqa: F401
+    topology_likelihood_penalties,  # noqa: F401
+)
 from src.engine.v13.execution_overlay import ExecutionOverlayEngine
 from src.regime_dynamics import flatten_probability_dynamics
 from src.regime_topology import canonicalize_regime_sequence, merge_regime_weights
