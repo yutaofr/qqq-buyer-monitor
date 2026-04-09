@@ -736,6 +736,7 @@ class V11Conductor:
             entropy=norm_h,
             readiness_score=overlay_deployment_readiness,
             value_score=erp_percentile,
+            mid_delta=probability_dynamics.get("MID_CYCLE", {}).get("delta_1d", 0.0),
         )
 
         deployment_decision = {
@@ -764,6 +765,8 @@ class V11Conductor:
             "erp_ttm": _safe_float(latest_raw.get("erp_ttm_pct")),
             "entropy": norm_h,
             "deployment_readiness": deployment_readiness,
+            "deployment_state": deployment_decision.get("deployment_state"),
+            "liquidity_velocity": _safe_float(f_values.get("liquidity_velocity")),
             "price_topology_confidence": float(topology_state.confidence),
             "price_topology_expected_beta": float(topology_state.expected_beta),
         }

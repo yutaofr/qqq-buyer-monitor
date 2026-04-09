@@ -56,9 +56,26 @@ class RegimeStabilizer:
         if release_override is not None:
             challenger_regime = release_override["candidate_regime"]
             challenger_prob = float(normalized.get(challenger_regime, 0.0))
-            barrier *= float(release_override["barrier_scale"])
+            # V14.6: Apply composite barrier scaling + 0.4x 'V-recovery' discount
+            barrier = self._apply_barrier_scaling(
+                barrier,
+                scaling_factor=float(release_override["barrier_scale"]),
+                is_recovery=(challenger_regime == "RECOVERY"),
+            )
 
         if challenger_regime != self.current_regime:
+            # V14.6: Implement Evidence Decay (85% retention) to prevent noise accumulation
+            # This ensures that sporadic noise doesn't slowly climb toward the barrier.
+            self.evidence *= 0.85
+
+            # V14.6: Apply minimum barrier of 0.5 for MID <-> LATE to respect 'topping' duration
+            # Topping/Transitioning usually takes 10+ business days of consistent momentum.
+            if challenger_regime in {"MID_CYCLE", "LATE_CYCLE"} and self.current_regime in {
+                "MID_CYCLE",
+                "LATE_CYCLE",
+            }:
+                barrier = max(barrier, 0.50)
+
             self.evidence += max(0.0, challenger_prob - current_prob) + (
                 float(release_override["bonus"]) if release_override is not None else 0.0
             )
@@ -82,6 +99,17 @@ class RegimeStabilizer:
         h = min(0.999, max(0.0, float(entropy)))
         states = max(1, int(n_states))
         return (h / max(1e-6, 1.0 - h)) / states
+
+    @staticmethod
+    def _apply_barrier_scaling(
+        barrier: float, *, scaling_factor: float, is_recovery: bool = False
+    ) -> float:
+        """Applies adaptive scaling to the transition barrier."""
+        scaled = barrier * scaling_factor
+        # V14.6: Additional 0.4x discount specifically for RECOVERY to break Dead-V lock
+        if is_recovery:
+            scaled *= 0.40
+        return float(scaled)
 
     @staticmethod
     def _normalize(weights: dict[str, float]) -> dict[str, float]:

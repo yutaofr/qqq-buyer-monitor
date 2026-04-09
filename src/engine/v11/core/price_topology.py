@@ -181,7 +181,7 @@ def align_posteriors_with_recovery_process(
     topology: PriceTopologyState,
     *,
     runtime_priors: dict[str, float] | None = None,
-    max_shift: float = 0.22,
+    max_shift: float = 0.30,
 ) -> dict[str, float]:
     normalized = merge_regime_weights(
         posteriors,
@@ -220,8 +220,10 @@ def align_posteriors_with_recovery_process(
     if desired_uplift <= 0.0:
         return normalized
 
+    recovery_boost = 0.12 if (topology.regime == "RECOVERY" and repair_persistence > 0.5) else 0.0
     adaptive_max_shift = (
         max_shift
+        + recovery_boost
         + (0.06 * repair_persistence)
         + (0.10 * bust_overhang)
         + (0.08 * prior_release_support)

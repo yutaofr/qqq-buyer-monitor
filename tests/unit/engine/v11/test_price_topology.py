@@ -374,7 +374,8 @@ def test_recovery_process_alignment_moves_posterior_toward_confirmed_repair():
     corrected = align_posteriors_with_recovery_process(posteriors, topology)
 
     assert corrected["RECOVERY"] > posteriors["RECOVERY"]
-    assert corrected["RECOVERY"] <= topology.probabilities["RECOVERY"]
+    # V14.6: RECOVERY can now exceed benchmark if there is strong 'release credit'
+    assert corrected["RECOVERY"] > 0.60
     assert corrected["LATE_CYCLE"] < posteriors["LATE_CYCLE"]
     assert corrected["BUST"] < posteriors["BUST"]
     assert sum(corrected.values()) == pytest.approx(1.0)

@@ -20,10 +20,10 @@ def snapshot():
 
 
 def test_compute_effective_entropy_logic():
-    # 1.0 - ((1.0 - h) * q)
+    # V14.6 Additive: h + (1.0 - q) * 0.15
     h = 0.4
     q = 0.8
-    expected = 1.0 - ((1.0 - h) * q)
+    expected = h + (1.0 - q) * 0.15
     assert compute_effective_entropy(posterior_entropy=h, quality_score=q) == pytest.approx(
         expected
     )

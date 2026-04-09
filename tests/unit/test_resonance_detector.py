@@ -31,7 +31,7 @@ def test_triple_resonance_triggers_buy_qld_after_risk_cliff_entropy_waterfall_an
     assert result["action"] == "BUY_QLD"
     assert result["confidence"] >= 0.8
     assert result["reason_code"] == "TRIPLE_RESONANCE_BUY"
-    assert "QLD" in result["prompt"]
+    assert "三重共振成立" in result["prompt"]
 
 
 def test_late_cycle_takeover_triggers_sell_qld(detector):

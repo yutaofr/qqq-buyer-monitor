@@ -14,7 +14,9 @@ class ResonanceDetector:
     """
 
     def __init__(self):
-        pass
+        # V15.1 Resonance Window Memory
+        self.risk_ready_days = 99
+        self.waterfall_ready_days = 99
 
     def evaluate(
         self,
@@ -73,6 +75,31 @@ class ResonanceDetector:
             or (high_entropy_streak >= 5 and effective_entropy >= 0.75)
         )
 
+        # 1. Instant Indicators
+        risk_clear = combined_risk <= 0.18 and tractor_prob <= 0.10 and sidecar_prob <= 0.10
+        risk_relief = (
+            risk_delta <= -0.02
+            or (
+                previous_combined_risk >= 0.30
+                and combined_risk <= 0.18
+                and risk_delta <= -0.12
+            )
+        )
+        entropy_waterfall = (
+            previous_effective_entropy is not None
+            and previous_effective_entropy >= 0.55
+            and effective_entropy <= 0.52
+            and entropy_delta <= -0.12
+            and high_entropy_streak == 0
+        )
+        mid_cycle_surge = (
+            mid_prob >= 0.45
+            and mid_prob > late_prob
+            and mid_delta >= 0.05
+        )
+        bust_retreat = bust_prob <= 0.18 or bust_delta <= -0.05
+
+        # 2. Safety Signals (Instant Kill - Top Priority)
         if risk_spike or risk_rebound:
             return self._signal(
                 action="SELL_QLD",
@@ -98,31 +125,21 @@ class ResonanceDetector:
                 prompt="黃線開始蠶食藍線，週期進入降槓桿區，應把 QLD 切回 QQQ。",
             )
 
-        risk_clear = combined_risk <= 0.18 and tractor_prob <= 0.10 and sidecar_prob <= 0.10
-        risk_relief = (
-            risk_delta <= -0.02
-            or (
-                previous_combined_risk >= 0.30
-                and combined_risk <= 0.18
-                and risk_delta <= -0.12
-            )
-        )
-        entropy_waterfall = (
-            previous_effective_entropy is not None
-            and previous_effective_entropy >= 0.55
-            and effective_entropy <= 0.35
-            and entropy_delta <= -0.12
-            and high_entropy_streak == 0
-        )
-        mid_cycle_surge = (
-            mid_prob >= 0.45
-            and mid_prob > late_prob
-            and mid_delta >= 0.08
-            and (mid_accel > 0.0 or bust_delta <= -0.05)
-        )
-        bust_retreat = bust_prob <= 0.18 or bust_delta <= -0.05
+        # 3. Update Sequential Memory (Timers) for Recovery Signals
+        self.risk_ready_days += 1
+        self.waterfall_ready_days += 1
 
-        if risk_clear and risk_relief and entropy_waterfall and mid_cycle_surge and bust_retreat:
+        if risk_clear:
+            self.risk_ready_days = 0
+        if entropy_waterfall:
+            self.waterfall_ready_days = 0
+
+        # Resonance Windows Check
+        risk_in_window = self.risk_ready_days <= 5
+        waterfall_in_window = self.waterfall_ready_days <= 4
+
+        # 4. Triple Resonance Buy Trigger (Sequential/Trend based)
+        if risk_in_window and waterfall_in_window and mid_cycle_surge and bust_retreat:
             confidence = min(
                 1.0,
                 0.78
@@ -134,16 +151,16 @@ class ResonanceDetector:
                 action="BUY_QLD",
                 confidence=confidence,
                 reason_code="TRIPLE_RESONANCE_BUY",
-                reason="Risk cliff + entropy waterfall + MID_CYCLE resurgence.",
-                prompt="三重共振成立，可切入 QLD：橙青退潮、紫線坍塌、藍色 MID_CYCLE 強勢回歸。",
+                reason=f"Risk ({self.risk_ready_days}d) + Waterfall ({self.waterfall_ready_days}d) + MID_CYCLE surge.",
+                prompt="三重共振成立（趨勢窗口已鎖定）：左尾風險解除、迷霧消散、藍色 MID_CYCLE 強向回歸。",
             )
 
         return self._signal(
             action="HOLD",
             confidence=0.0,
             reason_code="NO_RESONANCE",
-            reason="Noise: No resonance detected",
-            prompt="暫無三重共振，維持現有節奏。",
+            reason=f"Noise: Risk({self.risk_ready_days}d), Waterfall({self.waterfall_ready_days}d)",
+            prompt="暫無三重共振趋势，維持現有節奏。",
         )
 
     @staticmethod
