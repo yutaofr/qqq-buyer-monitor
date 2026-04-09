@@ -11,7 +11,6 @@ import argparse
 import json
 import logging
 import os
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -19,21 +18,12 @@ import pandas as pd
 import yfinance as yf
 
 from src.engine.v11.core.expectation_surface import (
-    allocate_reference_path,
-    compute_beta_expectation,
     deployment_cash_notional,
     deployment_state_rank,
     expected_policy_for_regime,
 )
-from src.engine.v11.core.price_topology import (
-    align_posteriors_with_recovery_process,
-    anchor_beta_with_topology,
-    blend_posteriors_with_topology,
-    infer_price_topology_state,
-    topology_likelihood_penalties,
-)
 from src.engine.v13.execution_overlay import ExecutionOverlayEngine
-from src.regime_dynamics import compute_probability_dynamics, flatten_probability_dynamics
+from src.regime_dynamics import flatten_probability_dynamics
 from src.regime_topology import canonicalize_regime_sequence, merge_regime_weights
 
 logger = logging.getLogger(__name__)
@@ -165,26 +155,12 @@ def run_v11_audit(
 ) -> dict[str, Any]:
     """Replay the production conductor on frozen historical inputs."""
     import numpy as np
-    from sklearn.naive_bayes import GaussianNB
 
     # v14.0 INDUSTRIAL REPRODUCIBILITY: Fixed seed for all ML/Stochastic components
     np.random.seed(42)
 
-    from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
-    from src.engine.v11.core.data_quality import (
-        assess_data_quality,
-        feature_reliability_weights,
-    )
-    from src.engine.v11.core.entropy_controller import EntropyController
-    from src.engine.v11.core.execution_pipeline import run_execution_pipeline
-    from src.engine.v11.core.model_validation import validate_feature_contract, validate_gaussian_nb
-    from src.engine.v11.core.position_sizer import PositionSizingResult
-    from src.engine.v11.core.prior_knowledge import PriorKnowledgeBase
+    from src.engine.v11.core.model_validation import validate_feature_contract
     from src.engine.v11.probability_seeder import ProbabilitySeeder
-    from src.engine.v11.signal.behavioral_guard import BehavioralGuard
-    from src.engine.v11.signal.deployment_policy import ProbabilisticDeploymentPolicy
-    from src.engine.v11.signal.inertial_beta_mapper import InertialBetaMapper
-    from src.engine.v11.signal.regime_stabilizer import RegimeStabilizer
     from src.output.backtest_plots import (
         save_v11_fidelity_figure,
         save_v11_probabilistic_audit_figure,
@@ -249,14 +225,12 @@ def run_v11_audit(
     posterior_mode = str(
         audit_data.get("model_hyperparameters", {}).get("posterior_mode", "runtime_reweight")
     )
-    price_topology_contract = dict(audit_data.get("price_topology_contract", {}))
 
     # v14.5 INDUSTRIAL GOVERNANCE: Load registry once for the entire audit
     registry_path = Path("src/engine/v11/resources/v13_4_weights_registry.json")
-    registry = {}
     if registry_path.exists():
         with open(registry_path) as f:
-            registry = json.load(f)
+            json.load(f)
     overlay_mode = experiment.get("overlay_mode")
     price_cache_path = str(experiment.get("price_cache_path", "data/qqq_history_cache.csv"))
     allow_price_download = bool(experiment.get("allow_price_download", False))

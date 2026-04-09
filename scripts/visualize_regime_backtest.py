@@ -16,13 +16,15 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 def _get_close_series(df: pd.DataFrame) -> pd.Series:
-    if df.empty: return pd.Series(dtype=float)
+    if df.empty:
+        return pd.Series(dtype=float)
     if isinstance(df.columns, pd.MultiIndex):
         ser = df["Close"] if "Close" in df.columns.get_level_values(0) else df.iloc[:, 0]
     else:
         close_col = next((c for c in ["Close", "Adj Close"] if c in df.columns), df.columns[0])
         ser = df[close_col]
-    if isinstance(ser, pd.DataFrame): ser = ser.iloc[:, 0]
+    if isinstance(ser, pd.DataFrame):
+        ser = ser.iloc[:, 0]
     ser.index = pd.to_datetime(ser.index).tz_localize(None)
     return ser
 
@@ -37,7 +39,7 @@ def render_full_panorama(df_regime, df_radar_spy, df_radar_qqq, series_entropy, 
 
     PRICE_COLOR = "#00d2ff"
     qqq_aligned = qqq_close.reindex(plot_dates).ffill()
-    spy_aligned = spy_close.reindex(plot_dates).ffill()
+    # spy_aligned = spy_close.reindex(plot_dates).ffill()
 
     def add_price_overlay(ax, series):
         axp = ax.twinx()
@@ -106,7 +108,7 @@ def render_full_panorama(df_regime, df_radar_spy, df_radar_qqq, series_entropy, 
     axes[9].set_title("Panel 9: Bayesian Kelly", fontsize=18, fontweight='bold')
 
     # FORCED AXIS AUDIT
-    for i, ax in enumerate(axes):
+    for ax in axes:
         add_price_overlay(ax, qqq_aligned)
         ax.set_xlim(plot_dates.min(), plot_dates.max())
         ax.xaxis.set_major_locator(mdates.YearLocator())
