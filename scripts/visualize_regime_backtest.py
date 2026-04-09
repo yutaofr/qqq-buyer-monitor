@@ -122,18 +122,19 @@ def render_full_panorama(df_regime, df_radar_spy, df_radar_qqq, series_entropy, 
 def run_backtest_simulation(start_date="2018-01-01", end_date="2026-04-09"):
     logger.info(f"V22-ULTIMATE: Running full 8-year forensic simulation from {start_date} to {end_date}...")
 
+    # Clear previous backtest state if exists
+    prior_path = "artifacts/v11_prior_state_backtest.json"
+    if os.path.exists(prior_path):
+        os.remove(prior_path)
+
     # Initialize Conductor ONCE to preserve state (Resonance Detector timers, etc.)
     conductor = V11Conductor(
         macro_data_path="data/macro_historical_dump.csv",
         regime_data_path="data/v11_poc_phase1_results.csv",
-        prior_state_path="artifacts/v11_prior_state_backtest.json",
+        prior_state_path=prior_path,
         price_history_path="data/qqq_history_cache.csv",
         allow_prior_bootstrap_drift=True
     )
-
-    # Clear previous backtest state if exists
-    if os.path.exists("artifacts/v11_prior_state_backtest.json"):
-        os.remove("artifacts/v11_prior_state_backtest.json")
 
     regime_df = pd.read_csv("data/v11_poc_phase1_results.csv", parse_dates=["observation_date"]).set_index("observation_date")
     macro_df = pd.read_csv("data/macro_historical_dump.csv", parse_dates=["observation_date"]).set_index("observation_date")
