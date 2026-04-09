@@ -20,7 +20,7 @@ def run_focused_diagnosis():
     )
 
     macro_df = pd.read_csv("data/macro_historical_dump.csv", parse_dates=["observation_date"]).set_index("observation_date")
-    regime_df = pd.read_csv("data/v11_poc_phase1_results.csv", parse_dates=["observation_date"]).set_index("observation_date")
+    pd.read_csv("data/v11_poc_phase1_results.csv", parse_dates=["observation_date"]).set_index("observation_date")
 
     test_dates = macro_df[(macro_df.index >= start_date) & (macro_df.index <= end_date)].index
 

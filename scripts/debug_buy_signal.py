@@ -41,7 +41,8 @@ def debug():
         entropy_delta = effective_entropy - previous_effective_entropy
 
         # Acceleration: we need 1 more day back for proper check
-        if i < 2: continue
+        if i < 2:
+            continue
         prev_prev_row = df.iloc[i-2]
         prev_mid_delta = float(prev_row['MID_CYCLE']) - float(prev_prev_row['MID_CYCLE'])
         mid_accel = mid_delta - prev_mid_delta

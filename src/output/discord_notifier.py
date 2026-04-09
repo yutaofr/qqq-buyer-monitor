@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 
 import requests
 
-from src.regime_topology import ACTIVE_REGIME_ORDER, canonicalize_regime_name, merge_regime_weights
 from src.constants import ENGINE_VERSION
+from src.regime_topology import ACTIVE_REGIME_ORDER, canonicalize_regime_name, merge_regime_weights
 
 if TYPE_CHECKING:
     from src.models import SignalResult
