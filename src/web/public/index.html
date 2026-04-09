@@ -363,20 +363,20 @@
             local: './status.json'
         };
 
-        function getDataSourceUrl() {
+        function getDataSourceUrl(filename = 'status.json') {
             const params = new URLSearchParams(window.location.search);
             const source = params.get('source');
-            if (source) return source;
+            if (source) return source.replace('status.json', filename);
 
             const env = params.get('env');
-            if (env && DATA_SOURCES[env]) return DATA_SOURCES[env];
+            if (env && DATA_SOURCES[env]) return DATA_SOURCES[env].replace('status.json', filename);
 
             // Auto-detect local development
             if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                return DATA_SOURCES.local;
+                return DATA_SOURCES.local.replace('status.json', filename);
             }
 
-            return DATA_SOURCES.prod;
+            return DATA_SOURCES.prod.replace('status.json', filename);
         }
 
         const TRANSLATIONS = {
@@ -847,9 +847,27 @@
 
         async function renderHistoryChart() {
             try {
-                const res = await fetch('history.json?t=' + Date.now());
-                if (!res.ok) return;
-                const history = await res.json();
+                let history = null;
+                const historyUrl = getDataSourceUrl('history.json');
+                
+                try {
+                    const res = await fetch(historyUrl + '?t=' + Date.now());
+                    if (res.ok) {
+                        history = await res.json();
+                    }
+                } catch (e) {}
+
+                // Fallback to local if primary fails and we aren't already targeting local
+                if (!history && historyUrl !== DATA_SOURCES.local.replace('status.json', 'history.json')) {
+                    try {
+                        const localHistoryUrl = DATA_SOURCES.local.replace('status.json', 'history.json');
+                        const res = await fetch(localHistoryUrl + '?t=' + Date.now());
+                        if (res.ok) {
+                            history = await res.json();
+                        }
+                    } catch (e) {}
+                }
+
                 if (!history || history.length === 0) return;
 
                 const svg = document.getElementById('history-svg');
