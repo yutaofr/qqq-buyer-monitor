@@ -97,10 +97,10 @@ def export_history_json(output_path: str | Path | None = None, limit: int = 126)
         history = load_history(n=limit)
         if not history:
             return False
-            
+
         # Reverse to get chronological order (oldest to newest)
         history.reverse()
-        
+
         # Simplify history for web consumption (lower payload)
         simplified = []
         for entry in history:
@@ -108,7 +108,7 @@ def export_history_json(output_path: str | Path | None = None, limit: int = 126)
                 "date": entry["date"],
                 "probabilities": entry["probabilities"]
             })
-            
+
         path = Path(output_path) if output_path else Path("src/web/public/history.json")
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:

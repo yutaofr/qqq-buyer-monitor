@@ -1,16 +1,14 @@
 
 import csv
 import json
-import sqlite3
-from datetime import datetime
-from pathlib import Path
 import os
 import sys
 
 # Add src to path
 sys.path.append(os.getcwd())
 
-from src.store.db import init_db, CURRENT_SCHEMA_VERSION
+from src.store.db import init_db
+
 
 def seed_database(csv_path: str, db_path: str):
     print(f"Seeding {db_path} from {csv_path}...")
@@ -19,7 +17,7 @@ def seed_database(csv_path: str, db_path: str):
         return
 
     conn = init_db(db_path)
-    
+
     # Check if we already have data
     cursor = conn.execute("SELECT COUNT(*) FROM signals")
     count = cursor.fetchone()[0]
@@ -28,20 +26,20 @@ def seed_database(csv_path: str, db_path: str):
         conn.close()
         return
 
-    with open(csv_path, 'r') as f:
+    with open(csv_path) as f:
         reader = csv.DictReader(f)
         rows_to_insert = []
         for row in reader:
             # Reconstruct the expected json_blob for the UI
             # Note: actual_regime_probability, predicted_regime, brier, etc are in the CSV
-            
+
             probs = {
                 "MID_CYCLE": float(row.get("prob_MID_CYCLE", 0)),
                 "LATE_CYCLE": float(row.get("prob_LATE_CYCLE", 0)),
                 "BUST": float(row.get("prob_BUST", 0)),
                 "RECOVERY": float(row.get("prob_RECOVERY", 0))
             }
-            
+
             # Create a mock SignalResult blob that matches src/store/db.py:_to_json_dict
             blob = {
                 "date": row["date"],
@@ -56,7 +54,7 @@ def seed_database(csv_path: str, db_path: str):
                 "explanation": "Historical seed data",
                 "metadata": {"version": "v14.0-ULTIMA-SEED"}
             }
-            
+
             rows_to_insert.append((
                 row["date"],
                 0.0,
