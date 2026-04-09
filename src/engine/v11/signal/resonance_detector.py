@@ -38,7 +38,6 @@ class ResonanceDetector:
 
         mid_dynamics = dynamics.get("MID_CYCLE", {})
         mid_delta = mid_dynamics.get("delta_1d", 0.0)
-        mid_accel = mid_dynamics.get("acceleration_1d", 0.0)
 
         late_dynamics = dynamics.get("LATE_CYCLE", {})
         late_delta = late_dynamics.get("delta_1d", 0.0)
@@ -77,14 +76,6 @@ class ResonanceDetector:
 
         # 1. Instant Indicators
         risk_clear = combined_risk <= 0.18 and tractor_prob <= 0.10 and sidecar_prob <= 0.10
-        risk_relief = (
-            risk_delta <= -0.02
-            or (
-                previous_combined_risk >= 0.30
-                and combined_risk <= 0.18
-                and risk_delta <= -0.12
-            )
-        )
         entropy_waterfall = (
             previous_effective_entropy is not None
             and previous_effective_entropy >= 0.55
