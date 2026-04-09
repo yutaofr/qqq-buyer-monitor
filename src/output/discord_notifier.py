@@ -1,4 +1,4 @@
-"""Discord notification logic for QQQ v13.0 Bayesian Monitor."""
+"""Discord notification logic for QQQ Bayesian Monitor."""
 
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ def _discord_timestamp(value: object) -> str:
 
 
 def build_discord_payload(result: SignalResult) -> dict:
-    """Build a Discord payload for ENGINE_VERSION signals with full transparency."""
+    """Build a Discord payload with full transparency."""
     display_regime = canonicalize_regime_name(result.stable_regime) or result.stable_regime
     color = REGIME_COLORS.get(display_regime, COLOR_DEFAULT)
     macro_emoji = _get_regime_emoji(display_regime)
@@ -119,7 +119,7 @@ def build_discord_payload(result: SignalResult) -> dict:
 
     description = (
         f"{summary_header}\n\n"
-        "> v13.7 概率核心决定方向；执行 overlay 只条件化动作，不改写后验。\n\n"
+        "> 概率核心决定方向；执行 overlay 只条件化动作，不改写后验。\n\n"
         f"**Briefing:** {result.explanation}"
     )
     title = f"QQQ {ENGINE_VERSION} | Bayesian Decision - {result.date}"
@@ -194,7 +194,7 @@ def build_discord_payload(result: SignalResult) -> dict:
         "description": description[:4096],
         "color": int(color),
         "fields": fields,
-        "footer": {"text": f"v13.7 Neural-Orthogonal | Prior Anchor: {hydration_anchor}"},
+        "footer": {"text": f"{ENGINE_VERSION} Neural-Orthogonal | Prior Anchor: {hydration_anchor}"},
         "timestamp": _discord_timestamp(result.date),
     }
 
@@ -206,7 +206,7 @@ def build_discord_payload(result: SignalResult) -> dict:
 
 
 def send_discord_signal(result: SignalResult, webhook_url: str) -> bool:
-    """Send a Discord embed for the current ENGINE_VERSION Bayesian signal."""
+    """Send a Discord embed for the current Bayesian signal."""
     if not webhook_url:
         return False
 
