@@ -642,10 +642,12 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     result.metadata["recovery_hmm_shadow"] = _load_recovery_hmm_shadow_diagnostics()
 
     # 1. Export Web Snapshot Locally (Production Baseline)
-    from src.output.web_exporter import export_web_snapshot
+    from src.output.web_exporter import export_history_json, export_web_snapshot
 
     web_json_path = "src/web/public/status.json"
+    history_json_path = "src/web/public/history.json"
     export_web_snapshot(result, output_path=web_json_path)
+    export_history_json(output_path=history_json_path)
 
     if args.json:
         print(to_json(result))
@@ -679,6 +681,10 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
             # Sync Public status.json to the ROOT of the namespace (e.g. prod/status.json)
             with open(web_json_path, "rb") as f:
                 cloud.push_payload(f.read(), "status.json", is_binary=True)
+            # Sync Public history.json to the ROOT of the namespace (e.g. prod/history.json)
+            if Path(history_json_path).exists():
+                with open(history_json_path, "rb") as f:
+                    cloud.push_payload(f.read(), "history.json", is_binary=True)
 
         logger.info("v11 signal persisted and cloud state synchronized.")
 
