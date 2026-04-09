@@ -36,6 +36,15 @@
         .feature-chip { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 1.25rem; padding: 0.85rem 0.95rem; text-align: left; }
         @keyframes flow { 0% { background-position: 100% 0; } 100% { background-position: 0% 0; } }
 
+        /* 3D Flip Card Styles */
+        .flip-card { background-color: transparent; width: 100%; height: 380px; perspective: 1500px; margin-bottom: 2rem; }
+        @media (max-width: 640px) { .flip-card { height: 350px; } }
+        .flip-card-inner { position: relative; width: 100%; height: 100%; text-align: left; transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1); transform-style: preserve-3d; cursor: pointer; }
+        .flip-card.flipped .flip-card-inner { transform: rotateY(180deg); }
+        .flip-card-front, .flip-card-back { position: absolute; width: 100%; height: 100%; -webkit-backface-visibility: hidden; backface-visibility: hidden; border-radius: 2.5rem; overflow: hidden; }
+        .flip-card-back { transform: rotateY(180deg); }
+        .chart-path { transition: d 1.5s ease-out; }
+
         /* Lumiere Point Animation */
         .lumiere { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; position: relative; }
         .lumiere::after { content: ''; position: absolute; top: -5px; left: -5px; right: -5px; bottom: -5px; border-radius: 50%; background: inherit; filter: blur(10px); opacity: 0.6; animation: breathe 3s ease-in-out infinite; }
@@ -82,28 +91,65 @@
             <div class="flex items-center space-x-2">
                 <div id="indicator" class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.5)]"></div>
                 <span id="market-label" class="text-[10px] sm:text-[11px] font-black opacity-60 uppercase tracking-widest">--</span>
+                <span id="replay-badge" class="hidden bg-amber-500/20 text-amber-500 text-[9px] font-black px-2 py-0.5 rounded-full border border-amber-500/30 uppercase tracking-tighter">REPLAY</span>
             </div>
-            <div class="flex items-center space-x-4">
                 <div class="flex space-x-2 text-[10px] font-black uppercase tracking-widest opacity-40">
                     <span onclick="setLanguage('en')" id="lang-en" class="lang-toggle">EN</span>
                     <span>/</span>
                     <span onclick="setLanguage('zh-TW')" id="lang-tw" class="lang-toggle active">繁中</span>
                 </div>
-                <p id="ui-subtitle" class="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase">--</p>
-            </div>
         </div>
 
-        <div class="mt-12 sm:mt-14 mb-6 sm:mb-8 text-center">
+        <div class="mt-12 sm:mt-14 mb-8 sm:mb-10 text-center">
             <h1 id="ui-title" class="text-3xl sm:text-4xl font-black tracking-tighter text-white">趨勢氣象站</h1>
-            <p id="ui-version-tag" class="text-[10px] font-bold text-emerald-400/60 uppercase tracking-[0.3em] mt-2">--</p>
         </div>
 
         <!-- Main State Section -->
-        <div class="space-y-8 sm:space-y-10 text-center mb-10 sm:mb-12">
-            <div class="factor-card p-6 rounded-[2rem] sm:rounded-[2.5rem] w-full text-left bg-white/[0.03]">
-                <p id="ui-posterior-label" class="text-[11px] text-center font-black uppercase opacity-50 text-slate-500 tracking-widest mb-6">後驗機率分佈</p>
-                <div id="prob-container" class="space-y-4 px-2 sm:px-4"></div>
+        <!-- Flippable Posterior Probability Card -->
+        <div class="flip-card mb-10 sm:mb-12" id="prob-card-flippable">
+            <div class="flip-card-inner" onclick="this.parentElement.classList.toggle('flipped')">
+                <!-- Front: Current Probabilities -->
+                <div class="flip-card-front factor-card p-6 sm:p-8 bg-white/[0.03] border border-white/5">
+                    <p id="ui-posterior-label" class="text-[11px] text-center font-black uppercase opacity-50 text-slate-500 tracking-widest mb-6">後驗機率分佈</p>
+                    <div id="prob-container" class="space-y-4 px-2 sm:px-4"></div>
+                    <div class="absolute bottom-6 left-0 right-0 text-center">
+                        <span id="ui-flip-hint-front" class="text-[9px] font-black text-slate-600 uppercase tracking-widest animate-pulse">點擊切換 6 個月趨勢</span>
+                    </div>
+                </div>
+                
+                <!-- Back: 6-month Stacked Area Chart -->
+                <div class="flip-card-back factor-card p-6 sm:p-8 bg-white/[0.04] border border-white/10 shadow-[0_0_30px_rgba(0,0,0,0.5)]">
+                    <p id="ui-history-label" class="text-[11px] text-center font-black uppercase opacity-60 text-emerald-400 tracking-widest mb-6">6 個月體制演變（實證）</p>
+                    <div id="history-chart-container" class="w-full h-48 sm:h-56 relative flex items-center justify-center">
+                        <svg id="history-svg" class="w-full h-full overflow-visible" preserveAspectRatio="none">
+                            <defs>
+                                <linearGradient id="grad-mid" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#10b981" stop-opacity="0.8"/><stop offset="100%" stop-color="#10b981" stop-opacity="0.2"/></linearGradient>
+                                <linearGradient id="grad-late" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f59e0b" stop-opacity="0.8"/><stop offset="100%" stop-color="#f59e0b" stop-opacity="0.2"/></linearGradient>
+                                <linearGradient id="grad-bust" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f43f5e" stop-opacity="0.8"/><stop offset="100%" stop-color="#f43f5e" stop-opacity="0.2"/></linearGradient>
+                                <linearGradient id="grad-recovery" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3b82f6" stop-opacity="0.8"/><stop offset="100%" stop-color="#3b82f6" stop-opacity="0.2"/></linearGradient>
+                            </defs>
+                            <g id="chart-layers"></g>
+                        </svg>
+                        <!-- Hover info (optional) -->
+                    </div>
+                    <div class="mt-8 flex justify-between px-2">
+                        <div class="flex flex-col">
+                            <span class="text-[8px] font-black text-slate-500 uppercase">Start</span>
+                            <span id="chart-start-date" class="text-[10px] font-bold text-slate-400">--</span>
+                        </div>
+                        <div class="flex flex-col text-right">
+                            <span class="text-[8px] font-black text-slate-500 uppercase">Latest</span>
+                            <span id="chart-end-date" class="text-[10px] font-bold text-slate-400">--</span>
+                        </div>
+                    </div>
+                    <div class="absolute bottom-6 left-0 right-0 text-center">
+                        <span id="ui-flip-hint-back" class="text-[9px] font-black text-slate-600 uppercase tracking-widest grayscale opacity-50">點击返回實時分佈</span>
+                    </div>
+                </div>
             </div>
+        </div>
+
+        <div class="space-y-8 sm:space-y-10 text-center mb-10 sm:mb-12">
             
             <div class="grid grid-cols-2 gap-4 sm:gap-5">
                 <div class="factor-card p-5 sm:p-6 rounded-[1.8rem] sm:rounded-[2.5rem] flex flex-col items-start bg-white/[0.03]">
@@ -298,7 +344,7 @@
 
                 
                 <div class="pt-10 border-t border-white/5 text-[10px] font-black text-slate-600 uppercase text-left">
-                    <div class="flex justify-between"><span id="ui-engine-label">核心引擎版本</span><span id="engine-version" class="text-slate-400">v13.7-ULTIMA</span></div>
+                    <div class="flex justify-between"><span id="ui-engine-label">核心引擎版本</span><span id="engine-version" class="text-slate-400">--</span></div>
                     <div class="flex justify-between"><span id="ui-anchor-label">資料血緣回溯</span><span id="hydration-anchor" class="text-slate-400">2018-01-01</span></div>
                     <div class="flex justify-between"><span id="ui-generated-label">更新時間</span><span id="calc-at" class="text-slate-400">--</span></div>
                     <div class="flex justify-between"><span id="ui-data-status-label">數據狀態</span><span id="data-source" class="text-slate-400">--</span></div>
@@ -334,8 +380,7 @@
         const TRANSLATIONS = {
             'en': {
                 'ui-page-title': 'QQQ Barometer - Probabilistic Dashboard',
-                'ui-title': 'QQQ Barometer', 'ui-subtitle': 'v13.7-ULTIMA Probabilistic', 
-                'ui-version-tag': 'V14 Panorama Ensemble',
+                'ui-title': 'QQQ Barometer',
                 'ui-regime-label': 'Stable Regime',
                 'ui-entropy-label': 'Entropy', 'ui-deploy-label': 'Entry Pacing', 'ui-beta-rec': 'Target Beta',
                 'ui-panorama-label': 'Panorama Ensemble Verdict',
@@ -351,7 +396,10 @@
                 'ui-execution-overlay-label': 'Execution Overlay', 'ui-feature-values-label': 'Feature Values',
                 'ui-engine-label': 'Engine', 'ui-anchor-label': 'Prior Anchor', 'ui-generated-label': 'Generated (UTC)',
                 'ui-resonance-label': 'Resonance Radar',
-                'ui-step': 'Step',
+                'ui-history-label': '6-Month Regime Evolution (Empirical)',
+                'ui-flip-hint-front': 'Tap to view 6-month historical trend',
+                'ui-flip-hint-back': 'Tap to return to live distribution',
+                'ui-step': 'Step', 'ui-replay-badge': 'HISTORICAL REPLAY',
                 'status': {
                     'CLOUD_SYNCED': 'Synced', 'LOCAL_FALLBACK': 'LocalStorage', 'SYNC_ERROR': 'Sync Error'
                 },
@@ -363,7 +411,8 @@
                 'mapping': {
                     'CRISIS': 'Crisis', 'STRESS': 'Stress', 'NEUTRAL': 'Neutral', 'EUPHORIC': 'Euphoric',
                     'BUST': 'Bust', 'MID_CYCLE': 'Mid Cycle', 'LATE_CYCLE': 'Late Cycle', 'RECOVERY': 'Recovery',
-                    'CASH': 'Cash', 'QQQ': '1x Pos', 'QLD': '2x Lev'
+                    'CASH': 'Cash', 'QQQ': '1x Pos', 'QLD': '2x Lev',
+                    'ACTIVE': 'LIVE', 'FROZEN': 'OFF-MARKET', 'UNKNOWN': 'UNKNOWN'
                 },
                 'steps': {
                     'probabilistic_inference': 'Inference', 'entropy_haircut': 'Entropy Haircut',
@@ -374,8 +423,7 @@
             },
             'zh-TW': {
                 'ui-page-title': 'QQQ 氣象觀測站 - 機率目標係數儀表板',
-                'ui-title': '趨勢氣象站', 'ui-subtitle': 'v13.7-ULTIMA 機率推斷版', 
-                'ui-version-tag': 'V14 全景集成版',
+                'ui-title': '趨勢氣象站',
                 'ui-regime-label': '穩定體制',
                 'ui-entropy-label': '資訊熵', 'ui-deploy-label': '佈局節奏', 'ui-beta-rec': '最終執行目標',
                 'ui-panorama-label': '全景診斷裁決',
@@ -391,7 +439,10 @@
                 'ui-execution-overlay-label': '執行疊加層', 'ui-feature-values-label': '特徵數值明細',
                 'ui-engine-label': '核心引擎版本', 'ui-anchor-label': '資料血緣回溯', 'ui-generated-label': '更新時間',
                 'ui-resonance-label': '戰術共振雷達',
-                'ui-step': '第',
+                'ui-history-label': '6 個月體制演變（實證）',
+                'ui-flip-hint-front': '點擊查看 6 個月歷史趨勢',
+                'ui-flip-hint-back': '點擊返回實時分佈',
+                'ui-step': '第', 'ui-replay-badge': '歷史回放模式',
                 'status': {
                     'CLOUD_SYNCED': '同步成功', 'LOCAL_FALLBACK': '本地備份', 'SYNC_ERROR': '同步出錯'
                 },
@@ -404,6 +455,7 @@
                     'CRISIS': '危機', 'STRESS': '壓力', 'NEUTRAL': '中性', 'EUPHORIC': '過熱',
                     'BUST': '蕭條', 'MID_CYCLE': '中期', 'LATE_CYCLE': '後期', 'RECOVERY': '修復',
                     'CASH': '現金', 'QQQ': '標準倉位', 'QLD': '雙倍槓桿',
+                    'ACTIVE': '實時', 'FROZEN': '非實時', 'UNKNOWN': '未知',
                     'FULL': '全量', 'SHADOW': '影子模式', 'HALF': '半量', 'QUARTER': '四分之一', 'NONE': '關閉',
                     'FAST': '快速', 'BASE': '標配', 'SLOW': '減速', 'PAUSE': '停步', 'RECOVER': '恢復',
                     'TRUE': '是', 'FALSE': '否', 'MODE': '模式', 'STATE': '狀態', 'NEGATIVE SCORE': '負向評分',
@@ -654,7 +706,7 @@
             
             const calcAt = data.meta && data.meta.calculated_at_utc ? data.meta.calculated_at_utc.replace('T',' ').replace('Z','') : '--';
             document.getElementById('calc-at').textContent = calcAt;
-            document.getElementById('engine-version').textContent = (data.meta && data.meta.version) || 'v13.7-ULTIMA';
+            document.getElementById('engine-version').textContent = (data.meta && data.meta.version) || 'v--';
             document.getElementById('hydration-anchor').textContent = (data.signal && data.signal.hydration_anchor) || (data.meta && data.meta.hydration_anchor) || '2018-01-01';
             document.getElementById('beta-ceiling').textContent = ((data.signal && data.signal.beta_ceiling) || 1.20).toFixed(2) + 'x';
             const rawPreFloorBeta = data.signal.raw_target_beta_pre_floor || data.signal.raw_target_beta || data.signal.target_beta;
@@ -665,6 +717,22 @@
             document.getElementById('beta-overlay-multiplier').textContent = (data.signal.beta_overlay_multiplier || 1.0).toFixed(2);
             document.getElementById('deployment-overlay-multiplier').textContent = (data.signal.deployment_overlay_multiplier || 1.0).toFixed(2);
             document.getElementById('market-label').textContent = mapping[mkt] || mkt;
+
+            // Replay Detection: If data is more than 3 days old compared to current wall time
+            const replayBadge = document.getElementById('replay-badge');
+            const now = Date.now();
+            const obsStr = data.meta.observation_date || data.meta.calculated_at_utc;
+            const calcTime = new Date(data.meta.calculated_at_utc).getTime();
+            const obsTime = new Date(obsStr).getTime();
+            
+            const isReplay = (now - calcTime) > (3 * 24 * 60 * 60 * 1000) || (now - obsTime) > (3 * 24 * 60 * 60 * 1000);
+            
+            if (isReplay) {
+                replayBadge.textContent = TRANSLATIONS[currentLang]['ui-replay-badge'];
+                replayBadge.classList.remove('hidden');
+            } else {
+                replayBadge.classList.add('hidden');
+            }
 
             const bar = document.getElementById('exposure-bar'); const beta = data.signal.target_beta;
             bar.style.width = Math.min(100, beta * 83.33) + '%'; bar.className = beta > 1.0 ? 'h-full overclock' : 'h-full bg-emerald-500';
@@ -775,12 +843,81 @@
             }
         }
 
+        async function renderHistoryChart() {
+            try {
+                const res = await fetch('history.json?t=' + Date.now());
+                if (!res.ok) return;
+                const history = await res.json();
+                if (!history || history.length === 0) return;
+
+                const svg = document.getElementById('history-svg');
+                const g = document.getElementById('chart-layers');
+                const startDateEl = document.getElementById('chart-start-date');
+                const endDateEl = document.getElementById('chart-end-date');
+                
+                startDateEl.textContent = history[0].date;
+                endDateEl.textContent = history[history.length - 1].date;
+
+                const width = 1000; // Fixed viewbox width
+                const height = 500; // Fixed viewbox height
+                svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+                
+                const steps = history.length;
+                const xStep = width / (steps - 1);
+                
+                const regimes = ['RECOVERY', 'MID_CYCLE', 'LATE_CYCLE', 'BUST'];
+                const colors = ['#3b82f6', '#10b981', '#f59e0b', '#f43f5e'];
+                const grads = ['grad-recovery', 'grad-mid', 'grad-late', 'grad-bust'];
+                
+                g.innerHTML = '';
+                
+                let previousBaselines = new Array(steps).fill(height);
+                
+                regimes.forEach((regime, rIdx) => {
+                    let points = [];
+                    let nextBaselines = [];
+                    
+                    // Top path (current regime + previous baselines)
+                    for (let i = 0; i < steps; i++) {
+                        const prob = history[i].probabilities[regime] || 0;
+                        const y = previousBaselines[i] - (prob * height);
+                        points.push(`${i * xStep},${y}`);
+                        nextBaselines.push(y);
+                    }
+                    
+                    // Bottom path (previous baselines in reverse)
+                    let reversePoints = [];
+                    for (let i = steps - 1; i >= 0; i--) {
+                        reversePoints.push(`${i * xStep},${previousBaselines[i]}`);
+                    }
+                    
+                    const pathD = `M ${points.join(' L ')} L ${reversePoints.join(' L ')} Z`;
+                    
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.setAttribute('d', pathD);
+                    path.setAttribute('fill', `url(#${grads[rIdx]})`);
+                    path.setAttribute('class', 'chart-path');
+                    path.setAttribute('stroke', colors[rIdx]);
+                    path.setAttribute('stroke-width', '1');
+                    path.setAttribute('stroke-opacity', '0.5');
+                    
+                    g.appendChild(path);
+                    previousBaselines = nextBaselines;
+                });
+            } catch (e) {
+                console.error("History chart failed:", e);
+            }
+        }
+
         async function updateDashboard() {
             const body = document.getElementById('body');
             const sourceLabel = document.getElementById('data-source');
             try {
                 let data = null;
                 const primaryUrl = getDataSourceUrl();
+                
+                // Fetch history in parallel
+                renderHistoryChart();
                 
                 try {
                     const res = await fetch(primaryUrl + '?t=' + Date.now(), { method: 'GET', mode: 'cors', cache: 'no-store' });

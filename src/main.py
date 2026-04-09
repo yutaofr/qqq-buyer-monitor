@@ -405,6 +405,21 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
             prior_seed_path,
         )
 
+    # ── V14.9 Bootstrap Guardian ──────────────────────────
+    from src.engine.v11.utils.bootstrap_guardian import BootstrapGuardian
+    guardian = BootstrapGuardian(
+        macro_csv_path="data/macro_historical_dump.csv",
+        price_cache_path="data/qqq_history_cache.csv",
+        cold_start_seed_path=prior_seed_path,
+    )
+    audit_report = guardian.audit()
+    if not audit_report.is_healthy:
+        logger.warning("Bootstrap Guardian: Issues detected. Auto-repairing...")
+        repair_result = guardian.repair(audit_report)
+        logger.info("Bootstrap Guardian: Repaired %d rows, %d fields.",
+                    repair_result.total_rows_added, repair_result.total_fields_repaired)
+    # ── END Guardian ──────────────────────────────────────
+
     logger.info("Fetching market data...")
     price_data = fetch_price_data()
     price_history = price_data.get("history")
