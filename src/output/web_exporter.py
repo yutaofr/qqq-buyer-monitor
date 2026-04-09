@@ -10,6 +10,7 @@ from pathlib import Path
 import pandas as pd
 import pytz
 
+from src.constants import ENGINE_VERSION
 from src.models import SignalResult
 from src.regime_topology import (
     ACTIVE_REGIME_ORDER,
@@ -30,20 +31,20 @@ REGIME_MAP = REGIME_DISPLAY_MAP
 
 
 def _discretize_allocation(beta: float) -> str:
-    """Maps precise beta/allocation to 10% bands."""
+    """Maps precise beta/allocation to categorical bands."""
     if beta <= 0.05:
-        return "0-5% (极轻仓/现金)"
+        return "Beta 0.00-0.05x (极轻仓/现金)"
     if beta <= 0.25:
-        return "10-20% (防御性)"
+        return "Beta 0.05-0.25x (防御性)"
     if beta <= 0.45:
-        return "30-40% (保守)"
+        return "Beta 0.25-0.45x (保守)"
     if beta <= 0.65:
-        return "50-60% (稳健)"
+        return "Beta 0.45-0.65x (稳健)"
     if beta <= 0.85:
-        return "70-80% (积极)"
+        return "Beta 0.65-0.85x (积极)"
     if beta <= 1.05:
-        return "90-100% (满仓)"
-    return "110-120% (进攻/杠杆)"
+        return "Beta 0.85-1.05x (满仓)"
+    return "Beta >1.05x (进攻/杠杆)"
 
 
 class MarketCursor:
@@ -128,7 +129,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
 
         payload = {
             "meta": {
-                "version": "v13.0",
+                "version": ENGINE_VERSION,
                 "calculated_at_utc": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "observation_date": result.date.isoformat(),
                 "expires_at_utc": cursor.get_expires_at_utc(now_utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from src.constants import ENGINE_VERSION
 from src.models import SignalResult
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,7 @@ def print_signal(
     if verdict == "AGGRESSIVE":
         v_color = _GREEN
 
-    print(f"\n{c(_BOLD)}{c(_MAGENTA)}=== QQQ PANORAMA ENSEMBLE VERDICT (v14.8) ==={r}")
+    print(f"\n{c(_BOLD)}{c(_MAGENTA)}=== QQQ PANORAMA ENSEMBLE VERDICT ({ENGINE_VERSION}) ==={r}")
     print(f"Status:  {c(_BOLD)}{c(v_color)}{verdict}{r}")
     if verdict_label != verdict:
         print(f"Label:   {c(_DIM)}{verdict_label}{r}")
@@ -62,7 +63,7 @@ def print_signal(
     print(f"{c(_BOLD)}---{r}")
 
     # 2. BAYESIAN MONITOR (Logic Source)
-    print(f"\n{c(_BOLD)}=== QQQ PROBABILISTIC MONITOR (v12.0) ==={r}")
+    print(f"\n{c(_BOLD)}=== QQQ PROBABILISTIC MONITOR ({ENGINE_VERSION}) ==={r}")
     print(f"Date:      {result.date}")
     print(f"Price:     ${result.price:.2f}")
     print(f"Target:    beta={result.target_beta:.2f}x | regime={result.stable_regime}")
@@ -94,7 +95,7 @@ def print_signal(
             )
 
     # 3. PIPELINE DIAGNOSTIC AUDIT
-    print(f"\n{c(_CYAN)}Pipeline Diagnostic Audit (v14.8):{r}")
+    print(f"\n{c(_CYAN)}Pipeline Diagnostic Audit ({ENGINE_VERSION}):{r}")
 
     baseline_prob = metadata.get("v14_baseline_prob")
     sidecar_prob = metadata.get("v14_sidecar_prob")
