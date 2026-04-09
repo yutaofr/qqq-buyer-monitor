@@ -33,18 +33,18 @@ REGIME_MAP = REGIME_DISPLAY_MAP
 def _discretize_allocation(beta: float) -> str:
     """Maps precise beta/allocation to categorical bands."""
     if beta <= 0.05:
-        return "Beta 0.00-0.05x (极轻仓/现金)"
+        return "Beta 0.00-0.05x (極輕倉/現金)"
     if beta <= 0.25:
-        return "Beta 0.05-0.25x (防御性)"
+        return "Beta 0.05-0.25x (防禦性)"
     if beta <= 0.45:
         return "Beta 0.25-0.45x (保守)"
     if beta <= 0.65:
-        return "Beta 0.45-0.65x (稳健)"
+        return "Beta 0.45-0.65x (穩健)"
     if beta <= 0.85:
-        return "Beta 0.65-0.85x (积极)"
+        return "Beta 0.65-0.85x (積極)"
     if beta <= 1.05:
-        return "Beta 0.85-1.05x (满仓)"
-    return "Beta >1.05x (进攻/杠杆)"
+        return "Beta 0.85-1.05x (滿倉)"
+    return "Beta >1.05x (進攻/槓桿)"
 
 
 class MarketCursor:
@@ -87,6 +87,36 @@ class MarketCursor:
             else schedule.iloc[0].market_open
         )
         return (next_open + timedelta(hours=jitter_hours)).to_pydatetime().astimezone(UTC)
+
+
+
+def export_history_json(output_path: str | Path | None = None, limit: int = 126) -> bool:
+    """Export the most recent history from signals.db for standard plotting."""
+    try:
+        from src.store.db import load_history
+        history = load_history(n=limit)
+        if not history:
+            return False
+            
+        # Reverse to get chronological order (oldest to newest)
+        history.reverse()
+        
+        # Simplify history for web consumption (lower payload)
+        simplified = []
+        for entry in history:
+            simplified.append({
+                "date": entry["date"],
+                "probabilities": entry["probabilities"]
+            })
+            
+        path = Path(output_path) if output_path else Path("src/web/public/history.json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(simplified, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as exc:
+        logger.error("History export failed: %s", exc)
+        return False
 
 
 def export_web_snapshot(result: SignalResult, output_path: str | Path | None = None) -> bool:
@@ -144,7 +174,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "raw_target_beta": metadata.get("raw_target_beta", result.target_beta),
                 "raw_target_beta_pre_floor": metadata.get(
                     "raw_target_beta_pre_floor",
-                    metadata.get("raw_target_beta", result.target_beta),
+                        metadata.get("raw_target_beta", result.target_beta),
                 ),
                 "protected_beta": metadata.get(
                     "protected_beta", metadata.get("raw_target_beta", result.target_beta)
@@ -228,6 +258,10 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
+
+        # Trigger history export if using default output path
+        if not output_path:
+            export_history_json()
 
         return True
     except Exception as exc:
