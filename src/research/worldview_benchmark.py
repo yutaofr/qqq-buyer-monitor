@@ -8,10 +8,10 @@ import pandas as pd
 from src.regime_topology import ACTIVE_REGIME_ORDER
 
 _REGIME_BETA_MAP: dict[str, float] = {
-    "MID_CYCLE": 1.05,
+    "MID_CYCLE": 1.00,
     "LATE_CYCLE": 0.80,
     "BUST": 0.50,
-    "RECOVERY": 0.95,
+    "RECOVERY": 1.10,
 }
 
 

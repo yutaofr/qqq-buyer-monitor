@@ -260,6 +260,91 @@ def test_conductor_applies_price_topology_anchor_to_final_beta(tmp_path, monkeyp
     assert result["target_beta"] == pytest.approx(0.5)
 
 
+def test_conductor_hydrates_price_derived_training_features_from_cached_history(tmp_path):
+    regime_path = tmp_path / "regimes.csv"
+    macro_path = tmp_path / "macro.csv"
+    prior_path = tmp_path / "prior_state.json"
+    price_path = tmp_path / "qqq_history.csv"
+
+    dates = pd.bdate_range("2022-01-03", periods=320)
+    macro_df = _build_v12_macro_frame(dates)
+    regime_df = _build_regime_frame(dates)
+    price_df = pd.DataFrame(
+        {
+            "Close": 100.0
+            + np.sin(np.linspace(0.0, 16.0, len(dates))) * 8.0
+            + np.linspace(0.0, 12.0, len(dates)),
+            "Volume": 1_000_000.0
+            + np.cos(np.linspace(0.0, 8.0, len(dates))) * 150_000.0,
+        },
+        index=dates,
+    )
+
+    macro_df.to_csv(macro_path, index=False)
+    regime_df.to_csv(regime_path, index=False)
+    price_df.to_csv(price_path)
+
+    conductor = V11Conductor(
+        macro_data_path=str(macro_path),
+        regime_data_path=str(regime_path),
+        prior_state_path=str(prior_path),
+        price_history_path=str(price_path),
+    )
+
+    feature_names = conductor.seeder.feature_names()
+    ma_idx = feature_names.index("qqq_ma_ratio")
+    pv_idx = feature_names.index("qqq_pv_divergence_z")
+
+    assert not np.allclose(conductor.gnb.theta_[:, ma_idx], 0.0)
+    assert not np.allclose(conductor.gnb.theta_[:, pv_idx], 0.0)
+
+
+def test_conductor_restores_resonance_window_state_from_prior_execution_state(
+    tmp_path, monkeypatch
+):
+    regime_path = tmp_path / "regimes.csv"
+    macro_path = tmp_path / "macro.csv"
+    prior_path = tmp_path / "prior_state.json"
+
+    dates = pd.bdate_range("2024-01-01", periods=320)
+    macro_df = _build_v12_macro_frame(dates)
+    regime_df = _build_regime_frame(dates)
+
+    macro_df.to_csv(macro_path, index=False)
+    regime_df.to_csv(regime_path, index=False)
+
+    conductor = V11Conductor(
+        macro_data_path=str(macro_path),
+        regime_data_path=str(regime_path),
+        prior_state_path=str(prior_path),
+    )
+
+    def _fake_resonance(*args, **kwargs):
+        conductor.resonance_detector.risk_ready_days = 2
+        conductor.resonance_detector.waterfall_ready_days = 1
+        return {
+            "action": "HOLD",
+            "confidence": 0.0,
+            "reason_code": "NO_RESONANCE",
+            "reason": "persist timers",
+            "prompt": "persist timers",
+        }
+
+    monkeypatch.setattr(conductor.resonance_detector, "evaluate", _fake_resonance)
+
+    t0 = macro_df.tail(1).set_index("observation_date")
+    conductor.daily_run(t0)
+
+    reloaded = V11Conductor(
+        macro_data_path=str(macro_path),
+        regime_data_path=str(regime_path),
+        prior_state_path=str(prior_path),
+    )
+
+    assert reloaded.resonance_detector.risk_ready_days == 2
+    assert reloaded.resonance_detector.waterfall_ready_days == 1
+
+
 def test_conductor_marks_missing_provenance_as_degraded(tmp_path):
     regime_path = tmp_path / "regimes.csv"
     macro_path = tmp_path / "macro.csv"

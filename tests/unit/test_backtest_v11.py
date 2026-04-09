@@ -85,7 +85,10 @@ def test_run_v11_audit_rejects_model_config_overrides(tmp_path, monkeypatch):
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * (len(dates) - 160) + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
+            "regime": ["MID_CYCLE"] * (len(dates) - 240)
+            + ["RECOVERY"] * 80
+            + ["LATE_CYCLE"] * 80
+            + ["BUST"] * 80,
         }
     ).to_csv(regime_path, index=False)
 
@@ -132,7 +135,10 @@ def test_run_v11_audit_rejects_audit_overrides(tmp_path, monkeypatch):
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * (len(dates) - 160) + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
+            "regime": ["MID_CYCLE"] * (len(dates) - 240)
+            + ["RECOVERY"] * 80
+            + ["LATE_CYCLE"] * 80
+            + ["BUST"] * 80,
         }
     ).to_csv(regime_path, index=False)
 
@@ -183,7 +189,10 @@ def test_run_v11_audit_rejects_posterior_mode_override(tmp_path, monkeypatch):
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * (len(dates) - 160) + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
+            "regime": ["MID_CYCLE"] * (len(dates) - 240)
+            + ["RECOVERY"] * 80
+            + ["LATE_CYCLE"] * 80
+            + ["BUST"] * 80,
         }
     ).to_csv(regime_path, index=False)
 
@@ -312,7 +321,10 @@ def test_run_v11_audit_rejects_feature_subset_overrides_when_raw_quality_fields_
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * (len(dates) - 160) + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
+            "regime": ["MID_CYCLE"] * (len(dates) - 240)
+            + ["RECOVERY"] * 80
+            + ["LATE_CYCLE"] * 80
+            + ["BUST"] * 80,
         }
     ).to_csv(regime_path, index=False)
 
@@ -353,7 +365,7 @@ def test_run_v11_audit_rejects_feature_subset_overrides_when_raw_quality_fields_
 def test_run_v11_audit_uses_mainline_black_box_when_canonical_pipeline_enabled(
     tmp_path, monkeypatch
 ):
-    dates = pd.bdate_range("2024-01-01", periods=40)
+    dates = pd.bdate_range("2024-01-01", periods=100)
     macro_path = tmp_path / "macro.csv"
     regime_path = tmp_path / "regimes.csv"
     artifact_dir = tmp_path / "audit_artifacts"
@@ -363,7 +375,10 @@ def test_run_v11_audit_uses_mainline_black_box_when_canonical_pipeline_enabled(
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * 30 + ["LATE_CYCLE"] * 10,
+            "regime": ["MID_CYCLE"] * 20
+            + ["RECOVERY"] * 20
+            + ["LATE_CYCLE"] * 20
+            + ["BUST"] * 40,
         }
     ).to_csv(regime_path, index=False)
     pd.DataFrame(
@@ -481,3 +496,108 @@ def test_run_v11_audit_uses_mainline_black_box_when_canonical_pipeline_enabled(
 def test_backtest_module_imports_topology_alignment_helpers_for_replay_parity():
     assert callable(backtest_module.align_posteriors_with_recovery_process)
     assert callable(backtest_module.topology_likelihood_penalties)
+
+
+def test_run_v11_audit_reports_oos_and_training_class_support(tmp_path, monkeypatch):
+    dates = pd.bdate_range("2016-01-01", periods=400)
+    macro_path = tmp_path / "macro.csv"
+    regime_path = tmp_path / "regimes.csv"
+    artifact_dir = tmp_path / "audit_artifacts"
+
+    _build_v12_macro_frame(dates).to_csv(macro_path, index=False)
+    pd.DataFrame(
+        {
+            "observation_date": dates,
+            "regime": ["MID_CYCLE"] * 200
+            + ["RECOVERY"] * 40
+            + ["LATE_CYCLE"] * 80
+            + ["BUST"] * 80,
+        }
+    ).to_csv(regime_path, index=False)
+
+    monkeypatch.setattr(
+        backtest_module,
+        "_load_price_history",
+        lambda *args, **kwargs: pd.DataFrame(
+            {
+                "Close": np.linspace(100.0, 130.0, len(dates)),
+                "Volume": np.linspace(1_000_000.0, 2_000_000.0, len(dates)),
+            },
+            index=dates,
+        ),
+    )
+    monkeypatch.setattr(
+        "src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        "src.output.backtest_plots.save_v11_probabilistic_audit_figure",
+        lambda *args, **kwargs: None,
+    )
+
+    class FakeConductor:
+        def __init__(self, **kwargs):
+            cutoff = pd.Timestamp(kwargs["training_cutoff"])
+            if cutoff < pd.Timestamp("2016-10-01"):
+                classes = ["MID_CYCLE", "LATE_CYCLE"]
+            else:
+                classes = ["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"]
+            self.gnb = type("FakeModel", (), {"classes_": classes})()
+
+        def daily_run(self, t0_data):
+            return {
+                "probabilities": {
+                    "MID_CYCLE": 0.7,
+                    "LATE_CYCLE": 0.2,
+                    "BUST": 0.1,
+                    "RECOVERY": 0.0,
+                },
+                "probability_dynamics": {},
+                "beta_expectation": 0.9,
+                "protected_beta": 0.85,
+                "overlay_beta": 0.85,
+                "overlay": {
+                    "beta_overlay_multiplier": 1.0,
+                    "deployment_overlay_multiplier": 1.0,
+                    "overlay_state": "NEUTRAL",
+                },
+                "target_beta": 0.8,
+                "raw_target_beta": 0.9,
+                "entropy": 0.4,
+                "prior_details": {},
+                "raw_regime": "MID_CYCLE",
+                "stable_regime": "MID_CYCLE",
+                "deployment": {"deployment_state": "DEPLOY_BASE", "deployment_multiplier": 1.0},
+                "v11_execution": {"lock_active": False, "target_bucket": "QQQ"},
+                "price_topology": {
+                    "regime": "MID_CYCLE",
+                    "expected_beta": 1.0,
+                    "confidence": 0.4,
+                    "posterior_blend_weight": 0.25,
+                    "beta_anchor_weight": 0.35,
+                },
+                "v13_4_diagnostics": {"penalties_applied": {}},
+                "forensic_snapshot_path": "",
+                "signal": {
+                    "resonance": {"action": "HOLD", "confidence": 0.0, "reason": "none"}
+                },
+            }
+
+    monkeypatch.setattr("src.engine.v11.conductor.V11Conductor", FakeConductor)
+
+    summary = backtest_module.run_v11_audit(
+        dataset_path=str(macro_path),
+        regime_path=str(regime_path),
+        evaluation_start="2016-06-01",
+        artifact_dir=str(artifact_dir),
+        experiment_config={
+            "allow_price_download": False,
+            "price_end_date": "2017-06-01",
+        },
+    )
+
+    assert summary["oos_compared_points"] > 0
+    assert summary["training_min_class_count"] == 4
+    assert summary["training_max_class_count"] == 4
+    assert summary["training_rows_below_full_support"] == 0
+    assert summary["training_first_full_support_date"] is not None
+    assert summary["evaluation_start_effective"] == summary["training_first_full_support_date"]

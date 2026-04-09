@@ -22,6 +22,7 @@ from src.engine.panorama_backtest import (
     compute_execution_metrics,
     judge_panorama_candidate,
 )
+from src.research.data_contracts import find_first_supported_evaluation_start
 
 SCENARIOS = {
     "standard": "standard_beta",
@@ -188,6 +189,7 @@ def _write_report(
         handle.write("## Mainline Bayesian Audit\n\n")
         handle.write(
             f"- Mainline Audit Window: `{diagnostics_meta['oos_start']}` onward\n"
+            f"- Effective Evaluation Start: `{mainline_summary['evaluation_start_effective']}`\n"
             f"- Posterior Top-1 Accuracy: `{mainline_summary['top1_accuracy']:.2%}`\n"
             f"- Posterior Brier: `{mainline_summary['mean_brier']:.4f}`\n"
             f"- Mean Entropy: `{mainline_summary['mean_entropy']:.4f}`\n"
@@ -264,15 +266,29 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-dir", default="artifacts/v14_panorama")
     parser.add_argument("--report-path", default="docs/research/v14_panorama_strategy_matrix.md")
     parser.add_argument("--price-cache-path", default="data/qqq_history_cache.csv")
+    parser.add_argument("--regime-path", default="data/v11_poc_phase1_results.csv")
     args = parser.parse_args(argv)
 
     artifacts = collect_panorama_oos_artifacts()
     diagnostics = artifacts["oos_results"].reset_index().rename(columns={"index": "date"})
     price_end_date = pd.Timestamp(diagnostics["date"].max()).date().isoformat()
+    regime_df = pd.read_csv(args.regime_path, parse_dates=["observation_date"]).set_index(
+        "observation_date"
+    )
+    mainline_start = find_first_supported_evaluation_start(
+        regime_df,
+        audit_regimes=("MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"),
+        training_lookback_bdays=20,
+    )
+    if mainline_start is None:
+        raise ValueError(
+            f"Full-support boundary not found in {args.regime_path}; cannot tighten evaluation_start."
+        )
+    mainline_evaluation_start = max(pd.Timestamp(artifacts["oos_start"]), pd.Timestamp(mainline_start))
 
     output_dir = Path(args.output_dir)
     mainline_trace, mainline_summary = _run_mainline_trace(
-        evaluation_start=artifacts["oos_start"],
+        evaluation_start=mainline_evaluation_start.date().isoformat(),
         price_end_date=price_end_date,
         artifact_dir=output_dir / "mainline",
         price_cache_path=args.price_cache_path,

@@ -140,6 +140,21 @@ def judge_panorama_candidate(current: dict[str, Any], baseline: dict[str, Any]) 
     )
     if float(current.get("mean_turnover", 0.0)) > turnover_limit + 1e-7:
         return False, "Turnover Regression"
+    if (
+        "beta_expectation_mae" in current
+        and "beta_expectation_mae" in baseline
+        and float(current.get("beta_expectation_mae", 0.0))
+        > float(baseline.get("beta_expectation_mae", 0.0)) + 0.02
+    ):
+        return False, "Process Distortion"
+    if (
+        "beta_expectation_within_5pct" in current
+        and "beta_expectation_within_5pct" in baseline
+        and float(current.get("beta_expectation_within_5pct", 0.0))
+        + 1e-7
+        < float(baseline.get("beta_expectation_within_5pct", 0.0)) - 0.02
+    ):
+        return False, "Process Distortion"
     return True, "PASS"
 
 
