@@ -29,6 +29,11 @@ from src.engine.v11.core.price_topology import (
 from src.engine.v13.execution_overlay import ExecutionOverlayEngine
 from src.regime_dynamics import flatten_probability_dynamics
 from src.regime_topology import canonicalize_regime_sequence, merge_regime_weights
+from src.research.data_contracts import (
+    find_first_supported_evaluation_start,
+    summarize_regime_state_support,
+    validate_regime_state_support,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +246,15 @@ def run_v11_audit(
     price_end_date = experiment.get("price_end_date")
     use_canonical_pipeline = True
     state_support = summarize_regime_state_support(regime_df, audit_regimes=ordered_regimes)
+    support_ready_eval_dt = find_first_supported_evaluation_start(
+        regime_df,
+        audit_regimes=ordered_regimes,
+        training_lookback_bdays=20,
+    )
+    if support_ready_eval_dt is None:
+        raise ValueError(
+            "Audit regime contract never reaches support-ready evaluation_start for all configured regimes."
+        )
     if strict_state_support:
         validate_regime_state_support(regime_df, audit_regimes=ordered_regimes)
 
@@ -280,6 +294,14 @@ def run_v11_audit(
         )
         if strict_state_support:
              raise ValueError("Strict Causal Isolation failed: Insufficient training data for 5-year anchor.")
+
+    effective_eval_dt = max(eval_dt, pd.Timestamp(support_ready_eval_dt).normalize())
+    if effective_eval_dt > eval_dt:
+        logger.warning(
+            "evaluation_start %s tightened to first full-support date %s",
+            eval_dt.date().isoformat(),
+            effective_eval_dt.date().isoformat(),
+        )
 
     seeder_kwargs: dict[str, Any] = {}
     if "selected_features" not in seeder_kwargs:
@@ -336,7 +358,7 @@ def run_v11_audit(
     full_df.index.name = "observation_date"
     full_df = full_df.reset_index().sort_values("observation_date").reset_index(drop=True)
 
-    eval_start = pd.to_datetime(evaluation_start)
+    eval_start = effective_eval_dt
     train = full_df[full_df["observation_date"] < eval_start].copy()
     test = full_df[full_df["observation_date"] >= eval_start].copy()
 
@@ -356,6 +378,7 @@ def run_v11_audit(
         execution_rows: list[dict[str, Any]],
         *,
         forensic_rows: list[dict[str, Any]] | None = None,
+        training_class_counts: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         probability_df = pd.DataFrame(probability_rows).sort_values("date")
         execution_df = pd.DataFrame(execution_rows).sort_values("date")
@@ -365,6 +388,21 @@ def run_v11_audit(
             on=["date", "predicted_regime", "actual_regime"],
             how="left",
         )
+        oos_probability_df = probability_df.loc[probability_df["test_type"] == "TEST_OOS"].copy()
+        oos_execution_df = execution_df.loc[
+            execution_df["date"].isin(oos_probability_df["date"])
+        ].copy()
+        training_support_df = pd.DataFrame(training_class_counts or []).sort_values("date")
+        if not training_support_df.empty:
+            full_support_mask = training_support_df["class_count"] >= len(ordered_regimes)
+            first_full_support_date = (
+                pd.Timestamp(training_support_df.loc[full_support_mask, "date"].iloc[0]).date().isoformat()
+                if bool(full_support_mask.any())
+                else None
+            )
+        else:
+            full_support_mask = pd.Series(dtype=bool)
+            first_full_support_date = None
 
         summary = {
             "compared_points": int(len(probability_df)),
@@ -378,6 +416,8 @@ def run_v11_audit(
             "audit_regimes": ordered_regimes,
             "feature_contract_validation": feature_contract_validation,
             "experiment_config": experiment,
+            "evaluation_start_requested": pd.Timestamp(eval_dt).date().isoformat(),
+            "evaluation_start_effective": pd.Timestamp(eval_start).date().isoformat(),
             "gaussian_nb_var_smoothing": default_var_smoothing,
             "posterior_mode": posterior_mode,
             "overlay_mode": str(overlay_mode or ExecutionOverlayEngine().default_mode),
@@ -436,6 +476,33 @@ def run_v11_audit(
             )
             if (execution_df["actual_regime"] == "BUST").any()
             else None,
+            "oos_compared_points": int(len(oos_probability_df)),
+            "oos_top1_accuracy": float(
+                (oos_probability_df["predicted_regime"] == oos_probability_df["actual_regime"]).mean()
+            )
+            if not oos_probability_df.empty
+            else None,
+            "oos_mean_brier": float(oos_probability_df["brier"].mean())
+            if not oos_probability_df.empty
+            else None,
+            "oos_mean_entropy": float(oos_execution_df["entropy"].mean())
+            if not oos_execution_df.empty
+            else None,
+            "oos_beta_expectation_mae": float(
+                (oos_execution_df["target_beta"] - oos_execution_df["expected_target_beta"]).abs().mean()
+            )
+            if not oos_execution_df.empty
+            else None,
+            "training_min_class_count": int(training_support_df["class_count"].min())
+            if not training_support_df.empty
+            else 0,
+            "training_max_class_count": int(training_support_df["class_count"].max())
+            if not training_support_df.empty
+            else 0,
+            "training_rows_below_full_support": int((~full_support_mask).sum())
+            if not training_support_df.empty
+            else 0,
+            "training_first_full_support_date": first_full_support_date,
             "forensic_snapshot_count": int(
                 execution_df.get("forensic_snapshot_path", pd.Series(dtype=str))
                 .fillna("")
@@ -478,6 +545,7 @@ def run_v11_audit(
         probability_rows: list[dict[str, Any]] = []
         execution_rows: list[dict[str, Any]] = []
         forensic_rows: list[dict[str, Any]] = []
+        training_class_counts: list[dict[str, Any]] = []
         runtime_state_dir = Path(artifact_dir) / "runtime_state"
         runtime_state_dir.mkdir(parents=True, exist_ok=True)
         prior_state_path = runtime_state_dir / "prior_state.json"
@@ -508,6 +576,17 @@ def run_v11_audit(
             )
             t0_data = pd.DataFrame([row]).set_index("observation_date")
             runtime = conductor.daily_run(t0_data)
+            class_count = getattr(getattr(conductor, "gnb", None), "classes_", None)
+            if class_count is None:
+                class_count_value = len(ordered_regimes)
+            else:
+                class_count_value = len(class_count)
+            training_class_counts.append(
+                {
+                    "date": dt,
+                    "class_count": int(class_count_value),
+                }
+            )
 
             actual_regime = str(row["regime"])
             expected_policy = expected_policy_for_regime(actual_regime, base_betas=base_betas)
@@ -629,11 +708,17 @@ def run_v11_audit(
                 }
             )
 
-        return _finalize_artifacts(
+        summary = _finalize_artifacts(
             probability_rows,
             execution_rows,
             forensic_rows=forensic_rows,
+            training_class_counts=training_class_counts,
         )
+        if summary["training_rows_below_full_support"] > 0:
+            raise ValueError(
+                "Full-support hard gate failed: training rows below full support remain after evaluation_start tightening."
+            )
+        return summary
 
 
 

@@ -321,6 +321,117 @@ def summarize_regime_state_support(
     }
 
 
+def find_first_full_support_date(
+    regimes: pd.DataFrame | pd.Series,
+    *,
+    audit_regimes: Sequence[str],
+) -> pd.Timestamp | None:
+    """Return the first date when all configured regimes have been observed."""
+    required_regimes = {str(regime) for regime in audit_regimes}
+    if not required_regimes:
+        return None
+
+    if isinstance(regimes, pd.DataFrame):
+        if "regime" not in regimes.columns:
+            raise ValueError(
+                "Full support detection requires a DataFrame with a `regime` column"
+            )
+        series = regimes["regime"]
+        if isinstance(regimes.index, pd.DatetimeIndex):
+            timeline = pd.to_datetime(regimes.index, errors="coerce")
+        elif "observation_date" in regimes.columns:
+            timeline = pd.to_datetime(regimes["observation_date"], errors="coerce")
+        else:
+            raise ValueError(
+                "Full support detection requires a DatetimeIndex or an `observation_date` column"
+            )
+    elif isinstance(regimes, pd.Series):
+        series = regimes
+        if isinstance(regimes.index, pd.DatetimeIndex):
+            timeline = pd.to_datetime(regimes.index, errors="coerce")
+        else:
+            raise ValueError(
+                "Full support detection requires a DatetimeIndex when a Series is provided"
+            )
+    else:
+        raise ValueError("Full support detection requires a Series or DataFrame input")
+
+    normalized_series = series.dropna().map(str)
+    normalized_timeline = pd.Series(timeline, index=series.index).loc[normalized_series.index]
+
+    seen: set[str] = set()
+    for date, regime in zip(normalized_timeline, normalized_series, strict=False):
+        if pd.isna(date):
+            continue
+        seen.add(regime)
+        if required_regimes.issubset(seen):
+            return pd.Timestamp(date).normalize()
+    return None
+
+
+def find_first_supported_evaluation_start(
+    regimes: pd.DataFrame | pd.Series,
+    *,
+    audit_regimes: Sequence[str],
+    training_lookback_bdays: int,
+) -> pd.Timestamp | None:
+    """Return the first evaluation date whose training window has full regime support."""
+    if training_lookback_bdays < 0:
+        raise ValueError("training_lookback_bdays must be non-negative")
+
+    required_regimes = {str(regime) for regime in audit_regimes}
+    if not required_regimes:
+        return None
+
+    if isinstance(regimes, pd.DataFrame):
+        if "regime" not in regimes.columns:
+            raise ValueError(
+                "Support-ready evaluation detection requires a DataFrame with a `regime` column"
+            )
+        series = regimes["regime"]
+        if isinstance(regimes.index, pd.DatetimeIndex):
+            timeline = pd.to_datetime(regimes.index, errors="coerce")
+        elif "observation_date" in regimes.columns:
+            timeline = pd.to_datetime(regimes["observation_date"], errors="coerce")
+        else:
+            raise ValueError(
+                "Support-ready evaluation detection requires a DatetimeIndex or an `observation_date` column"
+            )
+    elif isinstance(regimes, pd.Series):
+        series = regimes
+        if isinstance(regimes.index, pd.DatetimeIndex):
+            timeline = pd.to_datetime(regimes.index, errors="coerce")
+        else:
+            raise ValueError(
+                "Support-ready evaluation detection requires a DatetimeIndex when a Series is provided"
+            )
+    else:
+        raise ValueError("Support-ready evaluation detection requires a Series or DataFrame input")
+
+    frame = (
+        pd.DataFrame({"date": timeline, "regime": series})
+        .dropna(subset=["date", "regime"])
+        .assign(regime=lambda df: df["regime"].map(str))
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
+    if frame.empty:
+        return None
+
+    support_seen: set[str] = set()
+    support_idx = 0
+    dates = frame["date"].to_list()
+    regimes_list = frame["regime"].to_list()
+    for current_date in dates:
+        cutoff = pd.Timestamp(current_date) - pd.offsets.BDay(training_lookback_bdays)
+        while support_idx < len(dates) and pd.Timestamp(dates[support_idx]) < cutoff:
+            support_seen.add(regimes_list[support_idx])
+            support_idx += 1
+        if required_regimes.issubset(support_seen):
+            return pd.Timestamp(current_date).normalize()
+    return None
+
+
 def validate_regime_state_support(
     regimes: pd.DataFrame | pd.Series,
     *,

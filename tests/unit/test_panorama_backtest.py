@@ -93,6 +93,30 @@ def test_judge_panorama_candidate_rejects_more_aggressive_left_tail():
     assert "Defensive Violation" in reason
 
 
+def test_judge_panorama_candidate_rejects_process_distortion():
+    baseline = {
+        "approx_total_return": 0.40,
+        "approx_max_drawdown": -0.20,
+        "left_tail_mean_beta": 0.70,
+        "mean_turnover": 0.03,
+        "beta_expectation_mae": 0.08,
+        "beta_expectation_within_5pct": 0.60,
+    }
+    current = {
+        "approx_total_return": 0.42,
+        "approx_max_drawdown": -0.19,
+        "left_tail_mean_beta": 0.68,
+        "mean_turnover": 0.03,
+        "beta_expectation_mae": 0.13,
+        "beta_expectation_within_5pct": 0.55,
+    }
+
+    passed, reason = judge_panorama_candidate(current, baseline)
+
+    assert passed is False
+    assert "Process Distortion" in reason
+
+
 def test_choose_production_candidate_prefers_best_passing_scenario():
     report = pd.DataFrame(
         [

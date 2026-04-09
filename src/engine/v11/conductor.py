@@ -217,6 +217,17 @@ class V11Conductor:
             evidence=float(execution_state.get("deployment_evidence", 0.0) or 0.0),
         )
         self.resonance_detector = ResonanceDetector()
+        self.resonance_detector.risk_ready_days = int(
+            execution_state.get("resonance_risk_ready_days", self.resonance_detector.risk_ready_days)
+            or self.resonance_detector.risk_ready_days
+        )
+        self.resonance_detector.waterfall_ready_days = int(
+            execution_state.get(
+                "resonance_waterfall_ready_days",
+                self.resonance_detector.waterfall_ready_days,
+            )
+            or self.resonance_detector.waterfall_ready_days
+        )
 
         # Initial Model Training & Seeder Priming (Epic 1)
         if initial_model is not None:
@@ -386,6 +397,8 @@ class V11Conductor:
             macro_df = macro_df[macro_df.index < cutoff_dt]
             regime_df = regime_df[regime_df.index < cutoff_dt]
             logger.info(f"V12.0 Conductor: JIT Model training constrained to < {cutoff_dt}")
+
+        macro_df = self._augment_context_with_price_history(macro_df)
 
         # Generate features via unified seeder
         features = self.seeder.generate_features(macro_df)
@@ -926,6 +939,8 @@ class V11Conductor:
             hydration_anchor=runtime_result.get("signal", {}).get("hydration_anchor", "2018-01-01"),
             previous_posterior=previous_posterior_for_state,
             effective_entropy=float(norm_h),
+            resonance_risk_ready_days=int(self.resonance_detector.risk_ready_days),
+            resonance_waterfall_ready_days=int(self.resonance_detector.waterfall_ready_days),
         )
 
         return runtime_result

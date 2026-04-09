@@ -1,0 +1,578 @@
+{
+  "snapshot_version": "v13_runtime_snapshot.v1",
+  "captured_at_utc": "2026-04-09T23:51:05.595354+00:00",
+  "observation_date": "2024-07-25",
+  "macro_data_path": "data/macro_historical_dump.csv",
+  "regime_data_path": "data/v11_poc_phase1_results.csv",
+  "audit_path": "src/engine/v11/resources/regime_audit.json",
+  "overlay_audit_path": "/Users/weizhang/w/cycle-monitor-workspace/verify-QLD-Point/src/engine/v13/resources/execution_overlay_audit.json",
+  "feature_contract": {
+    "seeder_config_hash": "sha256:b818924901c101dfda1cd969ee8212d1f53b28131c2b583f26aa0f84a642b2e4",
+    "feature_names": [
+      "real_yield_structural_z",
+      "move_21d",
+      "breakeven_accel",
+      "core_capex_momentum",
+      "copper_gold_roc_126d",
+      "usdjpy_roc_126d",
+      "spread_21d",
+      "liquidity_252d",
+      "erp_absolute",
+      "spread_absolute",
+      "pmi_momentum",
+      "labor_slack",
+      "qqq_ma_ratio",
+      "qqq_pv_divergence_z",
+      "credit_acceleration",
+      "liquidity_velocity"
+    ]
+  },
+  "runtime_priors": {
+    "MID_CYCLE": 0.6842971860639553,
+    "LATE_CYCLE": 0.16209124617805068,
+    "BUST": 0.06340259519191581,
+    "RECOVERY": 0.09020897256607832
+  },
+  "prior_details": {
+    "base_weight": 0.05,
+    "posterior_weight": 0.6269124687280012,
+    "transition_weight": 0.32308753127199874,
+    "base_priors": {
+      "MID_CYCLE": 0.6197755434851424,
+      "LATE_CYCLE": 0.17333441108958525,
+      "BUST": 0.12419559641798435,
+      "RECOVERY": 0.08269444900728797
+    },
+    "posterior_prior": {
+      "MID_CYCLE": 0.768024625407386,
+      "LATE_CYCLE": 0.11062305379055093,
+      "BUST": 0.040705254249293055,
+      "RECOVERY": 0.08064706655277001
+    },
+    "transition_prior": {
+      "MID_CYCLE": 0.5318193316070783,
+      "LATE_CYCLE": 0.2602191224851923,
+      "BUST": 0.09803592176612247,
+      "RECOVERY": 0.10992562414160705
+    },
+    "is_stable": true,
+    "stress_score": 0.134562343640006,
+    "recovery_release_score": 0.0
+  },
+  "quality_audit": {
+    "quality_score": 0.937857142857143,
+    "reason": "DEGRADED_SOURCE",
+    "fields": {
+      "credit_spread": {
+        "available": true,
+        "source": "fred:BAMLH0A0HYM2",
+        "degraded": false,
+        "quality": 1.0
+      },
+      "net_liquidity": {
+        "available": true,
+        "source": "derived:fred:WALCL-WDTGAL-RRPONTSYD",
+        "degraded": true,
+        "quality": 0.5
+      },
+      "real_yield": {
+        "available": true,
+        "source": "fred:DFII10",
+        "degraded": false,
+        "quality": 1.0
+      },
+      "treasury_vol": {
+        "available": true,
+        "source": "direct:fred_dgs10",
+        "degraded": false,
+        "quality": 1.0
+      },
+      "copper_gold": {
+        "available": true,
+        "source": "direct:yfinance",
+        "degraded": false,
+        "quality": 1.0
+      },
+      "breakeven": {
+        "available": true,
+        "source": "direct:fred_t10yie",
+        "degraded": false,
+        "quality": 1.0
+      },
+      "core_capex": {
+        "available": true,
+        "source": "direct:fred_neworder",
+        "degraded": false,
+        "quality": 1.0
+      },
+      "usdjpy": {
+        "available": true,
+        "source": "direct:yfinance",
+        "degraded": false,
+        "quality": 1.0
+      },
+      "erp_ttm": {
+        "available": true,
+        "source": "direct:shiller",
+        "degraded": false,
+        "quality": 1.0
+      }
+    },
+    "source_switch": {
+      "detected": false,
+      "changed_fields": [],
+      "previous_build_version": "v12.0-orthogonal-factor-r1",
+      "current_build_version": "v12.0-orthogonal-factor-r1"
+    },
+    "q_core": 1.01,
+    "q_support": 0.9285714285714286,
+    "posterior_entropy": 0.3489572499715827,
+    "effective_entropy": 0.3582786785430112,
+    "entropy_penalty": 0.009321428571428536,
+    "q_core_val": 1.01,
+    "q_support_val": 0.9285714285714286,
+    "v13_4_diagnostics": {
+      "effective_weights": {
+        "real_yield_structural_z": 2.0,
+        "move_21d": 1.5,
+        "breakeven_accel": 0.5,
+        "core_capex_momentum": 0.5,
+        "copper_gold_roc_126d": 1.0,
+        "usdjpy_roc_126d": 1.0,
+        "spread_21d": 2.5,
+        "liquidity_252d": 2.0,
+        "erp_absolute": 2.5,
+        "spread_absolute": 2.5,
+        "pmi_momentum": 1.5,
+        "labor_slack": 0.5,
+        "qqq_ma_ratio": 2.0,
+        "qqq_pv_divergence_z": 2.0,
+        "credit_acceleration": 1.5,
+        "liquidity_velocity": 1.5
+      },
+      "total_weight": 25.0,
+      "tau_applied": 1.5,
+      "evidence_dist": {
+        "BUST": 0.25,
+        "LATE_CYCLE": 0.25,
+        "MID_CYCLE": 0.25,
+        "RECOVERY": 0.25
+      },
+      "level_contributions": {
+        "BUST": {
+          "real_yield_structural_z": -2.7878526053518358,
+          "move_21d": -0.977259784081161,
+          "breakeven_accel": -0.3977667610423638,
+          "core_capex_momentum": -0.29843911515324245,
+          "copper_gold_roc_126d": -0.6171884274464557,
+          "usdjpy_roc_126d": -0.416983128246654,
+          "spread_21d": -2.2676835464518996,
+          "liquidity_252d": -1.2074931877299566,
+          "erp_absolute": -5.350755917928332,
+          "spread_absolute": -2.2676835464518996,
+          "pmi_momentum": -1.1361465570614608,
+          "labor_slack": -3.362328680435805,
+          "qqq_ma_ratio": -1.8210401548933504,
+          "qqq_pv_divergence_z": -1.9152512415106866,
+          "credit_acceleration": -1.181464861414416,
+          "liquidity_velocity": -1.9638797622389483
+        },
+        "LATE_CYCLE": {
+          "real_yield_structural_z": -2.3010325284672004,
+          "move_21d": -0.7623207191371779,
+          "breakeven_accel": -0.39358653284522155,
+          "core_capex_momentum": -0.39785196796015776,
+          "copper_gold_roc_126d": -0.5786218108951025,
+          "usdjpy_roc_126d": -0.9360546120935117,
+          "spread_21d": -1.213014741350102,
+          "liquidity_252d": -0.08346719217376125,
+          "erp_absolute": -5.722811865099047,
+          "spread_absolute": -1.213014741350102,
+          "pmi_momentum": -0.40710293511259177,
+          "labor_slack": -1.490299925395001,
+          "qqq_ma_ratio": -1.8258481454602304,
+          "qqq_pv_divergence_z": -1.4787508259956461,
+          "credit_acceleration": -0.6159882551252964,
+          "liquidity_velocity": -2.4416845987325733
+        },
+        "MID_CYCLE": {
+          "real_yield_structural_z": -2.27883610365823,
+          "move_21d": -0.5857681439231921,
+          "breakeven_accel": -0.41152950122939497,
+          "core_capex_momentum": -0.31601924057925507,
+          "copper_gold_roc_126d": -1.1158342529083742,
+          "usdjpy_roc_126d": -0.8816715945946685,
+          "spread_21d": -0.34777282982592755,
+          "liquidity_252d": -4.978735684612206,
+          "erp_absolute": -2.6858794394143763,
+          "spread_absolute": -0.34777282982592755,
+          "pmi_momentum": -0.7056216475096914,
+          "labor_slack": -0.9995814871951622,
+          "qqq_ma_ratio": -0.5169620835431948,
+          "qqq_pv_divergence_z": -2.180517703813505,
+          "credit_acceleration": -0.4905736958148077,
+          "liquidity_velocity": -3.168508252365643
+        },
+        "RECOVERY": {
+          "real_yield_structural_z": -4.578295602680129,
+          "move_21d": -1.0177258573410923,
+          "breakeven_accel": -0.3762776307524826,
+          "core_capex_momentum": -0.3425620118936079,
+          "copper_gold_roc_126d": -0.8248991906291718,
+          "usdjpy_roc_126d": -0.8060918606210822,
+          "spread_21d": -2.758391016347901,
+          "liquidity_252d": -4.194828202079068,
+          "erp_absolute": -3.337942754007384,
+          "spread_absolute": -2.758391016347901,
+          "pmi_momentum": -1.6383078393504629,
+          "labor_slack": -0.9517184315290071,
+          "qqq_ma_ratio": -1.5696127993447722,
+          "qqq_pv_divergence_z": -1.9902039747789348,
+          "credit_acceleration": -1.2720565932911383,
+          "liquidity_velocity": -2.497374980948345
+        }
+      },
+      "was_uniform": true,
+      "penalties_applied": {
+        "MID_CYCLE": 1.0,
+        "LATE_CYCLE": 0.49851202173833226,
+        "BUST": 0.4655430216966782,
+        "RECOVERY": 0.5247314606518756
+      },
+      "logical_penalties": {
+        "MID_CYCLE": 1.0,
+        "LATE_CYCLE": 1.0,
+        "BUST": 1.0,
+        "RECOVERY": 1.0
+      },
+      "regime_penalties": {
+        "MID_CYCLE": 1.0,
+        "LATE_CYCLE": 0.49851202173833226,
+        "BUST": 0.4655430216966782,
+        "RECOVERY": 0.5247314606518756
+      }
+    }
+  },
+  "feature_weights": {
+    "real_yield_structural_z": 1.0,
+    "move_21d": 1.0,
+    "breakeven_accel": 1.0,
+    "core_capex_momentum": 1.0,
+    "copper_gold_roc_126d": 1.0,
+    "usdjpy_roc_126d": 1.0,
+    "spread_21d": 1.0,
+    "liquidity_252d": 0.5,
+    "erp_absolute": 1.0,
+    "spread_absolute": 1.0,
+    "pmi_momentum": 1.0,
+    "labor_slack": 1.0,
+    "qqq_ma_ratio": 1.0,
+    "qqq_pv_divergence_z": 1.0,
+    "credit_acceleration": 1.0,
+    "liquidity_velocity": 1.0
+  },
+  "raw_t0_data": [
+    {
+      "observation_date": "2024-07-25",
+      "effective_date": "2024-07-25",
+      "credit_spread_bps": 310.0,
+      "real_yield_10y_pct": 0.02,
+      "net_liquidity_usd_bn": 5870.77145452082,
+      "treasury_vol_21d": 0.0010224853008659,
+      "copper_gold_ratio": 0.0017144033988922,
+      "breakeven_10y": 0.0227999999999999,
+      "core_capex_mm": -903.0,
+      "usdjpy": 152.6699981689453,
+      "erp_ttm_pct": 0.0267926247657195,
+      "credit_acceleration_pct_10d": -2.208201892744477,
+      "liquidity_roc_pct_4w": -3.545220284234374,
+      "forward_pe": null,
+      "erp_pct": null,
+      "funding_stress_flag": 0,
+      "source_credit_spread": "fred:BAMLH0A0HYM2",
+      "source_real_yield": "fred:DFII10",
+      "source_net_liquidity": "derived:fred:WALCL-WDTGAL-RRPONTSYD",
+      "source_treasury_vol": "direct:fred_dgs10",
+      "source_copper_gold": "direct:yfinance",
+      "source_breakeven": "direct:fred_t10yie",
+      "source_core_capex": "direct:fred_neworder",
+      "source_usdjpy": "direct:yfinance",
+      "source_erp_ttm": "direct:shiller",
+      "source_forward_pe": "deprecated:v12",
+      "source_erp": "deprecated:v12",
+      "source_funding_stress": "derived:v12_credit_spread",
+      "build_version": "v12.0-orthogonal-factor-r1",
+      "reference_capital": null,
+      "current_nav": null,
+      "pmi_proxy_manemp": 12806.0,
+      "unemployment_rate": 4.2,
+      "job_openings": 7426.0,
+      "source_pmi_proxy": "fred:MANEMP",
+      "source_unemployment": "fred:UNRATE",
+      "source_job_openings": "fred:JTSJOL",
+      "qqq_close": 454.0122375488281,
+      "source_qqq_close": "direct:yfinance",
+      "qqq_close_quality_score": 1.0,
+      "qqq_volume": 59256800,
+      "source_qqq_volume": "direct:yfinance",
+      "qqq_volume_quality_score": 1.0,
+      "adv_dec_ratio": null,
+      "source_breadth_proxy": null,
+      "breadth_quality_score": null,
+      "ndx_concentration": null,
+      "source_ndx_concentration": null,
+      "ndx_concentration_quality_score": null,
+      "stress_vix": null,
+      "stress_vix3m": null,
+      "regime": "LATE_CYCLE"
+    }
+  ],
+  "feature_vector": [
+    {
+      "observation_date": "2024-07-25",
+      "real_yield_structural_z": 1.3999542817050568,
+      "move_21d": 0.2492000912407355,
+      "breakeven_accel": 0.756776920263635,
+      "core_capex_momentum": -0.6065517383838984,
+      "copper_gold_roc_126d": -0.6754484559720816,
+      "usdjpy_roc_126d": -0.25060527930698123,
+      "spread_21d": -0.9715399739305457,
+      "liquidity_252d": -0.20563870288202535,
+      "erp_absolute": -1.2317441847670934,
+      "spread_absolute": -0.9715399739305457,
+      "pmi_momentum": 0.24995903861946328,
+      "labor_slack": -1.8223071984563066,
+      "qqq_ma_ratio": 0.6302196704264006,
+      "qqq_pv_divergence_z": -1.0428363758234858,
+      "credit_acceleration": -0.2262947459303152,
+      "liquidity_velocity": -1.8456234364000599
+    }
+  ],
+  "gaussian_nb": {
+    "classes": [
+      "BUST",
+      "LATE_CYCLE",
+      "MID_CYCLE",
+      "RECOVERY"
+    ],
+    "theta": [
+      [
+        -0.39844140438465536,
+        0.24700026354704963,
+        -0.0074468965179422435,
+        -0.041070227755721625,
+        -0.7258917446061978,
+        -0.09722764780668491,
+        -0.11659699971411164,
+        -1.3282289887070193,
+        0.41229944749605574,
+        -0.11659699971411164,
+        -0.13312718512507768,
+        1.256454067215764,
+        -0.3107037001826956,
+        -0.026107572672679977,
+        0.032250964886675976,
+        -0.1433660601429915
+      ],
+      [
+        0.04270962934097949,
+        0.14557825373558272,
+        -0.01648212838131693,
+        0.16407368787278998,
+        -0.09918377809326513,
+        0.6830949994703406,
+        -0.5710744365397983,
+        -0.29549053737778963,
+        0.25328377376545164,
+        -0.5710744365397983,
+        0.0063266988749144885,
+        1.449228561102212,
+        -0.23859019460410497,
+        -0.40325125132298506,
+        0.06890301159363148,
+        -0.0310424181131839
+      ],
+      [
+        0.06920127069513426,
+        0.1997607257342181,
+        -0.03685388407640079,
+        0.01784358986732592,
+        0.5709241602847572,
+        0.5902404701763053,
+        -0.7331624532501846,
+        0.32607882044577596,
+        -0.059506518535029945,
+        -0.7331624532501846,
+        0.04262367200314348,
+        0.8430431518085996,
+        0.5090576774956406,
+        0.194650473847038,
+        0.0425181195969514,
+        0.07765005045098988
+      ],
+      [
+        -1.454245135929239,
+        -0.41965857116065286,
+        0.12288468781874942,
+        -0.14940435629265358,
+        0.0576176160884984,
+        -0.320327857555082,
+        0.2514789446224635,
+        1.6875635926861334,
+        0.3145830320333358,
+        0.2514789446224635,
+        -0.2189365989349072,
+        0.6124219153762777,
+        0.24384420124821046,
+        0.02267192072179382,
+        -0.1354535059676606,
+        0.05006206817467406
+      ]
+    ],
+    "var": [
+      [
+        1.9004785836427343,
+        1.123712791538156,
+        0.9131310579122209,
+        0.5087731809911801,
+        1.0112345990844278,
+        0.5319803803578198,
+        0.4141584704908276,
+        0.5145793517140976,
+        0.5152051097194461,
+        0.4141584704908276,
+        1.3892746058059053,
+        0.4980117739450263,
+        1.0612249928386563,
+        0.9738148729051604,
+        1.6223057009791093,
+        2.326433983734012
+      ],
+      [
+        1.9859942955597099,
+        0.720259709276037,
+        0.7980116298560332,
+        0.8859951237615632,
+        0.3232703710576723,
+        1.440837848218238,
+        0.49277149690346667,
+        0.19619931617344902,
+        0.3653322335441242,
+        0.49277149690346667,
+        0.29348856093002273,
+        1.615753396040702,
+        1.4764730459176083,
+        0.9515742749780262,
+        0.44941926919909503,
+        1.1244976688996522
+      ],
+      [
+        2.0296021864328617,
+        0.5111343584225585,
+        0.4207101838125645,
+        0.3973933258389461,
+        1.0944764941500504,
+        1.3025950288209225,
+        0.17440758287910343,
+        0.016430796166992296,
+        0.9723473334109631,
+        0.17440758287910343,
+        0.6081588427396909,
+        2.069885515473548,
+        0.33060254197036776,
+        1.3665820911896227,
+        0.34414145097201526,
+        0.7788934436036622
+      ],
+      [
+        1.8441012545761344,
+        0.4764333530456759,
+        1.0301925856739382,
+        1.0108026610560328,
+        1.2145284359901871,
+        1.7818824614707447,
+        1.0528508446617244,
+        0.2999124102573929,
+        1.208891927473394,
+        1.0528508446617244,
+        3.9893406487193124,
+        1.806808217577543,
+        1.5193551009350201,
+        0.9332453172056708,
+        2.0180809237008885,
+        1.2122683193427766
+      ]
+    ],
+    "class_prior": [
+      0.22836729293463878,
+      0.25879862397459646,
+      0.32098438740407514,
+      0.1918496956866896
+    ]
+  },
+  "execution_overlay": {
+    "overlay_mode": "FULL",
+    "beta_overlay_multiplier": 1.0,
+    "deployment_overlay_multiplier": 1.0,
+    "diagnostic_beta_overlay_multiplier": 1.0,
+    "diagnostic_deployment_overlay_multiplier": 1.0,
+    "negative_score": 0.0,
+    "positive_score": 0.0,
+    "overlay_state": "NEUTRAL",
+    "overlay_summary": "FULL | NEUTRAL: neg=0.000 pos=0.000",
+    "neutral_fallback_triggered": true,
+    "raw_inputs": {
+      "adv_dec_ratio": NaN,
+      "ndx_concentration": NaN,
+      "qqq_close": 454.0122375488281,
+      "qqq_volume": 59256800.0
+    },
+    "input_quality": {
+      "breadth_proxy": NaN,
+      "ndx_concentration": NaN,
+      "qqq_close": 1.0,
+      "qqq_volume": 1.0
+    },
+    "derived_features": {
+      "breadth_stress": null,
+      "concentration_stress": null,
+      "non_confirmation": 0.0,
+      "volume_repair": 0.0
+    },
+    "signal_contributions": {
+      "negative": {},
+      "positive": {}
+    },
+    "admission_decisions": {
+      "breadth_proxy": {
+        "admitted": false,
+        "reason": "missing_or_low_quality",
+        "quality": NaN
+      },
+      "ndx_concentration": {
+        "admitted": false,
+        "reason": "missing_or_low_quality",
+        "quality": NaN
+      },
+      "qqq_tape": {
+        "admitted": true,
+        "reason": "admitted",
+        "quality": 1.0
+      }
+    }
+  },
+  "final_execution": {
+    "protected_beta_pre_overlay": 0.895521,
+    "overlay_beta": 0.895521,
+    "raw_target_beta": 0.958619,
+    "beta_expectation": 0.958619,
+    "deployment_state_pre_overlay": "derived_from_readiness",
+    "deployment_state_post_overlay": "DEPLOY_BASE",
+    "behavioral_guard_input_beta": 0.899279,
+    "behavioral_guard_output_bucket": "QQQ",
+    "final_target_beta": 0.899279,
+    "resonance_action": "HOLD",
+    "resonance_confidence": 0.0,
+    "resonance_reason": "Noise: Risk(0d), Waterfall(112d)"
+  }
+}
