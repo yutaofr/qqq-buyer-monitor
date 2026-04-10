@@ -337,3 +337,95 @@ def test_materialize_prior_state_fails_closed_when_seed_is_missing(tmp_path):
 
     with pytest.raises(FileNotFoundError, match="canonical hydrated prior seed"):
         main_module._materialize_prior_state(runtime_path, missing_seed)
+
+
+def test_refresh_price_cache_from_live_data_overwrites_stale_cache(tmp_path):
+    cache_path = tmp_path / "qqq_history_cache.csv"
+    pd.DataFrame(
+        {
+            "Date": ["2026-04-09 04:00:00+0000"],
+            "Close": [610.19],
+            "Volume": [36992284],
+        }
+    ).to_csv(cache_path, index=False)
+
+    history = pd.DataFrame(
+        {
+            "Date": pd.to_datetime(["2026-04-09 04:00:00+0000", "2026-04-10 04:00:00+0000"]),
+            "Close": [610.19, 612.98],
+            "Volume": [36992284, 40000000],
+        }
+    ).set_index("Date")
+
+    refreshed = main_module._refresh_price_cache_from_live_data(
+        price_cache_path=cache_path,
+        fetcher=lambda: {"date": pd.Timestamp("2026-04-10").date(), "history": history},
+    )
+
+    reloaded = pd.read_csv(cache_path)
+
+    assert refreshed is True
+    assert reloaded.iloc[-1]["Date"].startswith("2026-04-10")
+
+
+def test_run_v11_pipeline_reaudits_after_price_cache_refresh(monkeypatch):
+    class _CloudBridge:
+        def __init__(self):
+            self.is_ci = False
+
+        def pull_state(self, local_files):
+            return True
+
+    class _Guardian:
+        def __init__(self, *args, **kwargs):
+            self.audits = 0
+
+        def audit(self):
+            self.audits += 1
+            if self.audits == 1:
+                return type(
+                    "Report",
+                    (),
+                    {
+                        "is_healthy": False,
+                        "macro_gaps": [],
+                        "price_cache_staleness": type("Staleness", (), {"days_stale": 1})(),
+                    },
+                )()
+            return type(
+                "Report",
+                (),
+                {
+                    "is_healthy": True,
+                    "macro_gaps": [],
+                    "price_cache_staleness": type("Staleness", (), {"days_stale": 0})(),
+                },
+            )()
+
+    guardian = _Guardian()
+    refreshed = {"called": 0}
+    stop = RuntimeError("stop after guardian re-audit")
+
+    monkeypatch.setattr(main_module, "CloudPersistenceBridge", _CloudBridge)
+    monkeypatch.setattr(
+        main_module,
+        "_refresh_price_cache_from_live_data",
+        lambda *args, **kwargs: refreshed.__setitem__("called", refreshed["called"] + 1) or True,
+    )
+    stub_module = types.ModuleType("src.engine.v11.utils.bootstrap_guardian")
+    stub_module.BootstrapGuardian = lambda *args, **kwargs: guardian
+    monkeypatch.setitem(sys.modules, "src.engine.v11.utils.bootstrap_guardian", stub_module)
+    monkeypatch.setattr("src.collector.price.fetch_price_data", lambda: (_ for _ in ()).throw(stop))
+
+    with pytest.raises(RuntimeError, match="stop after guardian re-audit"):
+        main_module.run_v11_pipeline(
+            Namespace(
+                json=False,
+                notify_discord=False,
+                no_save=True,
+                no_color=True,
+            )
+        )
+
+    assert refreshed["called"] == 1
+    assert guardian.audits == 2

@@ -24,6 +24,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s – %(message)s",
 )
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
 logger = logging.getLogger("qqq_monitor")
 
 CANONICAL_PRIOR_SEED_PATH = Path("src/engine/v11/resources/v13_6_cold_start_seed.json")
@@ -104,6 +105,36 @@ def _load_recovery_hmm_shadow_diagnostics() -> dict[str, object]:
         out["source_notes"] = lineage.get("source_notes", {})
         out["coverage"] = lineage.get("coverage", {})
     return out
+
+
+def _refresh_price_cache_from_live_data(
+    price_cache_path: str | Path,
+    *,
+    fetcher,
+) -> bool:
+    """
+    Refresh the local QQQ price cache from the live fetcher before bootstrap audit.
+
+    This keeps the production baseline usable on T+0 when the checked-in cache is
+    one business day behind, without weakening other artifact integrity checks.
+    """
+    live_payload = fetcher()
+    history = live_payload.get("history")
+    if not isinstance(history, pd.DataFrame) or history.empty:
+        raise RuntimeError("Live price refresh returned no history for cache repair.")
+
+    refreshed = history.reset_index()
+    date_column = refreshed.columns[0]
+    refreshed = refreshed.rename(columns={date_column: "Date"})
+
+    cache_path = Path(price_cache_path)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    refreshed.to_csv(cache_path, index=False)
+    logger.info(
+        "Refreshed price cache from live data before bootstrap audit: %s",
+        pd.Timestamp(live_payload["date"]).date().isoformat(),
+    )
+    return True
 
 
 def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalResult:
@@ -419,7 +450,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 
     prior_origin = _materialize_prior_state(prior_file_path, prior_seed_path)
     if prior_origin == "canonical_seed":
-        logger.warning(
+        logger.info(
             "Prior state %s was missing after cloud pull. Restored mutable runtime state from canonical seed %s.",
             prior_file_path,
             prior_seed_path,
@@ -434,6 +465,19 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         cold_start_seed_path=prior_seed_path,
     )
     audit_report = guardian.audit()
+    if (
+        not audit_report.is_healthy
+        and not getattr(audit_report, "macro_gaps", [])
+        and getattr(audit_report, "price_cache_staleness", None) is not None
+        and getattr(audit_report.price_cache_staleness, "days_stale", 0) > 0
+    ):
+        from src.collector.price import fetch_price_data
+
+        _refresh_price_cache_from_live_data(
+            "data/qqq_history_cache.csv",
+            fetcher=fetch_price_data,
+        )
+        audit_report = guardian.audit()
     if not audit_report.is_healthy:
         raise RuntimeError(
             "Bootstrap Guardian unhealthy; refusing to continue with a non-artifact cold start."

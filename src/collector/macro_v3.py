@@ -24,6 +24,15 @@ RESEARCH_PRIMARY_SERIES: tuple[str, ...] = (
 RESEARCH_OPTIONAL_SERIES: tuple[str, ...] = ("CPFF",)
 
 
+def _normalize_observation_dates(frame: pd.DataFrame, value_column: str) -> pd.DataFrame:
+    normalized = frame.copy()
+    normalized["observation_date"] = pd.to_datetime(
+        normalized["observation_date"], errors="coerce"
+    ).dt.normalize()
+    normalized = normalized.dropna(subset=["observation_date", value_column])
+    return normalized
+
+
 def fetch_real_yield_snapshot() -> dict[str, float | str | bool | None]:
     """Fetch 10-Year Treasury Real Yield (DFII10) with provenance."""
     try:
@@ -140,7 +149,11 @@ def fetch_net_liquidity_snapshot(series_id: str = "WDTGAL") -> dict[str, float |
                 "degraded": True,
             }
 
-        # Merge on date
+        walcl = _normalize_observation_dates(walcl, "WALCL")
+        tga = _normalize_observation_dates(tga, series_id)
+        rrp = _normalize_observation_dates(rrp, "RRPONTSYD")
+
+        # Merge on normalized observation date
         merged = pd.merge(walcl, tga, on="observation_date", how="inner")
         merged = pd.merge(merged, rrp, on="observation_date", how="inner")
 

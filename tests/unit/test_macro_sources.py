@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pandas as pd
 
@@ -60,7 +62,7 @@ def test_fetch_fred_api_retries_transient_500_then_succeeds(monkeypatch):
     assert frame.iloc[-1]["DFII10"] == 1.99
 
 
-def test_fetch_shiller_ttm_eps_falls_back_to_cached_macro_history(monkeypatch, tmp_path):
+def test_fetch_shiller_ttm_eps_falls_back_to_cached_macro_history(monkeypatch, tmp_path, caplog):
     macro_path = tmp_path / "macro.csv"
     pd.DataFrame(
         {
@@ -74,10 +76,52 @@ def test_fetch_shiller_ttm_eps_falls_back_to_cached_macro_history(monkeypatch, t
         "_load_shiller_sheet",
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
     )
+    monkeypatch.setattr(global_macro, "fetch_historical_fred_series", lambda *_args, **_kwargs: None)
     monkeypatch.setenv("MACRO_DATA_PATH", str(macro_path))
 
-    snapshot = global_macro.fetch_shiller_ttm_eps()
+    with caplog.at_level(logging.INFO):
+        snapshot = global_macro.fetch_shiller_ttm_eps()
 
     assert snapshot["erp"] == 0.0268
     assert snapshot["source"] == "derived:macro_history_cache"
     assert snapshot["degraded"] is True
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_fetch_net_liquidity_snapshot_normalizes_observation_date_dtype(monkeypatch):
+    walcl = pd.DataFrame(
+        {
+            "observation_date": pd.to_datetime(["2026-04-02", "2026-04-09"]),
+            "WALCL": [9000.0, 9100.0],
+        }
+    )
+    tga = pd.DataFrame(
+        {
+            "observation_date": ["2026-04-02", "2026-04-09"],
+            "WDTGAL": [500.0, 450.0],
+        }
+    )
+    rrp = pd.DataFrame(
+        {
+            "observation_date": pd.to_datetime(["2026-04-02", "2026-04-09"]),
+            "RRPONTSYD": [100.0, 90.0],
+        }
+    )
+
+    def fake_fetch(series_id: str):
+        if series_id == "WALCL":
+            return walcl.copy()
+        if series_id == "WDTGAL":
+            return tga.copy()
+        if series_id == "RRPONTSYD":
+            return rrp.copy()
+        raise AssertionError(series_id)
+
+    monkeypatch.setattr(macro_v3, "fetch_fred_data", fake_fetch)
+
+    snapshot = macro_v3.fetch_net_liquidity_snapshot()
+
+    assert snapshot["degraded"] is False
+    assert snapshot["source"] == "derived:fred:WALCL-WDTGAL-RRPONTSYD"
+    assert snapshot["value"] == -81.35
+    assert snapshot["roc"] == 0.0
