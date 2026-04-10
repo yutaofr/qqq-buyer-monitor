@@ -340,7 +340,7 @@ def test_run_v11_audit_builds_worldview_benchmark_from_full_price_history(tmp_pa
         },
         index=dates,
     )
-    cutoff = pd.Timestamp("2025-12-31")
+    pd.Timestamp("2025-12-31")
     load_calls: list[str | None] = []
     benchmark_lengths: list[int] = []
 

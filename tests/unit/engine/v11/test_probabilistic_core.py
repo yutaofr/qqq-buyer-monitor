@@ -2,16 +2,16 @@ import json
 from pathlib import Path
 
 import numpy as np
-import pytest
 import pandas as pd
+import pytest
 from scipy.stats import entropy as shannon_entropy
 
 from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
 from src.engine.v11.core.entropy_controller import EntropyController
 from src.engine.v11.core.price_topology import (
+    PriceTopologyState,
     blend_posteriors_with_topology,
     infer_price_topology_state,
-    PriceTopologyState,
     topology_likelihood_penalties,
 )
 from src.engine.v11.core.prior_knowledge import PriorKnowledgeBase
