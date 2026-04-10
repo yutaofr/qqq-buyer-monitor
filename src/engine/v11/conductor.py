@@ -714,6 +714,22 @@ class V11Conductor:
             e_sharpe=e_sharpe,
             erp_percentile=erp_percentile,
             high_entropy_streak=self.high_entropy_streak,
+            execution_context={
+                "topology_regime": topology_state.regime,
+                "topology_confidence": topology_state.confidence,
+                "transition_intensity": topology_state.transition_intensity,
+                "recovery_prob": float(posteriors.get("RECOVERY", 0.0)),
+                "bust_prob": float(posteriors.get("BUST", 0.0)),
+                "recovery_delta": float(
+                    probability_dynamics.get("RECOVERY", {}).get("delta_1d", 0.0)
+                ),
+                "top1_margin": float(
+                    sorted(posteriors.values(), reverse=True)[0]
+                    - sorted(posteriors.values(), reverse=True)[1]
+                )
+                if len(posteriors) >= 2
+                else 0.0,
+            },
         )
 
         norm_h = pipeline_result["effective_entropy"]

@@ -153,7 +153,7 @@ def compute_regime_process_alignment(
     summary = {
         "overall": {
             "rows": int(len(merged)),
-            "stable_vs_benchmark_regime": float(
+            "posterior_vs_benchmark_process": float(
                 sum(regime_agreement_scores) / len(regime_agreement_scores)
             ),
             "probability_within_band_share": float(sum(probability_hits) / len(probability_hits)),
@@ -166,6 +166,9 @@ def compute_regime_process_alignment(
         },
         "by_regime": rows,
     }
+    summary["overall"]["stable_vs_benchmark_regime"] = summary["overall"][
+        "posterior_vs_benchmark_process"
+    ]
     if {
         "entropy",
         "benchmark_entropy",

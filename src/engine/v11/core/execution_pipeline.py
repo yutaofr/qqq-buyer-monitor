@@ -51,6 +51,51 @@ def compute_deployment_readiness(
     return float(np.clip((1.0 - effective_entropy) * max(0.0, e_sharpe) * erp_percentile, 0.0, 1.0))
 
 
+def update_high_entropy_streak(
+    *,
+    high_entropy_streak: int,
+    effective_entropy: float,
+    execution_context: dict[str, Any] | None = None,
+) -> int:
+    """Tracks persistent execution deadlock, but releases faster when direction is clear."""
+    streak = max(0, int(high_entropy_streak))
+    if effective_entropy < 0.78:
+        return max(streak - 2, 0)
+
+    context = execution_context or {}
+    transition_intensity = float(context.get("transition_intensity", 0.0) or 0.0)
+    topology_confidence = float(context.get("topology_confidence", 0.0) or 0.0)
+    recovery_prob = float(context.get("recovery_prob", 0.0) or 0.0)
+    bust_prob = float(context.get("bust_prob", 0.0) or 0.0)
+    recovery_delta = float(context.get("recovery_delta", 0.0) or 0.0)
+    top1_margin = float(context.get("top1_margin", 0.0) or 0.0)
+    topology_regime = str(context.get("topology_regime", "") or "")
+
+    directional_relief = (
+        transition_intensity >= 0.55
+        and topology_confidence >= 0.18
+        and (
+            (
+                topology_regime == "RECOVERY"
+                and recovery_delta >= 0.02
+                and recovery_prob >= bust_prob
+            )
+            or top1_margin >= 0.12
+        )
+    )
+    severe_deadlock = (
+        effective_entropy >= 0.90
+        and transition_intensity < 0.45
+        and top1_margin < 0.08
+    )
+
+    if directional_relief:
+        return max(streak - 1, 0)
+    if effective_entropy >= 0.85 or severe_deadlock:
+        return streak + 1
+    return max(streak - 1, 0)
+
+
 def run_execution_pipeline(
     *,
     raw_beta: float,
@@ -62,6 +107,7 @@ def run_execution_pipeline(
     e_sharpe: float,
     erp_percentile: float,
     high_entropy_streak: int,
+    execution_context: dict[str, Any] | None = None,
     bypass_v11_floor: bool = False,
 ) -> dict[str, Any]:
     """Orchestrates the full post-inference execution logic."""
@@ -101,8 +147,11 @@ def run_execution_pipeline(
         )
     )
 
-    # Update high entropy streak
-    new_streak = high_entropy_streak + 1 if effective_entropy > 0.85 else 0
+    new_streak = update_high_entropy_streak(
+        high_entropy_streak=high_entropy_streak,
+        effective_entropy=effective_entropy,
+        execution_context=execution_context,
+    )
 
     return {
         "effective_entropy": effective_entropy,
