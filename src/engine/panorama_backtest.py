@@ -9,6 +9,7 @@ from src.engine.aggregator import FullPanoramaAggregator
 from src.research.regime_process_audit import compute_regime_process_alignment
 
 PROCESS_GATE_MINIMA: dict[str, float] = {
+    "posterior_vs_benchmark_process": 0.67,
     "stable_vs_benchmark_regime": 0.67,
     "probability_within_band_share": 0.47,
     "delta_within_band_share": 0.70,
@@ -193,6 +194,7 @@ def _compute_process_metrics(trace: pd.DataFrame) -> dict[str, float]:
         if isinstance(value, (int, float, np.floating))
         and key
         in {
+            "posterior_vs_benchmark_process",
             "stable_vs_benchmark_regime",
             "probability_within_band_share",
             "delta_within_band_share",

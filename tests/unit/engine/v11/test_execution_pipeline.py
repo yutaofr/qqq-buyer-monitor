@@ -9,6 +9,7 @@ from src.engine.v11.core.execution_pipeline import (
     apply_beta_floor,
     compute_effective_entropy,
     run_execution_pipeline,
+    update_high_entropy_streak,
 )
 
 
@@ -105,7 +106,54 @@ def test_execution_pipeline_updates_high_entropy_streak_correctly():
         erp_percentile=0.5,
         high_entropy_streak=11,
     )
-    assert res2["high_entropy_streak"] == 0
+    assert res2["high_entropy_streak"] == 9
+
+
+def test_execution_pipeline_relieves_high_entropy_streak_when_recovery_direction_is_clear():
+    entropy_ctrl = MagicMock()
+    entropy_ctrl.apply_haircut.return_value = 0.5
+
+    result = run_execution_pipeline(
+        raw_beta=0.5,
+        posterior_entropy=0.88,
+        quality_score=1.0,
+        posteriors={"MID_CYCLE": 0.10, "LATE_CYCLE": 0.08, "BUST": 0.30, "RECOVERY": 0.52},
+        entropy_controller=entropy_ctrl,
+        overlay={"beta_overlay_multiplier": 1.0},
+        e_sharpe=0.5,
+        erp_percentile=0.5,
+        high_entropy_streak=7,
+        execution_context={
+            "topology_regime": "RECOVERY",
+            "topology_confidence": 0.24,
+            "transition_intensity": 0.67,
+            "recovery_prob": 0.52,
+            "bust_prob": 0.30,
+            "recovery_delta": 0.04,
+            "top1_margin": 0.22,
+        },
+    )
+
+    assert result["high_entropy_streak"] == 6
+
+
+def test_update_high_entropy_streak_holds_deadlock_when_entropy_is_high_and_direction_is_unclear():
+    assert (
+        update_high_entropy_streak(
+            high_entropy_streak=9,
+            effective_entropy=0.91,
+            execution_context={
+                "topology_regime": "BUST",
+                "topology_confidence": 0.08,
+                "transition_intensity": 0.20,
+                "recovery_prob": 0.18,
+                "bust_prob": 0.35,
+                "recovery_delta": -0.01,
+                "top1_margin": 0.04,
+            },
+        )
+        == 10
+    )
 
 
 def test_execution_pipeline_reapplies_business_floor_after_negative_overlay():

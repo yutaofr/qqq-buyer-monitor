@@ -133,6 +133,7 @@ def test_write_report_calls_out_conditional_process_gate(tmp_path):
                 "scenario": "standard",
                 "acceptance_pass": False,
                 "acceptance_reason": "Worldview Process Failure (entropy_within_band_share)",
+                "posterior_vs_benchmark_process": 0.80,
                 "stable_vs_benchmark_regime": 0.80,
                 "probability_within_band_share": 0.56,
                 "delta_within_band_share": 0.83,
@@ -165,6 +166,7 @@ def test_write_report_calls_out_conditional_process_gate(tmp_path):
             "top1_accuracy": 0.74,
             "mean_brier": 0.48,
             "mean_entropy": 0.55,
+            "posterior_vs_benchmark_process": 0.82,
             "stable_vs_benchmark_regime": 0.80,
             "probability_within_band_share": 0.56,
             "delta_within_band_share": 0.83,
@@ -189,3 +191,5 @@ def test_write_report_calls_out_conditional_process_gate(tmp_path):
     text = output_path.read_text(encoding="utf-8")
     assert "Conditional expected-process gate" in text
     assert "Conditional Process Gate Lens" in text
+    assert "Posterior Process vs Benchmark" in text
+    assert "Execution-Stable vs Benchmark" in text

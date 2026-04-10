@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -462,8 +463,8 @@ class PriorKnowledgeBase:
         bootstrap_regimes: Iterable[str] | None = None,
         expected_bootstrap_fingerprint: str | None = None,
     ) -> bool:
-        backfilled = False
-        payload = json.loads(self.storage_path.read_text())
+        payload, recovered = self._load_payload()
+        backfilled = recovered
         payload_regimes = payload.get("regimes")
         if fallback_regimes:
             self.regimes = canonicalize_regime_sequence(fallback_regimes, include_all=False)
@@ -617,7 +618,38 @@ class PriorKnowledgeBase:
             "transition_blend": self.transition_blend,
             "bootstrap_fingerprint": self.bootstrap_fingerprint,
         }
-        self.storage_path.write_text(json.dumps(payload, indent=2, sort_keys=True))
+        serialized = json.dumps(payload, indent=2, sort_keys=True)
+        temp_path = self.storage_path.with_suffix(
+            f"{self.storage_path.suffix}.{os.getpid()}.tmp"
+        )
+        temp_path.write_text(serialized)
+        os.replace(temp_path, self.storage_path)
+
+    def _load_payload(self) -> tuple[dict[str, object], bool]:
+        raw_text = self.storage_path.read_text()
+        try:
+            payload = json.loads(raw_text)
+            recovered = False
+        except json.JSONDecodeError as exc:
+            payload, recovered = self._recover_first_json_object(raw_text)
+            if not recovered:
+                raise
+            logger.warning(
+                "Recovered truncated/concatenated prior state from %s after JSON decode failure: %s",
+                self.storage_path,
+                exc,
+            )
+        if not isinstance(payload, dict):
+            raise ValueError("PriorKnowledgeBase payload must be a JSON object.")
+        return payload, recovered
+
+    @staticmethod
+    def _recover_first_json_object(raw_text: str) -> tuple[dict[str, object], bool]:
+        decoder = json.JSONDecoder()
+        stripped = raw_text.lstrip()
+        payload, end = decoder.raw_decode(stripped)
+        trailing = stripped[end:].strip()
+        return payload, bool(trailing)
 
     @staticmethod
     def _normalize(weights: dict[str, float]) -> dict[str, float]:

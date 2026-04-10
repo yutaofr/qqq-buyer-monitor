@@ -180,6 +180,7 @@ def _write_report(
         "scenario",
         "acceptance_pass",
         "acceptance_reason",
+        "posterior_vs_benchmark_process",
         "stable_vs_benchmark_regime",
         "probability_within_band_share",
         "delta_within_band_share",
@@ -223,7 +224,8 @@ def _write_report(
             f"- Posterior Top-1 Accuracy: `{mainline_summary['top1_accuracy']:.2%}`\n"
             f"- Posterior Brier: `{mainline_summary['mean_brier']:.4f}`\n"
             f"- Mean Entropy: `{mainline_summary['mean_entropy']:.4f}`\n"
-            f"- Stable vs Benchmark Regime: `{mainline_summary['stable_vs_benchmark_regime']:.2%}`\n"
+            f"- Posterior Process vs Benchmark: `{mainline_summary.get('posterior_vs_benchmark_process', mainline_summary['stable_vs_benchmark_regime']):.2%}`\n"
+            f"- Execution-Stable vs Benchmark: `{mainline_summary['stable_vs_benchmark_regime']:.2%}`\n"
             f"- Probability Within Band: `{mainline_summary['probability_within_band_share']:.2%}`\n"
             f"- Delta Within Band: `{mainline_summary['delta_within_band_share']:.2%}`\n"
             f"- Acceleration Within Band: `{mainline_summary['acceleration_within_band_share']:.2%}`\n"

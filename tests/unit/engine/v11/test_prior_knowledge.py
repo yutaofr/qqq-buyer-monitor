@@ -194,6 +194,28 @@ def test_prior_knowledge_backfills_warm_start_execution_schema(tmp_path, bootstr
     assert library.execution_state["high_entropy_streak"] == 0
 
 
+def test_prior_knowledge_recovers_from_concatenated_json_tail(tmp_path, bootstrap_history):
+    storage_path = tmp_path / "prior_state.json"
+    payload = {
+        "version": "v11-prior-state",
+        "regimes": ["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"],
+        "counts": {"MID_CYCLE": 4.0, "LATE_CYCLE": 3.0, "BUST": 2.0, "RECOVERY": 1.0},
+        "transition_counts": {},
+        "execution_state": {"stable_regime": "RECOVERY"},
+        "bootstrap_fingerprint": "sha256:test",
+    }
+    storage_path.write_text(json.dumps(payload) + 'tate"\n}')
+
+    library = PriorKnowledgeBase(
+        storage_path=storage_path,
+        bootstrap_regimes=bootstrap_history,
+        allow_bootstrap_fingerprint_drift=True,
+    )
+
+    assert library.execution_state["stable_regime"] == "RECOVERY"
+    assert library.counts["MID_CYCLE"] == pytest.approx(4.0)
+
+
 def test_recovery_prior_release_score_can_start_inside_bust_when_repair_is_confirmed():
     score = PriorKnowledgeBase._recovery_prior_release_score(
         {
