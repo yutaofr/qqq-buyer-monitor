@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from scripts.baseline_backtest import collect_panorama_oos_artifacts
-from scripts.run_v14_panorama_matrix import _scenario_report, _select_candidate
+from scripts.run_v14_panorama_matrix import _scenario_report, _select_candidate, _write_report
 
 
 def test_scenario_report_does_not_force_standard_to_pass():
@@ -119,3 +119,69 @@ def test_collect_panorama_oos_artifacts_prefers_cached_trace(tmp_path, monkeypat
     assert list(artifacts["oos_results"].columns) == ["tractor_prob", "sidecar_prob", "sidecar_valid"]
     assert len(artifacts["oos_results"]) == 3
     assert artifacts["oos_results"].index.min().strftime("%Y-%m-%d") == "2024-01-01"
+
+
+def test_write_report_calls_out_conditional_process_gate(tmp_path):
+    output_path = tmp_path / "report.md"
+    report = pd.DataFrame(
+        [
+            {
+                "scenario": "standard",
+                "acceptance_pass": False,
+                "acceptance_reason": "Worldview Process Failure (entropy_within_band_share)",
+                "stable_vs_benchmark_regime": 0.80,
+                "probability_within_band_share": 0.56,
+                "delta_within_band_share": 0.83,
+                "acceleration_within_band_share": 0.85,
+                "transition_probability_within_band_share": 0.94,
+                "entropy_within_band_share": 0.62,
+                "transition_entropy_within_band_share": 0.87,
+                "mean_raw_beta": 0.91,
+                "mean_standard_beta": 0.88,
+                "mean_target_beta": 0.88,
+                "mean_expected_beta": 0.90,
+                "raw_beta_expected_mae": 0.05,
+                "standard_beta_expected_mae": 0.04,
+                "beta_expectation_mae": 0.04,
+            }
+        ]
+    )
+    _write_report(
+        output_path=output_path,
+        diagnostics_meta={"vintage_mode": "CACHED_ARTIFACT", "oos_start": "2013-01-30"},
+        calibration_report=report,
+        default_holdout_report=report,
+        tuned_holdout_row=report.iloc[0].to_dict(),
+        selected_candidate=report.iloc[0].to_dict(),
+        selection_failed_closed=True,
+        holdout_start="2018-01-01",
+        floor_conflict_stats={"min_beta": 0.5, "mean_beta": 0.8, "share_below_floor": 0.0},
+        mainline_summary={
+            "evaluation_start_effective": "2013-01-30",
+            "top1_accuracy": 0.74,
+            "mean_brier": 0.48,
+            "mean_entropy": 0.55,
+            "stable_vs_benchmark_regime": 0.80,
+            "probability_within_band_share": 0.56,
+            "delta_within_band_share": 0.83,
+            "acceleration_within_band_share": 0.85,
+            "transition_probability_within_band_share": 0.94,
+            "entropy_within_band_share": 0.62,
+            "raw_beta_expectation_mae": 0.05,
+            "beta_expectation_mae": 0.04,
+            "deployment_exact_match": 0.70,
+            "deployment_rank_abs_error_mean": 0.10,
+            "deployment_pacing_abs_error_mean": 0.12,
+            "deployment_pacing_signed_mean": 0.01,
+            "raw_beta_min": 0.5,
+            "beta_expectation_min": 0.5,
+            "target_beta_min": 0.5,
+            "raw_beta_within_5pct_expected": 0.4,
+            "target_beta_within_5pct_expected": 0.45,
+            "target_floor_breach_rate": 0.0,
+            "share_at_floor": 0.1,
+        },
+    )
+    text = output_path.read_text(encoding="utf-8")
+    assert "Conditional expected-process gate" in text
+    assert "Conditional Process Gate Lens" in text
