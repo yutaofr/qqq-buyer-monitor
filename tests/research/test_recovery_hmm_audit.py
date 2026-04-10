@@ -80,7 +80,9 @@ def test_orthogonal_consensus_variant_uses_projected_signal_to_sharpen_posterior
     projected_row = pd.Series({"PC1": 2.8, "PC2": 0.4, "PC3": 0.1})
 
     baseline = _domain_scores(row, LOCKED_CANDIDATE_VARIANT, projected_row=projected_row)
-    orthogonal = _domain_scores(row, WORLDVIEW_OPTIMIZATION_VARIANTS[2], projected_row=projected_row)
+    orthogonal = _domain_scores(
+        row, WORLDVIEW_OPTIMIZATION_VARIANTS[2], projected_row=projected_row
+    )
 
     assert max(orthogonal.values()) > max(baseline.values())
 

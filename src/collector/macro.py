@@ -62,7 +62,9 @@ def fetch_fred_api(
 
             df = pd.DataFrame(observations)
             df = df.rename(columns={"date": "observation_date", "value": series_id})
-            df["observation_date"] = pd.to_datetime(df["observation_date"], errors="coerce").dt.normalize()
+            df["observation_date"] = pd.to_datetime(
+                df["observation_date"], errors="coerce"
+            ).dt.normalize()
             for column in ("realtime_start", "realtime_end"):
                 if column in df.columns:
                     df[column] = pd.to_datetime(df[column], errors="coerce").dt.normalize()
@@ -77,7 +79,10 @@ def fetch_fred_api(
         except Exception as exc:
             retryable = attempt < retries and (
                 isinstance(exc, requests.RequestException)
-                or any(code in str(exc) for code in ("http 429", "http 500", "http 502", "http 503", "http 504"))
+                or any(
+                    code in str(exc)
+                    for code in ("http 429", "http 500", "http 502", "http 503", "http 504")
+                )
             )
             if retryable:
                 time.sleep(0.25 * (attempt + 1))
@@ -195,7 +200,9 @@ def fetch_fred_csv(series_id: str, timeout: int = 15, retries: int = 3) -> pd.Da
             if date_column is not None:
                 frame = frame.rename(columns={date_column: "observation_date"})
             if "observation_date" in frame.columns and series_id in frame.columns:
-                frame["observation_date"] = pd.to_datetime(frame["observation_date"], errors="coerce").dt.normalize()
+                frame["observation_date"] = pd.to_datetime(
+                    frame["observation_date"], errors="coerce"
+                ).dt.normalize()
                 frame[series_id] = pd.to_numeric(frame[series_id], errors="coerce")
                 frame = frame.dropna(subset=["observation_date", series_id])
             return frame

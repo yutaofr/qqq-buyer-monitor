@@ -91,14 +91,20 @@ def _write_panorama_report(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run 8-year panorama comparison for recovery HMM optimization variants.")
+    parser = argparse.ArgumentParser(
+        description="Run 8-year panorama comparison for recovery HMM optimization variants."
+    )
     parser.add_argument("--training-end", default="2017-12-31")
     parser.add_argument("--evaluation-start", default="2018-01-01")
     parser.add_argument("--evaluation-end", default="2026-04-07")
-    parser.add_argument("--artifact-dir", default="artifacts/recovery_hmm_shadow/variant_panorama_8yr")
+    parser.add_argument(
+        "--artifact-dir", default="artifacts/recovery_hmm_shadow/variant_panorama_8yr"
+    )
     parser.add_argument("--macro-dump-path", default="data/macro_historical_dump.csv")
     parser.add_argument("--qqq-history-path", default="data/qqq_history_cache.csv")
-    parser.add_argument("--production-trace-path", default="artifacts/v14_panorama/mainline/execution_trace.csv")
+    parser.add_argument(
+        "--production-trace-path", default="artifacts/v14_panorama/mainline/execution_trace.csv"
+    )
     args = parser.parse_args()
 
     artifact_dir = Path(args.artifact_dir).resolve()
@@ -109,7 +115,9 @@ def main() -> int:
         qqq_history_path=args.qqq_history_path,
     )
     dataset.frame.to_csv(artifact_dir / "shadow_input_dataset.csv")
-    (artifact_dir / "source_lineage.json").write_text(json.dumps(dataset.to_dict(), indent=2), encoding="utf-8")
+    (artifact_dir / "source_lineage.json").write_text(
+        json.dumps(dataset.to_dict(), indent=2), encoding="utf-8"
+    )
 
     nav_frame: pd.DataFrame | None = None
     matrix_records: list[dict[str, object]] = []
@@ -132,7 +140,8 @@ def main() -> int:
             production_trace_path=args.production_trace_path,
         )
         review_window = review[
-            (review["date"] >= pd.Timestamp(args.evaluation_start)) & (review["date"] <= pd.Timestamp(args.evaluation_end))
+            (review["date"] >= pd.Timestamp(args.evaluation_start))
+            & (review["date"] <= pd.Timestamp(args.evaluation_end))
         ].copy()
         summary = build_performance_summary(review_window)
         decision, reasons = promotion_decision(summary)
@@ -156,9 +165,17 @@ def main() -> int:
 
         variant_nav = _nav_series(review_window, weight_column="w_final")
         if nav_frame is None:
-            nav_frame = pd.DataFrame({"date": review_window["date"], "qqq": _buy_and_hold_nav(review_window)})
-            if "target_beta" in review_window.columns and review_window["target_beta"].notna().any():
-                nav_frame["production"] = _nav_series(review_window.rename(columns={"target_beta": "weight_proxy"}), weight_column="weight_proxy")
+            nav_frame = pd.DataFrame(
+                {"date": review_window["date"], "qqq": _buy_and_hold_nav(review_window)}
+            )
+            if (
+                "target_beta" in review_window.columns
+                and review_window["target_beta"].notna().any()
+            ):
+                nav_frame["production"] = _nav_series(
+                    review_window.rename(columns={"target_beta": "weight_proxy"}),
+                    weight_column="weight_proxy",
+                )
         nav_frame[variant.name] = variant_nav.values
 
         record = {
@@ -183,8 +200,12 @@ def main() -> int:
         raise RuntimeError("Failed to build locked reference for panorama run.")
 
     for record in matrix_records:
-        record["excess_return_vs_locked"] = record["shadow_total_return"] - locked_reference["shadow_total_return"]
-        record["excess_sharpe_vs_locked"] = record["shadow_sharpe"] - locked_reference["shadow_sharpe"]
+        record["excess_return_vs_locked"] = (
+            record["shadow_total_return"] - locked_reference["shadow_total_return"]
+        )
+        record["excess_sharpe_vs_locked"] = (
+            record["shadow_sharpe"] - locked_reference["shadow_sharpe"]
+        )
 
     matrix = build_variant_matrix(matrix_records)
     plot_variant_navs(nav_frame, artifact_dir / "variant_nav_8yr.png")

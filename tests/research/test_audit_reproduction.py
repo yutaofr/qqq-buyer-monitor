@@ -26,6 +26,7 @@ def test_reproduce_entropy_miscalibration_at_high_confidence():
     # V14.6 Fix: Entropy should be low (0.16) when conviction is high (96%)
     assert eff_h < 0.25
 
+
 def test_reproduce_recovery_suppression_barrier():
     """
     Audit Finding: Recovery transition barrier is too high (1.4+).
@@ -45,7 +46,8 @@ def test_reproduce_recovery_suppression_barrier():
     # If challenger=RECOVERY(0.35) and current=BUST(0.3), daily = 0.05.
     # 1.41 / 0.05 = 28 days to switch! (Deadly delay)
 
-    assert barrier > 1.0 # This reproduces the 'Red' state where switching is almost impossible.
+    assert barrier > 1.0  # This reproduces the 'Red' state where switching is almost impossible.
+
 
 def test_reproduce_beta_flatline_damping():
     """
@@ -53,8 +55,8 @@ def test_reproduce_beta_flatline_damping():
     """
     ctrl = EntropyController()
     probs = {"MID_CYCLE": 0.0133, "LATE_CYCLE": 0.0133, "BUST": 0.96, "RECOVERY": 0.0134}
-    h_norm = ctrl.calculate_normalized_entropy(probs) # Now conviction-adjusted (~0.09)
-    raw_beta = 1.0 # Significant re-risking signal
+    h_norm = ctrl.calculate_normalized_entropy(probs)  # Now conviction-adjusted (~0.09)
+    raw_beta = 1.0  # Significant re-risking signal
 
     # In v14.6, with H_norm ~ 0.09:
     # confidence = exp(-0.6 * (0.09 * ln(4))^2) = ~0.99
@@ -71,13 +73,14 @@ def test_reproduce_beta_flatline_damping():
     # 0.71 was the old 'Red' value. We expect it to be higher (closer to 1.0) now.
     assert final_beta > 0.8
 
+
 def test_reproduce_recovery_barrier_scaling():
     """
     Verify Fix 1C: Barrier Scale should apply when release is hinted.
     """
     stabilizer = RegimeStabilizer(initial_regime="BUST")
     entropy = 0.85
-    base_barrier = stabilizer._entropy_barrier(entropy, n_states=4) # 1.4167
+    base_barrier = stabilizer._entropy_barrier(entropy, n_states=4)  # 1.4167
 
     # Simulate a realistic release hint from PriceTopology
     release_hint = {
@@ -86,29 +89,25 @@ def test_reproduce_recovery_barrier_scaling():
         "repair_persistence": 0.35,
         "recovery_impulse": 0.30,
         "damage_memory": 0.40,
-        "transition_intensity": 0.70
+        "transition_intensity": 0.70,
     }
 
     # We need to compute the challenger and scaling by calling _resolve_release_candidate
-    probs = {"BUST": 0.4, "RECOVERY": 0.6} # Dominant challenger
+    probs = {"BUST": 0.4, "RECOVERY": 0.6}  # Dominant challenger
     res = stabilizer._resolve_release_candidate(
-        normalized=probs,
-        current_regime="BUST",
-        entropy=entropy,
-        release_hint=release_hint
+        normalized=probs, current_regime="BUST", entropy=entropy, release_hint=release_hint
     )
     assert res is not None
 
     scaled_barrier = stabilizer._apply_barrier_scaling(
-        base_barrier,
-        scaling_factor=res["barrier_scale"],
-        is_recovery=True
+        base_barrier, scaling_factor=res["barrier_scale"], is_recovery=True
     )
 
     # Red state: scaled_barrier was ~0.35.
     # Green goal: scaled_barrier < 0.2 (due to 0.4x discount on top of ~0.3 scaling)
     print(f"DEBUG: Scaled Barrier at H=0.85 with hint = {scaled_barrier:.4f}")
     assert scaled_barrier < 0.2
+
 
 def test_reproduce_regime_chattering():
     """
@@ -135,7 +134,7 @@ def test_reproduce_regime_chattering():
     for d in range(8):
         res = stabilizer.update(posteriors=probs_late, entropy=entropy)
         # We expect no flip for at least 8 days with delta=0.1
-        assert res["stable_regime"] == "MID_CYCLE", f"Flipped too early on day {d+1}"
+        assert res["stable_regime"] == "MID_CYCLE", f"Flipped too early on day {d + 1}"
 
     # Day 9: evidence will cross 0.5 (approx 0.51)
     res = stabilizer.update(posteriors=probs_late, entropy=entropy)

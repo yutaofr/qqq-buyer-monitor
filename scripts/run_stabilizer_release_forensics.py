@@ -43,7 +43,9 @@ def main() -> None:
 
     window_start = pd.Timestamp(args.window_start)
     window_end = pd.Timestamp(args.window_end)
-    failures = failures[(failures["date"] >= window_start) & (failures["date"] <= window_end)].copy()
+    failures = failures[
+        (failures["date"] >= window_start) & (failures["date"] <= window_end)
+    ].copy()
     summary = summarize_release_failures(failures)
 
     artifact_dir = Path(args.artifact_dir)

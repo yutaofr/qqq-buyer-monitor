@@ -1,11 +1,12 @@
-
 import pandas as pd
 
 from src.engine.v11.probability_seeder import ProbabilitySeeder
 
 
 def audit_orthogonality():
-    df = pd.read_csv("data/macro_historical_dump.csv", parse_dates=["observation_date"]).set_index("observation_date")
+    df = pd.read_csv("data/macro_historical_dump.csv", parse_dates=["observation_date"]).set_index(
+        "observation_date"
+    )
     seeder = ProbabilitySeeder()
 
     # 手动触发特征生成并捕获诊断信息
@@ -23,6 +24,7 @@ def audit_orthogonality():
         # 统计 Beta 演化
         print(f"Beta (Move ~ Spread) Mean: {diag['move_spread_beta'].mean():.4f}")
         print(f"Beta (Move ~ Spread) Std: {diag['move_spread_beta'].std():.4f}")
+
 
 if __name__ == "__main__":
     audit_orthogonality()

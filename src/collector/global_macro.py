@@ -248,7 +248,7 @@ def fetch_vix_term_structure_snapshot(timeout: int = 15) -> dict[str, float | st
                 "vxv": vxv,
                 "ratio": vix / vxv,
                 "source": "direct:fred_vix_vxv",
-                "degraded": False
+                "degraded": False,
             }
     except Exception as exc:  # noqa: BLE001
         logger.warning("VIX term structure fetch failed: %s", exc)
@@ -258,7 +258,7 @@ def fetch_vix_term_structure_snapshot(timeout: int = 15) -> dict[str, float | st
         "vxv": None,
         "ratio": None,
         "source": "unavailable:vix_term_structure",
-        "degraded": True
+        "degraded": True,
     }
 
 

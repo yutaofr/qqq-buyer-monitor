@@ -22,4 +22,3 @@ def test_build_performance_summary_compares_shadow_qqq_and_production():
     assert summary["qqq"]["max_drawdown"] is not None
     assert summary["production"]["sharpe"] is not None
     assert summary["turnover"]["mean_abs_daily_change"] > 0.0
-

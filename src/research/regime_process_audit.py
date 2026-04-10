@@ -12,7 +12,9 @@ from src.regime_topology import ACTIVE_REGIME_ORDER
 TREND_WINDOW = 5
 
 
-def prepare_probability_trace(frame: pd.DataFrame, *, trend_window: int = TREND_WINDOW) -> pd.DataFrame:
+def prepare_probability_trace(
+    frame: pd.DataFrame, *, trend_window: int = TREND_WINDOW
+) -> pd.DataFrame:
     if frame is None or frame.empty:
         raise ValueError("probability trace frame is required")
 
@@ -25,7 +27,9 @@ def prepare_probability_trace(frame: pd.DataFrame, *, trend_window: int = TREND_
     out["date"] = pd.to_datetime(out["date"], errors="coerce")
     out = out.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
 
-    out = _apply_trend_window(out, prefix="prob_", trend_window=trend_window, entropy_column="entropy")
+    out = _apply_trend_window(
+        out, prefix="prob_", trend_window=trend_window, entropy_column="entropy"
+    )
 
     for regime in ACTIVE_REGIME_ORDER:
         prob_col = f"prob_{regime}"
@@ -92,9 +96,13 @@ def compute_regime_process_alignment(
         rows.append(
             {
                 "regime": regime,
-                "probability_within_band_share": _weighted_mean(prob_hit.astype(float), row_weights),
+                "probability_within_band_share": _weighted_mean(
+                    prob_hit.astype(float), row_weights
+                ),
                 "delta_within_band_share": _weighted_mean(delta_hit.astype(float), row_weights),
-                "acceleration_within_band_share": _weighted_mean(accel_hit.astype(float), row_weights),
+                "acceleration_within_band_share": _weighted_mean(
+                    accel_hit.astype(float), row_weights
+                ),
                 "probability_mae": float((merged[prob_col] - merged[bench_prob]).abs().mean()),
                 "delta_mae": float((merged[delta_col] - merged[bench_delta]).abs().mean()),
                 "acceleration_mae": float((merged[accel_col] - merged[bench_accel]).abs().mean()),
@@ -102,23 +110,26 @@ def compute_regime_process_alignment(
             }
         )
 
-    transition_mask = pd.to_numeric(
-        merged.get("benchmark_transition_intensity"), errors="coerce"
-    ).fillna(0.0) >= 0.5
+    transition_mask = (
+        pd.to_numeric(merged.get("benchmark_transition_intensity"), errors="coerce").fillna(0.0)
+        >= 0.5
+    )
     if transition_mask.any():
         transition_weights = _transition_importance_weight(merged.loc[transition_mask])
         transition_prob_share = float(
             _weighted_mean(
                 pd.concat(
-                [
-                    merged.loc[transition_mask, f"prob_{regime}"].between(
-                        merged.loc[transition_mask, f"benchmark_prob_lower_{regime}"],
-                        merged.loc[transition_mask, f"benchmark_prob_upper_{regime}"],
-                    )
-                    for regime in ACTIVE_REGIME_ORDER
-                ],
-                axis=1,
-            ).stack().astype(float),
+                    [
+                        merged.loc[transition_mask, f"prob_{regime}"].between(
+                            merged.loc[transition_mask, f"benchmark_prob_lower_{regime}"],
+                            merged.loc[transition_mask, f"benchmark_prob_upper_{regime}"],
+                        )
+                        for regime in ACTIVE_REGIME_ORDER
+                    ],
+                    axis=1,
+                )
+                .stack()
+                .astype(float),
                 pd.Series(
                     np.repeat(transition_weights.to_numpy(), len(ACTIVE_REGIME_ORDER)),
                     index=pd.concat(
@@ -130,7 +141,9 @@ def compute_regime_process_alignment(
                             for regime in ACTIVE_REGIME_ORDER
                         ],
                         axis=1,
-                    ).stack().index,
+                    )
+                    .stack()
+                    .index,
                 ),
             )
         )
@@ -145,7 +158,9 @@ def compute_regime_process_alignment(
             ),
             "probability_within_band_share": float(sum(probability_hits) / len(probability_hits)),
             "delta_within_band_share": float(sum(delta_hits) / len(delta_hits)),
-            "acceleration_within_band_share": float(sum(acceleration_hits) / len(acceleration_hits)),
+            "acceleration_within_band_share": float(
+                sum(acceleration_hits) / len(acceleration_hits)
+            ),
             "transition_rows": int(transition_mask.sum()),
             "transition_probability_within_band_share": transition_prob_share,
         },
@@ -248,7 +263,9 @@ def _rebuild_benchmark_bands(frame: pd.DataFrame) -> pd.DataFrame:
     if "benchmark_transition_intensity" not in out.columns:
         return out
 
-    transition_intensity = pd.to_numeric(out["benchmark_transition_intensity"], errors="coerce").fillna(0.0)
+    transition_intensity = pd.to_numeric(
+        out["benchmark_transition_intensity"], errors="coerce"
+    ).fillna(0.0)
     uncertainty = _benchmark_context_series(out, "benchmark_uncertainty", default=0.0)
     trend_strength = _benchmark_context_series(out, "benchmark_trend_strength", default=0.0)
     conflict_score = _benchmark_context_series(
@@ -281,8 +298,12 @@ def _rebuild_benchmark_bands(frame: pd.DataFrame) -> pd.DataFrame:
             + (0.012 * uncertainty)
             - (0.008 * trend_strength)
         ).clip(lower=0.012, upper=0.11)
-        out[f"benchmark_prob_lower_{regime}"] = (pd.to_numeric(out[prob_col], errors="coerce") - prob_band).clip(lower=0.0)
-        out[f"benchmark_prob_upper_{regime}"] = (pd.to_numeric(out[prob_col], errors="coerce") + prob_band).clip(upper=1.0)
+        out[f"benchmark_prob_lower_{regime}"] = (
+            pd.to_numeric(out[prob_col], errors="coerce") - prob_band
+        ).clip(lower=0.0)
+        out[f"benchmark_prob_upper_{regime}"] = (
+            pd.to_numeric(out[prob_col], errors="coerce") + prob_band
+        ).clip(upper=1.0)
         out[f"benchmark_prob_delta_lower_{regime}"] = (
             pd.to_numeric(out.get(f"benchmark_prob_delta_{regime}"), errors="coerce").fillna(0.0)
             - delta_band
@@ -292,26 +313,32 @@ def _rebuild_benchmark_bands(frame: pd.DataFrame) -> pd.DataFrame:
             + delta_band
         )
         out[f"benchmark_prob_acceleration_lower_{regime}"] = (
-            pd.to_numeric(out.get(f"benchmark_prob_acceleration_{regime}"), errors="coerce").fillna(0.0)
+            pd.to_numeric(out.get(f"benchmark_prob_acceleration_{regime}"), errors="coerce").fillna(
+                0.0
+            )
             - acc_band
         )
         out[f"benchmark_prob_acceleration_upper_{regime}"] = (
-            pd.to_numeric(out.get(f"benchmark_prob_acceleration_{regime}"), errors="coerce").fillna(0.0)
+            pd.to_numeric(out.get(f"benchmark_prob_acceleration_{regime}"), errors="coerce").fillna(
+                0.0
+            )
             + acc_band
         )
 
     if "benchmark_entropy" in out.columns:
         transition_tension = transition_intensity
         if "benchmark_transition_tension" in out.columns:
-            transition_tension = pd.to_numeric(out["benchmark_transition_tension"], errors="coerce").fillna(
-                transition_intensity
-            )
+            transition_tension = pd.to_numeric(
+                out["benchmark_transition_tension"], errors="coerce"
+            ).fillna(transition_intensity)
         stable_factor = (1.0 - transition_intensity).clip(lower=0.0, upper=1.0)
         stable_regime_entropy_allowance = pd.Series(0.0, index=out.index)
         if "benchmark_regime" in out.columns:
             benchmark_regime = out["benchmark_regime"].astype(str)
             stable_regime_entropy_allowance = (
-                np.where(benchmark_regime.eq("MID_CYCLE"), 0.04 * uncertainty + 0.05 * stable_factor, 0.0)
+                np.where(
+                    benchmark_regime.eq("MID_CYCLE"), 0.04 * uncertainty + 0.05 * stable_factor, 0.0
+                )
                 + np.where(
                     benchmark_regime.eq("RECOVERY"),
                     0.06 * uncertainty + 0.03 * conflict_score + 0.12 * stable_factor,
@@ -357,7 +384,8 @@ def _benchmark_context_series(
 
 
 def _soft_regime_agreement(merged: pd.DataFrame, regime: str) -> pd.Series:
-    stable = merged["stable_regime"].astype(str)
+    regime_column = "posterior_regime" if "posterior_regime" in merged.columns else "stable_regime"
+    stable = merged[regime_column].astype(str)
     benchmark = merged["benchmark_regime"].astype(str)
     exact = stable == benchmark
     if exact.all():
@@ -410,7 +438,9 @@ def _transition_importance_weight(merged: pd.DataFrame) -> pd.Series:
         default=0.5,
     )
     conflict_score = _benchmark_context_series(merged, "benchmark_conflict_score", default=0.5)
-    return (0.35 + (0.45 * transition_intensity) + (0.20 * conflict_score)).clip(lower=0.20, upper=1.0)
+    return (0.35 + (0.45 * transition_intensity) + (0.20 * conflict_score)).clip(
+        lower=0.20, upper=1.0
+    )
 
 
 def _weighted_mean(values: pd.Series, weights: pd.Series) -> float:

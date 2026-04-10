@@ -54,8 +54,7 @@ def build_release_failure_frame(
     forensic["date"] = pd.to_datetime(forensic["date"], errors="coerce")
     frame = merged.merge(forensic, on="date", how="left", suffixes=("", "_forensic"))
     frame = frame[
-        (frame["benchmark_regime"] == "RECOVERY")
-        & (frame["stable_regime"] != "RECOVERY")
+        (frame["benchmark_regime"] == "RECOVERY") & (frame["stable_regime"] != "RECOVERY")
     ].copy()
     if frame.empty:
         return frame
@@ -73,9 +72,7 @@ def classify_release_failure(row: pd.Series) -> str:
     prob_bust = float(row.get("prob_BUST", 0.0) or 0.0)
     prob_recovery = float(row.get("prob_RECOVERY", 0.0) or 0.0)
     bearish_divergence = float(row.get("price_topology_bearish_divergence", 0.0) or 0.0)
-    recovery_acceleration = float(
-        row.get("price_topology_recovery_prob_acceleration", 0.0) or 0.0
-    )
+    recovery_acceleration = float(row.get("price_topology_recovery_prob_acceleration", 0.0) or 0.0)
     topology_confidence = float(row.get("price_topology_confidence", 0.0) or 0.0)
     barrier = float(row.get("stabilizer_barrier", 0.0) or 0.0)
     evidence = float(row.get("stabilizer_evidence", 0.0) or 0.0)

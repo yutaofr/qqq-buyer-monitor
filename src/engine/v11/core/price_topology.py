@@ -48,7 +48,9 @@ def infer_price_topology_state(
     if price_frame is None or price_frame.empty:
         return PriceTopologyState(
             regime="MID_CYCLE",
-            probabilities={regime: 1.0 / len(ACTIVE_REGIME_ORDER) for regime in ACTIVE_REGIME_ORDER},
+            probabilities={
+                regime: 1.0 / len(ACTIVE_REGIME_ORDER) for regime in ACTIVE_REGIME_ORDER
+            },
             expected_beta=1.0,
             confidence=0.0,
             posterior_blend_weight=0.0,
@@ -72,7 +74,9 @@ def infer_price_topology_state(
         include_zeros=True,
         normalize=True,
     )
-    transition_intensity = float(np.clip(latest.get("benchmark_transition_intensity", 0.0), 0.0, 1.0))
+    transition_intensity = float(
+        np.clip(latest.get("benchmark_transition_intensity", 0.0), 0.0, 1.0)
+    )
     benchmark_entropy = float(np.clip(latest.get("benchmark_entropy", 0.0), 0.0, 1.0))
     recovery_impulse = float(np.clip(latest.get("benchmark_recovery_impulse", 0.0), 0.0, 1.5))
     damage_memory = float(np.clip(latest.get("benchmark_recent_damage", 0.0), 0.0, 1.5))
@@ -105,7 +109,11 @@ def infer_price_topology_state(
     ordered = sorted(probabilities.values(), reverse=True)
     margin = float(ordered[0] - ordered[1]) if len(ordered) >= 2 else 0.0
     confidence = float(
-        np.clip((margin / max(1e-6, confidence_margin)) * (1.0 - (0.55 * transition_intensity)), 0.0, 1.0)
+        np.clip(
+            (margin / max(1e-6, confidence_margin)) * (1.0 - (0.55 * transition_intensity)),
+            0.0,
+            1.0,
+        )
     )
     edge_multiplier = 1.0 + confidence if regime in {"BUST", "RECOVERY"} else 1.0
     transition_dampener = 1.0 - (0.35 * transition_intensity)
@@ -387,7 +395,7 @@ def topology_likelihood_penalties(
             continue
         regime_prob = float(topology.probabilities.get(regime, 0.0))
         ratio = float(np.clip(regime_prob / max_prob, 0.0, 1.0))
-        shaped = max(float(floor), ratio**float(exponent))
+        shaped = max(float(floor), ratio ** float(exponent))
         penalties[regime] = (1.0 - confidence_scale) + (confidence_scale * shaped)
         if regime == "BUST" and topology.regime == "RECOVERY" and repair_veto > 0.0:
             penalties[regime] *= max(0.68, 1.0 - (0.28 * repair_veto))
@@ -403,7 +411,7 @@ def anchor_beta_with_topology(raw_beta: float, topology: PriceTopologyState) -> 
 
 
 def _recovery_process_alignment_weight(topology: PriceTopologyState) -> float:
-    if float(topology.recovery_impulse) < 0.15 or float(topology.damage_memory) < 0.20:
+    if float(topology.recovery_impulse) < 0.12 or float(topology.damage_memory) < 0.20:
         return 0.0
     positive_delta = float(np.clip(topology.recovery_prob_delta / 0.04, 0.0, 1.5))
     positive_accel = float(np.clip(topology.recovery_prob_acceleration / 0.02, 0.0, 1.5))
@@ -429,6 +437,7 @@ def _recovery_process_alignment_weight(topology: PriceTopologyState) -> float:
         + 0.20 * pair_gap
         + 0.18 * repair_persistence
         + (0.15 if topology.regime == "RECOVERY" else 0.0)
+        + (0.08 if topology.regime == "BUST" and repair_persistence >= 0.28 else 0.0)
         + (0.15 if pair_gap > 0.0 else 0.0)
     )
     headwind = (0.15 * float(topology.bust_pressure)) + (0.10 * float(topology.bearish_divergence))
@@ -473,22 +482,22 @@ def _recovery_prior_alignment_support(
     *,
     runtime_priors: dict[str, float] | None,
 ) -> float:
-    if topology.regime != "RECOVERY" or not runtime_priors:
+    if topology.regime not in {"RECOVERY", "BUST", "LATE_CYCLE"} or not runtime_priors:
         return 0.0
     repair_persistence = _topology_repair_persistence(topology)
-    if repair_persistence < 0.30 or float(topology.damage_memory) < 0.40:
+    if repair_persistence < 0.26 or float(topology.damage_memory) < 0.38:
         return 0.0
 
     recovery_prior = float(runtime_priors.get("RECOVERY", 0.0))
     bust_prior = float(runtime_priors.get("BUST", 0.0))
     late_prior = float(runtime_priors.get("LATE_CYCLE", 0.0))
-    if recovery_prior < 0.24:
+    if recovery_prior < 0.20:
         return 0.0
 
-    recovery_level = float(np.clip((recovery_prior - 0.24) / 0.18, 0.0, 1.0))
-    bust_relief = float(np.clip((0.44 - bust_prior) / 0.14, 0.0, 1.0))
-    late_relief = float(np.clip((0.24 - late_prior) / 0.14, 0.0, 1.0))
-    transition = float(np.clip((float(topology.transition_intensity) - 0.60) / 0.30, 0.0, 1.0))
+    recovery_level = float(np.clip((recovery_prior - 0.20) / 0.18, 0.0, 1.0))
+    bust_relief = float(np.clip((0.48 - bust_prior) / 0.18, 0.0, 1.0))
+    late_relief = float(np.clip((0.30 - late_prior) / 0.18, 0.0, 1.0))
+    transition = float(np.clip((float(topology.transition_intensity) - 0.55) / 0.30, 0.0, 1.0))
     confidence = float(np.clip((float(topology.confidence) - 0.08) / 0.10, 0.0, 1.0))
     return float(
         np.clip(
@@ -539,7 +548,7 @@ def _promote_recovery_transition_regime(
 ) -> tuple[str, dict[str, float]]:
     if regime not in {"BUST", "LATE_CYCLE"}:
         return regime, probabilities
-    if transition_intensity < 0.75 or repair_persistence < 0.32 or damage_memory < 0.45:
+    if transition_intensity < 0.62 or repair_persistence < 0.28 or damage_memory < 0.42:
         return regime, probabilities
 
     recovery = float(probabilities.get("RECOVERY", 0.0))
@@ -548,10 +557,10 @@ def _promote_recovery_transition_regime(
         return regime, probabilities
 
     gap = current - recovery
-    if gap > 0.03 or bust_pressure > 0.45:
+    if gap > 0.08 or bust_pressure > 0.58:
         return regime, probabilities
 
-    shift = min(gap + 0.0025, 0.02)
+    shift = min(gap + 0.006, 0.05)
     corrected = dict(probabilities)
     corrected[regime] = max(0.0, current - shift)
     corrected["RECOVERY"] = recovery + shift
@@ -757,5 +766,7 @@ def price_topology_payload(topology: PriceTopologyState) -> dict[str, Any]:
         "recovery_process_weight": float(_recovery_process_alignment_weight(topology)),
         "posterior_blend_weight": float(topology.posterior_blend_weight),
         "beta_anchor_weight": float(topology.beta_anchor_weight),
-        "probabilities": {regime: float(topology.probabilities.get(regime, 0.0)) for regime in ACTIVE_REGIME_ORDER},
+        "probabilities": {
+            regime: float(topology.probabilities.get(regime, 0.0)) for regime in ACTIVE_REGIME_ORDER
+        },
     }

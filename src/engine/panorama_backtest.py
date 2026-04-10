@@ -166,8 +166,7 @@ def judge_panorama_candidate(current: dict[str, Any], baseline: dict[str, Any]) 
     if (
         "beta_expectation_within_5pct" in current
         and "beta_expectation_within_5pct" in baseline
-        and float(current.get("beta_expectation_within_5pct", 0.0))
-        + 1e-7
+        and float(current.get("beta_expectation_within_5pct", 0.0)) + 1e-7
         < float(baseline.get("beta_expectation_within_5pct", 0.0)) - 0.02
     ):
         return False, "Process Distortion"

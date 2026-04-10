@@ -146,11 +146,15 @@ def run_shadow_audit(
 
     projection = fit_pca_projection(train, variance_threshold=0.85)
     projected_eval = projection.transform(evaluation)
-    fdas_series = _fdas_trigger(
-        feature_frame,
-        z_threshold=variant.fdas_z_threshold,
-        min_breaches=variant.fdas_min_breaches,
-    ).reindex(projected_eval.index).fillna(False)
+    fdas_series = (
+        _fdas_trigger(
+            feature_frame,
+            z_threshold=variant.fdas_z_threshold,
+            min_breaches=variant.fdas_min_breaches,
+        )
+        .reindex(projected_eval.index)
+        .fillna(False)
+    )
 
     rows: list[dict[str, object]] = []
     for dt in projected_eval.index:
@@ -162,7 +166,9 @@ def run_shadow_audit(
         entropy = _normalized_entropy(probabilities)
         effective_entropy = entropy
         if shadow_state in {"RECOVERY", "MID_CYCLE"} and variant.orthogonal_entropy_relief > 0.0:
-            effective_entropy = entropy * max(0.0, 1.0 - (variant.orthogonal_entropy_relief * orthogonal_confidence))
+            effective_entropy = entropy * max(
+                0.0, 1.0 - (variant.orthogonal_entropy_relief * orthogonal_confidence)
+            )
         weight = compute_shadow_weight(
             state=shadow_state,
             entropy=effective_entropy,
@@ -208,11 +214,7 @@ def run_shadow_audit(
         "q1_2022_below_or_equal_0_5": bool(not q1_2022.empty and q1_2022["w_final"].min() <= 0.5),
         "q1_2023_above_or_equal_0_85": bool(not q1_2023.empty and q1_2023["w_final"].max() >= 0.85),
     }
-    decision_gate = (
-        "CANDIDATE_FOR_INTEGRATION"
-        if all(acceptance.values())
-        else "SHADOW_ONLY"
-    )
+    decision_gate = "CANDIDATE_FOR_INTEGRATION" if all(acceptance.values()) else "SHADOW_ONLY"
 
     artifact_path = Path(artifact_dir)
     artifact_path.mkdir(parents=True, exist_ok=True)

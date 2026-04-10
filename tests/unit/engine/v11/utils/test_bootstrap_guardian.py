@@ -22,33 +22,35 @@ def mock_filesystem():
         dates = pd.date_range(start="2020-01-01", end="2026-04-02", freq="B")
         macro_df = pd.DataFrame({"observation_date": dates.astype(str)})
         # deliberately add a disconnected date
-        macro_df = pd.concat([macro_df, pd.DataFrame({"observation_date": ["2026-04-08"]})], ignore_index=True)
+        macro_df = pd.concat(
+            [macro_df, pd.DataFrame({"observation_date": ["2026-04-08"]})], ignore_index=True
+        )
         macro_df.to_csv(macro_path, index=False)
 
         # 2. Price Cache - stale, ending on 2026-03-27
         price_path = base / "qqq_history_cache.csv"
         price_dates = pd.date_range(start="2020-01-01", end="2026-03-27", freq="B")
-        price_df = pd.DataFrame({
-            "Date": [d.strftime("%Y-%m-%d 00:00:00-04:00") for d in price_dates],
-            "Close": [300.0] * len(price_dates),
-            "Volume": [50000000.0] * len(price_dates)
-        })
+        price_df = pd.DataFrame(
+            {
+                "Date": [d.strftime("%Y-%m-%d 00:00:00-04:00") for d in price_dates],
+                "Close": [300.0] * len(price_dates),
+                "Volume": [50000000.0] * len(price_dates),
+            }
+        )
         price_df.to_csv(price_path, index=False)
 
         # 3. Seed Prior
         seed_path = base / "v13_6_cold_start_seed.json"
         with open(seed_path, "w") as f:
-            json.dump({
-                "last_observation_date": "2026-03-31",
-                "counts": {"MID_CYCLE": 100}
-            }, f)
+            json.dump({"last_observation_date": "2026-03-31", "counts": {"MID_CYCLE": 100}}, f)
 
         yield {
             "macro_csv": str(macro_path),
             "price_csv": str(price_path),
             "seed_json": str(seed_path),
-            "base_dir": tmpdir
+            "base_dir": tmpdir,
         }
+
 
 def test_audit_macro_gap_detection(mock_filesystem):
     """RED: Guardian should detect missing business days (e.g., 04-03 to 04-07)."""
@@ -70,6 +72,7 @@ def test_audit_macro_gap_detection(mock_filesystem):
     assert "2026-04-06" in missing_dates
     assert "2026-04-07" in missing_dates
 
+
 def test_audit_price_cache_staleness(mock_filesystem):
     """RED: Price cache should be flagged as stale."""
     guardian = BootstrapGuardian(
@@ -81,6 +84,7 @@ def test_audit_price_cache_staleness(mock_filesystem):
     report = guardian.audit()
     assert report.price_cache_staleness.days_stale > 0
     assert report.price_cache_staleness.last_date == date(2026, 3, 27)
+
 
 def test_repair_backfill_resolves_gaps(mock_filesystem, monkeypatch):
     """RED: Guardian.repair() should use local price cache only and remove the gap."""
@@ -113,6 +117,7 @@ def test_repair_backfill_resolves_gaps(mock_filesystem, monkeypatch):
     # Re-audit should now be healthy or at least not have macro gaps
     report2 = guardian.audit()
     assert len(report2.macro_gaps) == 0
+
 
 def test_1260_day_window_restriction(mock_filesystem):
     """RED: It should only care about gaps within the last 1260 business days."""

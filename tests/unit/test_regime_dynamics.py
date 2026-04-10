@@ -35,4 +35,3 @@ def test_compute_probability_dynamics_tracks_delta_and_acceleration():
     assert dynamics["LATE_CYCLE"]["delta_1d"] == 0.05
     assert dynamics["LATE_CYCLE"]["acceleration_1d"] == 0.0
     assert dynamics["LATE_CYCLE"]["trend"] == "RISING"
-

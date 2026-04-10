@@ -111,7 +111,9 @@ def run_baseline_inference(price_history: pd.Series = None) -> dict:
                     bounds=bounds_t,
                 )
 
-                tractor_window = X_tractor.iloc[-2:] if len(X_tractor) >= 2 else X_tractor.iloc[[-1]]
+                tractor_window = (
+                    X_tractor.iloc[-2:] if len(X_tractor) >= 2 else X_tractor.iloc[[-1]]
+                )
                 tractor_probs = predict_baseline_crisis_prob(model_t, tractor_window)
                 prob_t = float(tractor_probs.iloc[-1])
                 prev_prob_t = float(tractor_probs.iloc[-2]) if len(tractor_probs) >= 2 else prob_t
@@ -159,10 +161,14 @@ def run_baseline_inference(price_history: pd.Series = None) -> dict:
                 model_s = train_sidecar_model(X_sidecar.loc[c_idx_s], y_sidecar.loc[c_idx_s])
                 # Physical Audit
                 if validate_coefficients(model_s, X_sidecar.columns.tolist()):
-                    sidecar_window = X_sidecar.iloc[-2:] if len(X_sidecar) >= 2 else X_sidecar.iloc[[-1]]
+                    sidecar_window = (
+                        X_sidecar.iloc[-2:] if len(X_sidecar) >= 2 else X_sidecar.iloc[[-1]]
+                    )
                     sidecar_probs = predict_baseline_crisis_prob(model_s, sidecar_window)
                     prob_s = float(sidecar_probs.iloc[-1])
-                    prev_prob_s = float(sidecar_probs.iloc[-2]) if len(sidecar_probs) >= 2 else prob_s
+                    prev_prob_s = (
+                        float(sidecar_probs.iloc[-2]) if len(sidecar_probs) >= 2 else prob_s
+                    )
                     status_s = "success"
                 else:
                     status_s = "audit_failed_overfitting"

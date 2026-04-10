@@ -57,6 +57,8 @@ def test_build_v11_signal_result_uses_v12_metadata_contract():
 
     assert result.target_beta == 0.91
     assert result.stable_regime == "MID_CYCLE"
+    assert result.metadata["posterior_regime"] == "MID_CYCLE"
+    assert result.metadata["execution_regime"] == "MID_CYCLE"
     assert result.metadata["deployment_readiness"] == 0.64
     assert result.metadata["protected_beta"] == 0.84
     assert result.metadata["overlay_beta"] == 0.79
@@ -89,6 +91,29 @@ def test_build_v11_signal_result_prefers_posterior_entropy_for_ui_contract():
 
     assert result.entropy == pytest.approx(0.51)
     assert result.metadata["effective_entropy"] == pytest.approx(0.57)
+
+
+def test_build_v11_signal_result_exposes_posterior_regime_for_ui_and_execution_regime_separately():
+    runtime = {
+        "date": "2026-03-30",
+        "signal": {"target_bucket": "QQQ", "reason": "hold", "lock_active": False},
+        "probabilities": {"RECOVERY": 0.41, "BUST": 0.33, "LATE_CYCLE": 0.18, "MID_CYCLE": 0.08},
+        "stable_regime": "BUST",
+        "raw_regime": "BUST",
+        "quality_audit": {"posterior_entropy": 0.71, "effective_entropy": 0.79},
+        "target_beta": 0.63,
+        "target_allocation": {
+            "qqq_dollars": 63000.0,
+            "qld_notional_dollars": 0.0,
+            "cash_dollars": 37000.0,
+        },
+    }
+
+    result = main_module._build_v11_signal_result(runtime, price=100.0)
+
+    assert result.stable_regime == "RECOVERY"
+    assert result.metadata["posterior_regime"] == "RECOVERY"
+    assert result.metadata["execution_regime"] == "BUST"
 
 
 def test_build_v12_live_macro_row_normalizes_units_and_deprecates_v11_fields():

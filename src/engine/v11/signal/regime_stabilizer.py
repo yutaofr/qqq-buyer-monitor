@@ -129,22 +129,30 @@ class RegimeStabilizer:
     ) -> dict[str, float | str] | None:
         if current_regime not in {"BUST", "LATE_CYCLE"} or not release_hint:
             return None
-        if str(release_hint.get("topology_regime")) != "RECOVERY":
+        if str(release_hint.get("topology_regime")) not in {"RECOVERY", "LATE_CYCLE", "BUST"}:
             return None
 
         recovery_prob = float(normalized.get("RECOVERY", 0.0))
         current_prob = float(normalized.get(current_regime, 0.0))
-        if recovery_prob < 0.20 or recovery_prob < 0.55 * max(1e-6, current_prob):
-            return None
+        transition_intensity = float(release_hint.get("transition_intensity", 0.0) or 0.0)
+        repair_persistence = float(release_hint.get("repair_persistence", 0.0) or 0.0)
+        topology_confidence = float(release_hint.get("topology_confidence", 0.0) or 0.0)
+        if recovery_prob < 0.16 or recovery_prob < 0.70 * max(1e-6, current_prob):
+            if not (
+                recovery_prob >= 0.22
+                and transition_intensity >= 0.62
+                and repair_persistence >= 0.28
+                and topology_confidence >= 0.18
+            ):
+                return None
 
         recovery_impulse = float(release_hint.get("recovery_impulse", 0.0) or 0.0)
         damage_memory = float(release_hint.get("damage_memory", 0.0) or 0.0)
         bust_pressure = float(release_hint.get("bust_pressure", 0.0) or 0.0)
         bearish_divergence = float(release_hint.get("bearish_divergence", 0.0) or 0.0)
-        transition_intensity = float(release_hint.get("transition_intensity", 0.0) or 0.0)
-        repair_persistence = float(release_hint.get("repair_persistence", 0.0) or 0.0)
-        topology_confidence = float(release_hint.get("topology_confidence", 0.0) or 0.0)
         recovery_edge = max(0.0, recovery_prob - current_prob)
+        if transition_intensity < 0.52 or repair_persistence < 0.24 or recovery_impulse < 0.16:
+            return None
 
         release_score = (
             0.24 * recovery_impulse
@@ -157,13 +165,13 @@ class RegimeStabilizer:
             - 0.22 * bust_pressure
             - 0.12 * bearish_divergence
         )
-        if release_score < 0.32:
+        if release_score < 0.24:
             return None
 
         confirmed_release = (
             recovery_prob > current_prob
-            and topology_confidence >= 0.25
-            and repair_persistence >= 0.30
+            and topology_confidence >= 0.18
+            and repair_persistence >= 0.28
         )
         bonus = max(0.0, release_score - 0.30) + (
             0.10 * topology_confidence if confirmed_release else 0.0

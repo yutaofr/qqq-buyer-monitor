@@ -9,6 +9,7 @@ from src.engine.v11.probability_seeder import ProbabilitySeeder
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+
 def run_era_audit():
     """
     Forensic Era Segmentation Audit.
@@ -32,14 +33,16 @@ def run_era_audit():
                 evaluation_start=split_date,
                 artifact_dir=f"artifacts/era_audit/pivot_{year}",
                 experiment_config={"save_plots": False},
-                strict_state_support=False
+                strict_state_support=False,
             )
-            pivot_results.append({
-                "pivot_year": year,
-                "accuracy": summary["top1_accuracy"],
-                "brier": summary["mean_brier"],
-                "entropy": summary["mean_entropy"]
-            })
+            pivot_results.append(
+                {
+                    "pivot_year": year,
+                    "accuracy": summary["top1_accuracy"],
+                    "brier": summary["mean_brier"],
+                    "entropy": summary["mean_entropy"],
+                }
+            )
         except Exception as e:
             logger.error(f"Pivot {year} failed: {e}")
 
@@ -68,17 +71,19 @@ def run_era_audit():
                 artifact_dir=f"artifacts/era_audit/factor_{factor}",
                 experiment_config={
                     "probability_seeder": {"config_overrides": overrides},
-                    "save_plots": False
+                    "save_plots": False,
                 },
-                strict_state_support=False
+                strict_state_support=False,
             )
-            factor_results.append({
-                "factor": factor,
-                "acc_gain": summary["top1_accuracy"],
-                "brier_gain": summary["mean_brier"]
-            })
+            factor_results.append(
+                {
+                    "factor": factor,
+                    "acc_gain": summary["top1_accuracy"],
+                    "brier_gain": summary["mean_brier"],
+                }
+            )
         except Exception as e:
-             logger.error(f"Factor {factor} audit failed: {e}")
+            logger.error(f"Factor {factor} audit failed: {e}")
 
     factor_df = pd.DataFrame(factor_results).sort_values("brier_gain")
     print("\n--- Factor Sensitivity Results (Rolling 756d Impact) ---")
@@ -87,6 +92,7 @@ def run_era_audit():
     os.makedirs("artifacts/era_audit", exist_ok=True)
     pivot_df.to_csv("artifacts/era_audit/pivot_discovery.csv", index=False)
     factor_df.to_csv("artifacts/era_audit/factor_sensitivity.csv", index=False)
+
 
 if __name__ == "__main__":
     run_era_audit()

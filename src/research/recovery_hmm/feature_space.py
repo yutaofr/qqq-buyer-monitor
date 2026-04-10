@@ -1,4 +1,5 @@
 """Locked factor-domain feature builder for the recovery HMM research track."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -20,9 +21,7 @@ def build_feature_space(raw_frame: pd.DataFrame) -> pd.DataFrame:
     frame = raw_frame.copy()
     missing = sorted(REQUIRED_COLUMNS - set(frame.columns))
     if missing:
-        raise ValueError(
-            "Missing required recovery HMM columns: " + ", ".join(missing)
-        )
+        raise ValueError("Missing required recovery HMM columns: " + ", ".join(missing))
 
     if not isinstance(frame.index, pd.DatetimeIndex):
         frame.index = pd.to_datetime(frame.index, errors="coerce")
@@ -36,10 +35,9 @@ def build_feature_space(raw_frame: pd.DataFrame) -> pd.DataFrame:
         pd.to_numeric(frame["hy_ig_spread"], errors="coerce").diff(13) * -1.0
     )
     out["V2_real_yield_velocity"] = pd.to_numeric(frame["real_yield_10y"], errors="coerce").diff(13)
-    out["V3_orders_inventory_gap"] = (
-        pd.to_numeric(frame["ism_new_orders"], errors="coerce")
-        - pd.to_numeric(frame["ism_inventories"], errors="coerce")
-    )
+    out["V3_orders_inventory_gap"] = pd.to_numeric(
+        frame["ism_new_orders"], errors="coerce"
+    ) - pd.to_numeric(frame["ism_inventories"], errors="coerce")
     out["S1_vix_term_ratio"] = pd.to_numeric(frame["vix_3m_1m_ratio"], errors="coerce")
     out["S2_qqq_skew_mean"] = pd.to_numeric(frame["qqq_skew_20d_mean"], errors="coerce")
     return out.dropna()

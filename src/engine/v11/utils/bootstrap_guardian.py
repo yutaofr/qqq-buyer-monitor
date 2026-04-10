@@ -83,12 +83,14 @@ class BootstrapGuardian:
 
             for d in target_days:
                 if d not in existing_set:
-                    gaps.append(MacroGap(
-                        missing_date=d,
-                        prev_available_date=None,  # Optimization: Not fully tracking prev/next in this loop
-                        next_available_date=None,
-                        gap_days=1
-                    ))
+                    gaps.append(
+                        MacroGap(
+                            missing_date=d,
+                            prev_available_date=None,  # Optimization: Not fully tracking prev/next in this loop
+                            next_available_date=None,
+                            gap_days=1,
+                        )
+                    )
             return gaps
         except Exception as e:
             logger.error(f"Failed to audit macro gaps: {e}")
@@ -125,7 +127,7 @@ class BootstrapGuardian:
             macro_gaps=gaps,
             price_cache_staleness=staleness,
             field_completeness=FieldCompleteness(),
-            is_healthy=is_healthy
+            is_healthy=is_healthy,
         )
 
     def repair(self, report: BootstrapAuditReport) -> BootstrapRepairResult:
@@ -160,7 +162,9 @@ class BootstrapGuardian:
                 new_rows = []
                 for gap in report.macro_gaps:
                     # Find the previous row to copy defaults / forward fill
-                    prev_rows = macro_df[macro_df["observation_date"] < gap.missing_date.isoformat()]
+                    prev_rows = macro_df[
+                        macro_df["observation_date"] < gap.missing_date.isoformat()
+                    ]
                     if not prev_rows.empty:
                         base_row = prev_rows.iloc[-1].copy().to_dict()
                     else:
@@ -183,10 +187,14 @@ class BootstrapGuardian:
 
                 if new_rows:
                     repaired_df = pd.concat([macro_df, pd.DataFrame(new_rows)])
-                    repaired_df = repaired_df.sort_values("observation_date").drop_duplicates(subset=["observation_date"], keep="last")
+                    repaired_df = repaired_df.sort_values("observation_date").drop_duplicates(
+                        subset=["observation_date"], keep="last"
+                    )
                     repaired_df.to_csv(self.macro_csv_path, index=False)
                     result.total_rows_added = len(new_rows)
-                    result.total_fields_repaired = len(new_rows) * 2  # just an estimate for completeness
+                    result.total_fields_repaired = (
+                        len(new_rows) * 2
+                    )  # just an estimate for completeness
 
         except Exception as e:
             logger.error(f"Repair process failed: {e}", exc_info=True)

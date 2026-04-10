@@ -34,8 +34,10 @@ class ProbabilisticDeploymentPolicy:
         # V15.4: Dynamic Barrier Reduction (Breakout Logic)
         # If momentum is strong, we lower the barrier to escape 'Information Paralysis'
         base_barrier = self._entropy_barrier(entropy, len(scores))
-        momentum_factor = min(1.0, max(0.0, float(mid_delta) * 8.0)) # 12.5% daily surge = full reduction
-        barrier = base_barrier * (1.0 - 0.75 * momentum_factor) # Up to 75% reduction
+        momentum_factor = min(
+            1.0, max(0.0, float(mid_delta) * 8.0)
+        )  # 12.5% daily surge = full reduction
+        barrier = base_barrier * (1.0 - 0.75 * momentum_factor)  # Up to 75% reduction
 
         switched = False
 
@@ -91,7 +93,8 @@ class ProbabilisticDeploymentPolicy:
             DeploymentState.DEPLOY_SLOW.value: late * (1.0 + h) + bust * (1.0 - readiness),
             DeploymentState.DEPLOY_BASE.value: mid * (1.0 + value)
             + conviction * max(0.0, 1.0 - bust - late),
-            DeploymentState.DEPLOY_FAST.value: (recovery + max(0.0, mid_delta) * 1.5) * (readiness + value + conviction + 0.5),
+            DeploymentState.DEPLOY_FAST.value: (recovery + max(0.0, mid_delta) * 1.5)
+            * (readiness + value + conviction + 0.5),
         }
         return ProbabilisticDeploymentPolicy._normalize(raw_scores)
 

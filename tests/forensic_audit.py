@@ -144,10 +144,14 @@ def test_bayesian_integrity_multiplicative():
     posteriors_v14, diagnostics_v14 = engine.infer_gaussian_nb_posterior(
         classifier=gnb, evidence_frame=obs, tau=3.0, runtime_priors={"0": 0.5, "1": 0.5}
     )
-    assert not np.isnan(list(posteriors_v14.values())).any(), "Numerical instability (NaN) detected at tau=3.0"
+    assert not np.isnan(list(posteriors_v14.values())).any(), (
+        "Numerical instability (NaN) detected at tau=3.0"
+    )
     assert "evidence_dist" in diagnostics_v14, "Missing evidence distribution in V14 diagnostics"
 
-    logger.info("Bayesian Integrity Audit passed (Multiplicative Identity & V14 Stability Verified).")
+    logger.info(
+        "Bayesian Integrity Audit passed (Multiplicative Identity & V14 Stability Verified)."
+    )
 
 
 def test_tau_sensitivity_analysis():
@@ -159,21 +163,21 @@ def test_tau_sensitivity_analysis():
     gnb.fit(X, y)
 
     engine = BayesianInferenceEngine({}, {"0": 0.5, "1": 0.5})
-    obs = pd.DataFrame([[1.2, 1.2]], columns=["f1", "f2"]) # Very close to class 0
+    obs = pd.DataFrame([[1.2, 1.2]], columns=["f1", "f2"])  # Very close to class 0
 
     taus = [0.5, 1.0, 3.0, 10.0]
     results = []
 
     for tau in taus:
-        post, _ = engine.infer_gaussian_nb_posterior(
-            classifier=gnb, evidence_frame=obs, tau=tau
-        )
+        post, _ = engine.infer_gaussian_nb_posterior(classifier=gnb, evidence_frame=obs, tau=tau)
         results.append(post["0"])
 
     # High Tau should lead to lower confidence (closer to prior 0.5)
     # Low Tau should lead to higher confidence (closer to 1.0)
     for i in range(len(results) - 1):
-        assert results[i] >= results[i+1], f"Non-monotonic confidence scaling at tau={taus[i+1]}"
+        assert results[i] >= results[i + 1], (
+            f"Non-monotonic confidence scaling at tau={taus[i + 1]}"
+        )
         logger.info(f"  Tau={taus[i]:4.1f} | Confidence={results[i]:.4f}")
 
     logger.info("Tau Sensitivity Audit passed (Monotonicity Verified).")
@@ -187,9 +191,9 @@ def test_cv_leakage_isolation():
     from src.engine.baseline.engine import _valid_time_splits
 
     # Create dummy data with a massive outlier in the "future" (last fold)
-    X = pd.DataFrame({
-        "f1": np.concatenate([np.random.normal(0, 1, 100), np.random.normal(100, 1, 50)])
-    })
+    X = pd.DataFrame(
+        {"f1": np.concatenate([np.random.normal(0, 1, 100), np.random.normal(100, 1, 50)])}
+    )
     y = pd.Series(np.random.randint(0, 2, 150))
 
     splits = _valid_time_splits(y, n_splits=3, gap=0)
@@ -210,6 +214,7 @@ def test_cv_leakage_isolation():
 
     logger.info("CV Leakage Isolation Audit passed.")
 
+
 def test_model_complexity_ratio():
     """Forensic Audit: N/P (Samples to Parameters) Ratio check."""
     logger.info("Running Model Complexity Audit...")
@@ -222,7 +227,7 @@ def test_model_complexity_ratio():
     X = X.reindex(y.index)
 
     n_samples = len(X)
-    n_params = X.shape[1] + 1 # +1 for intercept
+    n_params = X.shape[1] + 1  # +1 for intercept
 
     ratio = n_samples / n_params
     logger.info(f"N/P Ratio: {ratio:.2f} ({n_samples} samples / {n_params} params)")

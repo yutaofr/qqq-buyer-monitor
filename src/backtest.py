@@ -147,7 +147,7 @@ def _v11_inference_task(
         "predicted_regime": predicted_regime,
         "brier": brier,
         "posterior": posterior,
-        "test_type": "UNKNOWN" # Will be updated in loop
+        "test_type": "UNKNOWN",  # Will be updated in loop
     }
 
 
@@ -217,9 +217,7 @@ def run_v11_audit(
         "probability_seeder",
         "var_smoothing",
     }
-    invalid_experiment_keys = sorted(
-        key for key in disallowed_experiment_keys if key in experiment
-    )
+    invalid_experiment_keys = sorted(key for key in disallowed_experiment_keys if key in experiment)
     if invalid_experiment_keys:
         raise ValueError(
             "run_v11_audit only accepts production-chain controls. "
@@ -277,7 +275,9 @@ def run_v11_audit(
         allow_download=allow_price_download,
         end_date=None,
     )
-    benchmark_price_df.index = pd.to_datetime(benchmark_price_df.index, utc=True).tz_localize(None).normalize()
+    benchmark_price_df.index = (
+        pd.to_datetime(benchmark_price_df.index, utc=True).tz_localize(None).normalize()
+    )
 
     # v14.0 INDUSTRIAL PIT AUDIT: Reindex macro data onto the canonical trading calendar
     # This prevents temporal contamination by ensuring macro data is only visible on trading days
@@ -307,7 +307,9 @@ def run_v11_audit(
             "Audit results will be contaminated by initialization noise."
         )
         if strict_state_support:
-             raise ValueError("Strict Causal Isolation failed: Insufficient training data for 5-year anchor.")
+            raise ValueError(
+                "Strict Causal Isolation failed: Insufficient training data for 5-year anchor."
+            )
 
     effective_eval_dt = max(eval_dt, pd.Timestamp(support_ready_eval_dt).normalize())
     if effective_eval_dt > eval_dt:
@@ -410,7 +412,9 @@ def run_v11_audit(
         if not training_support_df.empty:
             full_support_mask = training_support_df["class_count"] >= len(ordered_regimes)
             first_full_support_date = (
-                pd.Timestamp(training_support_df.loc[full_support_mask, "date"].iloc[0]).date().isoformat()
+                pd.Timestamp(training_support_df.loc[full_support_mask, "date"].iloc[0])
+                .date()
+                .isoformat()
                 if bool(full_support_mask.any())
                 else None
             )
@@ -440,7 +444,9 @@ def run_v11_audit(
                 (execution_df["target_beta"] - execution_df["expected_target_beta"]).abs().mean()
             ),
             "raw_beta_expectation_mae": float(
-                (execution_df["raw_target_beta"] - execution_df["expected_target_beta"]).abs().mean()
+                (execution_df["raw_target_beta"] - execution_df["expected_target_beta"])
+                .abs()
+                .mean()
             ),
             "deployment_exact_match": float(
                 (
@@ -453,13 +459,9 @@ def run_v11_audit(
             "deployment_pacing_abs_error_mean": float(
                 execution_df["deployment_pacing_error"].abs().mean()
             ),
-            "deployment_pacing_signed_mean": float(
-                execution_df["deployment_pacing_error"].mean()
-            ),
+            "deployment_pacing_signed_mean": float(execution_df["deployment_pacing_error"].mean()),
             "raw_floor_breach_rate": float((execution_df["raw_target_beta"] < 0.5).mean()),
-            "expectation_floor_breach_rate": float(
-                (execution_df["beta_expectation"] < 0.5).mean()
-            ),
+            "expectation_floor_breach_rate": float((execution_df["beta_expectation"] < 0.5).mean()),
             "target_floor_breach_rate": float((execution_df["target_beta"] < 0.5).mean()),
             "raw_beta_min": float(execution_df["raw_target_beta"].min()),
             "beta_expectation_min": float(execution_df["beta_expectation"].min()),
@@ -478,9 +480,7 @@ def run_v11_audit(
             ),
             "share_at_floor": float((execution_df["target_beta"] <= 0.500001).mean()),
             "canonical_pipeline": bool(use_canonical_pipeline),
-            "mid_cycle_gt_075_rate": float(
-                (probability_df["prob_MID_CYCLE"] > 0.75).mean()
-            )
+            "mid_cycle_gt_075_rate": float((probability_df["prob_MID_CYCLE"] > 0.75).mean())
             if "prob_MID_CYCLE" in probability_df
             else None,
             "bust_beta_le_060_rate": float(
@@ -492,7 +492,9 @@ def run_v11_audit(
             else None,
             "oos_compared_points": int(len(oos_probability_df)),
             "oos_top1_accuracy": float(
-                (oos_probability_df["predicted_regime"] == oos_probability_df["actual_regime"]).mean()
+                (
+                    oos_probability_df["predicted_regime"] == oos_probability_df["actual_regime"]
+                ).mean()
             )
             if not oos_probability_df.empty
             else None,
@@ -503,7 +505,9 @@ def run_v11_audit(
             if not oos_execution_df.empty
             else None,
             "oos_beta_expectation_mae": float(
-                (oos_execution_df["target_beta"] - oos_execution_df["expected_target_beta"]).abs().mean()
+                (oos_execution_df["target_beta"] - oos_execution_df["expected_target_beta"])
+                .abs()
+                .mean()
             )
             if not oos_execution_df.empty
             else None,
@@ -526,7 +530,9 @@ def run_v11_audit(
             ),
         }
         benchmark = build_worldview_benchmark(benchmark_price_df[["Close", "Volume"]])
-        benchmark = benchmark.reset_index().rename(columns={benchmark.index.name or "index": "date"})
+        benchmark = benchmark.reset_index().rename(
+            columns={benchmark.index.name or "index": "date"}
+        )
         regime_process_trace, regime_process_summary = compute_regime_process_alignment(
             full_audit_df,
             benchmark,
@@ -581,7 +587,9 @@ def run_v11_audit(
         if prior_state_path.exists():
             prior_state_path.unlink()
 
-        print(f"Walk-forward Audit: Replaying {len(test)} windows through V11Conductor black-box...")
+        print(
+            f"Walk-forward Audit: Replaying {len(test)} windows through V11Conductor black-box..."
+        )
         for _, row in test.iterrows():
             dt = pd.Timestamp(row["observation_date"]).normalize()
             cutoff_dt = dt - pd.offsets.BDay(20)
@@ -619,7 +627,8 @@ def run_v11_audit(
             actual_regime = str(row["regime"])
             expected_policy = expected_policy_for_regime(actual_regime, base_betas=base_betas)
             posteriors = {
-                regime: float(runtime["probabilities"].get(regime, 0.0)) for regime in ordered_regimes
+                regime: float(runtime["probabilities"].get(regime, 0.0))
+                for regime in ordered_regimes
             }
             predicted_regime = max(posteriors, key=posteriors.get)
             brier = sum(
@@ -661,13 +670,16 @@ def run_v11_audit(
                     "deployment_overlay_multiplier": float(
                         runtime.get("overlay", {}).get("deployment_overlay_multiplier", 1.0)
                     ),
-                    "overlay_state": str(runtime.get("overlay", {}).get("overlay_state", "NEUTRAL")),
+                    "overlay_state": str(
+                        runtime.get("overlay", {}).get("overlay_state", "NEUTRAL")
+                    ),
                     "target_beta": float(runtime["target_beta"]),
                     "raw_target_beta": float(runtime["raw_target_beta"]),
                     "entropy": _resolve_process_entropy(runtime),
                     "effective_entropy": _resolve_execution_entropy(runtime),
                     "prior_details": runtime.get("prior_details", {}),
                     "predicted_regime": predicted_regime,
+                    "posterior_regime": predicted_regime,
                     "actual_regime": actual_regime,
                     "raw_regime": str(runtime.get("raw_regime", predicted_regime)),
                     "stable_regime": str(runtime.get("stable_regime", predicted_regime)),
@@ -683,7 +695,9 @@ def run_v11_audit(
                     ),
                     "deployment_rank_abs_error": abs(
                         deployment_state_rank(
-                            str(runtime.get("deployment", {}).get("deployment_state", "DEPLOY_BASE"))
+                            str(
+                                runtime.get("deployment", {}).get("deployment_state", "DEPLOY_BASE")
+                            )
                         )
                         - deployment_state_rank(str(expected_policy["expected_deployment_state"]))
                     ),
@@ -698,7 +712,9 @@ def run_v11_audit(
                     )
                     - float(expected_policy["expected_deployment_multiplier"]),
                     "lock_active": bool(runtime.get("v11_execution", {}).get("lock_active", False)),
-                    "target_bucket": str(runtime.get("v11_execution", {}).get("target_bucket", "QQQ")),
+                    "target_bucket": str(
+                        runtime.get("v11_execution", {}).get("target_bucket", "QQQ")
+                    ),
                     "close": row.get("qqq_close"),
                     "price_topology_regime": str(price_topology.get("regime", "MID_CYCLE")),
                     "price_topology_expected_beta": float(
@@ -715,9 +731,15 @@ def run_v11_audit(
                     "forensic_stress_score": float(prior_details.get("stress_score", 0.0) or 0.0),
                     "forensic_mid_cycle_penalty": float(penalties_applied.get("MID_CYCLE", 1.0)),
                     "forensic_bust_penalty": float(penalties_applied.get("BUST", 1.0)),
-                    "resonance_action": str(runtime.get("signal", {}).get("resonance", {}).get("action", "HOLD")),
-                    "resonance_confidence": float(runtime.get("signal", {}).get("resonance", {}).get("confidence", 0.0)),
-                    "resonance_reason": str(runtime.get("signal", {}).get("resonance", {}).get("reason", "No Resonance")),
+                    "resonance_action": str(
+                        runtime.get("signal", {}).get("resonance", {}).get("action", "HOLD")
+                    ),
+                    "resonance_confidence": float(
+                        runtime.get("signal", {}).get("resonance", {}).get("confidence", 0.0)
+                    ),
+                    "resonance_reason": str(
+                        runtime.get("signal", {}).get("resonance", {}).get("reason", "No Resonance")
+                    ),
                 }
             )
             forensic_rows.append(
@@ -726,6 +748,7 @@ def run_v11_audit(
                     "test_type": test_type,
                     "actual_regime": actual_regime,
                     "predicted_regime": predicted_regime,
+                    "posterior_regime": predicted_regime,
                     "stable_regime": str(runtime.get("stable_regime", predicted_regime)),
                     "raw_regime": str(runtime.get("raw_regime", predicted_regime)),
                     "prior_details": prior_details,
@@ -748,7 +771,6 @@ def run_v11_audit(
                 "Full-support hard gate failed: training rows below full support remain after evaluation_start tightening."
             )
         return summary
-
 
 
 def main(argv: list[str] | None = None) -> int:

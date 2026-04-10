@@ -194,6 +194,23 @@ def test_prior_knowledge_backfills_warm_start_execution_schema(tmp_path, bootstr
     assert library.execution_state["high_entropy_streak"] == 0
 
 
+def test_recovery_prior_release_score_can_start_inside_bust_when_repair_is_confirmed():
+    score = PriorKnowledgeBase._recovery_prior_release_score(
+        {
+            "price_topology_regime": "BUST",
+            "price_topology_confidence": 0.18,
+            "price_topology_transition_intensity": 0.70,
+            "price_topology_repair_persistence": 0.34,
+            "price_topology_recovery_impulse": 0.22,
+            "price_topology_damage_memory": 0.72,
+            "price_topology_recovery_prob_delta": 0.012,
+            "price_topology_recovery_prob_acceleration": 0.005,
+        }
+    )
+
+    assert score > 0.0
+
+
 def test_prior_knowledge_rejects_bootstrap_fingerprint_drift(tmp_path, bootstrap_history):
     storage_path = tmp_path / "prior_state.json"
     PriorKnowledgeBase(

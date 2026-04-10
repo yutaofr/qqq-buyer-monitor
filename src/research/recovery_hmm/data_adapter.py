@@ -32,7 +32,9 @@ class RecoveryHmmReadinessReport:
             "incomplete_columns": list(self.incomplete_columns),
             "source_notes": self.source_notes,
             "row_count": int(len(self.frame)),
-            "start_date": self.frame.index.min().date().isoformat() if not self.frame.empty else None,
+            "start_date": self.frame.index.min().date().isoformat()
+            if not self.frame.empty
+            else None,
             "end_date": self.frame.index.max().date().isoformat() if not self.frame.empty else None,
         }
 
@@ -54,8 +56,12 @@ def build_local_readiness_report(macro_dump_path: str | Path) -> RecoveryHmmRead
         source_notes["hy_ig_spread"] = "mapped from macro_historical_dump.credit_spread_bps / 100"
 
     if "real_yield_10y_pct" in macro.columns:
-        frame["real_yield_10y"] = pd.to_numeric(macro["real_yield_10y_pct"], errors="coerce") * 100.0
-        source_notes["real_yield_10y"] = "mapped from macro_historical_dump.real_yield_10y_pct * 100"
+        frame["real_yield_10y"] = (
+            pd.to_numeric(macro["real_yield_10y_pct"], errors="coerce") * 100.0
+        )
+        source_notes["real_yield_10y"] = (
+            "mapped from macro_historical_dump.real_yield_10y_pct * 100"
+        )
 
     coverage = {
         column: float(frame[column].notna().mean()) if column in frame.columns else 0.0

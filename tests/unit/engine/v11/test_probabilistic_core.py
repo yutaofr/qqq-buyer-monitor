@@ -10,6 +10,7 @@ from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
 from src.engine.v11.core.entropy_controller import EntropyController
 from src.engine.v11.core.price_topology import (
     PriceTopologyState,
+    align_posteriors_with_recovery_process,
     blend_posteriors_with_topology,
     infer_price_topology_state,
     topology_likelihood_penalties,
@@ -28,6 +29,7 @@ def mock_classifier():
         classes_ = np.array(["MID_CYCLE", "RECOVERY", "LATE_CYCLE", "BUST"])
         theta_ = np.zeros((4, 6))
         var_ = np.ones((4, 6))
+
     return MockGNB()
 
 
@@ -35,15 +37,14 @@ def test_bayesian_inference_priors(mock_classifier, base_priors):
     """验证推断引擎能够输出归一化的后验概率"""
     engine = BayesianInferenceEngine(base_priors)
     evidence = __import__("pandas").DataFrame(
-        [[0.1, -0.2, 0.5, 0.1, -0.1, 0.0]],
-        columns=["f1", "f2", "f3", "f4", "f5", "f6"]
+        [[0.1, -0.2, 0.5, 0.1, -0.1, 0.0]], columns=["f1", "f2", "f3", "f4", "f5", "f6"]
     )
 
     probs, diag = engine.infer_gaussian_nb_posterior(
         classifier=mock_classifier,
         evidence_frame=evidence,
         runtime_priors=base_priors,
-        feature_values={}
+        feature_values={},
     )
 
     assert sum(probs.values()) == pytest.approx(1.0)
@@ -169,7 +170,9 @@ def test_blend_posteriors_with_topology_softens_entropy_in_transition_windows():
     blended = blend_posteriors_with_topology(posteriors, topology)
 
     assert sum(blended.values()) == pytest.approx(1.0)
-    assert shannon_entropy(list(blended.values()), base=2) > shannon_entropy(list(posteriors.values()), base=2)
+    assert shannon_entropy(list(blended.values()), base=2) > shannon_entropy(
+        list(posteriors.values()), base=2
+    )
     assert blended["MID_CYCLE"] < posteriors["MID_CYCLE"]
 
 
@@ -178,15 +181,26 @@ def test_bayesian_inference_does_not_anchor_mid_cycle_through_confirmed_recovery
 ):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     project_root = Path(__file__).resolve().parents[4]
-    snapshot_path = project_root / "artifacts" / "v14_panorama" / "mainline" / "mainline_snapshots" / "snapshot_2023-04-14.json"
+    snapshot_path = (
+        project_root
+        / "artifacts"
+        / "v14_panorama"
+        / "mainline"
+        / "mainline_snapshots"
+        / "snapshot_2023-04-14.json"
+    )
     price_path = project_root / "data" / "qqq_history_cache.csv"
-    registry_path = project_root / "src" / "engine" / "v11" / "resources" / "v13_4_weights_registry.json"
-    constraints_path = project_root / "src" / "engine" / "v11" / "resources" / "logical_constraints.json"
+    registry_path = (
+        project_root / "src" / "engine" / "v11" / "resources" / "v13_4_weights_registry.json"
+    )
+    constraints_path = (
+        project_root / "src" / "engine" / "v11" / "resources" / "logical_constraints.json"
+    )
 
     snapshot = json.loads(snapshot_path.read_text())
     price = pd.read_csv(price_path, index_col=0)
     price.index = pd.to_datetime(price.index)
-    topology = infer_price_topology_state(price.loc[: "2023-04-14"])
+    topology = infer_price_topology_state(price.loc[:"2023-04-14"])
 
     prior_store = PriorKnowledgeBase(
         storage_path="/tmp/v11_probabilistic_core_prior.json",
@@ -235,7 +249,9 @@ def test_bayesian_inference_does_not_anchor_mid_cycle_through_confirmed_recovery
         theta_ = np.array(snapshot["gaussian_nb"]["theta"], dtype=float)
         var_ = np.array(snapshot["gaussian_nb"]["var"], dtype=float)
 
-    feature_row = {k: v for k, v in snapshot["feature_vector"][0].items() if k != "observation_date"}
+    feature_row = {
+        k: v for k, v in snapshot["feature_vector"][0].items() if k != "observation_date"
+    }
     feature_values = dict(feature_row)
     feature_values.update(
         {
@@ -318,3 +334,39 @@ def test_infer_price_topology_state_keeps_nontrivial_blend_weight_in_fuzzy_trans
     assert blended["RECOVERY"] > posteriors["RECOVERY"]
     controller = EntropyController()
     assert controller.calculate_normalized_entropy(blended) > 0.20
+
+
+def test_recovery_process_alignment_can_release_mass_while_topology_is_still_bust():
+    topology = PriceTopologyState(
+        regime="BUST",
+        probabilities={
+            "MID_CYCLE": 0.06,
+            "LATE_CYCLE": 0.21,
+            "BUST": 0.38,
+            "RECOVERY": 0.35,
+        },
+        expected_beta=0.84,
+        confidence=0.24,
+        posterior_blend_weight=0.18,
+        beta_anchor_weight=0.22,
+        transition_intensity=0.71,
+        recovery_impulse=0.26,
+        damage_memory=0.82,
+        bust_pressure=0.32,
+        bullish_divergence=0.12,
+        bearish_divergence=0.04,
+        recovery_prob_delta=0.012,
+        recovery_prob_acceleration=0.004,
+        repair_persistence=0.34,
+    )
+    posteriors = {"MID_CYCLE": 0.05, "LATE_CYCLE": 0.18, "BUST": 0.57, "RECOVERY": 0.20}
+    runtime_priors = {"MID_CYCLE": 0.10, "LATE_CYCLE": 0.18, "BUST": 0.37, "RECOVERY": 0.35}
+
+    aligned = align_posteriors_with_recovery_process(
+        posteriors,
+        topology,
+        runtime_priors=runtime_priors,
+    )
+
+    assert aligned["RECOVERY"] > posteriors["RECOVERY"]
+    assert aligned["BUST"] < posteriors["BUST"]

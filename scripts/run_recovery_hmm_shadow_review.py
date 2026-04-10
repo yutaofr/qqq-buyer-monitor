@@ -31,7 +31,9 @@ def main() -> int:
     parser.add_argument("--artifact-dir", default="artifacts/recovery_hmm_shadow/review_8yr")
     parser.add_argument("--macro-dump-path", default="data/macro_historical_dump.csv")
     parser.add_argument("--qqq-history-path", default="data/qqq_history_cache.csv")
-    parser.add_argument("--production-trace-path", default="artifacts/v14_panorama/mainline/execution_trace.csv")
+    parser.add_argument(
+        "--production-trace-path", default="artifacts/v14_panorama/mainline/execution_trace.csv"
+    )
     args = parser.parse_args()
 
     artifact_dir = Path(args.artifact_dir).resolve()
@@ -42,7 +44,9 @@ def main() -> int:
         qqq_history_path=args.qqq_history_path,
     )
     dataset.frame.to_csv(artifact_dir / "shadow_input_dataset.csv")
-    (artifact_dir / "source_lineage.json").write_text(json.dumps(dataset.to_dict(), indent=2), encoding="utf-8")
+    (artifact_dir / "source_lineage.json").write_text(
+        json.dumps(dataset.to_dict(), indent=2), encoding="utf-8"
+    )
 
     audit = run_shadow_audit(
         training_end=args.training_end,
@@ -58,7 +62,10 @@ def main() -> int:
         qqq_history_path=args.qqq_history_path,
         production_trace_path=args.production_trace_path,
     )
-    review_window = review[(review["date"] >= pd.Timestamp(args.evaluation_start)) & (review["date"] <= pd.Timestamp(args.evaluation_end))].copy()
+    review_window = review[
+        (review["date"] >= pd.Timestamp(args.evaluation_start))
+        & (review["date"] <= pd.Timestamp(args.evaluation_end))
+    ].copy()
     summary = build_performance_summary(review_window)
     decision, reasons = promotion_decision(summary)
     summary["decision"] = decision

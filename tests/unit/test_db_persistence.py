@@ -35,12 +35,13 @@ class TestDBPersistence(unittest.TestCase):
             stable_regime="BUST",
             target_allocation=TargetAllocationState(),
             logic_trace=[],
-            explanation="Test NaN"
+            explanation="Test NaN",
         )
 
         # DESIRED BEHAVIOR (Green): Raises ValueError (our defensive guard)
         with self.assertRaises(ValueError):
             save_signal(result, path=self.db_path)
+
 
 if __name__ == "__main__":
     unittest.main()

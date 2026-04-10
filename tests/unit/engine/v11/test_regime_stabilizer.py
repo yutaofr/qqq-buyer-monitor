@@ -38,7 +38,7 @@ def test_regime_stabilizer_switches_when_evidence_is_decisive():
     assert first["switched"] is True
 
 
-def test_regime_stabilizer_can_release_from_bust_into_recovery_with_confirmed_repair():
+def test_regime_stabilizer_does_not_front_run_execution_release_from_bust():
     stabilizer = RegimeStabilizer(initial_regime="BUST")
     release_hint = {
         "topology_regime": "RECOVERY",
@@ -71,10 +71,9 @@ def test_regime_stabilizer_can_release_from_bust_into_recovery_with_confirmed_re
     )
 
     assert first["raw_regime"] == "BUST"
-    # V14.6: Switches on Day 1 due to 0.4x recovery discount
-    assert first["stable_regime"] == "RECOVERY"
-    assert first["switched"] is True
-    assert second["stable_regime"] == "RECOVERY"
+    assert first["stable_regime"] == "BUST"
+    assert first["switched"] is False
+    assert second["stable_regime"] == "BUST"
     assert second["switched"] is False
 
 
@@ -105,7 +104,7 @@ def test_regime_stabilizer_does_not_release_without_repair_confirmation():
     assert result["switched"] is False
 
 
-def test_regime_stabilizer_preserves_release_evidence_through_bust_retests():
+def test_regime_stabilizer_keeps_execution_state_defensive_through_bust_retests():
     stabilizer = RegimeStabilizer(initial_regime="BUST")
     release_hint = {
         "topology_regime": "RECOVERY",
@@ -147,14 +146,13 @@ def test_regime_stabilizer_preserves_release_evidence_through_bust_retests():
         release_hint=release_hint,
     )
 
-    # V14.6: Faster release
-    assert first["stable_regime"] == "RECOVERY"
-    assert first["switched"] is True
-    assert second["stable_regime"] == "RECOVERY"
-    assert third["stable_regime"] == "RECOVERY"
+    assert first["stable_regime"] == "BUST"
+    assert first["switched"] is False
+    assert second["stable_regime"] == "BUST"
+    assert third["stable_regime"] == "BUST"
 
 
-def test_regime_stabilizer_releases_when_recovery_is_fully_confirmed_but_barrier_is_still_high():
+def test_regime_stabilizer_can_hold_execution_even_when_raw_recovery_is_confirmed():
     stabilizer = RegimeStabilizer(initial_regime="BUST")
     release_hint = {
         "topology_regime": "RECOVERY",
@@ -179,5 +177,6 @@ def test_regime_stabilizer_releases_when_recovery_is_fully_confirmed_but_barrier
     )
 
     assert result["raw_regime"] == "RECOVERY"
-    assert result["stable_regime"] == "RECOVERY"
-    assert result["switched"] is True
+    assert result["stable_regime"] == "BUST"
+    assert result["switched"] is False
+    assert result["evidence"] > 0.0

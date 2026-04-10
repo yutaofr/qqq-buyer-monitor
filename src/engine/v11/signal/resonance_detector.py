@@ -59,18 +59,16 @@ class ResonanceDetector:
 
         risk_spike = tractor_prob >= 0.15 or sidecar_prob >= 0.10
         risk_rebound = (
-            previous_combined_risk <= 0.10
-            and combined_risk >= 0.16
-            and risk_delta >= 0.08
+            previous_combined_risk <= 0.10 and combined_risk >= 0.16 and risk_delta >= 0.08
         )
-        late_overwhelm = (
-            late_prob >= 0.45
-            and late_delta > 0.03
-            and (late_prob - mid_prob) >= 0.12
-        )
+        late_overwhelm = late_prob >= 0.45 and late_delta > 0.03 and (late_prob - mid_prob) >= 0.12
         entropy_fog = (
             effective_entropy >= 0.78
-            or (previous_effective_entropy is not None and effective_entropy >= 0.72 and entropy_delta >= 0.08)
+            or (
+                previous_effective_entropy is not None
+                and effective_entropy >= 0.72
+                and entropy_delta >= 0.08
+            )
             or (high_entropy_streak >= 5 and effective_entropy >= 0.75)
         )
 
@@ -83,11 +81,7 @@ class ResonanceDetector:
             and entropy_delta <= -0.12
             and high_entropy_streak == 0
         )
-        mid_cycle_surge = (
-            mid_prob >= 0.45
-            and mid_prob > late_prob
-            and mid_delta >= 0.05
-        )
+        mid_cycle_surge = mid_prob >= 0.45 and mid_prob > late_prob and mid_delta >= 0.05
         bust_retreat = bust_prob <= 0.18 or bust_delta <= -0.05
 
         # 2. Safety Signals (Instant Kill - Top Priority)

@@ -7,6 +7,7 @@ from src.engine.v11.conductor import V11Conductor
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Forensic-2023")
 
+
 def run_focused_diagnosis():
     start_date = "2023-01-01"
     end_date = "2023-06-30"
@@ -16,11 +17,15 @@ def run_focused_diagnosis():
         regime_data_path="data/v11_poc_phase1_results.csv",
         prior_state_path="artifacts/v11_prior_state_backtest.json",
         price_history_path="data/qqq_history_cache.csv",
-        allow_prior_bootstrap_drift=True
+        allow_prior_bootstrap_drift=True,
     )
 
-    macro_df = pd.read_csv("data/macro_historical_dump.csv", parse_dates=["observation_date"]).set_index("observation_date")
-    pd.read_csv("data/v11_poc_phase1_results.csv", parse_dates=["observation_date"]).set_index("observation_date")
+    macro_df = pd.read_csv(
+        "data/macro_historical_dump.csv", parse_dates=["observation_date"]
+    ).set_index("observation_date")
+    pd.read_csv("data/v11_poc_phase1_results.csv", parse_dates=["observation_date"]).set_index(
+        "observation_date"
+    )
 
     test_dates = macro_df[(macro_df.index >= start_date) & (macro_df.index <= end_date)].index
 
@@ -44,7 +49,7 @@ def run_focused_diagnosis():
                 "RECOVERY": runtime["probabilities"]["RECOVERY"],
                 "MID_CYCLE": runtime["probabilities"]["MID_CYCLE"],
                 "entropy": runtime["entropy"],
-                "tau_scaling": runtime.get("v13_4_diagnostics", {}).get("tau_factor", 10.0)
+                "tau_scaling": runtime.get("v13_4_diagnostics", {}).get("tau_factor", 10.0),
             }
             # Find strongest feature (just as a sample)
             if weights:
@@ -63,6 +68,7 @@ def run_focused_diagnosis():
     print(df_diag[["BUST", "RECOVERY", "MID_CYCLE", "entropy"]].mean())
     print("\nCritical Days (>50% BUST):")
     print(df_diag[df_diag["BUST"] > 0.5][["BUST", "top_feature", "top_f_weight"]].head(10))
+
 
 if __name__ == "__main__":
     run_focused_diagnosis()

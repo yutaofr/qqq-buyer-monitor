@@ -251,7 +251,9 @@ def test_conductor_applies_price_topology_anchor_to_final_beta(tmp_path, monkeyp
             beta_anchor_weight=1.0,
         )
 
-    monkeypatch.setattr("src.engine.v11.conductor.infer_price_topology_state", _forced_bust_topology)
+    monkeypatch.setattr(
+        "src.engine.v11.conductor.infer_price_topology_state", _forced_bust_topology
+    )
 
     t0 = macro_df.tail(1).set_index("observation_date")
     result = conductor.daily_run(t0)
@@ -274,8 +276,7 @@ def test_conductor_hydrates_price_derived_training_features_from_cached_history(
             "Close": 100.0
             + np.sin(np.linspace(0.0, 16.0, len(dates))) * 8.0
             + np.linspace(0.0, 12.0, len(dates)),
-            "Volume": 1_000_000.0
-            + np.cos(np.linspace(0.0, 8.0, len(dates))) * 150_000.0,
+            "Volume": 1_000_000.0 + np.cos(np.linspace(0.0, 8.0, len(dates))) * 150_000.0,
         },
         index=dates,
     )

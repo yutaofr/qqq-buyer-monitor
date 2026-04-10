@@ -11,11 +11,12 @@ from src.engine.v11.conductor import V11Conductor
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+
 def run_forensic():
     print("--- BAYESIAN FORENSIC TRACE: MARCH 2020 ---")
 
     # 1. Initialize Conductor
-    os.environ["ADAPTIVE_TAU_OVERRIDE"] = "OFF" # Ensure clean run
+    os.environ["ADAPTIVE_TAU_OVERRIDE"] = "OFF"  # Ensure clean run
     # v14.4 FIX: Set cutoff before 2020 so that 2020 is OOD for Mahalanobis
     conductor = V11Conductor(training_cutoff="2019-12-31")
 
@@ -26,7 +27,14 @@ def run_forensic():
         return
 
     # Period of interest: Just before and during the lock
-    test_dates = ["2020-02-20", "2020-03-02", "2020-03-09", "2020-03-16", "2020-03-23", "2020-03-30"]
+    test_dates = [
+        "2020-02-20",
+        "2020-03-02",
+        "2020-03-09",
+        "2020-03-16",
+        "2020-03-23",
+        "2020-03-30",
+    ]
 
     # Pre-calculate all features once for the full dataset to use in diagnostics
     all_features = conductor.seeder.generate_features(data)
@@ -52,9 +60,11 @@ def run_forensic():
         diagnostics = runtime["v13_4_diagnostics"]
 
         # Check Overdrive Status
-        is_ood, d_m = conductor.mahalanobis_guard.is_outlier(latest_vector.iloc[0].values,
-                                                           threshold=float(conductor.v13_4_registry.get("mahalanobis_ood_threshold", 4.5)),
-                                                           return_distance=True)
+        is_ood, d_m = conductor.mahalanobis_guard.is_outlier(
+            latest_vector.iloc[0].values,
+            threshold=float(conductor.v13_4_registry.get("mahalanobis_ood_threshold", 4.5)),
+            return_distance=True,
+        )
 
         print(f"  Entropy: {runtime['entropy']:.4f}")
         print(f"  Is OOD (Overdrive): {is_ood} (d_m={d_m:.4f})")
@@ -84,6 +94,7 @@ def run_forensic():
             # Manual calc of log-lh
             feat_log_lh = -0.5 * (np.log(2.0 * np.pi * var) + ((val - theta) ** 2) / var)
             print(f"  Raw Log-LH for [{f_name}] in BUST: {feat_log_lh:.4f}")
+
 
 if __name__ == "__main__":
     run_forensic()

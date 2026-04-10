@@ -563,7 +563,13 @@
             if (typeof result !== 'object') return formatScalar(result);
             const mapping = TRANSLATIONS[currentLang].mapping;
             // If it's a result with a status/state, just show the localized state
-            const state = result.overlay_state || result.deployment_state || result.target_bucket || result.stable_regime;
+            const state =
+                result.overlay_state ||
+                result.deployment_state ||
+                result.target_bucket ||
+                result.execution_regime ||
+                result.posterior_regime ||
+                result.stable_regime;
             if (state && mapping[state]) return mapping[state];
             
             const entries = Object.entries(result);
@@ -706,7 +712,12 @@
             body.className = isLocked ? 'state-locked min-h-screen flex items-center justify-center p-3 sm:p-4' : (mkt === 'ACTIVE' ? 'state-active min-h-screen flex items-center justify-center p-3 sm:p-4' : 'state-frozen min-h-screen flex items-center justify-center p-3 sm:p-4');
             document.getElementById('indicator').className = `w-2.5 h-2.5 rounded-full ${isLocked ? 'bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.8)]' : (mkt === 'ACTIVE' ? 'bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.8)]' : 'bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.8)]')}`;
             
-            const stableRegimeKey = extractRegimeKey(data.signal.stable_regime || data.signal.regime);
+            const posteriorRegimeKey = extractRegimeKey(
+                data.signal.posterior_regime || data.signal.stable_regime || data.signal.regime
+            );
+            const executionRegimeKey = extractRegimeKey(
+                data.signal.execution_regime || data.signal.posterior_regime || data.signal.stable_regime || data.signal.regime
+            );
             const rawRegimeKey = extractRegimeKey(data.signal.raw_regime || data.signal.regime);
             const mapping = TRANSLATIONS[currentLang].mapping;
             
@@ -757,7 +768,13 @@
             const bucket = data.signal.execution_bucket || (ref.qld_pct > 0 ? "QLD" : (ref.qqq_pct > 0.1 ? "QQQ" : "CASH"));
             document.querySelectorAll('.tag').forEach(t => {
                 const key = t.getAttribute('data-key');
-                if (key === stableRegimeKey || key === rawRegimeKey || key === bucket || (data.signal.probabilities && data.signal.probabilities[key] > 0.4)) {
+                if (
+                    key === posteriorRegimeKey ||
+                    key === executionRegimeKey ||
+                    key === rawRegimeKey ||
+                    key === bucket ||
+                    (data.signal.probabilities && data.signal.probabilities[key] > 0.4)
+                ) {
                     t.className = 'tag node-active text-[10px] px-3 py-2 border border-emerald-500/50 rounded-2xl transition-all duration-1000';
                 } else { t.className = 'tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl'; }
             });

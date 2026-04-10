@@ -63,8 +63,8 @@ def fetch_breadth(as_of: date | None = None) -> dict:
     query_end = target_date + timedelta(days=1)
     query_start = target_date - timedelta(days=10)
 
-    ndx_concentration, ndx_concentration_source, ndx_concentration_quality = _fetch_ndx_concentration(
-        query_end
+    ndx_concentration, ndx_concentration_source, ndx_concentration_quality = (
+        _fetch_ndx_concentration(query_end)
     )
     adv_dec_ratio, source, quality, transform, failed_tickers = _fetch_adv_dec_ratio(
         query_start,

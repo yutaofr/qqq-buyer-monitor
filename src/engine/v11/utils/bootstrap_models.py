@@ -9,14 +9,17 @@ class MacroGap:
     next_available_date: date | None
     gap_days: int
 
+
 @dataclass
 class CacheStaleness:
     last_date: date | None
     days_stale: int
 
+
 @dataclass
 class FieldCompleteness:
     missing_fields: dict[str, int] = field(default_factory=dict)
+
 
 @dataclass
 class BootstrapAuditReport:
@@ -25,6 +28,7 @@ class BootstrapAuditReport:
     field_completeness: FieldCompleteness = field(default_factory=FieldCompleteness)
     audit_timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     is_healthy: bool = True
+
 
 @dataclass
 class BootstrapRepairResult:

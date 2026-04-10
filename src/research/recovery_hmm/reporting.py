@@ -28,7 +28,9 @@ def build_review_frame(
     inputs = inputs.drop(columns=[date_col]).sort_values("date")
 
     qqq = pd.read_csv(qqq_history_path)
-    qqq["date"] = pd.to_datetime(qqq["Date"], errors="coerce", utc=True).dt.tz_convert(None).dt.normalize()
+    qqq["date"] = (
+        pd.to_datetime(qqq["Date"], errors="coerce", utc=True).dt.tz_convert(None).dt.normalize()
+    )
     qqq["close"] = pd.to_numeric(qqq["Close"], errors="coerce")
     qqq = qqq.loc[:, ["date", "close"]].dropna().drop_duplicates("date").sort_values("date")
 
@@ -67,7 +69,9 @@ def build_performance_summary(frame: pd.DataFrame) -> dict[str, object]:
     review["shadow_weight_lag"] = review["shadow_weight_lag"].fillna(review["w_final"])
     review["shadow_ret"] = review["shadow_weight_lag"] * review["ret"]
     review["qqq_ret"] = review["ret"]
-    review["production_weight_lag"] = pd.to_numeric(review.get("target_beta"), errors="coerce").shift(1)
+    review["production_weight_lag"] = pd.to_numeric(
+        review.get("target_beta"), errors="coerce"
+    ).shift(1)
     review["production_weight_lag"] = review["production_weight_lag"].ffill().bfill().fillna(1.0)
     review["production_ret"] = review["production_weight_lag"] * review["ret"]
 
@@ -79,7 +83,9 @@ def build_performance_summary(frame: pd.DataFrame) -> dict[str, object]:
         "qqq": _metric_block(review["qqq_ret"]),
         "production": _metric_block(review["production_ret"]),
         "turnover": {
-            "mean_abs_daily_change": float(pd.to_numeric(review["w_final"], errors="coerce").diff().abs().mean())
+            "mean_abs_daily_change": float(
+                pd.to_numeric(review["w_final"], errors="coerce").diff().abs().mean()
+            )
         },
         "windows": {
             "q1_2022": {
@@ -105,7 +111,11 @@ def promotion_decision(summary: dict[str, object]) -> tuple[str, list[str]]:
 
     if shadow["total_return"] < production["total_return"]:
         reasons.append("Shadow total return is below current production beta replay.")
-    if shadow["sharpe"] is not None and production["sharpe"] is not None and shadow["sharpe"] < production["sharpe"]:
+    if (
+        shadow["sharpe"] is not None
+        and production["sharpe"] is not None
+        and shadow["sharpe"] < production["sharpe"]
+    ):
         reasons.append("Shadow Sharpe is below current production beta replay.")
     if q1_2022["avg_weight"] is not None and q1_2022["avg_weight"] > 0.65:
         reasons.append("2022 Q1 average weight stayed too high for a defensive live upgrade.")
@@ -114,7 +124,9 @@ def promotion_decision(summary: dict[str, object]) -> tuple[str, list[str]]:
 
     if reasons:
         return "DO_NOT_LIVE_INTEGRATE_YET", reasons
-    return "ELIGIBLE_FOR_GATED_LIVE_TRIAL", ["Review window metrics clear the current promotion bar."]
+    return "ELIGIBLE_FOR_GATED_LIVE_TRIAL", [
+        "Review window metrics clear the current promotion bar."
+    ]
 
 
 def write_review_markdown(
@@ -145,7 +157,9 @@ def write_review_markdown(
         f"- Shadow total return: `{shadow['total_return']:.4f}`",
         f"- Shadow CAGR: `{shadow['cagr']:.4f}`",
         f"- Shadow max drawdown: `{shadow['max_drawdown']:.4f}`",
-        f"- Shadow Sharpe: `{shadow['sharpe']:.4f}`" if shadow["sharpe"] is not None else "- Shadow Sharpe: `None`",
+        f"- Shadow Sharpe: `{shadow['sharpe']:.4f}`"
+        if shadow["sharpe"] is not None
+        else "- Shadow Sharpe: `None`",
         f"- QQQ total return: `{qqq['total_return']:.4f}`",
         f"- QQQ CAGR: `{qqq['cagr']:.4f}`",
         f"- QQQ max drawdown: `{qqq['max_drawdown']:.4f}`",
@@ -166,8 +180,12 @@ def write_review_markdown(
     Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def plot_four_panel(review_window: pd.DataFrame, output_path: str | Path, *, title_prefix: str) -> None:
-    fig, axes = plt.subplots(4, 1, figsize=(18, 24), sharex=True, gridspec_kw={"height_ratios": [1.15, 0.8, 0.9, 1.0]})
+def plot_four_panel(
+    review_window: pd.DataFrame, output_path: str | Path, *, title_prefix: str
+) -> None:
+    fig, axes = plt.subplots(
+        4, 1, figsize=(18, 24), sharex=True, gridspec_kw={"height_ratios": [1.15, 0.8, 0.9, 1.0]}
+    )
     plt.subplots_adjust(hspace=0.22)
     dates = review_window["date"]
 
@@ -182,7 +200,9 @@ def plot_four_panel(review_window: pd.DataFrame, output_path: str | Path, *, tit
         alpha=0.82,
     )
     axes[0].set_ylim(0, 1)
-    axes[0].set_title(f"{title_prefix} | Panel A: Regime Probabilities", fontsize=15, fontweight="bold")
+    axes[0].set_title(
+        f"{title_prefix} | Panel A: Regime Probabilities", fontsize=15, fontweight="bold"
+    )
     axes[0].legend(loc="upper left", ncol=4, frameon=True)
     axes[0].grid(axis="y", linestyle="--", alpha=0.25)
 
@@ -196,26 +216,58 @@ def plot_four_panel(review_window: pd.DataFrame, output_path: str | Path, *, tit
             linestyle="--",
             label="Effective Entropy",
         )
-    axes[1].plot(dates, review_window["m_entropy"], color="#6a994e", linewidth=1.8, linestyle=":", label="Entropy Multiplier")
+    axes[1].plot(
+        dates,
+        review_window["m_entropy"],
+        color="#6a994e",
+        linewidth=1.8,
+        linestyle=":",
+        label="Entropy Multiplier",
+    )
     axes[1].axhline(0.65, color="#7b2cbf", linestyle=":", alpha=0.25)
-    axes[1].set_title(f"{title_prefix} | Panel B: Entropy And Mechanical Haircut", fontsize=15, fontweight="bold")
+    axes[1].set_title(
+        f"{title_prefix} | Panel B: Entropy And Mechanical Haircut", fontsize=15, fontweight="bold"
+    )
     axes[1].legend(loc="upper right", frameon=True)
     axes[1].grid(linestyle="--", alpha=0.25)
 
-    axes[2].plot(dates, review_window["hy_ig_spread"], color="#e76f51", linewidth=2.0, label="HY-IG Spread")
+    axes[2].plot(
+        dates, review_window["hy_ig_spread"], color="#e76f51", linewidth=2.0, label="HY-IG Spread"
+    )
     axes[2].plot(dates, review_window["chicago_fci"], color="#264653", linewidth=1.8, label="NFCI")
-    axes[2].plot(dates, review_window["vix_3m_1m_ratio"], color="#219ebc", linewidth=1.8, label="VIX 3M/1M")
-    axes[2].plot(dates, review_window["qqq_skew_20d_mean"], color="#ff006e", linewidth=1.6, label="QQQ Skew Proxy")
-    axes[2].set_title(f"{title_prefix} | Panel C: Stress And Proxy Driver Surface", fontsize=15, fontweight="bold")
+    axes[2].plot(
+        dates, review_window["vix_3m_1m_ratio"], color="#219ebc", linewidth=1.8, label="VIX 3M/1M"
+    )
+    axes[2].plot(
+        dates,
+        review_window["qqq_skew_20d_mean"],
+        color="#ff006e",
+        linewidth=1.6,
+        label="QQQ Skew Proxy",
+    )
+    axes[2].set_title(
+        f"{title_prefix} | Panel C: Stress And Proxy Driver Surface", fontsize=15, fontweight="bold"
+    )
     axes[2].legend(loc="upper left", ncol=4, frameon=True)
     axes[2].grid(linestyle="--", alpha=0.25)
 
     axes[3].plot(dates, review_window["close"], color="black", linewidth=2.0, label="QQQ Close")
     ax_beta = axes[3].twinx()
-    ax_beta.plot(dates, review_window["w_final"], color="#0b5fff", linewidth=1.8, label="Shadow Weight")
+    ax_beta.plot(
+        dates, review_window["w_final"], color="#0b5fff", linewidth=1.8, label="Shadow Weight"
+    )
     if "target_beta" in review_window.columns and review_window["target_beta"].notna().any():
-        ax_beta.plot(dates, review_window["target_beta"], color="#f77f00", linewidth=1.5, linestyle="--", label="Production Target Beta")
-    axes[3].set_title(f"{title_prefix} | Panel D: QQQ Price Vs Shadow Weight", fontsize=15, fontweight="bold")
+        ax_beta.plot(
+            dates,
+            review_window["target_beta"],
+            color="#f77f00",
+            linewidth=1.5,
+            linestyle="--",
+            label="Production Target Beta",
+        )
+    axes[3].set_title(
+        f"{title_prefix} | Panel D: QQQ Price Vs Shadow Weight", fontsize=15, fontweight="bold"
+    )
     axes[3].grid(linestyle="--", alpha=0.25)
     lines1, labels1 = axes[3].get_legend_handles_labels()
     lines2, labels2 = ax_beta.get_legend_handles_labels()
@@ -238,12 +290,16 @@ def build_variant_matrix(records: list[dict[str, object]]) -> pd.DataFrame:
     if not records:
         return pd.DataFrame()
     frame = pd.DataFrame(records).copy()
-    frame["decision_priority"] = frame["decision"].map(
-        {
-            "ELIGIBLE_FOR_GATED_LIVE_TRIAL": 0,
-            "DO_NOT_LIVE_INTEGRATE_YET": 1,
-        }
-    ).fillna(9)
+    frame["decision_priority"] = (
+        frame["decision"]
+        .map(
+            {
+                "ELIGIBLE_FOR_GATED_LIVE_TRIAL": 0,
+                "DO_NOT_LIVE_INTEGRATE_YET": 1,
+            }
+        )
+        .fillna(9)
+    )
     sort_columns = [
         "decision_priority",
         "shadow_total_return",
@@ -252,7 +308,9 @@ def build_variant_matrix(records: list[dict[str, object]]) -> pd.DataFrame:
         "q1_2023_avg_weight",
     ]
     ascending = [True, False, False, True, False]
-    frame = frame.sort_values(sort_columns, ascending=ascending, na_position="last").reset_index(drop=True)
+    frame = frame.sort_values(sort_columns, ascending=ascending, na_position="last").reset_index(
+        drop=True
+    )
     frame["rank"] = range(1, len(frame) + 1)
     return frame
 
@@ -265,7 +323,9 @@ def plot_variant_navs(nav_frame: pd.DataFrame, output_path: str | Path) -> None:
         if column == "date":
             continue
         ax.plot(nav_frame["date"], nav_frame[column], linewidth=1.8, label=column)
-    ax.set_title("Recovery HMM Variant Panorama | 8-Year NAV Comparison", fontsize=16, fontweight="bold")
+    ax.set_title(
+        "Recovery HMM Variant Panorama | 8-Year NAV Comparison", fontsize=16, fontweight="bold"
+    )
     ax.grid(linestyle="--", alpha=0.25)
     ax.legend(loc="upper left", ncol=3, frameon=True)
     ax.xaxis.set_major_locator(mdates.YearLocator())
