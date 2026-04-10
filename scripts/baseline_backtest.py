@@ -47,13 +47,29 @@ def _get_close_series(df: pd.DataFrame) -> pd.Series:
 
 def collect_panorama_oos_artifacts(
     oos_start: str = OOS_START_DEFAULT,
-    timeout: int = 15
+    timeout: int = 15,
+    *,
+    baseline_trace_path: str = "artifacts/v14_panorama/baseline_oos_trace.csv",
+    prefer_cached_artifacts: bool = False,
 ) -> dict[str, Any]:
     """
     Primary architectural bridge for v14 Panorama Matrix.
     Realizes the walk-forward OOS baseline series (Tractor + Sidecar)
     with strict PIT integrity and fail-closed logic.
     """
+    baseline_trace = _load_cached_baseline_trace(baseline_trace_path)
+    if prefer_cached_artifacts and baseline_trace is not None:
+        logger.info("Using cached Panorama baseline trace from %s", baseline_trace_path)
+        return {
+            "oos_results": baseline_trace,
+            "metadata": {"vintage_mode": "CACHED_ARTIFACT", "degraded": []},
+            "oos_start": str(baseline_trace.index.min().date()),
+            "data_count": len(baseline_trace),
+            "target_spy": pd.Series(dtype=float),
+            "target_qqq": pd.Series(dtype=float),
+            "leak_results": {},
+        }
+
     logger.info(f"Collecting Panorama OOS artifacts starting from {oos_start}...")
 
     # 1. Load PIT-aligned Macro Data (FRED + YFinance Sensors)
@@ -116,6 +132,35 @@ def collect_panorama_oos_artifacts(
         "target_qqq": target_qqq,
         "leak_results": leak_results,
     }
+
+
+def _load_cached_baseline_trace(path: str) -> pd.DataFrame | None:
+    trace_path = os.fspath(path)
+    if not os.path.exists(trace_path):
+        return None
+    frame = pd.read_csv(trace_path)
+    if frame.empty:
+        return None
+    if "date" not in frame.columns:
+        first = frame.columns[0]
+        if first.startswith("Unnamed"):
+            frame = frame.rename(columns={first: "date"})
+    if "date" not in frame.columns:
+        return None
+
+    frame["date"] = pd.to_datetime(frame["date"], errors="coerce").dt.tz_localize(None)
+    frame = frame.dropna(subset=["date"]).sort_values("date").set_index("date")
+    if frame.empty:
+        return None
+
+    for column in ("tractor_prob", "sidecar_prob"):
+        if column in frame.columns:
+            frame[column] = pd.to_numeric(frame[column], errors="coerce")
+    if "sidecar_valid" in frame.columns:
+        frame["sidecar_valid"] = frame["sidecar_valid"].fillna(False).astype(bool)
+    else:
+        frame["sidecar_valid"] = frame["sidecar_prob"].notna()
+    return frame
 
 def main():
     """Standalone execution logic for v14 hardening diagnostics."""

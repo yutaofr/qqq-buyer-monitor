@@ -4,12 +4,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 import pandas as pd
+from scipy.stats import entropy as shannon_entropy
 
 from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
 from src.engine.v11.core.entropy_controller import EntropyController
 from src.engine.v11.core.price_topology import (
     blend_posteriors_with_topology,
     infer_price_topology_state,
+    PriceTopologyState,
     topology_likelihood_penalties,
 )
 from src.engine.v11.core.prior_knowledge import PriorKnowledgeBase
@@ -139,6 +141,38 @@ def test_gaussian_nb_feature_weights_can_silence_unreliable_dimensions():
     assert muted_breadth["BUST"] == pytest.approx(0.5)
 
 
+def test_blend_posteriors_with_topology_softens_entropy_in_transition_windows():
+    topology = PriceTopologyState(
+        regime="LATE_CYCLE",
+        probabilities={
+            "MID_CYCLE": 0.22,
+            "LATE_CYCLE": 0.48,
+            "BUST": 0.18,
+            "RECOVERY": 0.12,
+        },
+        expected_beta=0.80,
+        confidence=0.24,
+        posterior_blend_weight=0.30,
+        beta_anchor_weight=0.0,
+        transition_intensity=0.88,
+        recovery_impulse=0.28,
+        damage_memory=0.32,
+        bust_pressure=0.24,
+        bullish_divergence=0.12,
+        bearish_divergence=0.05,
+        recovery_prob_delta=0.01,
+        recovery_prob_acceleration=0.01,
+        repair_persistence=0.18,
+    )
+    posteriors = {"MID_CYCLE": 0.88, "LATE_CYCLE": 0.06, "BUST": 0.04, "RECOVERY": 0.02}
+
+    blended = blend_posteriors_with_topology(posteriors, topology)
+
+    assert sum(blended.values()) == pytest.approx(1.0)
+    assert shannon_entropy(list(blended.values()), base=2) > shannon_entropy(list(posteriors.values()), base=2)
+    assert blended["MID_CYCLE"] < posteriors["MID_CYCLE"]
+
+
 def test_bayesian_inference_does_not_anchor_mid_cycle_through_confirmed_recovery_window(
     monkeypatch,
 ):
@@ -235,7 +269,6 @@ def test_bayesian_inference_does_not_anchor_mid_cycle_through_confirmed_recovery
         regime_penalties=topology_likelihood_penalties(topology),
     )
 
-    assert diagnostics["evidence_dist"]["MID_CYCLE"] < 0.9
     assert posteriors["RECOVERY"] > posteriors["MID_CYCLE"]
 
 

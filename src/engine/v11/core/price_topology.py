@@ -30,6 +30,7 @@ class PriceTopologyState:
     recovery_prob_delta: float = 0.0
     recovery_prob_acceleration: float = 0.0
     repair_persistence: float = 0.0
+    benchmark_entropy: float = 0.0
 
     @property
     def enabled(self) -> bool:
@@ -60,6 +61,7 @@ def infer_price_topology_state(
             bearish_divergence=0.0,
             recovery_prob_delta=0.0,
             recovery_prob_acceleration=0.0,
+            benchmark_entropy=0.0,
         )
 
     benchmark = build_worldview_benchmark(price_frame)
@@ -71,6 +73,7 @@ def infer_price_topology_state(
         normalize=True,
     )
     transition_intensity = float(np.clip(latest.get("benchmark_transition_intensity", 0.0), 0.0, 1.0))
+    benchmark_entropy = float(np.clip(latest.get("benchmark_entropy", 0.0), 0.0, 1.0))
     recovery_impulse = float(np.clip(latest.get("benchmark_recovery_impulse", 0.0), 0.0, 1.5))
     damage_memory = float(np.clip(latest.get("benchmark_recent_damage", 0.0), 0.0, 1.5))
     bust_pressure = float(np.clip(latest.get("benchmark_bust_pressure", 0.0), 0.0, 1.5))
@@ -160,6 +163,7 @@ def infer_price_topology_state(
         recovery_prob_delta=recovery_prob_delta,
         recovery_prob_acceleration=recovery_prob_acceleration,
         repair_persistence=repair_persistence,
+        benchmark_entropy=benchmark_entropy,
     )
 
 
@@ -182,8 +186,29 @@ def blend_posteriors_with_topology(
         + weight * float(topology.probabilities.get(regime, 0.0))
         for regime in ACTIVE_REGIME_ORDER
     }
-    return merge_regime_weights(
+    corrected = merge_regime_weights(
         blended,
+        regimes=ACTIVE_REGIME_ORDER,
+        include_zeros=True,
+        normalize=True,
+    )
+    entropy_soften_weight = _transition_entropy_softening_weight(topology, corrected)
+    if entropy_soften_weight <= 0.0:
+        return corrected
+
+    reference = merge_regime_weights(
+        topology.probabilities,
+        regimes=ACTIVE_REGIME_ORDER,
+        include_zeros=True,
+        normalize=True,
+    )
+    softened = {
+        regime: (1.0 - entropy_soften_weight) * float(corrected.get(regime, 0.0))
+        + entropy_soften_weight * float(reference.get(regime, 0.0))
+        for regime in ACTIVE_REGIME_ORDER
+    }
+    return merge_regime_weights(
+        softened,
         regimes=ACTIVE_REGIME_ORDER,
         include_zeros=True,
         normalize=True,
@@ -274,6 +299,55 @@ def align_posteriors_with_recovery_process(
         include_zeros=True,
         normalize=True,
     )
+
+
+def _normalized_entropy(probabilities: dict[str, float]) -> float:
+    values = np.array([max(0.0, float(prob)) for prob in probabilities.values()], dtype=float)
+    total = float(values.sum())
+    if total <= 0.0 or len(values) < 2:
+        return 0.0
+    normalized = values / total
+    return float(
+        np.clip(
+            (-(normalized * np.log2(np.clip(normalized, 1e-12, 1.0))).sum())
+            / max(1e-12, np.log2(len(normalized))),
+            0.0,
+            1.0,
+        )
+    )
+
+
+def _transition_entropy_softening_weight(
+    topology: PriceTopologyState,
+    probabilities: dict[str, float],
+) -> float:
+    if topology.regime == "RECOVERY" and _topology_repair_persistence(topology) >= 0.30:
+        return 0.0
+    if topology.transition_intensity < 0.35:
+        return 0.0
+
+    current_entropy = _normalized_entropy(probabilities)
+    if current_entropy <= 0.0:
+        return 0.0
+
+    benchmark_entropy = float(np.clip(topology.benchmark_entropy, 0.0, 1.0))
+    desired_entropy = max(
+        current_entropy,
+        benchmark_entropy - (0.06 + (0.08 * float(np.clip(topology.confidence, 0.0, 1.0)))),
+    )
+    if desired_entropy <= current_entropy + 1e-6:
+        return 0.0
+
+    base_gap = max(1e-6, benchmark_entropy - current_entropy)
+    target_gap = desired_entropy - current_entropy
+    strength = (
+        0.55
+        + (0.35 * float(np.clip(topology.transition_intensity, 0.0, 1.0)))
+        + (0.10 * float(np.clip(1.0 - topology.confidence, 0.0, 1.0)))
+    )
+    if topology.regime in {"MID_CYCLE", "LATE_CYCLE"}:
+        strength += 0.10
+    return float(np.clip((target_gap / base_gap) * strength, 0.0, 0.75))
 
 
 def topology_likelihood_penalties(
@@ -679,6 +753,7 @@ def price_topology_payload(topology: PriceTopologyState) -> dict[str, Any]:
         "recovery_prob_delta": float(topology.recovery_prob_delta),
         "recovery_prob_acceleration": float(topology.recovery_prob_acceleration),
         "repair_persistence": float(_topology_repair_persistence(topology)),
+        "benchmark_entropy": float(topology.benchmark_entropy),
         "recovery_process_weight": float(_recovery_process_alignment_weight(topology)),
         "posterior_blend_weight": float(topology.posterior_blend_weight),
         "beta_anchor_weight": float(topology.beta_anchor_weight),

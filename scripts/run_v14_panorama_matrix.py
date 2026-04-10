@@ -300,7 +300,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--regime-path", default="data/v11_poc_phase1_results.csv")
     args = parser.parse_args(argv)
 
-    artifacts = collect_panorama_oos_artifacts()
+    artifacts = collect_panorama_oos_artifacts(prefer_cached_artifacts=True)
     diagnostics = artifacts["oos_results"].reset_index().rename(columns={"index": "date"})
     price_end_date = pd.Timestamp(diagnostics["date"].max()).date().isoformat()
     regime_df = pd.read_csv(args.regime_path, parse_dates=["observation_date"]).set_index(
