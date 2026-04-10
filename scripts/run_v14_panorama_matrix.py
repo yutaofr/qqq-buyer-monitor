@@ -78,11 +78,23 @@ def _scenario_report(frame: pd.DataFrame) -> pd.DataFrame:
             {
                 "scenario": scenario,
                 **metrics,
-                "acceptance_pass": passed if scenario != "standard" else True,
-                "acceptance_reason": reason if scenario != "standard" else "PASS",
+                "acceptance_pass": passed,
+                "acceptance_reason": reason,
             }
         )
     return pd.DataFrame(rows)
+
+
+def _select_candidate(calibration_report: pd.DataFrame) -> tuple[dict[str, Any], bool]:
+    try:
+        return choose_production_candidate(calibration_report), False
+    except ValueError:
+        baseline_row = calibration_report.loc[
+            calibration_report["scenario"] == "standard"
+        ].iloc[0]
+        fallback = baseline_row.to_dict()
+        fallback["selection_failed_closed"] = True
+        return fallback, True
 
 
 def _evaluate_config(
@@ -134,6 +146,7 @@ def _write_report(
     default_holdout_report: pd.DataFrame,
     tuned_holdout_row: dict[str, Any],
     selected_candidate: dict[str, Any],
+    selection_failed_closed: bool,
     holdout_start: str,
     floor_conflict_stats: dict[str, Any],
     mainline_summary: dict[str, Any],
@@ -234,22 +247,31 @@ def _write_report(
         handle.write("\n\n")
 
         handle.write("## Calibration Winner\n\n")
-        handle.write(
-            f"- Scenario: `{selected_candidate['scenario']}`\n"
-            f"- Tractor Threshold: `{selected_candidate['tractor_threshold']:.2f}`\n"
-            f"- Sidecar Threshold: `{selected_candidate['sidecar_threshold']:.2f}`\n"
-            f"- Calm Threshold: `{selected_candidate['calm_threshold']:.2f}`\n"
-            f"- Calibration Return: `{selected_candidate['approx_total_return']:.4f}`\n"
-            f"- Calibration Max Drawdown: `{selected_candidate['approx_max_drawdown']:.4f}`\n"
-            f"- Calibration Left-Tail Beta: `{selected_candidate['left_tail_mean_beta']:.4f}`\n\n"
-        )
+        if selection_failed_closed:
+            handle.write("- No scenario cleared the acceptance contract in calibration.\n")
+            handle.write("- Report is fail-closed; `standard` is shown below only as the baseline reference.\n\n")
+        else:
+            handle.write(
+                f"- Scenario: `{selected_candidate['scenario']}`\n"
+                f"- Tractor Threshold: `{selected_candidate['tractor_threshold']:.2f}`\n"
+                f"- Sidecar Threshold: `{selected_candidate['sidecar_threshold']:.2f}`\n"
+                f"- Calm Threshold: `{selected_candidate['calm_threshold']:.2f}`\n"
+                f"- Calibration Return: `{selected_candidate['approx_total_return']:.4f}`\n"
+                f"- Calibration Max Drawdown: `{selected_candidate['approx_max_drawdown']:.4f}`\n"
+                f"- Calibration Left-Tail Beta: `{selected_candidate['left_tail_mean_beta']:.4f}`\n\n"
+            )
 
         handle.write("## Holdout Result Of Frozen Winner\n\n")
         handle.write(_markdown_table(pd.DataFrame([tuned_holdout_row])))
         handle.write("\n")
 
         handle.write("\n## Production Recommendation\n\n")
-        if bool(tuned_holdout_row.get("acceptance_pass")):
+        if selection_failed_closed:
+            handle.write("- Fail closed: no scenario, including `standard`, cleared the regime-process acceptance gate.\n")
+            handle.write(
+                "- Keep all panorama variants in diagnostic mode until the mainline process metrics themselves are repaired.\n"
+            )
+        elif bool(tuned_holdout_row.get("acceptance_pass")):
             handle.write(
                 f"- Promote `{tuned_holdout_row['scenario']}` with thresholds "
                 f"`tractor={tuned_holdout_row['tractor_threshold']:.2f}`, "
@@ -317,7 +339,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     calibration_report = _calibration_sweep(calibration_trace, calibration_diag)
-    selected_candidate = choose_production_candidate(calibration_report)
+    selected_candidate, selection_failed_closed = _select_candidate(calibration_report)
 
     _, tuned_holdout_report = _evaluate_config(
         holdout_trace,
@@ -331,6 +353,8 @@ def main(argv: list[str] | None = None) -> int:
         .iloc[0]
         .to_dict()
     )
+    tuned_holdout_row["selection_failed_closed"] = selection_failed_closed
+    selected_candidate["selection_failed_closed"] = selection_failed_closed
 
     output_dir.mkdir(parents=True, exist_ok=True)
     default_holdout_report.to_csv(output_dir / "default_holdout_report.csv", index=False)
@@ -352,6 +376,7 @@ def main(argv: list[str] | None = None) -> int:
         default_holdout_report=default_holdout_report,
         tuned_holdout_row=tuned_holdout_row,
         selected_candidate=selected_candidate,
+        selection_failed_closed=selection_failed_closed,
         holdout_start=args.holdout_start,
         floor_conflict_stats={
             "min_beta": float(holdout_trace["target_beta"].min()),
