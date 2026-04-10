@@ -177,18 +177,11 @@ def test_bayesian_inference_does_not_anchor_mid_cycle_through_confirmed_recovery
     monkeypatch,
 ):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    snapshot_path = Path(
-        "/Users/weizhang/w/cycle-monitor-workspace/verify-QLD-Point/artifacts/v14_panorama/mainline/mainline_snapshots/snapshot_2023-04-14.json"
-    )
-    price_path = Path(
-        "/Users/weizhang/w/cycle-monitor-workspace/verify-QLD-Point/data/qqq_history_cache.csv"
-    )
-    registry_path = Path(
-        "/Users/weizhang/w/cycle-monitor-workspace/verify-QLD-Point/src/engine/v11/resources/v13_4_weights_registry.json"
-    )
-    constraints_path = Path(
-        "/Users/weizhang/w/cycle-monitor-workspace/verify-QLD-Point/src/engine/v11/resources/logical_constraints.json"
-    )
+    project_root = Path(__file__).resolve().parents[4]
+    snapshot_path = project_root / "artifacts" / "v14_panorama" / "mainline" / "mainline_snapshots" / "snapshot_2023-04-14.json"
+    price_path = project_root / "data" / "qqq_history_cache.csv"
+    registry_path = project_root / "src" / "engine" / "v11" / "resources" / "v13_4_weights_registry.json"
+    constraints_path = project_root / "src" / "engine" / "v11" / "resources" / "logical_constraints.json"
 
     snapshot = json.loads(snapshot_path.read_text())
     price = pd.read_csv(price_path, index_col=0)

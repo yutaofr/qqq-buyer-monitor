@@ -65,7 +65,7 @@ def test_run_v11_audit_emits_v13_overlay_execution_trace(tmp_path, monkeypatch):
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * 160 + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
+            "regime": ["MID_CYCLE"] * 100 + ["LATE_CYCLE"] * 80 + ["BUST"] * 80 + ["RECOVERY"] * 60,
         }
     ).to_csv(regime_path, index=False)
     pd.DataFrame(
@@ -122,7 +122,7 @@ def test_run_v11_audit_supports_overlay_mode_matrix_without_mutating_raw_beta(
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * 160 + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
+            "regime": ["MID_CYCLE"] * 100 + ["LATE_CYCLE"] * 80 + ["BUST"] * 80 + ["RECOVERY"] * 60,
         }
     ).to_csv(regime_path, index=False)
     pd.DataFrame(
@@ -188,7 +188,7 @@ def test_acceptance_mode_fails_on_missing_price_end_date():
 
 def test_acceptance_mode_blocks_today_date():
     """Verify Fail-closed: --acceptance rejects today's date (lookahead prevention)."""
-    today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
     with pytest.raises((ValueError, SystemExit)):
         backtest_module.main(
             [
