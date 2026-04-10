@@ -601,3 +601,6 @@ def test_run_v11_audit_reports_oos_and_training_class_support(tmp_path, monkeypa
     assert summary["training_rows_below_full_support"] == 0
     assert summary["training_first_full_support_date"] is not None
     assert summary["evaluation_start_effective"] == summary["training_first_full_support_date"]
+    assert "stable_vs_benchmark_regime" in summary
+    assert "probability_within_band_share" in summary
+    assert "entropy_within_band_share" in summary

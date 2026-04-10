@@ -32,6 +32,9 @@ def test_compute_regime_process_alignment_scores_within_band_share():
             "date": dates,
             "benchmark_regime": ["MID_CYCLE"] * 4,
             "benchmark_transition_intensity": [0.1, 0.2, 0.2, 0.1],
+            "benchmark_entropy": [0.62, 0.60, 0.58, 0.55],
+            "benchmark_entropy_lower": [0.52, 0.50, 0.48, 0.45],
+            "benchmark_entropy_upper": [0.72, 0.70, 0.68, 0.65],
             "benchmark_prob_MID_CYCLE": [0.55, 0.60, 0.63, 0.66],
             "benchmark_prob_LATE_CYCLE": [0.20, 0.18, 0.17, 0.16],
             "benchmark_prob_BUST": [0.15, 0.12, 0.10, 0.09],
@@ -56,6 +59,7 @@ def test_compute_regime_process_alignment_scores_within_band_share():
             "prob_LATE_CYCLE": [0.19, 0.19, 0.16, 0.15],
             "prob_BUST": [0.15, 0.13, 0.11, 0.09],
             "prob_RECOVERY": [0.10, 0.09, 0.11, 0.09],
+            "entropy": [0.61, 0.59, 0.56, 0.57],
         }
     )
 
@@ -64,3 +68,4 @@ def test_compute_regime_process_alignment_scores_within_band_share():
     assert not merged.empty
     assert summary["overall"]["probability_within_band_share"] > 0.9
     assert summary["overall"]["delta_within_band_share"] > 0.8
+    assert summary["overall"]["entropy_within_band_share"] > 0.9

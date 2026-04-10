@@ -83,6 +83,9 @@ def test_worldview_benchmark_emits_multiframe_rsi_and_transition_bands():
     assert "benchmark_weekly_rsi" in benchmark.columns
     assert "benchmark_monthly_rsi" in benchmark.columns
     assert "benchmark_transition_intensity" in benchmark.columns
+    assert "benchmark_entropy" in benchmark.columns
+    assert "benchmark_entropy_lower" in benchmark.columns
+    assert "benchmark_entropy_upper" in benchmark.columns
     assert "benchmark_recent_damage" in benchmark.columns
     assert "benchmark_recovery_impulse" in benchmark.columns
     assert "benchmark_bust_pressure" in benchmark.columns

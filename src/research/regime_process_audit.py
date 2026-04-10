@@ -128,6 +128,26 @@ def compute_regime_process_alignment(
         },
         "by_regime": rows,
     }
+    if {
+        "entropy",
+        "benchmark_entropy",
+        "benchmark_entropy_lower",
+        "benchmark_entropy_upper",
+    }.issubset(merged.columns):
+        entropy = pd.to_numeric(merged["entropy"], errors="coerce")
+        benchmark_entropy = pd.to_numeric(merged["benchmark_entropy"], errors="coerce")
+        entropy_hit = entropy.between(
+            pd.to_numeric(merged["benchmark_entropy_lower"], errors="coerce"),
+            pd.to_numeric(merged["benchmark_entropy_upper"], errors="coerce"),
+        )
+        summary["overall"]["entropy_within_band_share"] = float(entropy_hit.mean())
+        summary["overall"]["entropy_mae"] = float((entropy - benchmark_entropy).abs().mean())
+        if transition_mask.any():
+            summary["overall"]["transition_entropy_within_band_share"] = float(
+                entropy_hit.loc[transition_mask].mean()
+            )
+        else:
+            summary["overall"]["transition_entropy_within_band_share"] = 0.0
     return merged, summary
 
 

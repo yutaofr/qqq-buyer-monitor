@@ -34,6 +34,8 @@ from src.research.data_contracts import (
     summarize_regime_state_support,
     validate_regime_state_support,
 )
+from src.research.regime_process_audit import compute_regime_process_alignment
+from src.research.worldview_benchmark import build_worldview_benchmark
 
 logger = logging.getLogger(__name__)
 
@@ -511,6 +513,19 @@ def run_v11_audit(
                 .sum()
             ),
         }
+        benchmark = build_worldview_benchmark(price_df[["Close", "Volume"]])
+        benchmark = benchmark.reset_index().rename(columns={benchmark.index.name or "index": "date"})
+        regime_process_trace, regime_process_summary = compute_regime_process_alignment(
+            full_audit_df,
+            benchmark,
+        )
+        summary.update(
+            {
+                key: value
+                for key, value in regime_process_summary["overall"].items()
+                if isinstance(value, (int, float))
+            }
+        )
 
         print("\n--- v12 Unified Probabilistic Performance Audit ---")
         print(
@@ -523,6 +538,7 @@ def run_v11_audit(
         probability_df.to_csv(save_dir / "probability_audit.csv", index=False)
         execution_df.to_csv(save_dir / "execution_trace.csv", index=False)
         full_audit_df.to_csv(save_dir / "full_audit.csv", index=False)
+        regime_process_trace.to_csv(save_dir / "regime_process_trace.csv", index=False)
         (save_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
         if forensic_rows:
             (save_dir / "forensic_trace.jsonl").write_text(
