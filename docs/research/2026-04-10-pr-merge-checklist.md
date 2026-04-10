@@ -81,4 +81,4 @@ Sources:
 - Lint: verified
 - Local unit/integration tests: verified
 - Docker full suite: verified
-- PR remote checks: re-check after pushing the final merge-prep commit
+- PR remote checks: `pending` after final merge-prep push (`verify` x2, `Vercel`)
