@@ -3,9 +3,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
-import pandas_market_calendars as mcal
-
-from src.collector.price import fetch_price_data
+from pandas.tseries.holiday import AbstractHolidayCalendar, GoodFriday, USFederalHolidayCalendar
+from pandas.tseries.offsets import CustomBusinessDay
 from src.engine.v11.utils.bootstrap_models import (
     BootstrapAuditReport,
     BootstrapRepairResult,
@@ -15,6 +14,11 @@ from src.engine.v11.utils.bootstrap_models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class _FallbackNYSEHolidayCalendar(AbstractHolidayCalendar):
+    rules = list(USFederalHolidayCalendar.rules) + [GoodFriday]
+
 
 class BootstrapGuardian:
     def __init__(
@@ -27,16 +31,30 @@ class BootstrapGuardian:
         self.price_cache_path = Path(price_cache_path)
         self.cold_start_seed_path = Path(cold_start_seed_path)
 
-        # Load NYSE calendar
-        nyse = mcal.get_calendar("NYSE")
         end_date = date.today()
         # Get exactly 1260 trading days (approx 5 years)
         start_date = end_date - timedelta(days=2000)
-        schedule = nyse.schedule(start_date=start_date, end_date=end_date)
-        self.business_days = schedule.index.date
+        self.business_days = self._build_business_days(start_date=start_date, end_date=end_date)
         # Keep only the last 1260 business days
         if len(self.business_days) > 1260:
             self.business_days = self.business_days[-1260:]
+
+    @staticmethod
+    def _build_business_days(*, start_date: date, end_date: date) -> list[date]:
+        try:
+            import pandas_market_calendars as mcal  # type: ignore
+        except Exception:
+            holidays = _FallbackNYSEHolidayCalendar().holidays(start=start_date, end=end_date)
+            business_days = pd.date_range(
+                start=start_date,
+                end=end_date,
+                freq=CustomBusinessDay(holidays=holidays),
+            )
+            return list(business_days.date)
+
+        nyse = mcal.get_calendar("NYSE")
+        schedule = nyse.schedule(start_date=start_date, end_date=end_date)
+        return list(schedule.index.date)
 
     def _audit_macro_gaps(self) -> list[MacroGap]:
         if not self.macro_csv_path.exists():
@@ -112,61 +130,62 @@ class BootstrapGuardian:
     def repair(self, report: BootstrapAuditReport) -> BootstrapRepairResult:
         result = BootstrapRepairResult()
         try:
-            # 1. Fetch fresh price data to cover up to today
-            price_data = fetch_price_data()
-            hist_df = price_data.get("history")
+            if not self.price_cache_path.exists():
+                logger.warning("Price cache missing; cold-start repair cannot backfill macro gaps.")
+                return result
 
-            if hist_df is not None and not hist_df.empty:
-                # Update price cache
-                if self.price_cache_path.exists():
-                    cache_df = pd.read_csv(self.price_cache_path)
-                    if "Date" in cache_df.columns:
-                        cache_df["Date"] = pd.to_datetime(cache_df["Date"], utc=True).dt.strftime("%Y-%m-%d %H:%M:%S%z")
-                else:
-                    cache_df = pd.DataFrame()
+            hist_df = pd.read_csv(self.price_cache_path)
+            if hist_df.empty or "Date" not in hist_df.columns:
+                logger.warning(
+                    "Price cache is empty or malformed; cold-start repair cannot backfill macro gaps."
+                )
+                return result
 
-                new_hist = hist_df.reset_index().copy()
-                new_hist["Date"] = pd.to_datetime(new_hist["Date"], utc=True).dt.strftime("%Y-%m-%d %H:%M:%S%z")
+            hist_df = hist_df.copy()
+            hist_df["Date"] = pd.to_datetime(hist_df["Date"], errors="coerce")
+            hist_df = hist_df[hist_df["Date"].notna()].copy()
+            if hist_df.empty:
+                logger.warning(
+                    "Price cache has no valid timestamps; cold-start repair cannot backfill macro gaps."
+                )
+                return result
 
-                merged_cache = pd.concat([cache_df, new_hist]).drop_duplicates(subset=["Date"], keep="last")
-                merged_cache.to_csv(self.price_cache_path, index=False)
+            hist_df["Date"] = hist_df["Date"].dt.tz_localize(None).dt.normalize()
+            hist_df = hist_df.set_index("Date").sort_index()
 
-                # 2. Repair macro gaps
-                if report.macro_gaps and self.macro_csv_path.exists():
-                    macro_df = pd.read_csv(self.macro_csv_path)
+            if report.macro_gaps and self.macro_csv_path.exists():
+                macro_df = pd.read_csv(self.macro_csv_path)
 
-                    new_rows = []
-                    for gap in report.macro_gaps:
-                        # Find the previous row to copy defaults / forward fill
-                        prev_rows = macro_df[macro_df["observation_date"] < gap.missing_date.isoformat()]
-                        if not prev_rows.empty:
-                            base_row = prev_rows.iloc[-1].copy().to_dict()
-                        else:
-                            base_row = {}
+                new_rows = []
+                for gap in report.macro_gaps:
+                    # Find the previous row to copy defaults / forward fill
+                    prev_rows = macro_df[macro_df["observation_date"] < gap.missing_date.isoformat()]
+                    if not prev_rows.empty:
+                        base_row = prev_rows.iloc[-1].copy().to_dict()
+                    else:
+                        base_row = {}
 
-                        base_row["observation_date"] = gap.missing_date.isoformat()
-                        base_row["effective_date"] = gap.missing_date.isoformat()
-                        base_row["build_version"] = "bootstrap:backfill"
+                    base_row["observation_date"] = gap.missing_date.isoformat()
+                    base_row["effective_date"] = gap.missing_date.isoformat()
+                    base_row["build_version"] = "bootstrap:backfill"
 
-                        # Apply price history if available on this date
-                        # new_hist 'Date' is string, we need to match the date part
-                        date_str = gap.missing_date.isoformat()
-                        matching_price = hist_df[hist_df.index.strftime('%Y-%m-%d') == date_str]
+                    date_str = gap.missing_date.isoformat()
+                    matching_price = hist_df[hist_df.index.strftime("%Y-%m-%d") == date_str]
 
-                        if not matching_price.empty:
-                            base_row["qqq_close"] = float(matching_price["Close"].iloc[-1])
-                            base_row["qqq_volume"] = float(matching_price["Volume"].iloc[-1])
-                            base_row["source_qqq_close"] = "bootstrap:backfill:yfinance"
-                            base_row["source_qqq_volume"] = "bootstrap:backfill:yfinance"
+                    if not matching_price.empty:
+                        base_row["qqq_close"] = float(matching_price["Close"].iloc[-1])
+                        base_row["qqq_volume"] = float(matching_price["Volume"].iloc[-1])
+                        base_row["source_qqq_close"] = "bootstrap:backfill:cache"
+                        base_row["source_qqq_volume"] = "bootstrap:backfill:cache"
 
-                        new_rows.append(base_row)
+                    new_rows.append(base_row)
 
-                    if new_rows:
-                        repaired_df = pd.concat([macro_df, pd.DataFrame(new_rows)])
-                        repaired_df = repaired_df.sort_values("observation_date").drop_duplicates(subset=["observation_date"], keep="last")
-                        repaired_df.to_csv(self.macro_csv_path, index=False)
-                        result.total_rows_added = len(new_rows)
-                        result.total_fields_repaired = len(new_rows) * 2 # just an estimate for completeness
+                if new_rows:
+                    repaired_df = pd.concat([macro_df, pd.DataFrame(new_rows)])
+                    repaired_df = repaired_df.sort_values("observation_date").drop_duplicates(subset=["observation_date"], keep="last")
+                    repaired_df.to_csv(self.macro_csv_path, index=False)
+                    result.total_rows_added = len(new_rows)
+                    result.total_fields_repaired = len(new_rows) * 2  # just an estimate for completeness
 
         except Exception as e:
             logger.error(f"Repair process failed: {e}", exc_info=True)

@@ -518,7 +518,8 @@ class V11Conductor:
         )
 
         runtime_priors, prior_details = self.prior_book.runtime_priors(
-            macro_values=f_vals_for_prior
+            macro_values=f_vals_for_prior,
+            current_observation_date=str(features.index[-1].date()),
         )
         latest_raw = raw_t0_data.iloc[-1]
         quality_audit = assess_data_quality(
@@ -867,12 +868,6 @@ class V11Conductor:
             observation_date=observation_date,
             posterior=posteriors,
         )
-
-        # Update High Entropy Streak for PARANOID_MODE (v13.6-EX)
-        if norm_h > 0.85:
-            self.high_entropy_streak += 1
-        else:
-            self.high_entropy_streak = 0
 
         # Build final unified result dictionary
         runtime_result = {

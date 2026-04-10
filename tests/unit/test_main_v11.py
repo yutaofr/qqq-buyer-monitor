@@ -1,5 +1,7 @@
 import json
 from argparse import Namespace
+import sys
+import types
 
 import pandas as pd
 import pytest
@@ -65,6 +67,28 @@ def test_build_v11_signal_result_uses_v12_metadata_contract():
     assert result.target_allocation.target_qqq_pct == 0.91
     assert result.metadata["engine_version"] == "v14.0-ULTIMA"
     assert any(step["step"] == "execution_overlay" for step in result.logic_trace)
+
+
+def test_build_v11_signal_result_prefers_posterior_entropy_for_ui_contract():
+    runtime = {
+        "date": "2026-03-30",
+        "signal": {"target_bucket": "QQQ", "reason": "hold", "lock_active": False},
+        "probabilities": {"MID_CYCLE": 0.7, "LATE_CYCLE": 0.2, "RECOVERY": 0.1},
+        "stable_regime": "MID_CYCLE",
+        "entropy": 0.22,
+        "quality_audit": {"posterior_entropy": 0.51, "effective_entropy": 0.57},
+        "target_beta": 0.91,
+        "target_allocation": {
+            "qqq_dollars": 91000.0,
+            "qld_notional_dollars": 0.0,
+            "cash_dollars": 9000.0,
+        },
+    }
+
+    result = main_module._build_v11_signal_result(runtime, price=100.0)
+
+    assert result.entropy == pytest.approx(0.51)
+    assert result.metadata["effective_entropy"] == pytest.approx(0.57)
 
 
 def test_build_v12_live_macro_row_normalizes_units_and_deprecates_v11_fields():
@@ -176,6 +200,90 @@ def test_run_v11_pipeline_stops_when_cloud_pull_fails(monkeypatch):
                 no_color=True,
             )
         )
+
+
+def test_run_v11_pipeline_includes_price_cache_in_cloud_sync(monkeypatch):
+    captured = {}
+    stop = RuntimeError("stop after audit")
+
+    class _CloudBridge:
+        def __init__(self):
+            self.is_ci = True
+
+        def pull_state(self, local_files):
+            captured["local_files"] = list(local_files)
+            return True
+
+    class _HealthyGuardian:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def audit(self):
+            return type("Report", (), {"is_healthy": True})()
+
+    monkeypatch.setattr(main_module, "CloudPersistenceBridge", _CloudBridge)
+    stub_module = types.ModuleType("src.engine.v11.utils.bootstrap_guardian")
+    stub_module.BootstrapGuardian = _HealthyGuardian
+    monkeypatch.setitem(sys.modules, "src.engine.v11.utils.bootstrap_guardian", stub_module)
+    monkeypatch.setattr(
+        "src.collector.price.fetch_price_data",
+        lambda: (_ for _ in ()).throw(stop),
+    )
+
+    with pytest.raises(RuntimeError, match="stop after audit"):
+        main_module.run_v11_pipeline(
+            Namespace(
+                json=False,
+                notify_discord=False,
+                no_save=True,
+                no_color=True,
+            )
+        )
+
+    assert "data/qqq_history_cache.csv" in captured["local_files"]
+
+
+def test_run_v11_pipeline_fails_closed_when_bootstrap_guardian_remains_unhealthy(monkeypatch):
+    class _CloudBridge:
+        def __init__(self):
+            self.is_ci = True
+
+        def pull_state(self, local_files):
+            return True
+
+    class _UnhealthyGuardian:
+        def __init__(self, *args, **kwargs):
+            self.repair_called = False
+
+        def audit(self):
+            return type("Report", (), {"is_healthy": False})()
+
+        def repair(self, report):
+            self.repair_called = True
+            return type("Repair", (), {"total_rows_added": 0, "total_fields_repaired": 0})()
+
+    guardian = _UnhealthyGuardian()
+
+    monkeypatch.setattr(main_module, "CloudPersistenceBridge", _CloudBridge)
+    stub_module = types.ModuleType("src.engine.v11.utils.bootstrap_guardian")
+    stub_module.BootstrapGuardian = lambda *args, **kwargs: guardian
+    monkeypatch.setitem(sys.modules, "src.engine.v11.utils.bootstrap_guardian", stub_module)
+    monkeypatch.setattr(
+        "src.collector.price.fetch_price_data",
+        lambda: (_ for _ in ()).throw(RuntimeError("stop after guardian")),
+    )
+
+    with pytest.raises(RuntimeError, match="Bootstrap Guardian unhealthy"):
+        main_module.run_v11_pipeline(
+            Namespace(
+                json=False,
+                notify_discord=False,
+                no_save=True,
+                no_color=True,
+            )
+        )
+
+    assert guardian.repair_called is False
 
 
 def test_materialize_prior_state_uses_canonical_seed_when_runtime_state_missing(tmp_path):

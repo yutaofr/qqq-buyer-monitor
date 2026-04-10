@@ -42,6 +42,16 @@ logger = logging.getLogger(__name__)
 START_DATE = "1999-03-10"
 
 
+def _resolve_process_entropy(runtime: dict[str, Any]) -> float:
+    quality_audit = dict(runtime.get("quality_audit", {}))
+    return float(quality_audit.get("posterior_entropy", runtime.get("entropy", 0.0)))
+
+
+def _resolve_execution_entropy(runtime: dict[str, Any]) -> float:
+    quality_audit = dict(runtime.get("quality_audit", {}))
+    return float(quality_audit.get("effective_entropy", runtime.get("entropy", 0.0)))
+
+
 def _load_price_history(
     cache_path: str,
     *,
@@ -652,7 +662,8 @@ def run_v11_audit(
                     "overlay_state": str(runtime.get("overlay", {}).get("overlay_state", "NEUTRAL")),
                     "target_beta": float(runtime["target_beta"]),
                     "raw_target_beta": float(runtime["raw_target_beta"]),
-                    "entropy": float(runtime["entropy"]),
+                    "entropy": _resolve_process_entropy(runtime),
+                    "effective_entropy": _resolve_execution_entropy(runtime),
                     "prior_details": runtime.get("prior_details", {}),
                     "predicted_regime": predicted_regime,
                     "actual_regime": actual_regime,

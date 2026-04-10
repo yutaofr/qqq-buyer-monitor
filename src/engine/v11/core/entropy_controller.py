@@ -17,10 +17,9 @@ class EntropyController:
 
     def calculate_normalized_entropy(self, probs: dict[str, float]) -> float:
         """
-        Calculates normalized Shannon Entropy (0.0 to 1.0) with Conviction Adjustment.
+        Calculates normalized Shannon Entropy (0.0 to 1.0).
         0.0 = Absolute certainty (one state handles all).
         1.0 = Absolute chaos (equal probability for all states).
-        V14.6: Added conviction_bonus for high probability concentration.
         """
         p_vals = [max(0.0, float(value)) for value in probs.values()]
         if len(p_vals) < 2:
@@ -37,14 +36,6 @@ class EntropyController:
         # Normalize by maximum possible entropy (log2 of number of states)
         max_h = np.log2(len(p_vals))
         h_norm = h / max_h if max_h > 0 else 0.0
-
-        # V14.6 Conviction Adjustment: Reward probability concentration
-        max_prob = max(p_vals)
-        if max_prob > 0.5:
-            # Linear bonus from 0% at 0.5 prob to 40% at 0.8+ prob
-            conviction_bonus = float(np.clip((max_prob - 0.5) / 0.3, 0.0, 0.40))
-            h_norm *= (1.0 - conviction_bonus)
-
         return float(np.clip(h_norm, 0.0, 1.0))
 
     def apply_haircut(

@@ -76,6 +76,26 @@ def test_v11_inference_task_uses_labeled_regime_and_curated_features():
     assert result["actual_regime"] == "LATE_CYCLE"
 
 
+def test_process_audit_entropy_prefers_raw_posterior_entropy_over_execution_entropy():
+    runtime = {
+        "entropy": 0.12,
+        "quality_audit": {
+            "posterior_entropy": 0.48,
+            "effective_entropy": 0.57,
+        },
+    }
+
+    assert backtest_module._resolve_process_entropy(runtime) == pytest.approx(0.48)
+    assert backtest_module._resolve_execution_entropy(runtime) == pytest.approx(0.57)
+
+
+def test_process_audit_entropy_falls_back_when_quality_audit_is_missing():
+    runtime = {"entropy": 0.31}
+
+    assert backtest_module._resolve_process_entropy(runtime) == pytest.approx(0.31)
+    assert backtest_module._resolve_execution_entropy(runtime) == pytest.approx(0.31)
+
+
 def test_run_v11_audit_rejects_model_config_overrides(tmp_path, monkeypatch):
     dates = pd.bdate_range("2014-01-01", periods=3000)
     macro_path = tmp_path / "macro.csv"

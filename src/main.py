@@ -134,10 +134,13 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
     deployment_state = str(deployment.get("deployment_state", "DEPLOY_BASE"))
     deployment_state_key = deployment_state.replace("DEPLOY_", "")
     execution_bucket = str(runtime_result.get("signal", {}).get("target_bucket", "QQQ"))
+    quality_audit = runtime_result.get("quality_audit", {})
+    posterior_entropy = float(quality_audit.get("posterior_entropy", runtime_result.get("entropy", 0.0)))
+    effective_entropy = float(quality_audit.get("effective_entropy", runtime_result.get("entropy", 0.0)))
 
     explanation = (
         f"{ENGINE_VERSION} Orthogonal Bayesian Conductor: beta={runtime_result['target_beta']:.2f}x | "
-        f"entropy={runtime_result.get('entropy', 0.0):.3f} | "
+        f"entropy={posterior_entropy:.3f} | "
         f"stable={stable_regime} | raw={raw_regime} ({ordered_probs[0][1]:.1%}) | "
         f"deploy={deployment_state_key}"
     )
@@ -148,14 +151,20 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
         target_beta=float(runtime_result["target_beta"]),
         probabilities={k: float(v) for k, v in runtime_result["probabilities"].items()},
         priors={k: float(v) for k, v in runtime_result.get("priors", {}).items()},
-        entropy=float(runtime_result.get("entropy", 0.0)),
+        entropy=posterior_entropy,
         stable_regime=str(stable_regime),
         target_allocation=target_allocation,
         logic_trace=[
             {"step": "probabilistic_inference", "result": runtime_result["probabilities"]},
             {"step": "price_topology", "result": runtime_result.get("price_topology", {})},
             {"step": "bayesian_diagnostics", "result": runtime_result.get("v13_4_diagnostics", {})},
-            {"step": "entropy_haircut", "result": {"entropy": runtime_result.get("entropy", 0.0)}},
+            {
+                "step": "entropy_haircut",
+                "result": {
+                    "posterior_entropy": posterior_entropy,
+                    "effective_entropy": effective_entropy,
+                },
+            },
             {"step": "execution_overlay", "result": runtime_result.get("overlay", {})},
             {"step": "position_sizing", "result": runtime_result["target_allocation"]},
             {"step": "deployment_policy", "result": deployment},
@@ -164,7 +173,8 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
         explanation=explanation,
         metadata={
             "engine_version": ENGINE_VERSION,
-            "quality_audit": runtime_result.get("quality_audit", {}),
+            "quality_audit": quality_audit,
+            "effective_entropy": effective_entropy,
             "feature_values": runtime_result.get("feature_values", {}),
             "prior_details": runtime_result.get("prior_details", {}),
             "deployment_readiness": float(runtime_result.get("deployment_readiness", 0.0)),
@@ -390,6 +400,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     sync_files = [
         "data/signals.db",
         "data/macro_historical_dump.csv",
+        "data/qqq_history_cache.csv",
         prior_file_path,
     ]
     if not cloud.pull_state(sync_files):
@@ -414,10 +425,9 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     )
     audit_report = guardian.audit()
     if not audit_report.is_healthy:
-        logger.warning("Bootstrap Guardian: Issues detected. Auto-repairing...")
-        repair_result = guardian.repair(audit_report)
-        logger.info("Bootstrap Guardian: Repaired %d rows, %d fields.",
-                    repair_result.total_rows_added, repair_result.total_fields_repaired)
+        raise RuntimeError(
+            "Bootstrap Guardian unhealthy; refusing to continue with a non-artifact cold start."
+        )
     # ── END Guardian ──────────────────────────────────────
 
     logger.info("Fetching market data...")

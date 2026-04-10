@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 
 @dataclass
@@ -23,11 +23,11 @@ class BootstrapAuditReport:
     macro_gaps: list[MacroGap] = field(default_factory=list)
     price_cache_staleness: CacheStaleness = field(default_factory=lambda: CacheStaleness(None, 0))
     field_completeness: FieldCompleteness = field(default_factory=FieldCompleteness)
-    audit_timestamp: datetime = field(default_factory=datetime.utcnow)
+    audit_timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     is_healthy: bool = True
 
 @dataclass
 class BootstrapRepairResult:
     total_rows_added: int = 0
     total_fields_repaired: int = 0
-    repair_timestamp: datetime = field(default_factory=datetime.utcnow)
+    repair_timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
