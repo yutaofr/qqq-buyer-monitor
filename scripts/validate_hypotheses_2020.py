@@ -9,6 +9,7 @@ from src.engine.v11.conductor import V11Conductor
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+
 def validate_hypotheses():
     print("--- HYPOTHESIS VALIDATION: MARCH 2020 LOCK ---")
 
@@ -22,7 +23,7 @@ def validate_hypotheses():
         return
 
     # Define the "Locked" date
-    target_date = pd.to_datetime("2020-03-23") # Deep into the crash
+    target_date = pd.to_datetime("2020-03-23")  # Deep into the crash
 
     print(f"Original Columns: {data.columns.tolist()}")
 
@@ -41,15 +42,18 @@ def validate_hypotheses():
     renamed_data = data.copy()
     # Aligning with src/engine/v11/conductor.py's _v12_quality_field_specs
     # and ProbabilitySeeder's src config
-    renamed_data = renamed_data.rename(columns={
-        "BAMLH0A0HYM2": "credit_spread_bps",
-        "VIXCLS": "stress_vix", # In quality audit it maps to VIXCLS? No, check conductor
-        "T10Y2Y": "liquidity_slope",
-        "^VXN": "stress_vxn"
-    })
+    renamed_data = renamed_data.rename(
+        columns={
+            "BAMLH0A0HYM2": "credit_spread_bps",
+            "VIXCLS": "stress_vix",  # In quality audit it maps to VIXCLS? No, check conductor
+            "T10Y2Y": "liquidity_slope",
+            "^VXN": "stress_vxn",
+        }
+    )
 
     # Note: real_yield is STILL MISSING. Let's see if we can still break the uniform distribution.
     run_daily_audit(conductor, renamed_data.loc[:target_date], target_date)
+
 
 def run_daily_audit(conductor, df_context, dt):
     conductor.high_entropy_streak = 0
@@ -76,6 +80,7 @@ def run_daily_audit(conductor, df_context, dt):
             assess_data_quality,
             feature_reliability_weights,
         )
+
         latest_raw = df_context.loc[dt]
         quality_audit = assess_data_quality(
             latest_raw,
@@ -110,10 +115,13 @@ def run_daily_audit(conductor, df_context, dt):
             tau=tau,
         )
 
-        print(f"    Uniform: {diag.get('was_uniform')} | Top: {max(posteriors, key=posteriors.get)} ({posteriors[max(posteriors, key=posteriors.get)]:.2%})")
+        print(
+            f"    Uniform: {diag.get('was_uniform')} | Top: {max(posteriors, key=posteriors.get)} ({posteriors[max(posteriors, key=posteriors.get)]:.2%})"
+        )
 
     except Exception as e:
         print(f"    Error: {e}")
+
 
 if __name__ == "__main__":
     validate_hypotheses()

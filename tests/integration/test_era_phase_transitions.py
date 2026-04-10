@@ -8,6 +8,7 @@ from src.backtest import run_v11_audit
 
 print(f"DIAG_BACKTEST_FILE: {inspect.getfile(run_v11_audit)}")
 
+
 class TestEraPhaseTransitions(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -29,8 +30,8 @@ class TestEraPhaseTransitions(unittest.TestCase):
                 "price_cache_path": self.price_cache_path,
                 "allow_price_download": False,
                 "price_end_date": end_date,
-                "save_plots": False # Speed up
-            }
+                "save_plots": False,  # Speed up
+            },
         )
         # Read the probabilities trace
         prob_trace = pd.read_csv(window_dir / "probability_audit.csv", parse_dates=["date"])
@@ -53,7 +54,10 @@ class TestEraPhaseTransitions(unittest.TestCase):
         print(f"\n[2020 COVID] Max BUST Momentum: {max_momentum:.4f}")
 
         # Assert that we saw a 'Conviction Spike' (> 0.05 change in a single day)
-        self.assertTrue(max_momentum > 0.05, f"Insufficient BUST momentum during COVID crash: {max_momentum:.4f}")
+        self.assertTrue(
+            max_momentum > 0.05,
+            f"Insufficient BUST momentum during COVID crash: {max_momentum:.4f}",
+        )
 
         # 2. Transition to RECOVERY should follow the bottom (March 23)
         recovery_momentum = trace["prob_RECOVERY"].diff().loc["2020-03-23":"2020-04-05"]
@@ -74,7 +78,10 @@ class TestEraPhaseTransitions(unittest.TestCase):
 
         print(f"\n[2022 Pivot] Max LATE_CYCLE Momentum: {max_lc_momentum:.4f}")
         # Expected to see a steady shift
-        self.assertTrue(max_lc_momentum > 0.03, "Insufficient LATE_CYCLE momentum during 2022 transition")
+        self.assertTrue(
+            max_lc_momentum > 0.03, "Insufficient LATE_CYCLE momentum during 2022 transition"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -63,9 +63,7 @@ def _run_mainline_trace(
     trace_path = artifact_dir / "regime_process_trace.csv"
     if not trace_path.exists():
         trace_path = artifact_dir / "full_audit.csv"
-    return _read_trace(trace_path), _read_summary(
-        artifact_dir / "summary.json"
-    )
+    return _read_trace(trace_path), _read_summary(artifact_dir / "summary.json")
 
 
 def _scenario_report(frame: pd.DataFrame) -> pd.DataFrame:
@@ -89,9 +87,7 @@ def _select_candidate(calibration_report: pd.DataFrame) -> tuple[dict[str, Any],
     try:
         return choose_production_candidate(calibration_report), False
     except ValueError:
-        baseline_row = calibration_report.loc[
-            calibration_report["scenario"] == "standard"
-        ].iloc[0]
+        baseline_row = calibration_report.loc[calibration_report["scenario"] == "standard"].iloc[0]
         fallback = baseline_row.to_dict()
         fallback["selection_failed_closed"] = True
         return fallback, True
@@ -271,7 +267,9 @@ def _write_report(
         handle.write("## Calibration Winner\n\n")
         if selection_failed_closed:
             handle.write("- No scenario cleared the acceptance contract in calibration.\n")
-            handle.write("- Report is fail-closed; `standard` is shown below only as the baseline reference.\n\n")
+            handle.write(
+                "- Report is fail-closed; `standard` is shown below only as the baseline reference.\n\n"
+            )
         else:
             handle.write(
                 f"- Scenario: `{selected_candidate['scenario']}`\n"
@@ -289,7 +287,9 @@ def _write_report(
 
         handle.write("\n## Production Recommendation\n\n")
         if selection_failed_closed:
-            handle.write("- Fail closed: no scenario, including `standard`, cleared the regime-process acceptance gate.\n")
+            handle.write(
+                "- Fail closed: no scenario, including `standard`, cleared the regime-process acceptance gate.\n"
+            )
             handle.write(
                 "- Keep all panorama variants in diagnostic mode until the mainline process metrics themselves are repaired.\n"
             )
@@ -337,7 +337,9 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError(
             f"Full-support boundary not found in {args.regime_path}; cannot tighten evaluation_start."
         )
-    mainline_evaluation_start = max(pd.Timestamp(artifacts["oos_start"]), pd.Timestamp(mainline_start))
+    mainline_evaluation_start = max(
+        pd.Timestamp(artifacts["oos_start"]), pd.Timestamp(mainline_start)
+    )
 
     output_dir = Path(args.output_dir)
     mainline_trace, mainline_summary = _run_mainline_trace(

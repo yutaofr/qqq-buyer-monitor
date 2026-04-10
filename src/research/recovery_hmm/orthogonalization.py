@@ -24,7 +24,9 @@ class FittedPcaProjection:
     explained_variance_ratio_sum: float
 
     def transform(self, feature_frame: pd.DataFrame) -> pd.DataFrame:
-        numeric = feature_frame.loc[:, self.means.index].apply(pd.to_numeric, errors="coerce").dropna()
+        numeric = (
+            feature_frame.loc[:, self.means.index].apply(pd.to_numeric, errors="coerce").dropna()
+        )
         standardized = (numeric - self.means) / self.stds
         transformed = self.pca.transform(standardized)[:, : len(self.components)]
         return pd.DataFrame(transformed, index=standardized.index, columns=self.components)

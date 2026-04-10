@@ -32,4 +32,3 @@ def test_print_signal_includes_probability_dynamics(capsys):
     assert "Probability Dynamics" in out
     assert "MID_CYCLE" in out
     assert "dP=-5.0%" in out
-

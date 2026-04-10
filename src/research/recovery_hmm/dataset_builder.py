@@ -32,13 +32,18 @@ def _load_qqq_history(path: str | Path) -> pd.DataFrame:
     frame = pd.read_csv(path)
     date_column = "Date" if "Date" in frame.columns else frame.columns[0]
     close_column = "Close" if "Close" in frame.columns else "close"
-    frame[date_column] = pd.to_datetime(frame[date_column], errors="coerce", utc=True).dt.tz_convert(None)
+    frame[date_column] = pd.to_datetime(
+        frame[date_column], errors="coerce", utc=True
+    ).dt.tz_convert(None)
     frame["observation_date"] = frame[date_column].dt.normalize()
     frame["qqq_close"] = pd.to_numeric(frame[close_column], errors="coerce")
     frame = frame.dropna(subset=["observation_date", "qqq_close"])
-    return frame.loc[:, ["observation_date", "qqq_close"]].drop_duplicates("observation_date").set_index(
-        "observation_date"
-    ).sort_index()
+    return (
+        frame.loc[:, ["observation_date", "qqq_close"]]
+        .drop_duplicates("observation_date")
+        .set_index("observation_date")
+        .sort_index()
+    )
 
 
 def _business_calendar(*indices: pd.Index) -> pd.DatetimeIndex:
@@ -47,9 +52,13 @@ def _business_calendar(*indices: pd.Index) -> pd.DatetimeIndex:
     return pd.bdate_range(min(mins), max(maxs))
 
 
-def _align_series(frame: pd.DataFrame, column: str, calendar: pd.DatetimeIndex, lag_bdays: int) -> pd.Series:
+def _align_series(
+    frame: pd.DataFrame, column: str, calendar: pd.DatetimeIndex, lag_bdays: int
+) -> pd.Series:
     out = frame.copy()
-    out["observation_date"] = pd.to_datetime(out["observation_date"], errors="coerce").dt.normalize()
+    out["observation_date"] = pd.to_datetime(
+        out["observation_date"], errors="coerce"
+    ).dt.normalize()
     out[column] = pd.to_numeric(out[column], errors="coerce")
     out = out.dropna(subset=["observation_date"]).sort_values("observation_date")
     out["effective_date"] = out["observation_date"] + pd.offsets.BDay(lag_bdays)
@@ -95,28 +104,40 @@ def build_shadow_dataset(
     frame = pd.DataFrame(index=calendar)
     source_notes: dict[str, str] = {}
 
-    frame["hy_ig_spread"] = pd.to_numeric(macro["credit_spread_bps"], errors="coerce").reindex(calendar) / 100.0
+    frame["hy_ig_spread"] = (
+        pd.to_numeric(macro["credit_spread_bps"], errors="coerce").reindex(calendar) / 100.0
+    )
     source_notes["hy_ig_spread"] = "mapped from macro_historical_dump.credit_spread_bps / 100"
 
-    frame["real_yield_10y"] = pd.to_numeric(macro["real_yield_10y_pct"], errors="coerce").reindex(calendar) * 100.0
+    frame["real_yield_10y"] = (
+        pd.to_numeric(macro["real_yield_10y_pct"], errors="coerce").reindex(calendar) * 100.0
+    )
     source_notes["real_yield_10y"] = "mapped from macro_historical_dump.real_yield_10y_pct * 100"
 
     if fred_frames["T10Y2Y"] is not None and not fred_frames["T10Y2Y"].empty:
-        frame["curve_10y_2y"] = _align_series(fred_frames["T10Y2Y"], "T10Y2Y", calendar, _FRED_RELEASE_LAG["T10Y2Y"])
+        frame["curve_10y_2y"] = _align_series(
+            fred_frames["T10Y2Y"], "T10Y2Y", calendar, _FRED_RELEASE_LAG["T10Y2Y"]
+        )
         source_notes["curve_10y_2y"] = "direct:fred:T10Y2Y"
 
     if fred_frames["NFCI"] is not None and not fred_frames["NFCI"].empty:
-        frame["chicago_fci"] = _align_series(fred_frames["NFCI"], "NFCI", calendar, _FRED_RELEASE_LAG["NFCI"])
+        frame["chicago_fci"] = _align_series(
+            fred_frames["NFCI"], "NFCI", calendar, _FRED_RELEASE_LAG["NFCI"]
+        )
         source_notes["chicago_fci"] = "direct:fred:NFCI"
 
     if fred_frames["VIXCLS"] is not None and fred_frames["VXVCLS"] is not None:
         vix = _align_series(fred_frames["VIXCLS"], "VIXCLS", calendar, _FRED_RELEASE_LAG["VIXCLS"])
-        vxv = _align_series(fred_frames["VXVCLS"], "VXVCLS", calendar, _FRED_RELEASE_LAG["VXVCLS"]).replace(0.0, np.nan)
+        vxv = _align_series(
+            fred_frames["VXVCLS"], "VXVCLS", calendar, _FRED_RELEASE_LAG["VXVCLS"]
+        ).replace(0.0, np.nan)
         frame["vix_3m_1m_ratio"] = vxv / vix
         source_notes["vix_3m_1m_ratio"] = "direct:fred:VXVCLS/VIXCLS"
 
     if fred_frames["NEWORDER"] is not None and not fred_frames["NEWORDER"].empty:
-        orders = _align_series(fred_frames["NEWORDER"], "NEWORDER", calendar, _FRED_RELEASE_LAG["NEWORDER"])
+        orders = _align_series(
+            fred_frames["NEWORDER"], "NEWORDER", calendar, _FRED_RELEASE_LAG["NEWORDER"]
+        )
         frame["ism_new_orders"] = _orders_inventory_proxy(orders)
         source_notes["ism_new_orders"] = "proxy:fred:NEWORDER 12m pct change"
 

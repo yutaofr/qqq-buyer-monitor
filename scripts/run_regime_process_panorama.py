@@ -46,7 +46,9 @@ def _load_trace(path: Path) -> pd.DataFrame:
 def _window_summary(merged: pd.DataFrame) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     for window_name, (start, end) in WINDOWS.items():
-        frame = merged[(merged["date"] >= pd.Timestamp(start)) & (merged["date"] <= pd.Timestamp(end))].copy()
+        frame = merged[
+            (merged["date"] >= pd.Timestamp(start)) & (merged["date"] <= pd.Timestamp(end))
+        ].copy()
         if frame.empty:
             continue
         prob_hits = []
@@ -75,11 +77,17 @@ def _window_summary(merged: pd.DataFrame) -> pd.DataFrame:
             {
                 "window": window_name,
                 "rows": int(len(frame)),
-                "stable_vs_benchmark_regime": float((frame["stable_regime"] == frame["benchmark_regime"]).mean()),
+                "stable_vs_benchmark_regime": float(
+                    (frame["stable_regime"] == frame["benchmark_regime"]).mean()
+                ),
                 "probability_within_band_share": float(pd.concat(prob_hits, axis=1).stack().mean()),
                 "delta_within_band_share": float(pd.concat(delta_hits, axis=1).stack().mean()),
-                "acceleration_within_band_share": float(pd.concat(accel_hits, axis=1).stack().mean()),
-                "transition_intensity_mean": float(pd.to_numeric(frame["benchmark_transition_intensity"], errors="coerce").mean()),
+                "acceleration_within_band_share": float(
+                    pd.concat(accel_hits, axis=1).stack().mean()
+                ),
+                "transition_intensity_mean": float(
+                    pd.to_numeric(frame["benchmark_transition_intensity"], errors="coerce").mean()
+                ),
             }
         )
     return pd.DataFrame(rows)
@@ -126,9 +134,13 @@ def _write_report(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run regime-process panorama audit for mainline and shadow traces.")
+    parser = argparse.ArgumentParser(
+        description="Run regime-process panorama audit for mainline and shadow traces."
+    )
     parser.add_argument("--price-cache-path", default="data/qqq_history_cache.csv")
-    parser.add_argument("--mainline-trace-path", default="artifacts/v14_panorama/mainline/full_audit.csv")
+    parser.add_argument(
+        "--mainline-trace-path", default="artifacts/v14_panorama/mainline/full_audit.csv"
+    )
     parser.add_argument(
         "--shadow-trace-path",
         default="artifacts/recovery_hmm_shadow/variant_panorama_8yr/recovery_accelerated/shadow_trace.csv",

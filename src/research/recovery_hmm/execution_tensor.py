@@ -1,4 +1,5 @@
 """Hardcoded shadow execution tensor for the recovery HMM research track."""
+
 from __future__ import annotations
 
 BASE_WEIGHTS = {
@@ -46,7 +47,9 @@ def compute_shadow_weight(
     )
     m_fdas = float(fdas_multiplier) if fdas_triggered else 1.0
     w_final_raw = w_base * m_entropy * m_fdas
-    w_final = max(float(production_floor), w_final_raw) if preserve_production_floor else w_final_raw
+    w_final = (
+        max(float(production_floor), w_final_raw) if preserve_production_floor else w_final_raw
+    )
     return {
         "w_base": w_base,
         "m_entropy": m_entropy,

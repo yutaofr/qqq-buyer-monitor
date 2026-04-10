@@ -162,12 +162,13 @@ class PriorKnowledgeBase:
         transition_prior = {regime: 0.0 for regime in self.regimes}
 
         import os
+
         disable_inertia = os.environ.get("DISABLE_REGIME_INERTIA", "OFF") == "ON"
 
         # 1. Macro Stability Check (Mid-Cycle Anchor)
         move_z = abs(float((macro_values or {}).get("move_21d", 0.0)))
         spread_z = abs(float((macro_values or {}).get("spread_21d", 0.0)))
-        is_stable = (move_z < 1.0 and spread_z < 1.0)
+        is_stable = move_z < 1.0 and spread_z < 1.0
 
         # V14.3: Structural Cycle Transition Path
         # RECOVERY -> MID_CYCLE -> LATE_CYCLE -> BUST -> RECOVERY
@@ -194,7 +195,7 @@ class PriorKnowledgeBase:
                     # In v14.5, we already have this in the inertia_map
                     pass
             else:
-                inertia = 0.25 # Neutralize inertia for experimental audit
+                inertia = 0.25  # Neutralize inertia for experimental audit
 
             # Sequence Bias: Instead of uniform remainder, favor the NEXT regime in the cycle
             next_regime = next_regime_map.get(regime)
@@ -291,7 +292,7 @@ class PriorKnowledgeBase:
     def _recovery_prior_release_score(macro_values: dict[str, float] | None) -> float:
         context = macro_values or {}
         topology_regime = str(context.get("price_topology_regime", ""))
-        if topology_regime not in {"RECOVERY", "LATE_CYCLE"}:
+        if topology_regime not in {"RECOVERY", "LATE_CYCLE", "BUST"}:
             return 0.0
 
         confidence = float(context.get("price_topology_confidence", 0.0) or 0.0)
@@ -305,25 +306,32 @@ class PriorKnowledgeBase:
         )
 
         if (
-            transition_intensity < 0.60
-            or repair_persistence < 0.30
-            or recovery_impulse < 0.20
-            or damage_memory < 0.35
+            transition_intensity < 0.52
+            or repair_persistence < 0.24
+            or recovery_impulse < 0.16
+            or damage_memory < 0.30
+        ):
+            return 0.0
+        if topology_regime == "BUST" and (
+            transition_intensity < 0.62
+            or repair_persistence < 0.28
+            or recovery_impulse < 0.18
+            or damage_memory < 0.50
         ):
             return 0.0
         if topology_regime == "LATE_CYCLE" and (
-            transition_intensity < 0.80
-            or repair_persistence < 0.35
-            or recovery_impulse < 0.25
+            transition_intensity < 0.72
+            or repair_persistence < 0.30
+            or recovery_impulse < 0.20
             or damage_memory < 0.55
         ):
             return 0.0
 
         confidence_support = np.clip((confidence - 0.08) / 0.22, 0.0, 1.0)
-        transition_support = np.clip((transition_intensity - 0.60) / 0.30, 0.0, 1.0)
-        repair_support = np.clip((repair_persistence - 0.30) / 0.35, 0.0, 1.0)
-        impulse_support = np.clip((recovery_impulse - 0.20) / 0.45, 0.0, 1.0)
-        damage_support = np.clip((damage_memory - 0.35) / 0.45, 0.0, 1.0)
+        transition_support = np.clip((transition_intensity - 0.52) / 0.30, 0.0, 1.0)
+        repair_support = np.clip((repair_persistence - 0.24) / 0.35, 0.0, 1.0)
+        impulse_support = np.clip((recovery_impulse - 0.16) / 0.45, 0.0, 1.0)
+        damage_support = np.clip((damage_memory - 0.30) / 0.45, 0.0, 1.0)
         delta_support = np.clip((recovery_prob_delta - 0.005) / 0.03, 0.0, 1.0)
         acceleration_support = np.clip(recovery_prob_acceleration / 0.03, 0.0, 1.0)
 
@@ -338,6 +346,8 @@ class PriorKnowledgeBase:
         )
         if topology_regime == "LATE_CYCLE":
             score *= 0.85
+        elif topology_regime == "BUST":
+            score *= 0.92
         return float(np.clip(score, 0.0, 1.0))
 
     def _apply_recovery_release_to_posterior_prior(

@@ -6,15 +6,14 @@ import numpy as np
 from src.engine.v11.conductor import V11Conductor
 
 # Setup logging
-logging.basicConfig(level=logging.WARNING) # Reduce noise
+logging.basicConfig(level=logging.WARNING)  # Reduce noise
 logger = logging.getLogger(__name__)
+
 
 def evaluate_config(anchor_floor, mid_inertia, bleed_eps=1e-15):
     prior_path = f"tmp/prior_{anchor_floor}_{mid_inertia}.json"
     if os.path.exists(prior_path):
         os.remove(prior_path)
-
-
 
     def patched_norm(self, weights):
         if not weights:
@@ -25,7 +24,10 @@ def evaluate_config(anchor_floor, mid_inertia, bleed_eps=1e-15):
             n = len(sanitized)
             return {k: 1.0 / n for k in sanitized}
         # Inject custom bleed_eps
-        return {k: (v + bleed_eps) / (total + (len(sanitized) * bleed_eps)) for k, v in sanitized.items()}
+        return {
+            k: (v + bleed_eps) / (total + (len(sanitized) * bleed_eps))
+            for k, v in sanitized.items()
+        }
 
     # We need to reach into the method and change the hardcoded 0.5
     # Since we can't easily change the code on the fly without replace_file_content,
@@ -39,12 +41,10 @@ def evaluate_config(anchor_floor, mid_inertia, bleed_eps=1e-15):
     # but for now, let's just use the current code to confirm the 100% lock
     # once the circuit breaker is disabled.
 
-    conductor = V11Conductor(
-        training_cutoff="2018-01-01",
-        prior_state_path=prior_path
-    )
+    conductor = V11Conductor(training_cutoff="2018-01-01", prior_state_path=prior_path)
 
     from src.engine.baseline.data_loader import load_all_baseline_data
+
     data = load_all_baseline_data()
     eval_dates = data.index[(data.index >= "2026-01-01") & (data.index <= "2026-01-31")].unique()
 
@@ -61,6 +61,7 @@ def evaluate_config(anchor_floor, mid_inertia, bleed_eps=1e-15):
         results.append(probs.get("MID_CYCLE", 0.0))
 
     return np.mean(results), np.max(results), np.min(results)
+
 
 if __name__ == "__main__":
     print("Evaluating BASELINE (Current Code, Circuit Breaker Disabled)...")

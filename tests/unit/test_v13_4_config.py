@@ -56,9 +56,7 @@ class TestV13_4Config(unittest.TestCase):
         self.assertEqual(get_v13_4_feature_weight("liquidity_252d", self.registry), 2.0)
 
         # 2. Lineage inheritance (Longest prefix match)
-        self.assertEqual(
-            get_v13_4_feature_weight("spread_21d_accel", self.registry), 2.5
-        )
+        self.assertEqual(get_v13_4_feature_weight("spread_21d_accel", self.registry), 2.5)
         self.assertEqual(get_v13_4_feature_weight("move_21d", self.registry), 1.5)
 
         # 3. Fallback

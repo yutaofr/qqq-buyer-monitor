@@ -244,7 +244,9 @@ def test_price_topology_likelihood_penalties_use_runtime_priors_to_veto_stale_bu
 
 def test_price_topology_is_neutral_without_price_columns():
     dates = pd.bdate_range("2024-01-01", periods=40)
-    frame = pd.DataFrame({"observation_date": dates, "credit_spread_bps": np.linspace(300.0, 350.0, 40)})
+    frame = pd.DataFrame(
+        {"observation_date": dates, "credit_spread_bps": np.linspace(300.0, 350.0, 40)}
+    )
 
     topology = infer_price_topology_state(frame)
     blended = blend_posteriors_with_topology(
@@ -300,7 +302,9 @@ def test_price_topology_dampens_when_transition_band_is_wide(monkeypatch):
     assert high_transition.beta_anchor_weight < low_transition.beta_anchor_weight
 
 
-def test_price_topology_preserves_recovery_confidence_during_repair_confirmed_transition(monkeypatch):
+def test_price_topology_preserves_recovery_confidence_during_repair_confirmed_transition(
+    monkeypatch,
+):
     dates = pd.bdate_range("2024-01-01", periods=5)
     frame = pd.DataFrame(
         {

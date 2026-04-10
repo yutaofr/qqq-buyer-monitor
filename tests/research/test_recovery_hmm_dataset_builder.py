@@ -105,4 +105,3 @@ def test_build_shadow_dataset_marks_proxy_fields_explicitly(tmp_path, monkeypatc
     assert "proxy" in report.source_notes["ism_new_orders"].lower()
     assert "proxy" in report.source_notes["ism_inventories"].lower()
     assert "proxy" in report.source_notes["qqq_skew_20d_mean"].lower()
-

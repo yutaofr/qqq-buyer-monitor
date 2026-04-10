@@ -20,7 +20,7 @@ class BayesianInferenceEngine:
         if total <= 0:
             n = len(sanitized)
             return {k: 1.0 / n for k in sanitized}
-        eps = 1e-6 # v14.4 FIX: Increased bleed epsilon for industrial visibility in UI
+        eps = 1e-6  # v14.4 FIX: Increased bleed epsilon for industrial visibility in UI
         return {k: (v + eps) / (total + (len(sanitized) * eps)) for k, v in sanitized.items()}
 
     def infer_gaussian_nb_posterior(
@@ -85,6 +85,7 @@ class BayesianInferenceEngine:
             level_contributions = {str(regime): {} for regime in classifier.classes_}
 
             import os
+
             tau_override = os.environ.get("INFERENCE_TAU_OVERRIDE")
             if tau_override:
                 base_tau = max(0.01, float(tau_override))
@@ -105,26 +106,23 @@ class BayesianInferenceEngine:
                 # To prevent 'Numerical Zero-Collapse' and ensure it acts as the Ground State.
                 # Only active in Production/Backtest, bypassed in Unit Tests to allow precise verification.
                 import os
+
                 is_test = "PYTEST_CURRENT_TEST" in os.environ
                 disable_anchor = os.environ.get("DISABLE_MID_CYCLE_ANCHOR", "OFF") == "ON"
 
                 sp_z_abs = abs(feature_values.get("spread_21d", 0.0)) if feature_values else 0.0
                 move_z_abs = abs(feature_values.get("move_21d", 0.0)) if feature_values else 0.0
-                qqq_ma_ratio = float(feature_values.get("qqq_ma_ratio", 0.0)) if feature_values else 0.0
+                qqq_ma_ratio = (
+                    float(feature_values.get("qqq_ma_ratio", 0.0)) if feature_values else 0.0
+                )
                 qqq_pv_divergence = (
-                    float(feature_values.get("qqq_pv_divergence_z", 0.0))
-                    if feature_values
-                    else 0.0
+                    float(feature_values.get("qqq_pv_divergence_z", 0.0)) if feature_values else 0.0
                 )
                 liquidity_velocity = (
-                    float(feature_values.get("liquidity_velocity", 0.0))
-                    if feature_values
-                    else 0.0
+                    float(feature_values.get("liquidity_velocity", 0.0)) if feature_values else 0.0
                 )
                 credit_acceleration = (
-                    float(feature_values.get("credit_acceleration", 0.0))
-                    if feature_values
-                    else 0.0
+                    float(feature_values.get("credit_acceleration", 0.0)) if feature_values else 0.0
                 )
                 is_stable = (
                     sp_z_abs < 1.0
@@ -137,12 +135,16 @@ class BayesianInferenceEngine:
                 recovery_transition_window = False
                 if feature_values:
                     recovery_transition_window = (
-                        str(feature_values.get("price_topology_regime", "")) in {"RECOVERY", "LATE_CYCLE"}
-                        and float(feature_values.get("price_topology_confidence", 0.0)) >= 0.12
-                        and float(feature_values.get("price_topology_transition_intensity", 0.0)) >= 0.70
-                        and float(feature_values.get("price_topology_repair_persistence", 0.0)) >= 0.30
-                        and float(feature_values.get("price_topology_recovery_impulse", 0.0)) >= 0.25
-                        and float(feature_values.get("price_topology_damage_memory", 0.0)) >= 0.45
+                        str(feature_values.get("price_topology_regime", ""))
+                        in {"RECOVERY", "LATE_CYCLE", "BUST"}
+                        and float(feature_values.get("price_topology_confidence", 0.0)) >= 0.10
+                        and float(feature_values.get("price_topology_transition_intensity", 0.0))
+                        >= 0.62
+                        and float(feature_values.get("price_topology_repair_persistence", 0.0))
+                        >= 0.26
+                        and float(feature_values.get("price_topology_recovery_impulse", 0.0))
+                        >= 0.18
+                        and float(feature_values.get("price_topology_damage_memory", 0.0)) >= 0.38
                     )
 
                 min_lh_eps = eps
@@ -172,7 +174,9 @@ class BayesianInferenceEngine:
                 raw_log_lhs[regime_key] = float(anchored_log_lh / base_tau)
 
                 # v14.5 FORENSIC LOGGING - UNCONDITIONAL FOR DEBUG
-                logger.debug(f"DEBUG_LH: {regime_key} | RawLogL: {raw_sum_lh:.2f} | Tau: {base_tau}")
+                logger.debug(
+                    f"DEBUG_LH: {regime_key} | RawLogL: {raw_sum_lh:.2f} | Tau: {base_tau}"
+                )
 
                 scaled_log_lh = feature_log_lh / base_tau
 
@@ -209,8 +213,7 @@ class BayesianInferenceEngine:
             }
             total_unnorm = sum(unnorm_post.values())
             is_uniform = all(
-                abs(v - 1.0 / len(raw_evidence_dist)) < 1e-9
-                for v in raw_evidence_dist.values()
+                abs(v - 1.0 / len(raw_evidence_dist)) < 1e-9 for v in raw_evidence_dist.values()
             )
 
             if total_unnorm > 0 and not any(np.isnan(v) for v in unnorm_post.values()):
@@ -219,7 +222,9 @@ class BayesianInferenceEngine:
                 posteriors = runtime
 
             diagnostics = {
-                "effective_weights": dict(zip(feature_names, effective_weights.tolist(), strict=True)),
+                "effective_weights": dict(
+                    zip(feature_names, effective_weights.tolist(), strict=True)
+                ),
                 "total_weight": total_weight_sum,
                 "tau_applied": base_tau,
                 "evidence_dist": raw_evidence_dist,
@@ -270,7 +275,9 @@ class BayesianInferenceEngine:
                         for sub_f, sub_e in sub_cond.items():
                             if not isinstance(sub_e, list) or len(sub_e) < 2:
                                 continue
-                            if self._check_condition(feature_values.get(sub_f, 0.0), sub_e[0], sub_e[1]):
+                            if self._check_condition(
+                                feature_values.get(sub_f, 0.0), sub_e[0], sub_e[1]
+                            ):
                                 sub_match = True
                                 break
                         if sub_match:
@@ -314,7 +321,11 @@ class BayesianInferenceEngine:
         """Allow limited RECOVERY mass when repair is confirmed and crash stress is absent."""
         if not penalties or not runtime_priors:
             return penalties
-        if str(feature_values.get("price_topology_regime", "")) != "RECOVERY":
+        if str(feature_values.get("price_topology_regime", "")) not in {
+            "RECOVERY",
+            "LATE_CYCLE",
+            "BUST",
+        }:
             return penalties
 
         liquidity_velocity = float(feature_values.get("liquidity_velocity", 0.0) or 0.0)
@@ -344,10 +355,10 @@ class BayesianInferenceEngine:
 
         if (
             confidence < 0.08
-            or transition < 0.75
-            or persistence < 0.30
-            or impulse < 0.20
-            or damage < 0.40
+            or transition < 0.62
+            or persistence < 0.26
+            or impulse < 0.18
+            or damage < 0.38
             or recovery_prior < 0.20
         ):
             return penalties

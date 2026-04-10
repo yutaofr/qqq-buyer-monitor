@@ -89,11 +89,11 @@ class MarketCursor:
         return (next_open + timedelta(hours=jitter_hours)).to_pydatetime().astimezone(UTC)
 
 
-
 def export_history_json(output_path: str | Path | None = None, limit: int = 126) -> bool:
     """Export the most recent history from signals.db for standard plotting."""
     try:
         from src.store.db import load_history
+
         history = load_history(n=limit)
         if not history:
             return False
@@ -104,10 +104,7 @@ def export_history_json(output_path: str | Path | None = None, limit: int = 126)
         # Simplify history for web consumption (lower payload)
         simplified = []
         for entry in history:
-            simplified.append({
-                "date": entry["date"],
-                "probabilities": entry["probabilities"]
-            })
+            simplified.append({"date": entry["date"], "probabilities": entry["probabilities"]})
 
         path = Path(output_path) if output_path else Path("src/web/public/history.json")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -125,7 +122,18 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         now_utc = datetime.now(UTC)
         cursor = MarketCursor()
 
-        stable_regime = canonicalize_regime_name(result.stable_regime) or result.stable_regime
+        posterior_regime = (
+            canonicalize_regime_name(
+                (result.metadata or {}).get("posterior_regime", result.stable_regime)
+            )
+            or result.stable_regime
+        )
+        execution_regime = (
+            canonicalize_regime_name(
+                (result.metadata or {}).get("execution_regime", result.stable_regime)
+            )
+            or result.stable_regime
+        )
         probabilities = merge_regime_weights(
             result.probabilities,
             regimes=ACTIVE_REGIME_ORDER,
@@ -136,7 +144,9 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
             regimes=ACTIVE_REGIME_ORDER,
             include_zeros=True,
         )
-        regime_info = REGIME_MAP.get(stable_regime, {"label": stable_regime, "desc": "Unknown"})
+        regime_info = REGIME_MAP.get(
+            posterior_regime, {"label": posterior_regime, "desc": "Unknown"}
+        )
         metadata = result.metadata or {}
         execution_overlay = metadata.get("execution_overlay", {})
 
@@ -150,7 +160,8 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 execution_bucket = str(guard_res.get("target_bucket", execution_bucket))
 
         raw_regime = (
-            canonicalize_regime_name(metadata.get("raw_regime", stable_regime)) or stable_regime
+            canonicalize_regime_name(metadata.get("raw_regime", posterior_regime))
+            or posterior_regime
         )
         deployment_state = str(metadata.get("deployment_state", "DEPLOY_BASE"))
         deployment_state_key = str(
@@ -168,13 +179,15 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
             "signal": {
                 "regime": regime_info["label"],
                 "regime_desc": regime_info["desc"],
-                "stable_regime": stable_regime,
+                "posterior_regime": posterior_regime,
+                "stable_regime": posterior_regime,
+                "execution_regime": execution_regime,
                 "raw_regime": raw_regime,
                 "target_beta": result.target_beta,
                 "raw_target_beta": metadata.get("raw_target_beta", result.target_beta),
                 "raw_target_beta_pre_floor": metadata.get(
                     "raw_target_beta_pre_floor",
-                        metadata.get("raw_target_beta", result.target_beta),
+                    metadata.get("raw_target_beta", result.target_beta),
                 ),
                 "protected_beta": metadata.get(
                     "protected_beta", metadata.get("raw_target_beta", result.target_beta)
@@ -212,11 +225,14 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                     "qld_pct": result.target_allocation.target_qld_pct,
                     "cash_pct": result.target_allocation.target_cash_pct,
                 },
-                "resonance": metadata.get("signal", {}).get("resonance", {
-                    "action": "HOLD",
-                    "confidence": 0.0,
-                    "reason": "Resonance Engine Initializing"
-                }),
+                "resonance": metadata.get("signal", {}).get(
+                    "resonance",
+                    {
+                        "action": "HOLD",
+                        "confidence": 0.0,
+                        "reason": "Resonance Engine Initializing",
+                    },
+                ),
             },
             "evidence": {
                 "logic_trace": result.logic_trace,

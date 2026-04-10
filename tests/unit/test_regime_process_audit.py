@@ -62,14 +62,26 @@ def test_compute_regime_process_alignment_scores_within_band_share():
         }
     )
     for regime in ("MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"):
-        benchmark[f"benchmark_prob_delta_{regime}"] = benchmark[f"benchmark_prob_{regime}"].diff().fillna(0.0)
-        benchmark[f"benchmark_prob_acceleration_{regime}"] = benchmark[f"benchmark_prob_delta_{regime}"].diff().fillna(0.0)
+        benchmark[f"benchmark_prob_delta_{regime}"] = (
+            benchmark[f"benchmark_prob_{regime}"].diff().fillna(0.0)
+        )
+        benchmark[f"benchmark_prob_acceleration_{regime}"] = (
+            benchmark[f"benchmark_prob_delta_{regime}"].diff().fillna(0.0)
+        )
         benchmark[f"benchmark_prob_lower_{regime}"] = benchmark[f"benchmark_prob_{regime}"] - 0.05
         benchmark[f"benchmark_prob_upper_{regime}"] = benchmark[f"benchmark_prob_{regime}"] + 0.05
-        benchmark[f"benchmark_prob_delta_lower_{regime}"] = benchmark[f"benchmark_prob_delta_{regime}"] - 0.03
-        benchmark[f"benchmark_prob_delta_upper_{regime}"] = benchmark[f"benchmark_prob_delta_{regime}"] + 0.03
-        benchmark[f"benchmark_prob_acceleration_lower_{regime}"] = benchmark[f"benchmark_prob_acceleration_{regime}"] - 0.03
-        benchmark[f"benchmark_prob_acceleration_upper_{regime}"] = benchmark[f"benchmark_prob_acceleration_{regime}"] + 0.03
+        benchmark[f"benchmark_prob_delta_lower_{regime}"] = (
+            benchmark[f"benchmark_prob_delta_{regime}"] - 0.03
+        )
+        benchmark[f"benchmark_prob_delta_upper_{regime}"] = (
+            benchmark[f"benchmark_prob_delta_{regime}"] + 0.03
+        )
+        benchmark[f"benchmark_prob_acceleration_lower_{regime}"] = (
+            benchmark[f"benchmark_prob_acceleration_{regime}"] - 0.03
+        )
+        benchmark[f"benchmark_prob_acceleration_upper_{regime}"] = (
+            benchmark[f"benchmark_prob_acceleration_{regime}"] + 0.03
+        )
 
     model = pd.DataFrame(
         {
@@ -186,10 +198,12 @@ def test_compute_regime_process_alignment_widens_bands_for_noisy_stable_windows(
     merged, _ = compute_regime_process_alignment(model, benchmark)
 
     tight_prob_width = (
-        merged.loc[0, "benchmark_prob_upper_MID_CYCLE"] - merged.loc[0, "benchmark_prob_lower_MID_CYCLE"]
+        merged.loc[0, "benchmark_prob_upper_MID_CYCLE"]
+        - merged.loc[0, "benchmark_prob_lower_MID_CYCLE"]
     )
     noisy_prob_width = (
-        merged.loc[1, "benchmark_prob_upper_MID_CYCLE"] - merged.loc[1, "benchmark_prob_lower_MID_CYCLE"]
+        merged.loc[1, "benchmark_prob_upper_MID_CYCLE"]
+        - merged.loc[1, "benchmark_prob_lower_MID_CYCLE"]
     )
     tight_entropy_width = (
         merged.loc[0, "benchmark_entropy_upper"] - merged.loc[0, "benchmark_entropy_lower"]

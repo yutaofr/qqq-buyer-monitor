@@ -203,9 +203,7 @@ class SovereignMemoryBooster:
             spread = row["credit_spread_bps"]
 
             row["forward_pe"] = (
-                100.0 / (erp + yield_10y + 0.05)
-                if erp + yield_10y + 0.05 > 0
-                else 20.0
+                100.0 / (erp + yield_10y + 0.05) if erp + yield_10y + 0.05 > 0 else 20.0
             )
             row["credit_acceleration_pct_10d"] = np.random.normal(0, 0.5)
             row["liquidity_roc_pct_4w"] = np.random.normal(0, 1.0)
@@ -255,4 +253,6 @@ class SovereignMemoryBooster:
 
         df[macro_cols].to_csv(self.macro_path, index=False)
         df[regime_cols].to_csv(self.regime_path, index=False)
-        logger.info("V12 DNA: Sovereign Memory reseeded with %d points covering all 51 columns.", len(df))
+        logger.info(
+            "V12 DNA: Sovereign Memory reseeded with %d points covering all 51 columns.", len(df)
+        )

@@ -84,9 +84,8 @@ def build_worldview_benchmark(
         * _positive(_bounded(45.0 - weekly_rsi, 10.0))
         * _positive(_bounded(weekly_rsi_change, 4.0))
     )
-    monthly_rollover = (
-        _positive(_bounded(monthly_rsi - 62.0, 10.0))
-        * _positive(_bounded(-monthly_rsi_change, 3.0))
+    monthly_rollover = _positive(_bounded(monthly_rsi - 62.0, 10.0)) * _positive(
+        _bounded(-monthly_rsi_change, 3.0)
     )
     monthly_repair = (
         recent_damage
@@ -221,10 +220,18 @@ def build_worldview_benchmark(
     benchmark_uncertainty = (1.0 - conviction).clip(lower=0.0, upper=1.0)
     benchmark_trend_strength = pd.concat(
         [
-            (0.55 * trend_up + 0.25 * momentum_up + 0.20 * slope_up).clip(0.0, 1.0).rename("mid_trend"),
-            (0.60 * bust_pressure + 0.20 * trend_down + 0.20 * short_down).clip(0.0, 1.0).rename("bust_trend"),
-            (0.55 * recovery_impulse + 0.20 * gap_improving + 0.15 * short_up).clip(0.0, 1.0).rename("recovery_trend"),
-            (0.50 * trend_drying + 0.25 * divergence + 0.25 * volume_dry_up_pressure.clip(0.0, 1.0)).clip(0.0, 1.0).rename("late_trend"),
+            (0.55 * trend_up + 0.25 * momentum_up + 0.20 * slope_up)
+            .clip(0.0, 1.0)
+            .rename("mid_trend"),
+            (0.60 * bust_pressure + 0.20 * trend_down + 0.20 * short_down)
+            .clip(0.0, 1.0)
+            .rename("bust_trend"),
+            (0.55 * recovery_impulse + 0.20 * gap_improving + 0.15 * short_up)
+            .clip(0.0, 1.0)
+            .rename("recovery_trend"),
+            (0.50 * trend_drying + 0.25 * divergence + 0.25 * volume_dry_up_pressure.clip(0.0, 1.0))
+            .clip(0.0, 1.0)
+            .rename("late_trend"),
         ],
         axis=1,
     ).max(axis=1)
@@ -252,8 +259,12 @@ def build_worldview_benchmark(
         benchmark[f"benchmark_prob_upper_{regime}"] = (
             benchmark[f"benchmark_prob_{regime}"] + prob_band
         ).clip(upper=1.0)
-        benchmark[f"benchmark_prob_delta_lower_{regime}"] = benchmark[f"benchmark_prob_delta_{regime}"] - delta_band
-        benchmark[f"benchmark_prob_delta_upper_{regime}"] = benchmark[f"benchmark_prob_delta_{regime}"] + delta_band
+        benchmark[f"benchmark_prob_delta_lower_{regime}"] = (
+            benchmark[f"benchmark_prob_delta_{regime}"] - delta_band
+        )
+        benchmark[f"benchmark_prob_delta_upper_{regime}"] = (
+            benchmark[f"benchmark_prob_delta_{regime}"] + delta_band
+        )
         benchmark[f"benchmark_prob_acceleration_lower_{regime}"] = (
             benchmark[f"benchmark_prob_acceleration_{regime}"] - acc_band
         )
@@ -406,14 +417,10 @@ def _regime_conditioned_entropy(
         + 0.10 * uncertainty
     )
     mid_transition_allowance = (
-        0.24 * transition_intensity
-        + 0.10 * transition_tension
-        + 0.08 * uncertainty
+        0.24 * transition_intensity + 0.10 * transition_tension + 0.08 * uncertainty
     ).clip(lower=0.0, upper=0.36)
     recovery_transition_allowance = (
-        0.22 * transition_intensity
-        + 0.10 * recent_damage
-        + 0.08 * uncertainty
+        0.22 * transition_intensity + 0.10 * recent_damage + 0.08 * uncertainty
     ).clip(lower=0.0, upper=0.34)
     stable_factor = (1.0 - transition_intensity).clip(lower=0.0, upper=1.0)
     mid_stable_noise_allowance = (
@@ -464,7 +471,9 @@ def _regime_conditioned_entropy(
     )
     entropy += np.where(
         benchmark_regime.eq("RECOVERY"),
-        -0.20 * recovery_confirmation + recovery_transition_allowance + recovery_stable_noise_allowance,
+        -0.20 * recovery_confirmation
+        + recovery_transition_allowance
+        + recovery_stable_noise_allowance,
         0.0,
     )
 
@@ -472,11 +481,15 @@ def _regime_conditioned_entropy(
 
 
 def _bounded(series: pd.Series, scale: float) -> pd.Series:
-    return pd.Series(np.tanh(pd.to_numeric(series, errors="coerce").fillna(0.0) / scale), index=series.index)
+    return pd.Series(
+        np.tanh(pd.to_numeric(series, errors="coerce").fillna(0.0) / scale), index=series.index
+    )
 
 
 def _positive(series: pd.Series) -> pd.Series:
-    return pd.Series(np.clip(pd.to_numeric(series, errors="coerce").fillna(0.0), 0.0, None), index=series.index)
+    return pd.Series(
+        np.clip(pd.to_numeric(series, errors="coerce").fillna(0.0), 0.0, None), index=series.index
+    )
 
 
 def _safe_ratio(left: pd.Series, right: pd.Series) -> pd.Series:

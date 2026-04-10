@@ -6,6 +6,7 @@ import requests
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("verify_connectivity")
 
+
 def verify_fred():
     key = os.environ.get("FRED_API_KEY")
     if not key:
@@ -24,6 +25,7 @@ def verify_fred():
     except Exception as e:
         logger.error(f"FRED connectivity: ERROR ({e})")
         return False
+
 
 def verify_discord():
     url = os.environ.get("ALERT_WEBHOOK_URL")
@@ -46,6 +48,7 @@ def verify_discord():
         logger.error(f"Discord Webhook: ERROR ({e})")
         return False
 
+
 def verify_vercel():
     token = os.environ.get("VERCEL_BLOB_READ_WRITE_TOKEN")
     if not token:
@@ -58,8 +61,11 @@ def verify_vercel():
 
     # We can't easily test without the @vercel/blob SDK or complex auth headers
     # but we can do a simple check.
-    logger.info("Vercel Blob Token: Format OK (Explicit verification skipped due to SDK dependency)")
+    logger.info(
+        "Vercel Blob Token: Format OK (Explicit verification skipped due to SDK dependency)"
+    )
     return True
+
 
 if __name__ == "__main__":
     success = True

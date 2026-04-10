@@ -69,7 +69,11 @@ def test_fetch_shiller_ttm_eps_falls_back_to_cached_macro_history(monkeypatch, t
         }
     ).to_csv(macro_path, index=False)
 
-    monkeypatch.setattr(global_macro, "_load_shiller_sheet", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(
+        global_macro,
+        "_load_shiller_sheet",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
     monkeypatch.setenv("MACRO_DATA_PATH", str(macro_path))
 
     snapshot = global_macro.fetch_shiller_ttm_eps()

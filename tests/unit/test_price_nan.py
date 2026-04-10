@@ -22,7 +22,7 @@ class TestPriceNaN(unittest.TestCase):
                 "Close": [580.0, 581.0, 582.0, 583.0, np.nan],
                 "Volume": [1000, 1100, 1200, 1300, 1400],
             },
-            index=dates
+            index=dates,
         )
 
         with patch("yfinance.Ticker") as mock_ticker:
@@ -35,6 +35,7 @@ class TestPriceNaN(unittest.TestCase):
             self.assertFalse(np.isnan(result["price"]), "Should NOT return NaN anymore.")
             self.assertEqual(result["price"], 583.0)
             self.assertEqual(result["date"], date(2026, 4, 4))
+
 
 if __name__ == "__main__":
     unittest.main()

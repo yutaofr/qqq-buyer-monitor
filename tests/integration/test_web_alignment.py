@@ -50,6 +50,8 @@ def test_web_frontend_contract_alignment():
         "data.signal.entropy",
         "data.signal.probabilities",
         "data.signal.priors",
+        "data.signal.posterior_regime",
+        "data.signal.execution_regime",
         "data.signal.target_beta",
         "data.signal.protected_beta",
         "data.signal.overlay_beta",

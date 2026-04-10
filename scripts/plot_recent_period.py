@@ -10,8 +10,8 @@ def generate_report():
     end_date = "2026-04-07"
 
     if not os.path.exists(trace_path):
-         print(f"Error: {trace_path} does not exist.")
-         return
+        print(f"Error: {trace_path} does not exist.")
+        return
 
     df = pd.read_csv(trace_path, parse_dates=["date"])
     df = df[(df["date"] >= start_date) & (df["date"] <= end_date)].copy()
@@ -20,17 +20,21 @@ def generate_report():
         return
 
     # Merge baseline trace if Tractor/Sidecar absent
-    tractor_prob_col = 'tractor_prob'
-    sidecar_prob_col = 'sidecar_prob'
+    tractor_prob_col = "tractor_prob"
+    sidecar_prob_col = "sidecar_prob"
 
     if tractor_prob_col not in df.columns:
         if os.path.exists("artifacts/v14_panorama/baseline_oos_trace.csv"):
             baseline = pd.read_csv("artifacts/v14_panorama/baseline_oos_trace.csv")
             baseline.rename(columns={baseline.columns[0]: "date"}, inplace=True)
-            baseline['date'] = pd.to_datetime(baseline['date'])
+            baseline["date"] = pd.to_datetime(baseline["date"])
             df = pd.merge(df, baseline, on="date", how="left")
-            df[tractor_prob_col] = pd.to_numeric(df.get(tractor_prob_col, 0), errors="coerce").fillna(0)
-            df[sidecar_prob_col] = pd.to_numeric(df.get(sidecar_prob_col, 0), errors="coerce").fillna(0)
+            df[tractor_prob_col] = pd.to_numeric(
+                df.get(tractor_prob_col, 0), errors="coerce"
+            ).fillna(0)
+            df[sidecar_prob_col] = pd.to_numeric(
+                df.get(sidecar_prob_col, 0), errors="coerce"
+            ).fillna(0)
         else:
             df[tractor_prob_col] = 0
             df[sidecar_prob_col] = 0
@@ -143,8 +147,9 @@ def generate_report():
 """
 
     with open("artifacts/analysis/ml_expert_report.md", "w") as f:
-         f.write(report)
+        f.write(report)
     print("Report written to artifacts/analysis/ml_expert_report.md")
+
 
 if __name__ == "__main__":
     generate_report()

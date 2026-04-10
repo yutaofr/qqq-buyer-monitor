@@ -90,7 +90,9 @@ class V11Conductor:
         self.macro_data_path = str(macro_data_path)
         self.regime_data_path = str(regime_data_path)
         self.snapshot_dir = Path(snapshot_dir)
-        self.training_cutoff = pd.to_datetime(training_cutoff) if training_cutoff is not None else None
+        self.training_cutoff = (
+            pd.to_datetime(training_cutoff) if training_cutoff is not None else None
+        )
         self.price_history_path = str(price_history_path)
         self.price_history = self._load_price_history(price_history_path)
         self.allow_prior_bootstrap_drift = bool(allow_prior_bootstrap_drift)
@@ -128,7 +130,9 @@ class V11Conductor:
         )
         regime_training_view = self.regime_history
         if self.training_cutoff is not None:
-            regime_training_view = regime_training_view[regime_training_view.index < self.training_cutoff]
+            regime_training_view = regime_training_view[
+                regime_training_view.index < self.training_cutoff
+            ]
         self.model_regimes = self._resolve_effective_model_regimes(regime_training_view)
         if not self.model_regimes:
             raise ValueError(
@@ -218,7 +222,9 @@ class V11Conductor:
         )
         self.resonance_detector = ResonanceDetector()
         self.resonance_detector.risk_ready_days = int(
-            execution_state.get("resonance_risk_ready_days", self.resonance_detector.risk_ready_days)
+            execution_state.get(
+                "resonance_risk_ready_days", self.resonance_detector.risk_ready_days
+            )
             or self.resonance_detector.risk_ready_days
         )
         self.resonance_detector.waterfall_ready_days = int(
@@ -245,8 +251,7 @@ class V11Conductor:
             self.mahalanobis_guard.fit_baseline(training_features)
 
         self.inference_engine = BayesianInferenceEngine(
-            base_priors=self._get_base_priors(),
-            kde_models={r: None for r in self.gnb.classes_}
+            base_priors=self._get_base_priors(), kde_models={r: None for r in self.gnb.classes_}
         )
 
     def _validate_canonical_inputs(self) -> None:
@@ -418,7 +423,9 @@ class V11Conductor:
 
         # Log class means to detect "Identity Lock"
         for i, label in enumerate(gnb.classes_):
-             logger.info(f"FORENSIC GNB [{label}]: mean[spread_21d]={gnb.theta_[i][feature_cols.index('spread_21d')]:.4f}, var={gnb.var_[i][feature_cols.index('spread_21d')]:.6f}")
+            logger.info(
+                f"FORENSIC GNB [{label}]: mean[spread_21d]={gnb.theta_[i][feature_cols.index('spread_21d')]:.4f}, var={gnb.var_[i][feature_cols.index('spread_21d')]:.6f}"
+            )
 
         summary = self._validate_model(gnb, feature_count=len(feature_cols))
 
@@ -560,7 +567,9 @@ class V11Conductor:
 
             if self.high_entropy_streak >= 42:
                 # v14.4 FIX: RESET DEADLOCK. If we have been blind for >42 days, we must probe for signal.
-                logger.warning("ULTIMA PERSISTENCE LIMIT REACHED (42d). Resetting high-entropy streak to restore sensors.")
+                logger.warning(
+                    "ULTIMA PERSISTENCE LIMIT REACHED (42d). Resetting high-entropy streak to restore sensors."
+                )
                 self.high_entropy_streak = 0
 
             if self.high_entropy_streak >= 21:
@@ -568,9 +577,14 @@ class V11Conductor:
                     f"ULTIMA CIRCUIT BREAKER ACTIVE: Streak={self.high_entropy_streak}. Dampening non-core sensors."
                 )
                 import copy
+
                 active_registry = copy.deepcopy(self.v13_4_registry)
                 matrix = active_registry.get("feature_weight_matrix", {})
-                core_fields = set(active_registry.get("core_fields", ["spread_21d", "spread_absolute", "real_yield_structural_z"]))
+                core_fields = set(
+                    active_registry.get(
+                        "core_fields", ["spread_21d", "spread_absolute", "real_yield_structural_z"]
+                    )
+                )
 
                 for k in list(matrix.keys()):
                     is_core = any(k.startswith(cf) or cf.startswith(k) for cf in core_fields)
@@ -582,9 +596,14 @@ class V11Conductor:
                     f"PARANOID_MODE ACTIVE: High entropy streak={self.high_entropy_streak}. Damping secondary factors."
                 )
                 import copy
+
                 active_registry = copy.deepcopy(self.v13_4_registry)
                 matrix = active_registry.get("feature_weight_matrix", {})
-                core_fields = set(active_registry.get("core_fields", ["spread_21d", "spread_absolute", "real_yield_structural_z"]))
+                core_fields = set(
+                    active_registry.get(
+                        "core_fields", ["spread_21d", "spread_absolute", "real_yield_structural_z"]
+                    )
+                )
                 for k in matrix:
                     if k not in core_fields:
                         matrix[k] = float(matrix[k]) * 0.7
@@ -596,7 +615,9 @@ class V11Conductor:
                 {
                     "price_topology_regime": str(topology_state.regime),
                     "price_topology_confidence": float(topology_state.confidence),
-                    "price_topology_transition_intensity": float(topology_state.transition_intensity),
+                    "price_topology_transition_intensity": float(
+                        topology_state.transition_intensity
+                    ),
                     "price_topology_repair_persistence": float(topology_state.repair_persistence),
                     "price_topology_recovery_impulse": float(topology_state.recovery_impulse),
                     "price_topology_damage_memory": float(topology_state.damage_memory),

@@ -333,9 +333,7 @@ def find_first_full_support_date(
 
     if isinstance(regimes, pd.DataFrame):
         if "regime" not in regimes.columns:
-            raise ValueError(
-                "Full support detection requires a DataFrame with a `regime` column"
-            )
+            raise ValueError("Full support detection requires a DataFrame with a `regime` column")
         series = regimes["regime"]
         if isinstance(regimes.index, pd.DatetimeIndex):
             timeline = pd.to_datetime(regimes.index, errors="coerce")

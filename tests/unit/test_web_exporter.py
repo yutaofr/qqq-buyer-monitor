@@ -104,6 +104,8 @@ def test_export_web_snapshot_preserves_dual_surface_semantics(tmp_path, monkeypa
         ],
         explanation="v12.0 semantic separation test",
         metadata={
+            "posterior_regime": "LATE_CYCLE",
+            "execution_regime": "MID_CYCLE",
             "raw_regime": "LATE_CYCLE",
             "deployment_state": "DEPLOY_SLOW",
             "deployment_state_key": "SLOW",
@@ -123,8 +125,11 @@ def test_export_web_snapshot_preserves_dual_surface_semantics(tmp_path, monkeypa
 
     assert ok is True
     payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["signal"]["regime"] == "末端 (LATE_CYCLE)"
+    assert payload["signal"]["posterior_regime"] == "LATE_CYCLE"
     assert payload["signal"]["raw_regime"] == "LATE_CYCLE"
-    assert payload["signal"]["stable_regime"] == "MID_CYCLE"
+    assert payload["signal"]["stable_regime"] == "LATE_CYCLE"
+    assert payload["signal"]["execution_regime"] == "MID_CYCLE"
     assert payload["signal"]["deployment_state"] == "DEPLOY_SLOW"
     assert payload["signal"]["deployment_state_key"] == "SLOW"
     assert payload["signal"]["execution_bucket"] == "QQQ"
@@ -174,7 +179,9 @@ def test_export_web_snapshot_includes_probability_dynamics(tmp_path, monkeypatch
         entropy=0.88,
         stable_regime="MID_CYCLE",
         target_allocation=TargetAllocationState(0.2, 0.8, 0.0, 0.8),
-        logic_trace=[{"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QQQ"}}],
+        logic_trace=[
+            {"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QQQ"}}
+        ],
         explanation="probability dynamics",
         metadata={
             "probability_dynamics": {
@@ -214,7 +221,9 @@ def test_export_web_snapshot_preserves_resonance_payload(tmp_path, monkeypatch):
         entropy=0.56,
         stable_regime="MID_CYCLE",
         target_allocation=TargetAllocationState(0.0, 0.9, 0.1, 1.1),
-        logic_trace=[{"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QLD"}}],
+        logic_trace=[
+            {"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QLD"}}
+        ],
         explanation="resonance payload",
         metadata={
             "signal": {
@@ -254,7 +263,9 @@ def test_export_web_snapshot_includes_recovery_hmm_shadow_diagnostics(tmp_path, 
         entropy=0.42,
         stable_regime="MID_CYCLE",
         target_allocation=TargetAllocationState(0.1, 0.9, 0.0, 0.9),
-        logic_trace=[{"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QQQ"}}],
+        logic_trace=[
+            {"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QQQ"}}
+        ],
         explanation="recovery hmm shadow diagnostics",
         metadata={
             "recovery_hmm_shadow": {

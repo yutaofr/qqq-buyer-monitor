@@ -29,7 +29,9 @@ logger = logging.getLogger("qqq_monitor")
 CANONICAL_PRIOR_SEED_PATH = Path("src/engine/v11/resources/v13_6_cold_start_seed.json")
 RECOVERY_HMM_SHADOW_SUMMARY_PATH = Path("artifacts/recovery_hmm_shadow/mainline/summary.json")
 RECOVERY_HMM_SHADOW_COMPARISON_PATH = Path("artifacts/recovery_hmm_shadow/mainline/comparison.json")
-RECOVERY_HMM_SHADOW_LINEAGE_PATH = Path("artifacts/recovery_hmm_shadow/mainline/source_lineage.json")
+RECOVERY_HMM_SHADOW_LINEAGE_PATH = Path(
+    "artifacts/recovery_hmm_shadow/mainline/source_lineage.json"
+)
 
 
 def _is_degraded_source(source: str | None) -> bool:
@@ -72,8 +74,7 @@ def _materialize_prior_state(
     missing_fields = sorted(required_fields - set(payload))
     if missing_fields:
         raise ValueError(
-            "Canonical hydrated prior seed is incomplete: missing "
-            + ", ".join(missing_fields)
+            "Canonical hydrated prior seed is incomplete: missing " + ", ".join(missing_fields)
         )
 
     runtime_path.parent.mkdir(parents=True, exist_ok=True)
@@ -128,20 +129,26 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
         key=lambda item: item[1],
         reverse=True,
     )
-    stable_regime = runtime_result.get("stable_regime", ordered_probs[0][0])
-    raw_regime = runtime_result.get("raw_regime", ordered_probs[0][0])
+    posterior_regime = ordered_probs[0][0]
+    execution_regime = runtime_result.get("stable_regime", posterior_regime)
+    raw_regime = runtime_result.get("raw_regime", posterior_regime)
     deployment = runtime_result.get("deployment", {})
     deployment_state = str(deployment.get("deployment_state", "DEPLOY_BASE"))
     deployment_state_key = deployment_state.replace("DEPLOY_", "")
     execution_bucket = str(runtime_result.get("signal", {}).get("target_bucket", "QQQ"))
     quality_audit = runtime_result.get("quality_audit", {})
-    posterior_entropy = float(quality_audit.get("posterior_entropy", runtime_result.get("entropy", 0.0)))
-    effective_entropy = float(quality_audit.get("effective_entropy", runtime_result.get("entropy", 0.0)))
+    posterior_entropy = float(
+        quality_audit.get("posterior_entropy", runtime_result.get("entropy", 0.0))
+    )
+    effective_entropy = float(
+        quality_audit.get("effective_entropy", runtime_result.get("entropy", 0.0))
+    )
 
     explanation = (
         f"{ENGINE_VERSION} Orthogonal Bayesian Conductor: beta={runtime_result['target_beta']:.2f}x | "
         f"entropy={posterior_entropy:.3f} | "
-        f"stable={stable_regime} | raw={raw_regime} ({ordered_probs[0][1]:.1%}) | "
+        f"posterior={posterior_regime} ({ordered_probs[0][1]:.1%}) | "
+        f"execution={execution_regime} | raw={raw_regime} | "
         f"deploy={deployment_state_key}"
     )
 
@@ -152,7 +159,7 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
         probabilities={k: float(v) for k, v in runtime_result["probabilities"].items()},
         priors={k: float(v) for k, v in runtime_result.get("priors", {}).items()},
         entropy=posterior_entropy,
-        stable_regime=str(stable_regime),
+        stable_regime=str(posterior_regime),
         target_allocation=target_allocation,
         logic_trace=[
             {"step": "probabilistic_inference", "result": runtime_result["probabilities"]},
@@ -173,6 +180,8 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
         explanation=explanation,
         metadata={
             "engine_version": ENGINE_VERSION,
+            "posterior_regime": str(posterior_regime),
+            "execution_regime": str(execution_regime),
             "quality_audit": quality_audit,
             "effective_entropy": effective_entropy,
             "feature_values": runtime_result.get("feature_values", {}),
@@ -418,6 +427,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 
     # ── V14.9 Bootstrap Guardian ──────────────────────────
     from src.engine.v11.utils.bootstrap_guardian import BootstrapGuardian
+
     guardian = BootstrapGuardian(
         macro_csv_path="data/macro_historical_dump.csv",
         price_cache_path="data/qqq_history_cache.csv",

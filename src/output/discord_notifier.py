@@ -194,7 +194,9 @@ def build_discord_payload(result: SignalResult) -> dict:
         "description": description[:4096],
         "color": int(color),
         "fields": fields,
-        "footer": {"text": f"{ENGINE_VERSION} Neural-Orthogonal | Prior Anchor: {hydration_anchor}"},
+        "footer": {
+            "text": f"{ENGINE_VERSION} Neural-Orthogonal | Prior Anchor: {hydration_anchor}"
+        },
         "timestamp": _discord_timestamp(result.date),
     }
 

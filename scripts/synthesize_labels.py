@@ -24,7 +24,9 @@ def synthesize():
             return "BUST"
 
         # 2. RECOVERY: Spread mean-reverting + Liquidity Injection
-        if (row["spread_pct"] >= 0.70 and row["credit_acceleration_pct_10d"] < -5) or (row["spread_20d_delta"] < -40 and row["liquidity_roc_pct_4w"] > 0):
+        if (row["spread_pct"] >= 0.70 and row["credit_acceleration_pct_10d"] < -5) or (
+            row["spread_20d_delta"] < -40 and row["liquidity_roc_pct_4w"] > 0
+        ):
             return "RECOVERY"
 
         # 3. LATE_CYCLE: Low ERP + Creeping Spreads
@@ -44,5 +46,6 @@ def synthesize():
     print(f"Synthesized labels saved to {out_path}")
     print(f"Distribution:\n{counts}")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     synthesize()

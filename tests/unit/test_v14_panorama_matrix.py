@@ -116,7 +116,11 @@ def test_collect_panorama_oos_artifacts_prefers_cached_trace(tmp_path, monkeypat
     )
 
     assert artifacts["metadata"]["vintage_mode"] == "CACHED_ARTIFACT"
-    assert list(artifacts["oos_results"].columns) == ["tractor_prob", "sidecar_prob", "sidecar_valid"]
+    assert list(artifacts["oos_results"].columns) == [
+        "tractor_prob",
+        "sidecar_prob",
+        "sidecar_valid",
+    ]
     assert len(artifacts["oos_results"]) == 3
     assert artifacts["oos_results"].index.min().strftime("%Y-%m-%d") == "2024-01-01"
 

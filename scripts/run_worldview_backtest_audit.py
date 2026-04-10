@@ -175,7 +175,9 @@ def _window_audit(merged: pd.DataFrame) -> pd.DataFrame:
                     .abs()
                     .mean()
                 ),
-                "tractor_prob_mean": float(pd.to_numeric(frame["tractor_prob"], errors="coerce").mean()),
+                "tractor_prob_mean": float(
+                    pd.to_numeric(frame["tractor_prob"], errors="coerce").mean()
+                ),
                 "sidecar_prob_mean": float(
                     pd.to_numeric(
                         frame.loc[frame["sidecar_valid"].fillna(False), "sidecar_prob"],
@@ -262,7 +264,9 @@ def _write_markdown_report(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the macro-cycle worldview backtest audit.")
     parser.add_argument("--mainline-artifact-dir", default="artifacts/v14_panorama/mainline")
-    parser.add_argument("--baseline-trace-path", default="artifacts/v14_panorama/baseline_oos_trace.csv")
+    parser.add_argument(
+        "--baseline-trace-path", default="artifacts/v14_panorama/baseline_oos_trace.csv"
+    )
     parser.add_argument("--price-cache-path", default="data/qqq_history_cache.csv")
     parser.add_argument("--output-dir", default="artifacts/v14_worldview_audit")
     parser.add_argument("--report-path", default="docs/research/v14_macro_cycle_worldview_audit.md")

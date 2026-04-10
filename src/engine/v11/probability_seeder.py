@@ -173,7 +173,9 @@ class ProbabilitySeeder:
         for name, cfg in self.config.items():
             method = cfg.get("z_method")
             if method == "rolling" and cfg.get("z_window") is None:
-                raise ValueError(f"Feature '{name}' configured as 'rolling' but missing 'z_window'.")
+                raise ValueError(
+                    f"Feature '{name}' configured as 'rolling' but missing 'z_window'."
+                )
             if method not in {"rolling", "expanding"}:
                 raise ValueError(f"Feature '{name}' has unknown z_method: {method}")
 

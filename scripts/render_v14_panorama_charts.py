@@ -33,7 +33,9 @@ def _load_baseline(path: Path) -> pd.DataFrame:
     return frame.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
 
 
-def _merge_inputs(mainline: pd.DataFrame, process_trace: pd.DataFrame, baseline: pd.DataFrame) -> pd.DataFrame:
+def _merge_inputs(
+    mainline: pd.DataFrame, process_trace: pd.DataFrame, baseline: pd.DataFrame
+) -> pd.DataFrame:
     frame = process_trace.merge(
         baseline[["date", "tractor_prob", "sidecar_prob", "sidecar_valid"]],
         on="date",
@@ -64,7 +66,9 @@ def _merge_inputs(mainline: pd.DataFrame, process_trace: pd.DataFrame, baseline:
 def _plot_panorama(frame: pd.DataFrame, output_path: Path, *, title: str) -> None:
     fig, axes = plt.subplots(5, 1, figsize=(18, 24), sharex=True)
 
-    prob_series = [pd.to_numeric(frame[f"prob_{regime}"], errors="coerce").fillna(0.0) for regime in REGIMES]
+    prob_series = [
+        pd.to_numeric(frame[f"prob_{regime}"], errors="coerce").fillna(0.0) for regime in REGIMES
+    ]
     axes[0].stackplot(
         frame["date"],
         *prob_series,
@@ -145,11 +149,15 @@ def _plot_panorama(frame: pd.DataFrame, output_path: Path, *, title: str) -> Non
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Render v14 panorama audit charts.")
-    parser.add_argument("--mainline-trace-path", default="artifacts/v14_panorama/mainline/full_audit.csv")
+    parser.add_argument(
+        "--mainline-trace-path", default="artifacts/v14_panorama/mainline/full_audit.csv"
+    )
     parser.add_argument(
         "--process-trace-path", default="artifacts/v14_panorama/mainline/regime_process_trace.csv"
     )
-    parser.add_argument("--baseline-trace-path", default="artifacts/v14_panorama/baseline_oos_trace.csv")
+    parser.add_argument(
+        "--baseline-trace-path", default="artifacts/v14_panorama/baseline_oos_trace.csv"
+    )
     parser.add_argument("--output-dir", default="artifacts/v14_panorama/analysis")
     parser.add_argument("--recent-days", type=int, default=252)
     args = parser.parse_args(argv)

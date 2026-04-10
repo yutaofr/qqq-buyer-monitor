@@ -7,6 +7,7 @@ from src.engine.v11.signal.resonance_detector import ResonanceDetector
 def detector():
     return ResonanceDetector()
 
+
 def test_triple_resonance_triggers_buy_qld_after_risk_cliff_entropy_waterfall_and_mid_cycle_surge(
     detector,
 ):
@@ -74,7 +75,7 @@ def test_entropy_fog_rebuild_triggers_sell_qld(detector):
         effective_entropy=0.81,
         high_entropy_streak=6,
         tractor_prob=0.04,
-        sidecar_prob=0.04
+        sidecar_prob=0.04,
     )
     assert result["action"] == "SELL_QLD"
     assert result["reason_code"] == "ENTROPY_FOG"

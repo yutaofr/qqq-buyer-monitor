@@ -29,7 +29,9 @@ def test_worldview_benchmark_prefers_mid_cycle_in_persistent_uptrend():
 
 def test_worldview_benchmark_prefers_bust_in_death_cross_and_drawdown():
     close = np.concatenate([np.linspace(100.0, 165.0, 200), np.linspace(165.0, 92.0, 120)])
-    volume = np.concatenate([np.linspace(900_000.0, 1_000_000.0, 200), np.linspace(1_100_000.0, 1_600_000.0, 120)])
+    volume = np.concatenate(
+        [np.linspace(900_000.0, 1_000_000.0, 200), np.linspace(1_100_000.0, 1_600_000.0, 120)]
+    )
 
     benchmark = build_worldview_benchmark(_series_frame(close, volume))
     latest = benchmark.iloc[-1]
@@ -67,7 +69,9 @@ def test_worldview_benchmark_prefers_recovery_after_rebound():
 
 def test_worldview_benchmark_emits_late_cycle_momentum_on_price_volume_divergence():
     close = np.concatenate([np.linspace(100.0, 155.0, 260), np.linspace(155.0, 168.0, 60)])
-    volume = np.concatenate([np.linspace(1_200_000.0, 1_180_000.0, 260), np.linspace(1_100_000.0, 650_000.0, 60)])
+    volume = np.concatenate(
+        [np.linspace(1_200_000.0, 1_180_000.0, 260), np.linspace(1_100_000.0, 650_000.0, 60)]
+    )
 
     benchmark = build_worldview_benchmark(_series_frame(close, volume))
     latest = benchmark.iloc[-1]
@@ -79,8 +83,20 @@ def test_worldview_benchmark_emits_late_cycle_momentum_on_price_volume_divergenc
 
 
 def test_worldview_benchmark_emits_multiframe_rsi_and_transition_bands():
-    close = np.concatenate([np.linspace(100.0, 155.0, 220), np.linspace(155.0, 158.0, 40), np.linspace(158.0, 150.0, 40)])
-    volume = np.concatenate([np.linspace(1_100_000.0, 1_050_000.0, 220), np.linspace(1_000_000.0, 700_000.0, 40), np.linspace(720_000.0, 760_000.0, 40)])
+    close = np.concatenate(
+        [
+            np.linspace(100.0, 155.0, 220),
+            np.linspace(155.0, 158.0, 40),
+            np.linspace(158.0, 150.0, 40),
+        ]
+    )
+    volume = np.concatenate(
+        [
+            np.linspace(1_100_000.0, 1_050_000.0, 220),
+            np.linspace(1_000_000.0, 700_000.0, 40),
+            np.linspace(720_000.0, 760_000.0, 40),
+        ]
+    )
 
     benchmark = build_worldview_benchmark(_series_frame(close, volume))
     latest = benchmark.iloc[-1]
@@ -125,12 +141,27 @@ def test_worldview_benchmark_entropy_drops_once_trend_is_confirmed():
     assert transition_slice["benchmark_transition_intensity"].mean() > 0.25
     assert stable_slice["benchmark_regime"].mode().iloc[0] == "MID_CYCLE"
     assert stable_slice["benchmark_entropy"].mean() < transition_slice["benchmark_entropy"].mean()
-    assert stable_slice["benchmark_entropy_upper"].mean() < transition_slice["benchmark_entropy_upper"].mean()
+    assert (
+        stable_slice["benchmark_entropy_upper"].mean()
+        < transition_slice["benchmark_entropy_upper"].mean()
+    )
 
 
 def test_worldview_benchmark_emits_context_columns_for_conditional_process_audit():
-    close = np.concatenate([np.linspace(100.0, 155.0, 220), np.linspace(155.0, 158.0, 40), np.linspace(158.0, 150.0, 40)])
-    volume = np.concatenate([np.linspace(1_100_000.0, 1_050_000.0, 220), np.linspace(1_000_000.0, 700_000.0, 40), np.linspace(720_000.0, 760_000.0, 40)])
+    close = np.concatenate(
+        [
+            np.linspace(100.0, 155.0, 220),
+            np.linspace(155.0, 158.0, 40),
+            np.linspace(158.0, 150.0, 40),
+        ]
+    )
+    volume = np.concatenate(
+        [
+            np.linspace(1_100_000.0, 1_050_000.0, 220),
+            np.linspace(1_000_000.0, 700_000.0, 40),
+            np.linspace(720_000.0, 760_000.0, 40),
+        ]
+    )
 
     benchmark = build_worldview_benchmark(_series_frame(close, volume))
 

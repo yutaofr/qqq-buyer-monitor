@@ -25,7 +25,9 @@ def main() -> int:
     parser.add_argument("--evaluation-start", default="2022-01-01")
     parser.add_argument("--evaluation-end", default="2024-12-31")
     parser.add_argument("--artifact-dir", default="artifacts/recovery_hmm_shadow")
-    parser.add_argument("--production-trace-path", default="artifacts/v14_panorama/mainline/execution_trace.csv")
+    parser.add_argument(
+        "--production-trace-path", default="artifacts/v14_panorama/mainline/execution_trace.csv"
+    )
     args = parser.parse_args()
 
     artifact_dir = Path(args.artifact_dir).resolve()

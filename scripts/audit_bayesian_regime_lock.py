@@ -14,11 +14,12 @@ from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
 class MockClassifier:
     def __init__(self, regimes):
         self.classes_ = regimes
-        self.theta_ = np.zeros((len(regimes), 2)) # 2 features
+        self.theta_ = np.zeros((len(regimes), 2))  # 2 features
         self.var_ = np.ones((len(regimes), 2))
 
     def predict_log_proba(self, X):
         return np.zeros((X.shape[0], len(self.classes_)))
+
 
 def audit_bayesian_regime_lock():
     print("--- BAYESIAN FORENSIC: REGIME LOCK & ANCHOR AUDIT ---")
@@ -32,7 +33,7 @@ def audit_bayesian_regime_lock():
     # feature 0: spread_21d, feature 1: move_21d
     mid_cycle_idx = regimes.index("MID_CYCLE")
     classifier.theta_[mid_cycle_idx] = [0.0, 0.0]
-    classifier.var_[mid_cycle_idx] = [0.1, 0.1] # Tight normal
+    classifier.var_[mid_cycle_idx] = [0.1, 0.1]  # Tight normal
 
     # Other regimes are also tight but elsewhere
     for i, r in enumerate(regimes):
@@ -44,7 +45,7 @@ def audit_bayesian_regime_lock():
     print("\n[Scenario] Stable Market (sp_z=0, move_z=0)")
     # Evidence is [5.0, 5.0] – matches 'BUST' or others, far from MID_CYCLE [0.0, 0.0]
     evidence = pd.DataFrame([[5.0, 5.0]], columns=["spread_21d", "move_21d"])
-    feature_values = {"spread_21d": 0.0, "move_21d": 0.0} # Stable
+    feature_values = {"spread_21d": 0.0, "move_21d": 0.0}  # Stable
 
     registry = {"feature_weight_matrix": {"DEFAULT_FALLBACK": 1.0}, "inference_tau": 10.0}
 
@@ -55,24 +56,24 @@ def audit_bayesian_regime_lock():
         evidence_frame=evidence,
         feature_values=feature_values,
         weight_registry=registry,
-        tau=10.0
+        tau=10.0,
     )
 
     # Run without Anchor (Unit test mode usually disables it, but we can force it)
-    os.environ["PYTEST_CURRENT_TEST"] = "fake_test" # This DISABLES it in the code (line 114)
+    os.environ["PYTEST_CURRENT_TEST"] = "fake_test"  # This DISABLES it in the code (line 114)
     posteriors_no_anchor, diag_no_anchor = engine.infer_gaussian_nb_posterior(
         classifier=classifier,
         evidence_frame=evidence,
         feature_values=feature_values,
         weight_registry=registry,
-        tau=10.0
+        tau=10.0,
     )
     del os.environ["PYTEST_CURRENT_TEST"]
 
     print(f"  MID_CYCLE Prob (With Anchor): {posteriors_anchor['MID_CYCLE']:.6f}")
     print(f"  MID_CYCLE Prob (No Anchor):   {posteriors_no_anchor['MID_CYCLE']:.6e}")
 
-    if posteriors_anchor['MID_CYCLE'] > posteriors_no_anchor['MID_CYCLE']:
+    if posteriors_anchor["MID_CYCLE"] > posteriors_no_anchor["MID_CYCLE"]:
         print("  PASS: Mid-Cycle Anchor successfully boosted probability in stable market.")
     else:
         print("  FAIL: Mid-Cycle Anchor ineffective.")
@@ -89,7 +90,7 @@ def audit_bayesian_regime_lock():
         feature_values=feature_values,
         weight_registry=registry,
         tau=10.0,
-        is_overdrive=False
+        is_overdrive=False,
     )
 
     # Overdrive Tau (tau_factor=0.5 -> effective tau=5.0)
@@ -100,7 +101,7 @@ def audit_bayesian_regime_lock():
         weight_registry=registry,
         tau=10.0,
         is_overdrive=True,
-        tau_factor=0.5
+        tau_factor=0.5,
     )
 
     # Find entropy (shorthand: max probability)
@@ -114,6 +115,7 @@ def audit_bayesian_regime_lock():
         print("  PASS: Bayesian Overdrive (Tau Scaling) successfully sharpened the distribution.")
     else:
         print("  FAIL: Bayesian Overdrive did not sharpen distribution.")
+
 
 if __name__ == "__main__":
     audit_bayesian_regime_lock()

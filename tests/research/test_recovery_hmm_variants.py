@@ -21,4 +21,6 @@ def test_worldview_variant_catalog_exposes_five_distinct_optimization_tracks():
 
 def test_locked_candidate_variant_remains_separate_from_future_optimization_tracks():
     assert LOCKED_CANDIDATE_VARIANT.name == "locked_candidate"
-    assert LOCKED_CANDIDATE_VARIANT.name not in {variant.name for variant in WORLDVIEW_OPTIMIZATION_VARIANTS}
+    assert LOCKED_CANDIDATE_VARIANT.name not in {
+        variant.name for variant in WORLDVIEW_OPTIMIZATION_VARIANTS
+    }

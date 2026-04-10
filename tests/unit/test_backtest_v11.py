@@ -252,7 +252,10 @@ def test_run_v11_audit_emits_expectation_and_pacing_alignment_columns(tmp_path, 
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * (len(dates) - 200) + ["RECOVERY"] * 60 + ["LATE_CYCLE"] * 80 + ["BUST"] * 60,
+            "regime": ["MID_CYCLE"] * (len(dates) - 200)
+            + ["RECOVERY"] * 60
+            + ["LATE_CYCLE"] * 80
+            + ["BUST"] * 60,
         }
     ).to_csv(regime_path, index=False)
 
@@ -329,7 +332,10 @@ def test_run_v11_audit_builds_worldview_benchmark_from_full_price_history(tmp_pa
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * (len(dates) - 200) + ["RECOVERY"] * 60 + ["LATE_CYCLE"] * 80 + ["BUST"] * 60,
+            "regime": ["MID_CYCLE"] * (len(dates) - 200)
+            + ["RECOVERY"] * 60
+            + ["LATE_CYCLE"] * 80
+            + ["BUST"] * 60,
         }
     ).to_csv(regime_path, index=False)
 
@@ -376,7 +382,9 @@ def test_run_v11_audit_builds_worldview_benchmark_from_full_price_history(tmp_pa
         return benchmark
 
     monkeypatch.setattr(backtest_module, "_load_price_history", fake_load_price_history)
-    monkeypatch.setattr(backtest_module, "build_worldview_benchmark", fake_build_worldview_benchmark)
+    monkeypatch.setattr(
+        backtest_module, "build_worldview_benchmark", fake_build_worldview_benchmark
+    )
     monkeypatch.setattr(
         "src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None
     )
@@ -478,10 +486,7 @@ def test_run_v11_audit_uses_mainline_black_box_when_canonical_pipeline_enabled(
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * 20
-            + ["RECOVERY"] * 20
-            + ["LATE_CYCLE"] * 20
-            + ["BUST"] * 40,
+            "regime": ["MID_CYCLE"] * 20 + ["RECOVERY"] * 20 + ["LATE_CYCLE"] * 20 + ["BUST"] * 40,
         }
     ).to_csv(regime_path, index=False)
     pd.DataFrame(
@@ -611,10 +616,7 @@ def test_run_v11_audit_reports_oos_and_training_class_support(tmp_path, monkeypa
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * 200
-            + ["RECOVERY"] * 40
-            + ["LATE_CYCLE"] * 80
-            + ["BUST"] * 80,
+            "regime": ["MID_CYCLE"] * 200 + ["RECOVERY"] * 40 + ["LATE_CYCLE"] * 80 + ["BUST"] * 80,
         }
     ).to_csv(regime_path, index=False)
 
@@ -680,9 +682,7 @@ def test_run_v11_audit_reports_oos_and_training_class_support(tmp_path, monkeypa
                 },
                 "v13_4_diagnostics": {"penalties_applied": {}},
                 "forensic_snapshot_path": "",
-                "signal": {
-                    "resonance": {"action": "HOLD", "confidence": 0.0, "reason": "none"}
-                },
+                "signal": {"resonance": {"action": "HOLD", "confidence": 0.0, "reason": "none"}},
             }
 
     monkeypatch.setattr("src.engine.v11.conductor.V11Conductor", FakeConductor)

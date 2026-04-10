@@ -141,7 +141,9 @@ def test_run_baseline_inference_tolerates_existing_qqq_close_column(monkeypatch)
     )
     monkeypatch.setattr(
         "yfinance.download",
-        lambda *args, **kwargs: pd.DataFrame({"Close": np.linspace(100.0, 120.0, len(dates))}, index=dates),
+        lambda *args, **kwargs: pd.DataFrame(
+            {"Close": np.linspace(100.0, 120.0, len(dates))}, index=dates
+        ),
     )
 
     results = run_baseline_inference()
