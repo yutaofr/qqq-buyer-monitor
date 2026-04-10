@@ -345,6 +345,46 @@ def test_conductor_restores_resonance_window_state_from_prior_execution_state(
     assert reloaded.resonance_detector.waterfall_ready_days == 1
 
 
+def test_conductor_does_not_double_increment_high_entropy_streak(tmp_path, monkeypatch):
+    regime_path = tmp_path / "regimes.csv"
+    macro_path = tmp_path / "macro.csv"
+    prior_path = tmp_path / "prior_state.json"
+
+    dates = pd.bdate_range("2024-01-01", periods=320)
+    macro_df = _build_v12_macro_frame(dates)
+    regime_df = _build_regime_frame(dates)
+
+    macro_df.to_csv(macro_path, index=False)
+    regime_df.to_csv(regime_path, index=False)
+
+    conductor = V11Conductor(
+        macro_data_path=str(macro_path),
+        regime_data_path=str(regime_path),
+        prior_state_path=str(prior_path),
+    )
+
+    def _fake_pipeline(**kwargs):
+        return {
+            "effective_entropy": 0.90,
+            "pre_floor_beta": 0.70,
+            "protected_beta": 0.70,
+            "is_floor_active": False,
+            "overlay_beta": 0.70,
+            "deployment_readiness": 0.10,
+            "overlay_deployment_readiness": 0.10,
+            "high_entropy_streak": 11,
+        }
+
+    monkeypatch.setattr("src.engine.v11.conductor.run_execution_pipeline", _fake_pipeline)
+
+    t0 = macro_df.tail(1).set_index("observation_date")
+    result = conductor.daily_run(t0)
+    payload = json.loads(prior_path.read_text())
+
+    assert result["signal"]["high_entropy_streak"] == 11
+    assert payload["execution_state"]["high_entropy_streak"] == 11
+
+
 def test_conductor_marks_missing_provenance_as_degraded(tmp_path):
     regime_path = tmp_path / "regimes.csv"
     macro_path = tmp_path / "macro.csv"

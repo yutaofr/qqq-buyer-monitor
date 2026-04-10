@@ -118,6 +118,14 @@ def infer_price_topology_state(
             bust_pressure=bust_pressure,
         ),
     )
+    transition_blend_floor = _transition_process_blend_floor(
+        regime=regime,
+        probabilities=probabilities,
+        transition_intensity=transition_intensity,
+        repair_persistence=repair_persistence,
+        damage_memory=damage_memory,
+        bust_pressure=bust_pressure,
+    )
     return PriceTopologyState(
         regime=regime,
         probabilities=probabilities,
@@ -125,7 +133,13 @@ def infer_price_topology_state(
         confidence=confidence,
         posterior_blend_weight=float(
             np.clip(
-                max(0.0, posterior_blend_weight) * confidence * edge_multiplier * transition_dampener,
+                max(
+                    max(0.0, posterior_blend_weight)
+                    * confidence
+                    * edge_multiplier
+                    * transition_dampener,
+                    transition_blend_floor,
+                ),
                 0.0,
                 1.0,
             )
@@ -498,6 +512,63 @@ def _repair_confirmed_confidence_floor(
     pressure_relief = float(np.clip((0.45 - bust_pressure) / 0.30, 0.0, 1.0))
     floor = 0.08 + (0.05 * transition_support) + (0.04 * recovery_edge) + (0.04 * pressure_relief)
     floor *= 0.70 + (0.30 * float(np.clip(repair_persistence, 0.0, 1.0)))
+    return float(np.clip(floor, 0.0, 0.22))
+
+
+def _transition_process_blend_floor(
+    *,
+    regime: str,
+    probabilities: dict[str, float],
+    transition_intensity: float,
+    repair_persistence: float,
+    damage_memory: float,
+    bust_pressure: float,
+) -> float:
+    if transition_intensity < 0.55:
+        return 0.0
+
+    ordered = sorted(float(prob) for prob in probabilities.values())
+    if len(ordered) < 2:
+        return 0.0
+    margin = ordered[-1] - ordered[-2]
+    overlap = float(np.clip((0.10 - margin) / 0.10, 0.0, 1.0))
+    transition_support = float(np.clip((transition_intensity - 0.55) / 0.35, 0.0, 1.0))
+
+    entropy = 0.0
+    values = np.array([max(0.0, float(prob)) for prob in probabilities.values()], dtype=float)
+    total = float(values.sum())
+    if total > 0.0:
+        normalized = values / total
+        entropy = float(
+            np.clip(
+                (-(normalized * np.log2(np.clip(normalized, 1e-12, 1.0))).sum())
+                / max(1e-12, np.log2(len(normalized))),
+                0.0,
+                1.0,
+            )
+        )
+    entropy_support = float(np.clip((entropy - 0.72) / 0.22, 0.0, 1.0))
+
+    if regime == "RECOVERY":
+        phase_support = float(
+            np.clip(
+                0.45 * np.clip((repair_persistence - 0.25) / 0.35, 0.0, 1.0)
+                + 0.35 * np.clip((damage_memory - 0.25) / 0.35, 0.0, 1.0)
+                + 0.20 * np.clip((0.50 - bust_pressure) / 0.25, 0.0, 1.0),
+                0.0,
+                1.0,
+            )
+        )
+    else:
+        phase_support = 0.40
+
+    floor = (
+        0.04
+        + 0.08 * transition_support
+        + 0.06 * overlap
+        + 0.06 * entropy_support
+        + 0.04 * phase_support
+    )
     return float(np.clip(floor, 0.0, 0.22))
 
 

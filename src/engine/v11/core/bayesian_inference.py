@@ -134,12 +134,28 @@ class BayesianInferenceEngine:
                     and liquidity_velocity > -0.50
                     and credit_acceleration < 0.75
                 )
+                recovery_transition_window = False
+                if feature_values:
+                    recovery_transition_window = (
+                        str(feature_values.get("price_topology_regime", "")) in {"RECOVERY", "LATE_CYCLE"}
+                        and float(feature_values.get("price_topology_confidence", 0.0)) >= 0.12
+                        and float(feature_values.get("price_topology_transition_intensity", 0.0)) >= 0.70
+                        and float(feature_values.get("price_topology_repair_persistence", 0.0)) >= 0.30
+                        and float(feature_values.get("price_topology_recovery_impulse", 0.0)) >= 0.25
+                        and float(feature_values.get("price_topology_damage_memory", 0.0)) >= 0.45
+                    )
 
                 min_lh_eps = eps
                 # v14.5 ANTI-HARDCODING: Retrieve likelihood floor from registry
                 anchor_floor = float((weight_registry or {}).get("anchor_likelihood_floor", 1e-6))
 
-                if not is_test and not disable_anchor and regime_key == "MID_CYCLE" and is_stable:
+                if (
+                    not is_test
+                    and not disable_anchor
+                    and regime_key == "MID_CYCLE"
+                    and is_stable
+                    and not recovery_transition_window
+                ):
                     min_lh_eps = max(eps, anchor_floor)
 
                 # SRD-v13.4: Weighted Log-Likelihood

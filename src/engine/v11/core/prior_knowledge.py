@@ -91,6 +91,7 @@ class PriorKnowledgeBase:
         self,
         previous_posterior: dict[str, float] | None = None,
         macro_values: dict[str, float] | None = None,
+        current_observation_date: str | None = None,
     ) -> tuple[dict[str, float], dict[str, any]]:
         """
         Synthesize the Bayesian prior for the current timestep.
@@ -109,10 +110,22 @@ class PriorKnowledgeBase:
             f"  Source 1 [Historical Baseline]: Based on {sum(self.counts.values()):.1f} total counts from {self.storage_path}"
         )
 
+        if (
+            current_observation_date is not None
+            and self.last_observation_date is not None
+            and str(current_observation_date) < str(self.last_observation_date)
+        ):
+            logger.warning(
+                "Warm-start prior %s is newer than current observation %s; ignoring recent memory.",
+                self.last_observation_date,
+                current_observation_date,
+            )
+            prior_source = None
+
         # If no previous knowledge, return baseline as 100% of the prior
         if not prior_source:
             logger.info(
-                "  Source 2 [Recent Memory]: No previous observation found. Using 100% baseline."
+                "  Source 2 [Recent Memory]: No usable previous observation found. Using 100% baseline."
             )
             details = {
                 "base_weight": 1.0,
@@ -277,7 +290,8 @@ class PriorKnowledgeBase:
     @staticmethod
     def _recovery_prior_release_score(macro_values: dict[str, float] | None) -> float:
         context = macro_values or {}
-        if str(context.get("price_topology_regime", "")) != "RECOVERY":
+        topology_regime = str(context.get("price_topology_regime", ""))
+        if topology_regime not in {"RECOVERY", "LATE_CYCLE"}:
             return 0.0
 
         confidence = float(context.get("price_topology_confidence", 0.0) or 0.0)
@@ -295,6 +309,13 @@ class PriorKnowledgeBase:
             or repair_persistence < 0.30
             or recovery_impulse < 0.20
             or damage_memory < 0.35
+        ):
+            return 0.0
+        if topology_regime == "LATE_CYCLE" and (
+            transition_intensity < 0.80
+            or repair_persistence < 0.35
+            or recovery_impulse < 0.25
+            or damage_memory < 0.55
         ):
             return 0.0
 
@@ -315,6 +336,8 @@ class PriorKnowledgeBase:
             + 0.08 * float(delta_support)
             + 0.06 * float(acceleration_support)
         )
+        if topology_regime == "LATE_CYCLE":
+            score *= 0.85
         return float(np.clip(score, 0.0, 1.0))
 
     def _apply_recovery_release_to_posterior_prior(
@@ -486,11 +509,20 @@ class PriorKnowledgeBase:
             else None
         )
         self.last_observation_date = payload.get("last_observation_date")
-        self.execution_state = (
+        self.execution_state = self._default_execution_state()
+        payload_execution_state = (
             dict(payload.get("execution_state", {}))
             if isinstance(payload.get("execution_state"), dict)
             else {}
         )
+        self.execution_state.update(payload_execution_state)
+        filled_missing_execution_fields = False
+        for key, value in self._default_execution_state().items():
+            if key not in self.execution_state or self.execution_state[key] is None:
+                self.execution_state[key] = value
+                filled_missing_execution_fields = True
+        if filled_missing_execution_fields:
+            backfilled = True
         stable_regime = canonicalize_regime_name(self.execution_state.get("stable_regime"))
         if stable_regime and stable_regime != self.execution_state.get("stable_regime"):
             self.execution_state["stable_regime"] = stable_regime
@@ -540,6 +572,26 @@ class PriorKnowledgeBase:
             }
 
         return {}
+
+    @staticmethod
+    def _default_execution_state() -> dict[str, str | float | int | bool | None]:
+        return {
+            "stable_regime": None,
+            "regime_evidence": 0.0,
+            "current_beta": 0.0,
+            "beta_evidence": 0.0,
+            "current_bucket": "QQQ",
+            "bucket_evidence": 0.0,
+            "bucket_cooldown_days": 0,
+            "deployment_state": "DEPLOY_BASE",
+            "deployment_evidence": 0.0,
+            "high_entropy_streak": 0,
+            "hydration_anchor": "2018-01-01",
+            "previous_posterior": None,
+            "effective_entropy": 0.0,
+            "resonance_risk_ready_days": 99,
+            "resonance_waterfall_ready_days": 99,
+        }
 
     def _save(self) -> None:
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)

@@ -83,24 +83,27 @@ def test_audit_price_cache_staleness(mock_filesystem):
     assert report.price_cache_staleness.last_date == date(2026, 3, 27)
 
 def test_repair_backfill_resolves_gaps(mock_filesystem, monkeypatch):
-    """RED: Guardian.repair() should fetch missing data and remove the gap."""
+    """RED: Guardian.repair() should use local price cache only and remove the gap."""
     guardian = BootstrapGuardian(
         macro_csv_path=mock_filesystem["macro_csv"],
         price_cache_path=mock_filesystem["price_csv"],
         cold_start_seed_path=mock_filesystem["seed_json"],
     )
 
-    # Mock the fetch_price_data API so it doesn't hit Yahoo Finance in tests
-    def mock_fetch_price_data(*args, **kwargs):
-        dates = pd.date_range("2026-03-27", "2026-04-08", freq="B")
-        df = pd.DataFrame({
-            "Date": dates,
+    # Seed the local price cache with the dates needed for backfill.
+    dates = pd.date_range("2026-03-27", "2026-04-08", freq="B")
+    pd.DataFrame(
+        {
+            "Date": [d.strftime("%Y-%m-%d 00:00:00-04:00") for d in dates],
             "Close": [600.0] * len(dates),
-            "Volume": [60000000.0] * len(dates)
-        }).set_index("Date")
-        return {"history": df}
+            "Volume": [60000000.0] * len(dates),
+        }
+    ).to_csv(mock_filesystem["price_csv"], index=False)
 
-    monkeypatch.setattr("src.collector.price.fetch_price_data", mock_fetch_price_data)
+    monkeypatch.setattr(
+        "src.collector.price.fetch_price_data",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("live fetch forbidden")),
+    )
 
     report = guardian.audit()
     result = guardian.repair(report)
