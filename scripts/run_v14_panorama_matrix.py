@@ -180,6 +180,21 @@ def _write_report(
             "beta_expectation_mae": "scenario_beta_expected_mae",
         }
     )
+    process_columns = [
+        "scenario",
+        "acceptance_pass",
+        "acceptance_reason",
+        "stable_vs_benchmark_regime",
+        "probability_within_band_share",
+        "delta_within_band_share",
+        "acceleration_within_band_share",
+        "transition_probability_within_band_share",
+        "entropy_within_band_share",
+        "transition_entropy_within_band_share",
+    ]
+    process_lens = default_holdout_report[
+        [column for column in process_columns if column in default_holdout_report.columns]
+    ].copy()
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as handle:
@@ -195,7 +210,10 @@ def _write_report(
             "- Detector Trace: `scripts/baseline_backtest.py` canonical PIT-safe OOS diagnostics\n"
         )
         handle.write(
-            "- Acceptance: process gate first, then no worse max drawdown, no worse left-tail beta, bounded turnover drift\n\n"
+            "- Acceptance: conditional expected-process gate first, then no worse max drawdown, no worse left-tail beta, bounded turnover drift\n"
+        )
+        handle.write(
+            "- Conditional expected-process gate: probability, delta, acceleration, and entropy are judged against context-aware benchmark bands driven by trend strength, transition intensity, uncertainty, and conflict score.\n\n"
         )
 
         handle.write("## Default Threshold Holdout\n\n")
@@ -244,6 +262,10 @@ def _write_report(
             "- `mean_expected_beta`: regime-policy beta implied by the realized regime label.\n\n"
         )
         handle.write(_markdown_table(beta_lens))
+        handle.write("\n\n")
+
+        handle.write("## Conditional Process Gate Lens\n\n")
+        handle.write(_markdown_table(process_lens))
         handle.write("\n\n")
 
         handle.write("## Calibration Winner\n\n")
