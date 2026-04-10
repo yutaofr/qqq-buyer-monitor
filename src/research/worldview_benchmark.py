@@ -15,7 +15,11 @@ _REGIME_BETA_MAP: dict[str, float] = {
 }
 
 
-def build_worldview_benchmark(price_frame: pd.DataFrame) -> pd.DataFrame:
+def build_worldview_benchmark(
+    price_frame: pd.DataFrame,
+    *,
+    trend_window: int = 1,
+) -> pd.DataFrame:
     """Build a soft 4-regime benchmark from trailing market structure only.
 
     The benchmark is evaluation-only. It uses rolling price/volume features that are
@@ -176,14 +180,44 @@ def build_worldview_benchmark(price_frame: pd.DataFrame) -> pd.DataFrame:
     ).clip(lower=0.01)
 
     probabilities = raw_scores.div(raw_scores.sum(axis=1), axis=0)
+    if trend_window > 1:
+        probabilities = probabilities.rolling(trend_window, min_periods=1).mean()
+        probabilities = probabilities.div(probabilities.sum(axis=1), axis=0)
     sorted_probs = np.sort(probabilities.to_numpy(), axis=1)
     margin = pd.Series(sorted_probs[:, -1] - sorted_probs[:, -2], index=frame.index)
+    conviction = probabilities.max(axis=1)
     transition_intensity = (
         ((0.18 - margin) / 0.18).clip(lower=0.0, upper=1.0)
         + (0.25 * transition_tension.clip(lower=0.0, upper=1.0))
     ).clip(lower=0.0, upper=1.0)
     benchmark = frame.copy()
-    benchmark_entropy = _normalized_entropy(probabilities)
+    benchmark_regime = probabilities.idxmax(axis=1)
+    benchmark_entropy = _regime_conditioned_entropy(
+        probabilities=probabilities,
+        benchmark_regime=benchmark_regime,
+        transition_intensity=transition_intensity,
+        conviction=conviction,
+        trend_up=trend_up,
+        momentum_up=momentum_up,
+        slope_up=slope_up,
+        gap_improving=gap_improving,
+        short_up=short_up,
+        recent_damage=recent_damage,
+        recovery_impulse=recovery_impulse,
+        bust_pressure=bust_pressure,
+        transition_tension=transition_tension,
+        divergence=divergence,
+        trend_drying=trend_drying,
+        volume_dry_up_pressure=volume_dry_up_pressure,
+        bearish_rsi_divergence=bearish_rsi_divergence,
+        selloff_volume=selloff_volume,
+        gap_worsening=gap_worsening,
+        monthly_rollover=monthly_rollover,
+        monthly_repair=monthly_repair,
+        bullish_rsi_divergence=bullish_rsi_divergence,
+        trend_down=trend_down,
+        deep_drawdown=deep_drawdown,
+    )
     for regime in ACTIVE_REGIME_ORDER:
         benchmark[f"benchmark_prob_{regime}"] = probabilities[regime]
         benchmark[f"benchmark_prob_delta_{regime}"] = probabilities[regime].diff().fillna(0.0)
@@ -208,11 +242,14 @@ def build_worldview_benchmark(price_frame: pd.DataFrame) -> pd.DataFrame:
             benchmark[f"benchmark_prob_acceleration_{regime}"] + acc_band
         )
 
-    benchmark["benchmark_regime"] = probabilities.idxmax(axis=1)
+    benchmark["benchmark_regime"] = benchmark_regime
     benchmark["benchmark_expected_beta"] = sum(
         probabilities[regime] * beta for regime, beta in _REGIME_BETA_MAP.items()
     )
-    entropy_band = 0.06 + (0.12 * transition_intensity)
+    entropy_band = (0.05 + (0.20 * transition_intensity) + (0.06 * transition_tension)).clip(
+        lower=0.05,
+        upper=0.30,
+    )
     benchmark["benchmark_entropy"] = benchmark_entropy
     benchmark["benchmark_entropy_lower"] = (benchmark_entropy - entropy_band).clip(lower=0.0)
     benchmark["benchmark_entropy_upper"] = (benchmark_entropy + entropy_band).clip(upper=1.0)
@@ -231,6 +268,7 @@ def build_worldview_benchmark(price_frame: pd.DataFrame) -> pd.DataFrame:
     benchmark["benchmark_recent_damage"] = recent_damage
     benchmark["benchmark_recovery_impulse"] = recovery_impulse
     benchmark["benchmark_bust_pressure"] = bust_pressure
+    benchmark["benchmark_transition_tension"] = transition_tension
     benchmark["benchmark_transition_intensity"] = transition_intensity
     return benchmark
 
@@ -272,6 +310,100 @@ def _normalized_entropy(probabilities: pd.DataFrame) -> pd.Series:
     if max_entropy <= 0.0:
         return pd.Series(0.0, index=probabilities.index)
     return (entropy / max_entropy).clip(lower=0.0, upper=1.0)
+
+
+def _regime_conditioned_entropy(
+    *,
+    probabilities: pd.DataFrame,
+    benchmark_regime: pd.Series,
+    transition_intensity: pd.Series,
+    conviction: pd.Series,
+    trend_up: pd.Series,
+    momentum_up: pd.Series,
+    slope_up: pd.Series,
+    gap_improving: pd.Series,
+    short_up: pd.Series,
+    recent_damage: pd.Series,
+    recovery_impulse: pd.Series,
+    bust_pressure: pd.Series,
+    transition_tension: pd.Series,
+    divergence: pd.Series,
+    trend_drying: pd.Series,
+    volume_dry_up_pressure: pd.Series,
+    bearish_rsi_divergence: pd.Series,
+    selloff_volume: pd.Series,
+    gap_worsening: pd.Series,
+    monthly_rollover: pd.Series,
+    monthly_repair: pd.Series,
+    bullish_rsi_divergence: pd.Series,
+    trend_down: pd.Series,
+    deep_drawdown: pd.Series,
+) -> pd.Series:
+    base_entropy = _normalized_entropy(probabilities)
+    uncertainty = (1.0 - conviction).clip(lower=0.0, upper=1.0)
+
+    mid_confirmation = (
+        0.40 * trend_up
+        + 0.22 * momentum_up
+        + 0.18 * slope_up
+        + 0.12 * gap_improving
+        - 0.18 * transition_tension
+        - 0.15 * volume_dry_up_pressure
+        - 0.12 * bearish_rsi_divergence
+    ).clip(lower=0.0, upper=1.0)
+    recovery_confirmation = (
+        0.34 * recovery_impulse
+        + 0.18 * gap_improving
+        + 0.14 * short_up
+        + 0.12 * monthly_repair
+        + 0.12 * bullish_rsi_divergence
+        - 0.12 * trend_down
+        - 0.10 * deep_drawdown
+    ).clip(lower=0.0, upper=1.0)
+    late_noise = (
+        0.28 * divergence
+        + 0.24 * trend_drying
+        + 0.20 * volume_dry_up_pressure
+        + 0.16 * bearish_rsi_divergence
+        + 0.12 * transition_tension
+    ).clip(lower=0.0, upper=1.0)
+    bust_noise = (
+        0.24 * selloff_volume
+        + 0.20 * gap_worsening
+        + 0.18 * monthly_rollover
+        + 0.16 * bust_pressure
+        + 0.14 * recent_damage
+        + 0.10 * transition_tension
+    ).clip(lower=0.0, upper=1.0)
+
+    entropy = (
+        0.10
+        + 0.16 * base_entropy
+        + 0.26 * transition_intensity
+        + 0.12 * transition_tension
+        + 0.10 * uncertainty
+    )
+    mid_transition_allowance = (
+        0.24 * transition_intensity
+        + 0.10 * transition_tension
+        + 0.08 * uncertainty
+    ).clip(lower=0.0, upper=0.36)
+    recovery_transition_allowance = (
+        0.22 * transition_intensity
+        + 0.10 * recent_damage
+        + 0.08 * uncertainty
+    ).clip(lower=0.0, upper=0.34)
+
+    entropy += np.where(benchmark_regime.eq("LATE_CYCLE"), 0.10 + 0.14 * late_noise, 0.0)
+    entropy += np.where(benchmark_regime.eq("BUST"), 0.14 + 0.16 * bust_noise, 0.0)
+    entropy += np.where(benchmark_regime.eq("MID_CYCLE"), -0.22 * mid_confirmation + mid_transition_allowance, 0.0)
+    entropy += np.where(
+        benchmark_regime.eq("RECOVERY"),
+        -0.20 * recovery_confirmation + recovery_transition_allowance,
+        0.0,
+    )
+
+    return pd.Series(entropy, index=probabilities.index).clip(lower=0.06, upper=0.95)
 
 
 def _bounded(series: pd.Series, scale: float) -> pd.Series:

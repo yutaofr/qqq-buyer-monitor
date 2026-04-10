@@ -23,6 +23,8 @@ def test_worldview_benchmark_prefers_mid_cycle_in_persistent_uptrend():
     assert latest["benchmark_regime"] == "MID_CYCLE"
     assert latest["benchmark_prob_MID_CYCLE"] > latest["benchmark_prob_LATE_CYCLE"]
     assert latest["benchmark_expected_beta"] > 0.9
+    assert latest["benchmark_transition_intensity"] < 0.45
+    assert latest["benchmark_entropy"] < 0.45
 
 
 def test_worldview_benchmark_prefers_bust_in_death_cross_and_drawdown():
@@ -35,6 +37,7 @@ def test_worldview_benchmark_prefers_bust_in_death_cross_and_drawdown():
     assert latest["benchmark_regime"] == "BUST"
     assert latest["benchmark_prob_BUST"] > 0.45
     assert latest["benchmark_expected_beta"] <= 0.65
+    assert latest["benchmark_entropy"] > 0.30
 
 
 def test_worldview_benchmark_prefers_recovery_after_rebound():
@@ -59,6 +62,7 @@ def test_worldview_benchmark_prefers_recovery_after_rebound():
     assert latest["benchmark_regime"] == "RECOVERY"
     assert latest["benchmark_prob_RECOVERY"] > latest["benchmark_prob_BUST"]
     assert 0.8 <= latest["benchmark_expected_beta"] <= 1.0
+    assert latest["benchmark_entropy"] < 0.50
 
 
 def test_worldview_benchmark_emits_late_cycle_momentum_on_price_volume_divergence():
@@ -71,6 +75,7 @@ def test_worldview_benchmark_emits_late_cycle_momentum_on_price_volume_divergenc
     assert latest["benchmark_prob_LATE_CYCLE"] > latest["benchmark_prob_BUST"]
     assert latest["benchmark_prob_delta_LATE_CYCLE"] > 0.0
     assert benchmark["benchmark_prob_acceleration_LATE_CYCLE"].tail(60).max() > 0.0
+    assert latest["benchmark_entropy"] > 0.25
 
 
 def test_worldview_benchmark_emits_multiframe_rsi_and_transition_bands():
@@ -94,3 +99,30 @@ def test_worldview_benchmark_emits_multiframe_rsi_and_transition_bands():
     assert latest["benchmark_transition_intensity"] >= 0.0
     assert latest["benchmark_recovery_impulse"] >= 0.0
     assert latest["benchmark_prob_upper_LATE_CYCLE"] >= latest["benchmark_prob_LATE_CYCLE"]
+
+
+def test_worldview_benchmark_entropy_drops_once_trend_is_confirmed():
+    close = np.concatenate(
+        [
+            np.linspace(100.0, 132.0, 120),
+            np.linspace(132.0, 134.0, 20),
+            np.linspace(134.0, 182.0, 180),
+        ]
+    )
+    volume = np.concatenate(
+        [
+            np.linspace(1_050_000.0, 1_000_000.0, 120),
+            np.linspace(980_000.0, 780_000.0, 20),
+            np.linspace(820_000.0, 900_000.0, 180),
+        ]
+    )
+
+    benchmark = build_worldview_benchmark(_series_frame(close, volume))
+
+    transition_slice = benchmark.iloc[120:150]
+    stable_slice = benchmark.iloc[-40:]
+
+    assert transition_slice["benchmark_transition_intensity"].mean() > 0.25
+    assert stable_slice["benchmark_regime"].mode().iloc[0] == "MID_CYCLE"
+    assert stable_slice["benchmark_entropy"].mean() < transition_slice["benchmark_entropy"].mean()
+    assert stable_slice["benchmark_entropy_upper"].mean() < transition_slice["benchmark_entropy_upper"].mean()

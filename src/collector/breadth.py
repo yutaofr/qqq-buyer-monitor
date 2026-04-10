@@ -63,10 +63,13 @@ def fetch_breadth(as_of: date | None = None) -> dict:
     query_end = target_date + timedelta(days=1)
     query_start = target_date - timedelta(days=10)
 
-    ndx_concentration, ndx_concentration_source, ndx_concentration_quality = (
-        _fetch_ndx_concentration(query_end)
+    ndx_concentration, ndx_concentration_source, ndx_concentration_quality = _fetch_ndx_concentration(
+        query_end
     )
-    adv_dec_ratio, source, quality, transform = _fetch_adv_dec_ratio(query_start, query_end)
+    adv_dec_ratio, source, quality, transform, failed_tickers = _fetch_adv_dec_ratio(
+        query_start,
+        query_end,
+    )
     if quality <= 0.0:
         proxy_ratio = _derive_proxy_breadth_from_concentration(ndx_concentration)
         if proxy_ratio is not None:
@@ -74,6 +77,17 @@ def fetch_breadth(as_of: date | None = None) -> dict:
             source = "derived:qqq-qqew-breadth"
             quality = 0.55
             transform = "sigmoid(-ndx_concentration/0.08)"
+            logger.info(
+                "Primary breadth tickers unavailable %s; recovered breadth via QQQ/QQEW proxy. query_end=%s",
+                failed_tickers,
+                query_end,
+            )
+        else:
+            logger.warning(
+                "Breadth unavailable: primary tickers %s failed and QQQ/QQEW proxy was not recoverable. query_end=%s",
+                failed_tickers,
+                query_end,
+            )
     pct_above_50d = adv_dec_ratio if quality > 0.0 else 0.50
 
     logger.debug(
@@ -97,6 +111,7 @@ def fetch_breadth(as_of: date | None = None) -> dict:
         "ndx_concentration_source": ndx_concentration_source,
         "ndx_concentration_quality": ndx_concentration_quality,
         "observed": quality > 0.0,
+        "primary_ticker_failures": list(failed_tickers),
     }
 
 
@@ -110,7 +125,7 @@ def _derive_proxy_breadth_from_concentration(ndx_concentration: float | None) ->
     return 1.0 / (1.0 + math.exp(spread / scale))
 
 
-def _fetch_adv_dec_ratio(start: date, end: date) -> tuple[float, str, float, str]:
+def _fetch_adv_dec_ratio(start: date, end: date) -> tuple[float, str, float, str, list[str]]:
     """
     Derive an advance/decline ratio from available breadth tickers.
     """
@@ -118,6 +133,7 @@ def _fetch_adv_dec_ratio(start: date, end: date) -> tuple[float, str, float, str
     collector_policy = _load_v13_collector_policy()
     sigmoid_scale = float(collector_policy.get("breadth_sigmoid_scale", 1500.0))
 
+    failed_tickers: list[str] = []
     for ticker in _BREADTH_CANDIDATES:
         try:
             # Silence yfinance's own ERROR/WARNING for known-bad tickers
@@ -130,17 +146,20 @@ def _fetch_adv_dec_ratio(start: date, end: date) -> tuple[float, str, float, str
                 net = float(hist["Close"].iloc[-1])
                 ratio = 1.0 / (1.0 + math.exp(-net / sigmoid_scale))
                 logger.debug("Breadth ratio from %s: net=%.0f ratio=%.3f", ticker, net, ratio)
-                return ratio, f"observed:{ticker}", 1.0, f"sigmoid(scale={sigmoid_scale:.1f})"
+                return (
+                    ratio,
+                    f"observed:{ticker}",
+                    1.0,
+                    f"sigmoid(scale={sigmoid_scale:.1f})",
+                    failed_tickers,
+                )
+            failed_tickers.append(ticker)
         except Exception as exc:  # noqa: BLE001
             yf_logger.setLevel(logging.WARNING)  # restore on exception too
             logger.debug("Ticker %s unavailable: %s", ticker, exc)
+            failed_tickers.append(ticker)
 
-    logger.warning(
-        "All breadth tickers unavailable %s; marking breadth unavailable. query_end=%s",
-        _BREADTH_CANDIDATES,
-        end,
-    )
-    return 0.50, "unavailable:breadth", 0.0, "neutral_fallback"
+    return 0.50, "unavailable:breadth", 0.0, "neutral_fallback", failed_tickers
 
 
 def _fetch_ndx_concentration(as_of: date) -> tuple[float | None, str, float]:

@@ -9,8 +9,10 @@ import pandas as pd
 
 from src.regime_topology import ACTIVE_REGIME_ORDER
 
+TREND_WINDOW = 5
 
-def prepare_probability_trace(frame: pd.DataFrame) -> pd.DataFrame:
+
+def prepare_probability_trace(frame: pd.DataFrame, *, trend_window: int = TREND_WINDOW) -> pd.DataFrame:
     if frame is None or frame.empty:
         raise ValueError("probability trace frame is required")
 
@@ -23,24 +25,12 @@ def prepare_probability_trace(frame: pd.DataFrame) -> pd.DataFrame:
     out["date"] = pd.to_datetime(out["date"], errors="coerce")
     out = out.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
 
+    out = _apply_trend_window(out, prefix="prob_", trend_window=trend_window, entropy_column="entropy")
+
     for regime in ACTIVE_REGIME_ORDER:
         prob_col = f"prob_{regime}"
         if prob_col not in out.columns:
             raise ValueError(f"Missing probability column: {prob_col}")
-        out[prob_col] = pd.to_numeric(out[prob_col], errors="coerce").fillna(0.0)
-        delta_col = f"prob_delta_{regime}"
-        accel_col = f"prob_acceleration_{regime}"
-        trend_col = f"prob_trend_{regime}"
-        if delta_col not in out.columns:
-            out[delta_col] = out[prob_col].diff().fillna(0.0)
-        else:
-            out[delta_col] = pd.to_numeric(out[delta_col], errors="coerce").fillna(0.0)
-        if accel_col not in out.columns:
-            out[accel_col] = out[delta_col].diff().fillna(0.0)
-        else:
-            out[accel_col] = pd.to_numeric(out[accel_col], errors="coerce").fillna(0.0)
-        if trend_col not in out.columns:
-            out[trend_col] = out[delta_col].map(_trend_label)
     if "stable_regime" not in out.columns:
         regime_probs = out[[f"prob_{regime}" for regime in ACTIVE_REGIME_ORDER]]
         out["stable_regime"] = regime_probs.idxmax(axis=1).str.replace("prob_", "", regex=False)
@@ -50,9 +40,18 @@ def prepare_probability_trace(frame: pd.DataFrame) -> pd.DataFrame:
 def compute_regime_process_alignment(
     model_trace: pd.DataFrame,
     benchmark_trace: pd.DataFrame,
+    *,
+    trend_window: int = TREND_WINDOW,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
-    model = prepare_probability_trace(model_trace)
-    benchmark = benchmark_trace.copy()
+    model = prepare_probability_trace(model_trace, trend_window=trend_window)
+    benchmark = _apply_trend_window(
+        benchmark_trace.copy(),
+        prefix="benchmark_prob_",
+        trend_window=trend_window,
+        entropy_column="benchmark_entropy",
+        aux_columns=("benchmark_transition_intensity",),
+    )
+    benchmark = _rebuild_benchmark_bands(benchmark)
     benchmark["date"] = pd.to_datetime(benchmark["date"], errors="coerce")
     merged = model.merge(benchmark, on="date", how="inner")
     if merged.empty:
@@ -164,6 +163,111 @@ def _trend_label(value: float) -> str:
     if value < -1e-9:
         return "FALLING"
     return "FLAT"
+
+
+def _apply_trend_window(
+    frame: pd.DataFrame,
+    *,
+    prefix: str,
+    trend_window: int,
+    entropy_column: str | None = None,
+    aux_columns: tuple[str, ...] = (),
+) -> pd.DataFrame:
+    out = frame.copy()
+    if trend_window <= 1:
+        return out
+    if "date" in out.columns:
+        out["date"] = pd.to_datetime(out["date"], errors="coerce")
+        out = out.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
+
+    for regime in ACTIVE_REGIME_ORDER:
+        prob_col = f"{prefix}{regime}"
+        if prob_col not in out.columns:
+            continue
+        out[prob_col] = (
+            pd.to_numeric(out[prob_col], errors="coerce")
+            .rolling(trend_window, min_periods=1)
+            .mean()
+            .fillna(0.0)
+        )
+
+    if entropy_column and entropy_column in out.columns:
+        out[entropy_column] = (
+            pd.to_numeric(out[entropy_column], errors="coerce")
+            .rolling(trend_window, min_periods=1)
+            .mean()
+            .fillna(0.0)
+        )
+
+    for column in aux_columns:
+        if column in out.columns:
+            out[column] = (
+                pd.to_numeric(out[column], errors="coerce")
+                .rolling(trend_window, min_periods=1)
+                .mean()
+                .fillna(0.0)
+            )
+
+    for regime in ACTIVE_REGIME_ORDER:
+        prob_col = f"{prefix}{regime}"
+        if prob_col not in out.columns:
+            continue
+        delta_col = f"{prefix}delta_{regime}"
+        accel_col = f"{prefix}acceleration_{regime}"
+        trend_col = f"{prefix}trend_{regime}"
+        out[delta_col] = out[prob_col].diff().fillna(0.0)
+        out[accel_col] = out[delta_col].diff().fillna(0.0)
+        out[trend_col] = out[delta_col].map(_trend_label)
+
+    return out
+
+
+def _rebuild_benchmark_bands(frame: pd.DataFrame) -> pd.DataFrame:
+    out = frame.copy()
+    if "benchmark_transition_intensity" not in out.columns:
+        return out
+
+    transition_intensity = pd.to_numeric(out["benchmark_transition_intensity"], errors="coerce").fillna(0.0)
+    for regime in ACTIVE_REGIME_ORDER:
+        prob_col = f"benchmark_prob_{regime}"
+        if prob_col not in out.columns:
+            continue
+        prob_band = 0.08 + (0.20 * transition_intensity)
+        delta_band = 0.02 + (0.06 * transition_intensity)
+        acc_band = 0.015 + (0.04 * transition_intensity)
+        out[f"benchmark_prob_lower_{regime}"] = (pd.to_numeric(out[prob_col], errors="coerce") - prob_band).clip(lower=0.0)
+        out[f"benchmark_prob_upper_{regime}"] = (pd.to_numeric(out[prob_col], errors="coerce") + prob_band).clip(upper=1.0)
+        out[f"benchmark_prob_delta_lower_{regime}"] = (
+            pd.to_numeric(out.get(f"benchmark_prob_delta_{regime}"), errors="coerce").fillna(0.0)
+            - delta_band
+        )
+        out[f"benchmark_prob_delta_upper_{regime}"] = (
+            pd.to_numeric(out.get(f"benchmark_prob_delta_{regime}"), errors="coerce").fillna(0.0)
+            + delta_band
+        )
+        out[f"benchmark_prob_acceleration_lower_{regime}"] = (
+            pd.to_numeric(out.get(f"benchmark_prob_acceleration_{regime}"), errors="coerce").fillna(0.0)
+            - acc_band
+        )
+        out[f"benchmark_prob_acceleration_upper_{regime}"] = (
+            pd.to_numeric(out.get(f"benchmark_prob_acceleration_{regime}"), errors="coerce").fillna(0.0)
+            + acc_band
+        )
+
+    if "benchmark_entropy" in out.columns:
+        transition_tension = transition_intensity
+        if "benchmark_transition_tension" in out.columns:
+            transition_tension = pd.to_numeric(out["benchmark_transition_tension"], errors="coerce").fillna(
+                transition_intensity
+            )
+        entropy_band = (0.05 + (0.20 * transition_intensity) + (0.06 * transition_tension)).clip(
+            lower=0.05,
+            upper=0.30,
+        )
+        benchmark_entropy = pd.to_numeric(out["benchmark_entropy"], errors="coerce").fillna(0.0)
+        out["benchmark_entropy_lower"] = (benchmark_entropy - entropy_band).clip(lower=0.0)
+        out["benchmark_entropy_upper"] = (benchmark_entropy + entropy_band).clip(upper=1.0)
+    return out
 
 
 def _soft_regime_agreement(merged: pd.DataFrame, regime: str) -> pd.Series:

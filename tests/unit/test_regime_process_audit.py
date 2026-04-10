@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from src.research.regime_process_audit import (
     compute_regime_process_alignment,
@@ -23,6 +24,25 @@ def test_prepare_probability_trace_derives_delta_and_acceleration_columns():
 
     assert "prob_delta_MID_CYCLE" in prepared.columns
     assert "prob_acceleration_MID_CYCLE" in prepared.columns
+
+
+def test_prepare_probability_trace_trend_window_smooths_jitter():
+    frame = pd.DataFrame(
+        {
+            "date": pd.date_range("2024-01-01", periods=3, freq="B"),
+            "prob_MID_CYCLE": [0.60, 0.80, 0.60],
+            "prob_LATE_CYCLE": [0.20, 0.05, 0.20],
+            "prob_BUST": [0.10, 0.10, 0.10],
+            "prob_RECOVERY": [0.10, 0.05, 0.10],
+            "entropy": [0.42, 0.25, 0.41],
+        }
+    )
+
+    prepared = prepare_probability_trace(frame, trend_window=3)
+
+    assert prepared.loc[1, "prob_MID_CYCLE"] == pytest.approx((0.60 + 0.80) / 2.0)
+    assert abs(prepared.loc[1, "prob_acceleration_MID_CYCLE"]) < 0.2
+    assert prepared.loc[1, "entropy"] == pytest.approx((0.42 + 0.25) / 2.0)
 
 
 def test_compute_regime_process_alignment_scores_within_band_share():

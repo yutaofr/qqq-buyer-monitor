@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import date
 
 import pandas as pd
-
 from src.collector import breadth as breadth_module
 
 
@@ -36,6 +35,7 @@ def test_fetch_breadth_marks_unavailable_when_breadth_tickers_fail(monkeypatch):
     assert payload["observed"] is False
     assert payload["adv_dec_ratio"] == 0.50
     assert payload["pct_above_50d"] == 0.50
+    assert payload["primary_ticker_failures"] == ["^ADD", "^ADDN"]
 
 
 def test_fetch_breadth_tracks_ndx_concentration_provenance_independently(monkeypatch):
@@ -84,3 +84,41 @@ def test_fetch_breadth_derives_proxy_ratio_from_qqq_qqew_when_add_tickers_fail(m
     assert payload["quality"] > 0.0
     assert payload["observed"] is True
     assert 0.0 < payload["adv_dec_ratio"] < 0.5
+    assert payload["primary_ticker_failures"] == ["^ADD", "^ADDN"]
+
+
+def test_fetch_breadth_logs_proxy_recovery_instead_of_unavailable(monkeypatch, caplog):
+    idx = pd.date_range("2026-03-20", periods=60, freq="D")
+
+    def fake_ticker(symbol: str):
+        if symbol in {"^ADD", "^ADDN"}:
+            return _TickerStub(pd.DataFrame())
+        if symbol == "QQQ":
+            qqq = pd.Series([100.0 + (i * 0.7) for i in range(len(idx))], index=idx)
+            return _TickerStub(pd.DataFrame({"Close": qqq.values}, index=idx))
+        if symbol == "QQEW":
+            qqew = pd.Series([100.0 + (i * 0.15) for i in range(len(idx))], index=idx)
+            return _TickerStub(pd.DataFrame({"Close": qqew.values}, index=idx))
+        return _TickerStub(pd.DataFrame())
+
+    monkeypatch.setattr(breadth_module.yf, "Ticker", fake_ticker)
+
+    with caplog.at_level("INFO"):
+        payload = breadth_module.fetch_breadth(as_of=date(2026, 3, 30))
+
+    assert payload["source"] == "derived:qqq-qqew-breadth"
+    assert "recovered breadth via QQQ/QQEW proxy" in caplog.text
+    assert "Breadth unavailable:" not in caplog.text
+
+
+def test_fetch_breadth_logs_true_unavailable_only_when_proxy_also_fails(monkeypatch, caplog):
+    def fake_ticker(symbol: str):
+        return _TickerStub(pd.DataFrame())
+
+    monkeypatch.setattr(breadth_module.yf, "Ticker", fake_ticker)
+
+    with caplog.at_level("WARNING"):
+        payload = breadth_module.fetch_breadth(as_of=date(2026, 3, 30))
+
+    assert payload["source"] == "unavailable:breadth"
+    assert "Breadth unavailable: primary tickers" in caplog.text

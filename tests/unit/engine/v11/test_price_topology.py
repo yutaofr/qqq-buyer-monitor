@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from scipy.stats import entropy as shannon_entropy
 
 from src.engine.v11.core.price_topology import (
     PriceTopologyState,
@@ -78,6 +79,46 @@ def test_price_topology_reaccelerates_recovery_structure():
     assert topology.regime == "RECOVERY"
     assert blended["RECOVERY"] > base_posteriors["RECOVERY"]
     assert anchored_beta > 0.72
+
+
+def test_price_topology_uses_benchmark_entropy_to_soften_transition_locking():
+    topology = PriceTopologyState(
+        regime="MID_CYCLE",
+        probabilities={
+            "MID_CYCLE": 0.33,
+            "LATE_CYCLE": 0.28,
+            "BUST": 0.17,
+            "RECOVERY": 0.22,
+        },
+        expected_beta=0.98,
+        confidence=0.42,
+        posterior_blend_weight=0.06,
+        beta_anchor_weight=0.02,
+        transition_intensity=0.82,
+        recovery_impulse=0.08,
+        damage_memory=0.18,
+        bust_pressure=0.24,
+        bullish_divergence=0.0,
+        bearish_divergence=0.0,
+        recovery_prob_delta=0.0,
+        recovery_prob_acceleration=0.0,
+        repair_persistence=0.10,
+        benchmark_entropy=0.97,
+    )
+    posteriors = {
+        "MID_CYCLE": 0.93,
+        "LATE_CYCLE": 0.04,
+        "BUST": 0.02,
+        "RECOVERY": 0.01,
+    }
+
+    blended = blend_posteriors_with_topology(posteriors, topology)
+
+    assert shannon_entropy(list(blended.values()), base=2) > shannon_entropy(
+        list(posteriors.values()),
+        base=2,
+    )
+    assert blended["MID_CYCLE"] < 0.85
 
 
 def test_price_topology_edge_regimes_receive_amplified_coupling():

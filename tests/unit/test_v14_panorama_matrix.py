@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
-
+from scripts.baseline_backtest import collect_panorama_oos_artifacts
 from scripts.run_v14_panorama_matrix import _scenario_report, _select_candidate
 
 
@@ -91,3 +91,30 @@ def test_select_candidate_fails_closed_to_standard_when_nothing_passes():
     assert failed_closed is True
     assert selected["scenario"] == "standard"
     assert selected["selection_failed_closed"] is True
+
+
+def test_collect_panorama_oos_artifacts_prefers_cached_trace(tmp_path, monkeypatch):
+    cache_path = tmp_path / "baseline_oos_trace.csv"
+    pd.DataFrame(
+        {
+            "date": pd.date_range("2024-01-01", periods=3, freq="B"),
+            "tractor_prob": [0.1, 0.2, 0.3],
+            "sidecar_prob": [0.2, 0.1, 0.4],
+            "sidecar_valid": [True, False, True],
+        }
+    ).to_csv(cache_path, index=False)
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("live baseline reload should not be called when cache is preferred")
+
+    monkeypatch.setattr("scripts.baseline_backtest.load_all_baseline_data", _fail_if_called)
+
+    artifacts = collect_panorama_oos_artifacts(
+        baseline_trace_path=str(cache_path),
+        prefer_cached_artifacts=True,
+    )
+
+    assert artifacts["metadata"]["vintage_mode"] == "CACHED_ARTIFACT"
+    assert list(artifacts["oos_results"].columns) == ["tractor_prob", "sidecar_prob", "sidecar_valid"]
+    assert len(artifacts["oos_results"]) == 3
+    assert artifacts["oos_results"].index.min().strftime("%Y-%m-%d") == "2024-01-01"
