@@ -1,7 +1,7 @@
 import json
-from argparse import Namespace
 import sys
 import types
+from argparse import Namespace
 
 import pandas as pd
 import pytest
