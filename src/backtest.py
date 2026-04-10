@@ -186,10 +186,6 @@ def run_v11_audit(
         save_v11_fidelity_figure,
         save_v11_probabilistic_audit_figure,
     )
-    from src.research.data_contracts import (
-        summarize_regime_state_support,
-        validate_regime_state_support,
-    )
 
     dataset = Path(dataset_path)
     regimes_file = Path(regime_path)
