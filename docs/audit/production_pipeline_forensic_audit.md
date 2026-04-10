@@ -26,29 +26,31 @@
 
 ```mermaid
 graph TD
-    A[main.py: run_v11_pipeline] --> B[Cloud Pull: signals.db + macro_csv + prior_state]
+    A[main.py: run_v11_pipeline] --> B[Cloud Pull: signals.db + macro_csv + qqq_cache + prior_state]
     B --> C[_materialize_prior_state: 冷/暖启动判定]
-    C --> D[fetch_price_data + 10 FRED/YFinance collectors]
-    D --> E[_build_v12_live_macro_row: 标准化输入行]
-    E --> F[V11Conductor.daily_run: 贝叶斯推理黑盒]
+    C --> D[BootstrapGuardian: 冷启动守门]
+    D --> E[fetch_price_data + 10 FRED/YFinance collectors]
+    E --> F[_build_v12_live_macro_row: 标准化输入行]
     F --> G[run_baseline_inference: Tractor/Sidecar 影子模型]
-    G --> H[FullPanoramaAggregator: 集成协调]
-    H --> I[_build_v11_signal_result: SignalResult 构建]
-    I --> J1[export_web_snapshot → status.json]
-    I --> J2[print_signal → CLI 输出]
-    I --> J3[save_signal → SQLite]
-    J1 --> K[Cloud Push: 同步到远端]
+    G --> H[V11Conductor.daily_run: 贝叶斯推理黑盒]
+    H --> I[FullPanoramaAggregator: 集成协调]
+    I --> J[_build_v11_signal_result: posterior/execution 双面 SignalResult 构建]
+    J --> K1[export_web_snapshot → status.json]
+    J --> K2[export_history_json → history.json]
+    J --> K3[print_signal → CLI 输出]
+    J --> K4[save_signal → SQLite]
+    K1 --> L[Cloud Push: 同步到远端]
 ```
 
 ### 关键审计点
 
 | 检查项 | 位置 | 结果 |
 |:---|:---|:---|
-| Cloud Fail-Closed | [main.py L394-397](file:///Users/weizhang/w/cycle-monitor-workspace/verify-QLD-Point/src/main.py#L394-L397) | ✅ `if not cloud.pull_state: raise RuntimeError` |
-| 单一推理入口 | [main.py L588](file:///Users/weizhang/w/cycle-monitor-workspace/verify-QLD-Point/src/main.py#L588) | ✅ `V11Conductor(prior_state_path=prior_file_path).daily_run(raw_row)` |
-| Baseline 不修改 beta | [main.py L594](file:///Users/weizhang/w/cycle-monitor-workspace/verify-QLD-Point/src/main.py#L594) | ✅ 注释明确禁止：`PROHIBITION: No modification of runtime['target_beta']` |
-| Ensemble 仅生成建议选项 | [main.py L599](file:///Users/weizhang/w/cycle-monitor-workspace/verify-QLD-Point/src/main.py#L599) | ✅ `FullPanoramaAggregator.aggregate` 输出是参考选项 |
-| 状态持久化闭环 | [main.py L653-667](file:///Users/weizhang/w/cycle-monitor-workspace/verify-QLD-Point/src/main.py#L653-L667) | ✅ `save_signal → upsert macro → cloud.push` 三步 |
+| Cloud Fail-Closed | [main.py L415-L440](file:///Users/weizhang/w/cycle-monitor-workspace/verify-QLD-Point/src/main.py#L415-L440) | ✅ `if not cloud.pull_state: raise RuntimeError` + `BootstrapGuardian` unhealthy 即停 |
+| 单一推理入口 | [main.py L593-L624](file:///Users/weizhang/w/cycle-monitor-workspace/verify-QLD-Point/src/main.py#L593-L624) | ✅ `run_baseline_inference` 后进入 `V11Conductor.daily_run(raw_row)` |
+| Baseline 不修改 beta | [main.py L599](file:///Users/weizhang/w/cycle-monitor-workspace/verify-QLD-Point/src/main.py#L599) | ✅ 注释明确禁止：`PROHIBITION: No modification of runtime['target_beta']` |
+| Ensemble 仅生成建议选项 | [main.py L604](file:///Users/weizhang/w/cycle-monitor-workspace/verify-QLD-Point/src/main.py#L604) | ✅ `FullPanoramaAggregator.aggregate` 输出是参考选项 |
+| 状态持久化闭环 | [main.py L669-L700](file:///Users/weizhang/w/cycle-monitor-workspace/verify-QLD-Point/src/main.py#L669-L700) | ✅ `save_signal → upsert macro → cloud.push` 三步 |
 
 ---
 
@@ -216,8 +218,10 @@ return features.clip(*self.clip_range)  # 裁剪到 [-8, 8]
 | `meta.observation_date` | `result.date` | ISO date | ✅ |
 | `meta.market_state` | MarketCursor | ACTIVE/FROZEN/UNKNOWN | ✅ |
 | `meta.expires_at_utc` | 下一交易日开盘 + 4h | ISO datetime | ✅ |
-| `signal.regime` | REGIME_DISPLAY_MAP[stable_regime] | 中文标签 | ✅ |
-| `signal.stable_regime` | conductor output | canonical name | ✅ |
+| `signal.regime` | REGIME_DISPLAY_MAP[posterior_regime] | 中文标签 | ✅ |
+| `signal.posterior_regime` | posterior top-regime | canonical name | ✅ |
+| `signal.execution_regime` | conductor stabilizer | canonical name | ✅ |
+| `signal.stable_regime` | backward-compatible posterior alias | canonical name | ✅ |
 | `signal.raw_regime` | conductor output | canonical name | ✅ |
 | `signal.target_beta` | conductor final_beta | float | ✅ |
 | `signal.raw_target_beta` | conductor raw_beta_expectation | float | ✅ |
@@ -301,7 +305,7 @@ return features.clip(*self.clip_range)  # 裁剪到 [-8, 8]
 | UI 元素 | HTML ID | status.json 绑定 | 审计 |
 |:---|:---|:---|:---|
 | 运行时先验 | `#prior-container` | `signal.priors` | ✅ 4 个条形图 |
-| 逻辑决策树 | `.tag[data-key=...]` | `signal.stable_regime` + `signal.execution_bucket` | ✅ 激活态高亮，> 40% 概率也高亮 |
+| 逻辑决策树 | `.tag[data-key=...]` | `signal.posterior_regime` + `signal.execution_regime` + `signal.execution_bucket` | ✅ 激活态高亮，> 40% 概率也高亮 |
 | 执行叠加层 | `#execution-overlay-container` | `evidence.execution_overlay` | ✅ 7 个指标: MODE/STATE/SCORES/BETA/PACE/FALLBACK |
 | 特征数值 | `#feature-values-container` | `evidence.feature_values` | ✅ 排序展示，含 price_topology 补充 |
 | 逻辑下钻 | `#logic-trace-container` | `evidence.logic_trace` | ✅ 可展开 JSON 详情，额外追加 price_topology + bayesian_diagnostics |
@@ -329,7 +333,7 @@ return features.clip(*self.clip_range)  # 裁剪到 [-8, 8]
 
 **实际 status.json 样本对照**:
 
-基于签入的 [status.json](file:///Users/weizhang/w/cycle-monitor-workspace/verify-QLD-Point/src/web/public/status.json) (2026-03-30 快照):
+基于本地生成的 [status.json](file:///Users/weizhang/w/cycle-monitor-workspace/verify-QLD-Point/src/web/public/status.json) 示例快照（不参与 git 跟踪）:
 
 | 字段 | status.json 值 | 前端如何消费 | 一致性 |
 |:---|:---|:---|:---|

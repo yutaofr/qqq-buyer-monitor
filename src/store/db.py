@@ -81,6 +81,9 @@ def init_db(path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
 
 def _to_json_dict(result: SignalResult) -> dict:
     """Serialise a SignalResult to a JSON-compatible dict."""
+    metadata = result.metadata or {}
+    posterior_regime = str(metadata.get("posterior_regime", result.stable_regime))
+    execution_regime = str(metadata.get("execution_regime", posterior_regime))
     return {
         "date": result.date.isoformat(),
         "price": float(result.price),
@@ -88,11 +91,13 @@ def _to_json_dict(result: SignalResult) -> dict:
         "probabilities": {k: float(v) for k, v in result.probabilities.items()},
         "priors": {k: float(v) for k, v in result.priors.items()},
         "entropy": float(result.entropy),
+        "posterior_regime": posterior_regime,
+        "execution_regime": execution_regime,
         "stable_regime": result.stable_regime,
         "target_allocation": result.target_allocation.to_dict(),
         "logic_trace": result.logic_trace,
         "explanation": result.explanation,
-        "metadata": result.metadata,
+        "metadata": metadata,
     }
 
 

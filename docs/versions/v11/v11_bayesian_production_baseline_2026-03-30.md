@@ -15,7 +15,7 @@ The system now treats these as separate decision surfaces:
 They are related, but they are no longer the same output under different names.
 
 ### B. Deterministic Runtime State
-`data/v11_prior_state.json` is now the persistent runtime memory for:
+`data/v13_6_ex_hydrated_prior.json` is now the persistent runtime memory for:
 
 - regime priors and transition counts
 - last posterior
@@ -38,10 +38,11 @@ If canonical DNA is missing, runtime and audit now fail closed.
 Synthetic bootstrap is no longer part of the production or audit path; it is test-only disaster tooling.
 
 ### C. Regime Stability
-`raw_regime` and `stable_regime` are now different surfaces.
+`posterior_regime`, `stable_regime`, and `execution_regime` now represent different surfaces.
 
-- `raw_regime` = current posterior top-1
-- `stable_regime` = entropy-aware stabilized regime state
+- `posterior_regime` = current posterior top-1
+- `stable_regime` = backward-compatible alias of the posterior-facing surface in `SignalResult`
+- `execution_regime` = entropy-aware stabilized execution state
 
 High-entropy days must accumulate evidence before the stable regime can switch. This is an engineering stability rule, not a new macro heuristic.
 
@@ -51,7 +52,7 @@ The execution bucket layer no longer uses the old `0.45/0.55/0.95/1.05` deadband
 - natural beta boundaries are now used instead (`0.5` for `CASH/QQQ`, `1.0` for `QQQ/QLD`)
 - bucket switches require entropy-aware evidence accumulation
 - the `BehavioralGuard` barrier is now structural: `entropy_odds / bucket_state_count`
-- bucket evidence is persisted in `data/v11_prior_state.json`
+- bucket evidence is persisted in `data/v13_6_ex_hydrated_prior.json`
 
 This keeps the execution surface deterministic while preventing one-day churn around a thin beta boundary.
 
