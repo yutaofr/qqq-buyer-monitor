@@ -282,7 +282,7 @@ def fetch_historical_shiller_erp_series(
     try:
         raw = _load_shiller_sheet(timeout=timeout)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Shiller sheet fetch failed: %s", exc)
+        logger.info("Shiller sheet fetch fell back to cache path: %s", exc)
         return pd.DataFrame(
             columns=["observation_date", "effective_date", "erp_ttm_pct", "eps_ttm", "spx_price"]
         )

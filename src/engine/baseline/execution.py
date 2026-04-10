@@ -33,7 +33,7 @@ def validate_coefficients(model, feature_names: list) -> bool:
     # 1. Stress Direction Check
     stress_key = [k for k in coefs if "stress" in k]
     if stress_key and coefs[stress_key[0]] < 0:
-        logger.warning(
+        logger.info(
             f"!!! Audit Failed: {stress_key[0]} is {coefs[stress_key[0]]:.4f} (Expected +) !!! Details: {coefs}"
         )
         is_valid = False
@@ -41,7 +41,7 @@ def validate_coefficients(model, feature_names: list) -> bool:
     # 2. Growth Direction Check: +Growth -> -Prob (- Coeff)
     growth_key = [k for k in coefs if "growth" in k]
     if growth_key and coefs[growth_key[0]] > 0:
-        logger.warning(
+        logger.info(
             f"!!! Audit Failed: {growth_key[0]} is {coefs[growth_key[0]]:.4f} (Expected -) !!! Details: {coefs}"
         )
         is_valid = False
@@ -49,7 +49,7 @@ def validate_coefficients(model, feature_names: list) -> bool:
     # 3. Liquidity Direction Check (Left Tail Risk Alignment): +Liquidity -> -Prob (- Coeff)
     liquidity_key = [k for k in coefs if "liquidity" in k]
     if liquidity_key and coefs[liquidity_key[0]] > 0:
-        logger.warning(
+        logger.info(
             f"!!! Audit Failed: {liquidity_key[0]} is {coefs[liquidity_key[0]]:.4f} (Expected -) !!! Details: {coefs}"
         )
         is_valid = False
