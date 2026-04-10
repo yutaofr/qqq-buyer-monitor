@@ -6,6 +6,16 @@ import numpy as np
 import pandas as pd
 
 from src.engine.aggregator import FullPanoramaAggregator
+from src.research.regime_process_audit import compute_regime_process_alignment
+
+PROCESS_GATE_MINIMA: dict[str, float] = {
+    "stable_vs_benchmark_regime": 0.67,
+    "probability_within_band_share": 0.47,
+    "delta_within_band_share": 0.70,
+    "acceleration_within_band_share": 0.55,
+    "transition_probability_within_band_share": 0.63,
+    "entropy_within_band_share": 0.55,
+}
 
 
 def _normalize_frame(frame: pd.DataFrame) -> pd.DataFrame:
@@ -120,10 +130,16 @@ def compute_execution_metrics(trace: pd.DataFrame, beta_col: str) -> dict[str, f
                 metrics["standard_beta_expected_within_5pct"] = float(
                     (standard_error.abs() <= 0.05).mean()
                 )
+    process_metrics = _compute_process_metrics(trace)
+    if process_metrics:
+        metrics.update(process_metrics)
     return metrics
 
 
 def judge_panorama_candidate(current: dict[str, Any], baseline: dict[str, Any]) -> tuple[bool, str]:
+    process_failure = _process_contract_failure(current)
+    if process_failure is not None:
+        return False, process_failure
     if (
         float(current.get("left_tail_mean_beta", 0.0))
         > float(baseline.get("left_tail_mean_beta", 0.0)) + 1e-7
@@ -156,6 +172,59 @@ def judge_panorama_candidate(current: dict[str, Any], baseline: dict[str, Any]) 
     ):
         return False, "Process Distortion"
     return True, "PASS"
+
+
+def _compute_process_metrics(trace: pd.DataFrame) -> dict[str, float]:
+    benchmark = _extract_benchmark_trace(trace)
+    if benchmark is None:
+        return {}
+    model_trace = trace.reset_index(drop=False).copy()
+    model_trace = model_trace.drop(
+        columns=[column for column in model_trace.columns if column.startswith("benchmark_")],
+        errors="ignore",
+    )
+    try:
+        _, summary = compute_regime_process_alignment(model_trace, benchmark)
+    except ValueError:
+        return {}
+    overall = summary.get("overall", {})
+    return {
+        key: float(value)
+        for key, value in overall.items()
+        if isinstance(value, (int, float, np.floating))
+        and key
+        in {
+            "stable_vs_benchmark_regime",
+            "probability_within_band_share",
+            "delta_within_band_share",
+            "acceleration_within_band_share",
+            "transition_probability_within_band_share",
+            "entropy_within_band_share",
+            "entropy_mae",
+            "transition_entropy_within_band_share",
+        }
+    }
+
+
+def _extract_benchmark_trace(trace: pd.DataFrame) -> pd.DataFrame | None:
+    benchmark_cols = [column for column in trace.columns if column.startswith("benchmark_")]
+    if not benchmark_cols:
+        return None
+    benchmark = trace.reset_index(drop=False)[["date", *benchmark_cols]].copy()
+    if "index" in benchmark.columns and "date" not in benchmark.columns:
+        benchmark = benchmark.rename(columns={"index": "date"})
+    benchmark["date"] = pd.to_datetime(benchmark["date"], errors="coerce")
+    benchmark = benchmark.dropna(subset=["date"]).drop_duplicates("date").sort_values("date")
+    return benchmark if not benchmark.empty else None
+
+
+def _process_contract_failure(metrics: dict[str, Any]) -> str | None:
+    for key, minimum in PROCESS_GATE_MINIMA.items():
+        if key not in metrics:
+            continue
+        if float(metrics[key]) + 1e-9 < minimum:
+            return f"Worldview Process Failure ({key})"
+    return None
 
 
 def choose_production_candidate(report: pd.DataFrame) -> dict[str, Any]:

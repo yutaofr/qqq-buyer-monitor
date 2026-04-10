@@ -183,6 +183,7 @@ def build_worldview_benchmark(price_frame: pd.DataFrame) -> pd.DataFrame:
         + (0.25 * transition_tension.clip(lower=0.0, upper=1.0))
     ).clip(lower=0.0, upper=1.0)
     benchmark = frame.copy()
+    benchmark_entropy = _normalized_entropy(probabilities)
     for regime in ACTIVE_REGIME_ORDER:
         benchmark[f"benchmark_prob_{regime}"] = probabilities[regime]
         benchmark[f"benchmark_prob_delta_{regime}"] = probabilities[regime].diff().fillna(0.0)
@@ -211,6 +212,10 @@ def build_worldview_benchmark(price_frame: pd.DataFrame) -> pd.DataFrame:
     benchmark["benchmark_expected_beta"] = sum(
         probabilities[regime] * beta for regime, beta in _REGIME_BETA_MAP.items()
     )
+    entropy_band = 0.06 + (0.12 * transition_intensity)
+    benchmark["benchmark_entropy"] = benchmark_entropy
+    benchmark["benchmark_entropy_lower"] = (benchmark_entropy - entropy_band).clip(lower=0.0)
+    benchmark["benchmark_entropy_upper"] = (benchmark_entropy + entropy_band).clip(upper=1.0)
 
     benchmark["benchmark_ma_gap"] = ma_gap.fillna(0.0)
     benchmark["benchmark_drawdown"] = drawdown.fillna(0.0)
@@ -258,6 +263,15 @@ def _normalize_price_frame(price_frame: pd.DataFrame) -> pd.DataFrame:
         frame["Volume"] = 1.0
     frame["Volume"] = pd.to_numeric(frame["Volume"], errors="coerce").fillna(1.0).clip(lower=1.0)
     return frame
+
+
+def _normalized_entropy(probabilities: pd.DataFrame) -> pd.Series:
+    safe = probabilities.clip(lower=1e-12)
+    entropy = -(safe * np.log(safe)).sum(axis=1)
+    max_entropy = np.log(len(probabilities.columns))
+    if max_entropy <= 0.0:
+        return pd.Series(0.0, index=probabilities.index)
+    return (entropy / max_entropy).clip(lower=0.0, upper=1.0)
 
 
 def _bounded(series: pd.Series, scale: float) -> pd.Series:

@@ -60,7 +60,10 @@ def _run_mainline_trace(
             "price_end_date": price_end_date,
         },
     )
-    return _read_trace(artifact_dir / "execution_trace.csv"), _read_summary(
+    trace_path = artifact_dir / "regime_process_trace.csv"
+    if not trace_path.exists():
+        trace_path = artifact_dir / "full_audit.csv"
+    return _read_trace(trace_path), _read_summary(
         artifact_dir / "summary.json"
     )
 
@@ -179,7 +182,7 @@ def _write_report(
             "- Detector Trace: `scripts/baseline_backtest.py` canonical PIT-safe OOS diagnostics\n"
         )
         handle.write(
-            "- Acceptance: no worse max drawdown, no worse left-tail beta, bounded turnover drift\n\n"
+            "- Acceptance: process gate first, then no worse max drawdown, no worse left-tail beta, bounded turnover drift\n\n"
         )
 
         handle.write("## Default Threshold Holdout\n\n")
@@ -193,6 +196,12 @@ def _write_report(
             f"- Posterior Top-1 Accuracy: `{mainline_summary['top1_accuracy']:.2%}`\n"
             f"- Posterior Brier: `{mainline_summary['mean_brier']:.4f}`\n"
             f"- Mean Entropy: `{mainline_summary['mean_entropy']:.4f}`\n"
+            f"- Stable vs Benchmark Regime: `{mainline_summary['stable_vs_benchmark_regime']:.2%}`\n"
+            f"- Probability Within Band: `{mainline_summary['probability_within_band_share']:.2%}`\n"
+            f"- Delta Within Band: `{mainline_summary['delta_within_band_share']:.2%}`\n"
+            f"- Acceleration Within Band: `{mainline_summary['acceleration_within_band_share']:.2%}`\n"
+            f"- Transition Probability Within Band: `{mainline_summary['transition_probability_within_band_share']:.2%}`\n"
+            f"- Entropy Within Band: `{mainline_summary.get('entropy_within_band_share', 0.0):.2%}`\n"
             f"- Raw Beta vs Expectation MAE: `{mainline_summary['raw_beta_expectation_mae']:.4f}`\n"
             f"- Target Beta vs Expectation MAE: `{mainline_summary['beta_expectation_mae']:.4f}`\n"
             f"- Deployment Exact Match: `{mainline_summary['deployment_exact_match']:.2%}`\n"
