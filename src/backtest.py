@@ -276,6 +276,12 @@ def run_v11_audit(
         end_date=price_end_date,
     )
     price_df.index = pd.to_datetime(price_df.index, utc=True).tz_localize(None).normalize()
+    benchmark_price_df = _load_price_history(
+        price_cache_path,
+        allow_download=allow_price_download,
+        end_date=None,
+    )
+    benchmark_price_df.index = pd.to_datetime(benchmark_price_df.index, utc=True).tz_localize(None).normalize()
 
     # v14.0 INDUSTRIAL PIT AUDIT: Reindex macro data onto the canonical trading calendar
     # This prevents temporal contamination by ensuring macro data is only visible on trading days
@@ -523,7 +529,7 @@ def run_v11_audit(
                 .sum()
             ),
         }
-        benchmark = build_worldview_benchmark(price_df[["Close", "Volume"]])
+        benchmark = build_worldview_benchmark(benchmark_price_df[["Close", "Volume"]])
         benchmark = benchmark.reset_index().rename(columns={benchmark.index.name or "index": "date"})
         regime_process_trace, regime_process_summary = compute_regime_process_alignment(
             full_audit_df,

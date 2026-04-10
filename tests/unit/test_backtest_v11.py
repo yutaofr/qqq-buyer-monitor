@@ -319,6 +319,89 @@ def test_run_v11_audit_emits_expectation_and_pacing_alignment_columns(tmp_path, 
     assert '"recovery_prob_acceleration"' in forensic_trace
 
 
+def test_run_v11_audit_builds_worldview_benchmark_from_full_price_history(tmp_path, monkeypatch):
+    dates = pd.bdate_range("2014-01-01", periods=3000)
+    macro_path = tmp_path / "macro.csv"
+    regime_path = tmp_path / "regimes.csv"
+    artifact_dir = tmp_path / "audit_artifacts"
+
+    _build_v12_macro_frame(dates).to_csv(macro_path, index=False)
+    pd.DataFrame(
+        {
+            "observation_date": dates,
+            "regime": ["MID_CYCLE"] * (len(dates) - 200) + ["RECOVERY"] * 60 + ["LATE_CYCLE"] * 80 + ["BUST"] * 60,
+        }
+    ).to_csv(regime_path, index=False)
+
+    price_history = pd.DataFrame(
+        {
+            "Close": np.linspace(100.0, 130.0, len(dates)),
+            "Volume": np.linspace(1_000_000.0, 2_000_000.0, len(dates)),
+        },
+        index=dates,
+    )
+    cutoff = pd.Timestamp("2025-12-31")
+    load_calls: list[str | None] = []
+    benchmark_lengths: list[int] = []
+
+    def fake_load_price_history(*args, **kwargs):
+        end_date = kwargs.get("end_date")
+        load_calls.append(end_date)
+        if end_date:
+            return price_history.loc[price_history.index <= pd.Timestamp(end_date)].copy()
+        return price_history.copy()
+
+    def fake_build_worldview_benchmark(frame):
+        benchmark_lengths.append(len(frame))
+        benchmark = pd.DataFrame(
+            {
+                "benchmark_regime": ["MID_CYCLE"] * len(frame),
+                "benchmark_transition_intensity": np.zeros(len(frame)),
+                "benchmark_entropy": np.full(len(frame), 0.2),
+                "benchmark_entropy_lower": np.full(len(frame), 0.1),
+                "benchmark_entropy_upper": np.full(len(frame), 0.3),
+            },
+            index=pd.to_datetime(frame.index),
+        )
+        for regime in ("MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"):
+            benchmark[f"benchmark_prob_{regime}"] = 0.25
+            benchmark[f"benchmark_prob_delta_{regime}"] = 0.0
+            benchmark[f"benchmark_prob_acceleration_{regime}"] = 0.0
+            benchmark[f"benchmark_prob_lower_{regime}"] = 0.0
+            benchmark[f"benchmark_prob_upper_{regime}"] = 1.0
+            benchmark[f"benchmark_prob_delta_lower_{regime}"] = -1.0
+            benchmark[f"benchmark_prob_delta_upper_{regime}"] = 1.0
+            benchmark[f"benchmark_prob_acceleration_lower_{regime}"] = -1.0
+            benchmark[f"benchmark_prob_acceleration_upper_{regime}"] = 1.0
+        return benchmark
+
+    monkeypatch.setattr(backtest_module, "_load_price_history", fake_load_price_history)
+    monkeypatch.setattr(backtest_module, "build_worldview_benchmark", fake_build_worldview_benchmark)
+    monkeypatch.setattr(
+        "src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        "src.output.backtest_plots.save_v11_probabilistic_audit_figure",
+        lambda *args, **kwargs: None,
+    )
+
+    backtest_module.run_v11_audit(
+        dataset_path=str(macro_path),
+        regime_path=str(regime_path),
+        evaluation_start="2024-01-02",
+        artifact_dir=str(artifact_dir),
+        experiment_config={
+            "allow_price_download": False,
+            "price_end_date": "2025-12-31",
+            "save_plots": False,
+        },
+    )
+
+    assert load_calls.count("2025-12-31") == 1
+    assert load_calls.count(None) == 1
+    assert benchmark_lengths == [len(price_history)]
+
+
 def test_run_v11_audit_rejects_feature_subset_overrides_when_raw_quality_fields_exist(
     tmp_path, monkeypatch
 ):
