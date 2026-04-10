@@ -188,7 +188,7 @@ def test_acceptance_mode_fails_on_missing_price_end_date():
 
 def test_acceptance_mode_blocks_today_date():
     """Verify Fail-closed: --acceptance rejects today's date (lookahead prevention)."""
-    today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d")
     with pytest.raises((ValueError, SystemExit)):
         backtest_module.main(
             [
