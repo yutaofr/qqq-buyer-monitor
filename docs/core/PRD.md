@@ -57,7 +57,9 @@
 ## 5. 输出面规格 (The Interface)
 
 ### 核心输出 (The Signal)
-- **`stable_regime`**: 经过状态锚定同步后的当前市场制度。
+- **`posterior_regime`**: 当日后验最高概率的市场制度，对 UI/审计层可见。
+- **`execution_regime`**: 稳定器输出的执行层制度，用于节奏与风控，不冒充 UI 真相。
+- **`stable_regime`**: 向后兼容的后验制度别名，当前与 `posterior_regime` 保持一致。
 - **`target_beta`**: 受 0.5 底线保护的最终执行目标。
 - **`is_floor_active`**: 显式标记当前是否处于物理保护状态。
 - **`hydration_anchor`**: 展示系统先验数据的起始锚点（2018-01-01）。

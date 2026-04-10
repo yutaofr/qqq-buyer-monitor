@@ -24,7 +24,7 @@ python -m src.main --json --no-save
 ## 3. GitHub Actions 自动化架构
 
 1. **`ci.yml`**: 逻辑验证。负责代码审计 (Lint)、V11 原生测试及全样本性能回测。
-2. **`deploy-web.yml`**: 生产分发。每日收盘后生成 `status.json` 并推送到 Vercel Blob 的 `prod/` 命名空间。
+2. **`deploy-web.yml`**: 生产分发。每日收盘后生成 `status.json` 和 `history.json`，并推送到 Vercel Blob 的 `prod/` 命名空间。
 3. **`discord-signal.yml`**: 生产通知。盘中双时区触发决策提醒。
 
 **约束**：所有工作流必须共享 `runtime.yml` 这一核心底座，确保环境一致性。
@@ -35,10 +35,11 @@ python -m src.main --json --no-save
 系统启动后自动调用 `CloudPersistenceBridge` 从 Vercel Storage 的 `prod/` 命名空间拉取：
 *   `data/signals.db` (历史轨迹)
 *   `data/macro_historical_dump.csv` (DNA 库)
-*   `data/v11_prior_state.json` (贝叶斯先验)
+*   `data/qqq_history_cache.csv` (QQQ 历史价格缓存)
+*   `data/v13_6_ex_hydrated_prior.json` (可变贝叶斯先验)
 
-若云端缺失，则只能回退到仓库中的 canonical DNA；
-若 canonical DNA 也缺失，生产任务必须失败并报警，不允许 synthetic baseline 混入主路径。
+若云端缺失，则只能回退到仓库中的 canonical DNA 与 checked-in cold-start seed；
+若 canonical DNA 或 cold-start seed 也缺失，生产任务必须失败并报警，不允许 synthetic baseline 混入主路径。
 若 Blob 列表、鉴权、网络或已存在对象下载失败，则任务也必须立即失败，禁止带着 stale runtime state 继续推断并回写。
 
 ### Step 2: 模型 JIT 训练
@@ -54,8 +55,9 @@ python -m src.main --json --no-save
 
 ### Step 5: 分发与同步
 1. 生成 `status.json` 供 Web 端消费。
-2. 写入数据库记录。
-3. 将最新状态推回云端（覆盖旧有状态，实现进化）。
+2. 生成 `history.json` 供历史曲线消费。
+3. 写入数据库记录。
+4. 将最新状态推回云端（覆盖旧有状态，实现进化）。
 
 ---
 

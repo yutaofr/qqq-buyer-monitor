@@ -13,7 +13,7 @@ from src.models import SignalResult, TargetAllocationState
 from src.output.web_exporter import export_web_snapshot
 
 
-def test_web_frontend_contract_alignment():
+def test_web_frontend_contract_alignment(tmp_path):
     """
     Surgically audits index.html JS to ensure it matches the keys in web_exporter.
     """
@@ -34,12 +34,8 @@ def test_web_frontend_contract_alignment():
         metadata={"beta_ceiling": 1.20, "raw_target_beta": 0.85},
     )
 
-    json_path = Path("src/web/public/status.json")
+    json_path = tmp_path / "status.json"
     export_web_snapshot(mock_result, output_path=json_path)
-
-    # 2. Load the generated JSON
-    with open(json_path, encoding="utf-8") as f:
-        data = json.load(f)
 
     # 3. Load the index.html and audit JS logic
     html_path = Path("src/web/public/index.html")
@@ -83,7 +79,12 @@ def test_web_frontend_contract_alignment():
         )
         print(f"Key Found: {key} -> ALIGNED")
 
-    # 4. Check specific V11 fields
+    assert "params.get('branch')" in html_content
+    assert "staging/" in html_content
+
+    # 4. Check specific V11 fields from the generated artifact, not the repo fallback file
+    with open(json_path, encoding="utf-8") as f:
+        data = json.load(f)
     assert data["signal"]["entropy"] == 0.001
     assert "LATE_CYCLE" in data["signal"]["probabilities"]
     assert "LATE_CYCLE" in data["signal"]["priors"]

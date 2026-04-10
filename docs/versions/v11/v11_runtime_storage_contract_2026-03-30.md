@@ -2,18 +2,18 @@
 
 > 日期: 2026-03-30
 > 适用入口: `python -m src.main --engine v11`
-> 相关代码: `src/main.py`, `src/store/cloud_manager.py`, `src/engine/v11/conductor.py`
+> 相关代码: `src/main.py`, `src/store/cloud_manager.py`, `src/engine/v11/conductor.py`, `src/engine/v11/core/prior_knowledge.py`, `src/output/web_exporter.py`
 
 > 2026-04-01 补充说明:
 > 当前 active runtime topology 已收敛为 4-state: `MID_CYCLE / LATE_CYCLE / BUST / RECOVERY`。
-> `CAPITULATION` 不再是活跃 production state，只作为 legacy alias 在读取旧 `v11_prior_state.json` 或旧信号曲面时被折叠进 `RECOVERY`。
+> `CAPITULATION` 不再是活跃 production state，只作为 legacy alias 在读取旧 prior payload 或旧信号曲面时被折叠进 `RECOVERY`。
 > 下文中若出现 `CAPITULATION`，属于 2026-03-30 之前的历史运行截面说明，不代表当前 active contract。
 
 ## 1. 直接结论
 
 ### Q1. 为什么今天会显示 `MID_CYCLE 100%`，是不是先验库坏了？
 
-不是先验库单独把系统“拉歪”了。
+不是运行时先验单独把系统“拉歪”了。
 
 2026-03-30 的一次真实运行检查结果是：
 
@@ -42,7 +42,7 @@
    - `GaussianNB` 的类条件分布假设
    - `GaussianNB` 的 `theta_ / var_ / class_prior_` 是否通过了当前的模型完整性校验
 
-不是先把锅甩给 `v11_prior_state.json`。
+不是先把锅甩给 prior state。
 
 ### Q2. GitHub Actions 里会不会按设计读 Vercel Storage，再写回更新后的 prior？
 
@@ -52,22 +52,24 @@
 
 1. 启动时 `cloud.pull_state(...)`
 2. 拉取运行时状态文件到本地工作目录
-3. 运行 collectors 和 `V11Conductor.daily_run(...)`
-4. 回写 `data/v11_prior_state.json`
-5. 追加 `data/macro_historical_dump.csv`
-6. 保存 `data/signals.db`
-7. 如果不是 `--no-save`，并且在 CI 中，再执行 `cloud.push_state(...)`
+3. 如果 `data/v13_6_ex_hydrated_prior.json` 缺失，则先用 `src/engine/v11/resources/v13_6_cold_start_seed.json` 复制出可变 prior
+4. 运行 collectors 和 `V11Conductor.daily_run(...)`
+5. 回写 `data/v13_6_ex_hydrated_prior.json`
+6. 追加 `data/macro_historical_dump.csv`
+7. 保存 `data/signals.db`
+8. 如果不是 `--no-save`，并且在 CI 中，再执行 `cloud.push_state(...)`
 
 当前正式 cloud round-trip 的 runtime 文件只有：
 
 - `data/signals.db`
 - `data/macro_historical_dump.csv`
-- `data/v11_prior_state.json`
+- `data/qqq_history_cache.csv`
+- `data/v13_6_ex_hydrated_prior.json`
 
 其中：
 
-- `signals.db` 现在带有 `meta.schema_version=11.5`
-- `v11_prior_state.json` 现在带有 `bootstrap_fingerprint=sha256(...)`
+- `signals.db` 现在带有 `meta.schema_version=12.0`
+- `v13_6_ex_hydrated_prior.json` 现在带有 `bootstrap_fingerprint=sha256(...)`
 
 ### Q3. 还有什么 runtime 文件需要同步到 Vercel Storage 读取？
 
@@ -76,21 +78,22 @@
 边界要区分清楚：
 
 - 必须 round-trip 的 mutable runtime state
-  - `data/v11_prior_state.json`
+  - `data/v13_6_ex_hydrated_prior.json`
   - `data/macro_historical_dump.csv`
   - `data/signals.db`
+  - `data/qqq_history_cache.csv`
 - 本地 checked-in bootstrap seed，不属于 cloud runtime state
-  - `data/v11_poc_phase1_results.csv`
+  - `src/engine/v11/resources/v13_6_cold_start_seed.json`
 - 已经不在 active runtime path 的旧件，不应继续冒充 runtime state
   - `data/v11_full_evidence_history.csv`
 - 单独上传的展示/审计工件，不参与本次推断读链路
   - `status.json`
-  - `v11_feature_library.csv`
+  - `history.json`
 
 其中：
 
 - `status.json` 是 dashboard/前端消费工件
-- `v11_feature_library.csv` 当前只是单独上传的辅助工件，不是 `v11` 当日推断的必需输入
+- `history.json` 是前端历史曲线消费工件
 - 实时单日输入行现在可以携带轻量 provenance 字段，例如 `source_credit_spread`
   - 这些字段不属于 cloud runtime round-trip 清单
   - 它们只用于当日推断中的 data quality penalty，不会替代 canonical DNA
@@ -103,9 +106,9 @@
 
 1. `CloudPersistenceBridge.pull_state(...)` 先尝试从 blob 拉取
 2. 如果单个 blob 缺失 (`404` / pathname miss)，则退回本地仓库内已有 seed/runtime 文件
-3. 如果 `data/v11_prior_state.json` 本地也不存在：
-   - `PriorKnowledgeBase` 用 `data/v11_poc_phase1_results.csv` 的历史 regime 标签做 deterministic bootstrap
-4. 如果连 `data/macro_historical_dump.csv` / `data/v11_poc_phase1_results.csv` 都缺失或损坏：
+3. 如果 `data/v13_6_ex_hydrated_prior.json` 本地也不存在：
+   - `src.main` 会先用 `src/engine/v11/resources/v13_6_cold_start_seed.json` 复制出可变 prior
+4. 如果连 `data/macro_historical_dump.csv` / canonical prior seed 都缺失或损坏：
    - 生产与审计主路径现在直接 fail closed
    - synthetic bootstrap 仅允许在测试或显式灾备工具中使用
 5. 如果 blob 列表、鉴权、网络或已存在对象的下载发生非 `404` 异常：
@@ -146,7 +149,7 @@ staging/local-env-smoke
 ```text
 data/signals.db
 data/macro_historical_dump.csv
-data/v11_prior_state.json
+data/v13_6_ex_hydrated_prior.json
 ```
 
 云端枚举采用分页 cursor 拉取；对象数量增长后，仍必须完整覆盖当前 namespace 的 blob 视图。
@@ -155,15 +158,18 @@ data/v11_prior_state.json
 
 - `signals.db`: 历史信号与运行输入审计
 - `macro_historical_dump.csv`: v11 因子上下文与次日 seeder 基线
-- `v11_prior_state.json`: 贝叶斯先验/转移记忆/执行态记忆
+- `v13_6_ex_hydrated_prior.json`: 贝叶斯先验/转移记忆/执行态记忆
 
 ### 2.3 不再视为 runtime cloud state 的文件
 
 以下文件不再属于 cloud runtime round-trip：
 
-- `data/v11_poc_phase1_results.csv`
-  - 角色: checked-in regime seed
+- `src/engine/v11/resources/v13_6_cold_start_seed.json`
+  - 角色: checked-in canonical prior seed
   - 性质: bootstrap corpus，不是日更 runtime state
+- `data/v11_poc_phase1_results.csv`
+  - 角色: legacy regime history corpus
+  - 性质: historical research asset，不是当前 cold start 读链路
 - `data/v11_full_evidence_history.csv`
   - 角色: 历史遗留
   - 性质: 当前 active v11 主路径未消费，也未在每日运行中更新
@@ -175,11 +181,11 @@ data/v11_prior_state.json
 生产首跑推荐顺序：
 
 1. 仓库内保留 canonical `data/macro_historical_dump.csv`
-2. 仓库内保留 canonical `data/v11_poc_phase1_results.csv`
-3. 允许 `data/v11_prior_state.json` 缺失
-4. 首次 GitHub Actions 运行后自动生成并 push `data/v11_prior_state.json`
+2. 仓库内保留 canonical `src/engine/v11/resources/v13_6_cold_start_seed.json`
+3. 允许 `data/v13_6_ex_hydrated_prior.json` 缺失
+4. 首次 GitHub Actions 运行后自动生成并 push `data/v13_6_ex_hydrated_prior.json`
 
-首跑生成的 `v11_prior_state.json` 必须同时固化：
+首跑生成的 `v13_6_ex_hydrated_prior.json` 必须同时固化：
 
 - 历史计数 / 转移矩阵
 - `execution_state`
@@ -209,11 +215,13 @@ data/v11_prior_state.json
 
 v11 Discord 摘要现在应使用：
 
-- `stable_regime` 作为 `Bayesian Regime`
+- `posterior_regime` 作为 `Bayesian Regime`
+- `execution_regime` 作为执行层状态
+- `stable_regime` 作为向后兼容的后验别名
 - `raw_regime` 作为明细中的 `Raw Posterior Top-1`
 - `Posterior Distribution` 单独展示完整分布
 
-这样可以避免把“稳定状态机输出”和“当天 top-1 后验”混在一起。
+这样可以避免把“后验真相源”和“执行层稳定器”混在一起。
 
 ## 6. 运维规则
 

@@ -373,9 +373,14 @@
         // Environment & Data Source Configuration
         const DATA_SOURCES = {
             prod: 'https://rtmr1b9ayzxiugfu.public.blob.vercel-storage.com/prod/status.json',
-            dev: 'https://rtmr1b9ayzxiugfu.public.blob.vercel-storage.com/dev/status.json',
             local: './status.json'
         };
+
+        function getStagingSourceUrl(branch, filename = 'status.json') {
+            if (!branch) return null;
+            const safeBranch = String(branch).replace(/\//g, '_').replace(/ /g, '_');
+            return `https://rtmr1b9ayzxiugfu.public.blob.vercel-storage.com/staging/${safeBranch}/${filename}`;
+        }
 
         function getDataSourceUrl(filename = 'status.json') {
             const params = new URLSearchParams(window.location.search);
@@ -383,6 +388,12 @@
             if (source) return source.replace('status.json', filename);
 
             const env = params.get('env');
+            const branch = params.get('branch');
+            if (env === 'staging' || env === 'dev' || env === 'preview') {
+                const stagingUrl = getStagingSourceUrl(branch, filename);
+                if (stagingUrl) return stagingUrl;
+                return DATA_SOURCES.local.replace('status.json', filename);
+            }
             if (env && DATA_SOURCES[env]) return DATA_SOURCES[env].replace('status.json', filename);
 
             // Auto-detect local development
@@ -396,8 +407,8 @@
         const TRANSLATIONS = {
             'en': {
                 'ui-page-title': 'QQQ Barometer - Probabilistic Dashboard',
-                'ui-title': 'QQQ Barometer',
-                'ui-regime-label': 'Stable Regime',
+                    'ui-title': 'QQQ Barometer',
+                    'ui-regime-label': 'Posterior Regime',
                 'ui-entropy-label': 'Entropy', 'ui-deploy-label': 'Entry Pacing', 'ui-beta-rec': 'Target Beta',
                 'ui-panorama-label': 'Panorama Ensemble Verdict',
                 'ui-model-type': 'Bayesian',
@@ -439,8 +450,8 @@
             },
             'zh-TW': {
                 'ui-page-title': 'QQQ 氣象觀測站 - 機率目標係數儀表板',
-                'ui-title': '趨勢氣象站',
-                'ui-regime-label': '穩定體制',
+                    'ui-title': '趨勢氣象站',
+                    'ui-regime-label': '後驗體制',
                 'ui-entropy-label': '資訊熵', 'ui-deploy-label': '佈局節奏', 'ui-beta-rec': '最終執行目標',
                 'ui-panorama-label': '全景診斷裁決',
                 'ui-model-type': '機率推斷',
@@ -995,9 +1006,14 @@
                     if (res.ok) { 
                         data = await res.json(); 
                         const isProduction = primaryUrl === DATA_SOURCES.prod;
+                        const isLocal = primaryUrl === DATA_SOURCES.local;
                         const statusMsg = TRANSLATIONS[currentLang].status.CLOUD_SYNCED;
-                        sourceLabel.textContent = isProduction ? statusMsg : (currentLang === 'zh-TW' ? `${statusMsg}（測試）` : `${statusMsg} (Test)`);
-                        sourceLabel.className = isProduction ? "text-emerald-500" : "text-blue-400"; 
+                        sourceLabel.textContent = isProduction
+                            ? statusMsg
+                            : (isLocal
+                                ? TRANSLATIONS[currentLang].status.LOCAL_FALLBACK
+                                : (currentLang === 'zh-TW' ? `${statusMsg}（分支）` : `${statusMsg} (Branch)`));
+                        sourceLabel.className = isProduction ? "text-emerald-500" : (isLocal ? "text-orange-500" : "text-blue-400"); 
                     }
                 } catch (e) {}
 

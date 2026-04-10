@@ -31,6 +31,30 @@ def test_save_and_load_signal(tmp_path):
     assert history[0]["price"] == 402.0
 
 
+def test_save_and_load_signal_persists_posterior_and_execution_regime_surfaces(tmp_path):
+    db_path = tmp_path / "signals.db"
+    result = SignalResult(
+        date=date(2026, 4, 9),
+        price=610.19,
+        target_beta=0.62,
+        probabilities={"BUST": 0.47, "LATE_CYCLE": 0.45, "MID_CYCLE": 0.05, "RECOVERY": 0.03},
+        priors={"MID_CYCLE": 0.36, "LATE_CYCLE": 0.26, "BUST": 0.20, "RECOVERY": 0.18},
+        entropy=0.71,
+        stable_regime="BUST",
+        target_allocation=TargetAllocationState(0.38, 0.62, 0.0, 0.62),
+        logic_trace=[],
+        explanation="test",
+        metadata={"posterior_regime": "BUST", "execution_regime": "MID_CYCLE"},
+    )
+
+    save_signal(result, path=str(db_path))
+    history = load_history(n=1, path=str(db_path))
+
+    assert history[0]["posterior_regime"] == "BUST"
+    assert history[0]["execution_regime"] == "MID_CYCLE"
+    assert history[0]["stable_regime"] == "BUST"
+
+
 def test_init_db_writes_schema_version_meta(tmp_path):
     db_path = tmp_path / "signals.db"
 
