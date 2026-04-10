@@ -218,6 +218,25 @@ def build_worldview_benchmark(
         trend_down=trend_down,
         deep_drawdown=deep_drawdown,
     )
+    benchmark_uncertainty = (1.0 - conviction).clip(lower=0.0, upper=1.0)
+    benchmark_trend_strength = pd.concat(
+        [
+            (0.55 * trend_up + 0.25 * momentum_up + 0.20 * slope_up).clip(0.0, 1.0).rename("mid_trend"),
+            (0.60 * bust_pressure + 0.20 * trend_down + 0.20 * short_down).clip(0.0, 1.0).rename("bust_trend"),
+            (0.55 * recovery_impulse + 0.20 * gap_improving + 0.15 * short_up).clip(0.0, 1.0).rename("recovery_trend"),
+            (0.50 * trend_drying + 0.25 * divergence + 0.25 * volume_dry_up_pressure.clip(0.0, 1.0)).clip(0.0, 1.0).rename("late_trend"),
+        ],
+        axis=1,
+    ).max(axis=1)
+    benchmark_conflict_score = (
+        0.28 * transition_tension.clip(0.0, 1.0)
+        + 0.18 * divergence.clip(0.0, 1.0)
+        + 0.12 * bearish_rsi_divergence.clip(0.0, 1.0)
+        + 0.10 * bullish_rsi_divergence.clip(0.0, 1.0)
+        + 0.14 * benchmark_uncertainty
+        + 0.10 * recent_damage.clip(0.0, 1.0)
+        + 0.08 * selloff_volume.clip(0.0, 1.0)
+    ).clip(lower=0.0, upper=1.0)
     for regime in ACTIVE_REGIME_ORDER:
         benchmark[f"benchmark_prob_{regime}"] = probabilities[regime]
         benchmark[f"benchmark_prob_delta_{regime}"] = probabilities[regime].diff().fillna(0.0)
@@ -270,6 +289,9 @@ def build_worldview_benchmark(
     benchmark["benchmark_bust_pressure"] = bust_pressure
     benchmark["benchmark_transition_tension"] = transition_tension
     benchmark["benchmark_transition_intensity"] = transition_intensity
+    benchmark["benchmark_uncertainty"] = benchmark_uncertainty
+    benchmark["benchmark_trend_strength"] = benchmark_trend_strength
+    benchmark["benchmark_conflict_score"] = benchmark_conflict_score
     return benchmark
 
 
@@ -393,13 +415,56 @@ def _regime_conditioned_entropy(
         + 0.10 * recent_damage
         + 0.08 * uncertainty
     ).clip(lower=0.0, upper=0.34)
+    stable_factor = (1.0 - transition_intensity).clip(lower=0.0, upper=1.0)
+    mid_stable_noise_allowance = (
+        stable_factor * (0.14 * uncertainty + 0.05 * transition_tension + 0.03 * recent_damage)
+    ).clip(lower=0.0, upper=0.16)
+    recovery_stable_noise_allowance = (
+        stable_factor
+        * (
+            0.16 * uncertainty
+            + 0.06 * transition_tension
+            + 0.05 * recent_damage
+            + 0.04 * bullish_rsi_divergence
+        )
+    ).clip(lower=0.0, upper=0.20)
+    late_stable_noise_allowance = (
+        stable_factor
+        * (
+            0.12 * uncertainty
+            + 0.08 * transition_tension
+            + 0.07 * divergence
+            + 0.06 * volume_dry_up_pressure.clip(0.0, 1.0)
+        )
+    ).clip(lower=0.0, upper=0.18)
+    bust_stable_noise_allowance = (
+        stable_factor
+        * (
+            0.12 * uncertainty
+            + 0.08 * recent_damage
+            + 0.08 * selloff_volume
+            + 0.06 * monthly_rollover
+        )
+    ).clip(lower=0.0, upper=0.20)
 
-    entropy += np.where(benchmark_regime.eq("LATE_CYCLE"), 0.10 + 0.14 * late_noise, 0.0)
-    entropy += np.where(benchmark_regime.eq("BUST"), 0.14 + 0.16 * bust_noise, 0.0)
-    entropy += np.where(benchmark_regime.eq("MID_CYCLE"), -0.22 * mid_confirmation + mid_transition_allowance, 0.0)
+    entropy += np.where(
+        benchmark_regime.eq("LATE_CYCLE"),
+        0.10 + 0.14 * late_noise + late_stable_noise_allowance,
+        0.0,
+    )
+    entropy += np.where(
+        benchmark_regime.eq("BUST"),
+        0.14 + 0.16 * bust_noise + bust_stable_noise_allowance,
+        0.0,
+    )
+    entropy += np.where(
+        benchmark_regime.eq("MID_CYCLE"),
+        -0.22 * mid_confirmation + mid_transition_allowance + mid_stable_noise_allowance,
+        0.0,
+    )
     entropy += np.where(
         benchmark_regime.eq("RECOVERY"),
-        -0.20 * recovery_confirmation + recovery_transition_allowance,
+        -0.20 * recovery_confirmation + recovery_transition_allowance + recovery_stable_noise_allowance,
         0.0,
     )
 

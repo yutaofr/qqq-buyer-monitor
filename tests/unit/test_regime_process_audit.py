@@ -145,3 +145,58 @@ def test_compute_regime_process_alignment_rewards_transition_overlap():
 
     assert not merged.empty
     assert summary["overall"]["stable_vs_benchmark_regime"] > 0.5
+
+
+def test_compute_regime_process_alignment_widens_bands_for_noisy_stable_windows():
+    dates = pd.date_range("2024-01-01", periods=2, freq="B")
+    benchmark = pd.DataFrame(
+        {
+            "date": dates,
+            "benchmark_regime": ["MID_CYCLE", "MID_CYCLE"],
+            "benchmark_transition_intensity": [0.10, 0.10],
+            "benchmark_transition_tension": [0.05, 0.80],
+            "benchmark_uncertainty": [0.08, 0.34],
+            "benchmark_trend_strength": [0.88, 0.24],
+            "benchmark_conflict_score": [0.06, 0.82],
+            "benchmark_entropy": [0.22, 0.44],
+        }
+    )
+    for regime, values in {
+        "MID_CYCLE": [0.76, 0.76],
+        "LATE_CYCLE": [0.12, 0.12],
+        "BUST": [0.07, 0.07],
+        "RECOVERY": [0.05, 0.05],
+    }.items():
+        benchmark[f"benchmark_prob_{regime}"] = values
+        benchmark[f"benchmark_prob_delta_{regime}"] = 0.0
+        benchmark[f"benchmark_prob_acceleration_{regime}"] = 0.0
+
+    model = pd.DataFrame(
+        {
+            "date": dates,
+            "stable_regime": ["MID_CYCLE", "MID_CYCLE"],
+            "prob_MID_CYCLE": [0.83, 0.83],
+            "prob_LATE_CYCLE": [0.09, 0.09],
+            "prob_BUST": [0.04, 0.04],
+            "prob_RECOVERY": [0.04, 0.04],
+            "entropy": [0.31, 0.59],
+        }
+    )
+
+    merged, _ = compute_regime_process_alignment(model, benchmark)
+
+    tight_prob_width = (
+        merged.loc[0, "benchmark_prob_upper_MID_CYCLE"] - merged.loc[0, "benchmark_prob_lower_MID_CYCLE"]
+    )
+    noisy_prob_width = (
+        merged.loc[1, "benchmark_prob_upper_MID_CYCLE"] - merged.loc[1, "benchmark_prob_lower_MID_CYCLE"]
+    )
+    tight_entropy_width = (
+        merged.loc[0, "benchmark_entropy_upper"] - merged.loc[0, "benchmark_entropy_lower"]
+    )
+    noisy_entropy_width = (
+        merged.loc[1, "benchmark_entropy_upper"] - merged.loc[1, "benchmark_entropy_lower"]
+    )
+
+    assert noisy_prob_width > tight_prob_width
+    assert noisy_entropy_width > tight_entropy_width

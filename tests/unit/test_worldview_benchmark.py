@@ -126,3 +126,17 @@ def test_worldview_benchmark_entropy_drops_once_trend_is_confirmed():
     assert stable_slice["benchmark_regime"].mode().iloc[0] == "MID_CYCLE"
     assert stable_slice["benchmark_entropy"].mean() < transition_slice["benchmark_entropy"].mean()
     assert stable_slice["benchmark_entropy_upper"].mean() < transition_slice["benchmark_entropy_upper"].mean()
+
+
+def test_worldview_benchmark_emits_context_columns_for_conditional_process_audit():
+    close = np.concatenate([np.linspace(100.0, 155.0, 220), np.linspace(155.0, 158.0, 40), np.linspace(158.0, 150.0, 40)])
+    volume = np.concatenate([np.linspace(1_100_000.0, 1_050_000.0, 220), np.linspace(1_000_000.0, 700_000.0, 40), np.linspace(720_000.0, 760_000.0, 40)])
+
+    benchmark = build_worldview_benchmark(_series_frame(close, volume))
+
+    assert "benchmark_uncertainty" in benchmark.columns
+    assert "benchmark_trend_strength" in benchmark.columns
+    assert "benchmark_conflict_score" in benchmark.columns
+    assert benchmark["benchmark_uncertainty"].between(0.0, 1.0).all()
+    assert benchmark["benchmark_trend_strength"].between(0.0, 1.0).all()
+    assert benchmark["benchmark_conflict_score"].between(0.0, 1.0).all()
