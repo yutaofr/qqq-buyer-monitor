@@ -81,6 +81,8 @@ def test_web_frontend_contract_alignment(tmp_path):
 
     assert "params.get('branch')" in html_content
     assert "staging/" in html_content
+    assert "'FROZEN': '休市'" in html_content
+    assert "'FROZEN': '非實時'" not in html_content
 
     # 4. Check specific V11 fields from the generated artifact, not the repo fallback file
     with open(json_path, encoding="utf-8") as f:

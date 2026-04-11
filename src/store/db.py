@@ -50,18 +50,72 @@ CREATE TABLE IF NOT EXISTS meta (
 """
 
 
+def _extract_target_beta_from_json_blob(json_blob: str) -> float:
+    """Recover target_beta when migrating legacy signals rows."""
+    try:
+        payload = json.loads(json_blob)
+    except json.JSONDecodeError:
+        logger.warning("Legacy signals row contains invalid json_blob; defaulting target_beta to 0.0")
+        return 0.0
+
+    target_beta = payload.get("target_beta")
+    if target_beta is None:
+        target_beta = (payload.get("target_allocation") or {}).get("target_beta")
+
+    try:
+        return float(target_beta)
+    except (TypeError, ValueError):
+        logger.warning("Legacy signals row missing target_beta; defaulting target_beta to 0.0")
+        return 0.0
+
+
+def _migrate_legacy_signals_table(
+    conn: sqlite3.Connection, *, path: str, columns: set[str]
+) -> None:
+    """Upgrade the legacy signals table without destroying historical rows."""
+    logger.warning("Legacy schema detected in %s. Migrating for V11 convergence.", path)
+
+    if not {"date", "price", "json_blob"}.issubset(columns):
+        logger.warning(
+            "Unsupported legacy signals schema in %s. Falling back to destructive reset.", path
+        )
+        conn.execute("DROP TABLE IF EXISTS signals")
+        return
+
+    legacy_rows = conn.execute(
+        "SELECT date, price, json_blob FROM signals ORDER BY date"
+    ).fetchall()
+    conn.execute("ALTER TABLE signals RENAME TO signals_legacy")
+    conn.execute(CREATE_TABLE_SQL)
+    conn.executemany(
+        """
+        INSERT INTO signals (date, target_beta, price, json_blob)
+        VALUES (?, ?, ?, ?)
+        """,
+        [
+            (
+                row_date,
+                _extract_target_beta_from_json_blob(json_blob),
+                float(price),
+                json_blob,
+            )
+            for row_date, price, json_blob in legacy_rows
+        ],
+    )
+    conn.execute("DROP TABLE IF EXISTS signals_legacy")
+
+
 def init_db(path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     """Initialise (or open) the SQLite database and create the table."""
     db_path = Path(path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
 
-    # Force Schema Sync for V11 (Destructive Cleanup)
+    # Force schema sync for V11 while preserving historical rows whenever possible.
     cursor = conn.execute("PRAGMA table_info(signals)")
     columns = {row[1] for row in cursor.fetchall()}
     if columns and "target_beta" not in columns:
-        logger.warning("Legacy schema detected in %s. Dropping for V11 convergence.", path)
-        conn.execute("DROP TABLE IF EXISTS signals")
+        _migrate_legacy_signals_table(conn, path=path, columns=columns)
 
     conn.execute(CREATE_TABLE_SQL)
     conn.execute(CREATE_MACRO_TABLE_SQL)
@@ -137,10 +191,17 @@ def load_history(n: int = 30, path: str = DEFAULT_DB_PATH) -> list[dict]:
     """Return the most recent n signal records as raw dicts."""
     if not Path(path).exists():
         return []
-    conn = init_db(path)
-    rows = conn.execute("SELECT json_blob FROM signals ORDER BY date DESC LIMIT ?", (n,)).fetchall()
-    conn.close()
-    return [json.loads(row[0]) for row in rows]
+    conn = sqlite3.connect(str(path))
+    try:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(signals)").fetchall()}
+        if "json_blob" not in columns:
+            return []
+        rows = conn.execute(
+            "SELECT json_blob FROM signals ORDER BY date DESC LIMIT ?", (n,)
+        ).fetchall()
+        return [json.loads(row[0]) for row in rows]
+    finally:
+        conn.close()
 
 
 def save_macro_state(

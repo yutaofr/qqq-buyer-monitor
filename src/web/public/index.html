@@ -482,7 +482,7 @@
                     'CRISIS': '危機', 'STRESS': '壓力', 'NEUTRAL': '中性', 'EUPHORIC': '過熱',
                     'BUST': '蕭條', 'MID_CYCLE': '中期', 'LATE_CYCLE': '後期', 'RECOVERY': '修復',
                     'CASH': '現金', 'QQQ': '標準倉位', 'QLD': '雙倍槓桿',
-                    'ACTIVE': '實時', 'FROZEN': '非實時', 'UNKNOWN': '未知',
+                    'ACTIVE': '實時', 'FROZEN': '休市', 'UNKNOWN': '未知',
                     'FULL': '全量', 'SHADOW': '影子模式', 'HALF': '半量', 'QUARTER': '四分之一', 'NONE': '關閉',
                     'FAST': '快速', 'BASE': '標配', 'SLOW': '減速', 'PAUSE': '停步', 'RECOVER': '恢復',
                     'TRUE': '是', 'FALSE': '否', 'MODE': '模式', 'STATE': '狀態', 'NEGATIVE SCORE': '負向評分',
@@ -919,6 +919,11 @@
                 
                 startDateEl.textContent = history[0].date;
                 endDateEl.textContent = history[history.length - 1].date;
+
+                if (history.length < 2) {
+                    g.innerHTML = '';
+                    return;
+                }
 
                 const width = 1000; // Fixed viewbox width
                 const height = 500; // Fixed viewbox height
