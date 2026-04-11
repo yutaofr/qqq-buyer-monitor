@@ -429,3 +429,76 @@ def test_run_v11_pipeline_reaudits_after_price_cache_refresh(monkeypatch):
 
     assert refreshed["called"] == 1
     assert guardian.audits == 2
+
+
+def test_persist_and_export_web_artifacts_saves_signal_before_history_export(monkeypatch):
+    call_order = []
+
+    monkeypatch.setattr(
+        "src.store.db.save_signal",
+        lambda result: call_order.append("save_signal"),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "_upsert_v11_macro_feedback",
+        lambda raw_row, path: call_order.append("save_macro_feedback"),
+    )
+    monkeypatch.setattr(
+        "src.output.web_exporter.export_web_snapshot",
+        lambda result, output_path=None: call_order.append("export_web_snapshot") or True,
+    )
+    monkeypatch.setattr(
+        "src.output.web_exporter.export_history_json",
+        lambda output_path=None: call_order.append("export_history_json") or True,
+    )
+
+    cloud = type("Cloud", (), {"is_ci": False})()
+    result = object()
+
+    main_module._persist_and_export_web_artifacts(
+        result=result,
+        raw_row=pd.DataFrame([{"x": 1}]),
+        cloud=cloud,
+        sync_files=["data/signals.db"],
+        web_json_path="src/web/public/status.json",
+        history_json_path="src/web/public/history.json",
+    )
+
+    assert call_order == [
+        "save_signal",
+        "save_macro_feedback",
+        "export_web_snapshot",
+        "export_history_json",
+    ]
+
+
+def test_persist_and_export_web_artifacts_fails_closed_when_history_export_fails(
+    monkeypatch, tmp_path
+):
+    stale_history = tmp_path / "history.json"
+    stale_history.write_text("stale-history", encoding="utf-8")
+
+    monkeypatch.setattr("src.store.db.save_signal", lambda result: None)
+    monkeypatch.setattr(main_module, "_upsert_v11_macro_feedback", lambda raw_row, path: None)
+    monkeypatch.setattr(
+        "src.output.web_exporter.export_web_snapshot",
+        lambda result, output_path=None: True,
+    )
+    monkeypatch.setattr(
+        "src.output.web_exporter.export_history_json",
+        lambda output_path=None: False,
+    )
+
+    cloud = type("Cloud", (), {"is_ci": False})()
+
+    with pytest.raises(RuntimeError, match="History export failed"):
+        main_module._persist_and_export_web_artifacts(
+            result=object(),
+            raw_row=pd.DataFrame([{"x": 1}]),
+            cloud=cloud,
+            sync_files=["data/signals.db"],
+            web_json_path=str(tmp_path / "status.json"),
+            history_json_path=str(stale_history),
+        )
+
+    assert stale_history.exists() is False

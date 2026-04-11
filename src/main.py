@@ -378,6 +378,39 @@ def _build_v12_live_macro_row(
     )
 
 
+def _persist_and_export_web_artifacts(
+    *,
+    result: SignalResult,
+    raw_row: pd.DataFrame,
+    cloud: CloudPersistenceBridge,
+    sync_files: list[str],
+    web_json_path: str,
+    history_json_path: str,
+) -> None:
+    from src.output.web_exporter import export_history_json, export_web_snapshot
+    from src.store.db import save_signal
+
+    save_signal(result)
+    _upsert_v11_macro_feedback(raw_row, "data/macro_historical_dump.csv")
+
+    status_ok = export_web_snapshot(result, output_path=web_json_path)
+    history_ok = export_history_json(output_path=history_json_path)
+
+    if not status_ok:
+        raise RuntimeError("Web snapshot export failed")
+    if not history_ok:
+        Path(history_json_path).unlink(missing_ok=True)
+        raise RuntimeError("History export failed")
+
+    if cloud.is_ci:
+        cloud.push_state(sync_files)
+        with open(web_json_path, "rb") as f:
+            cloud.push_payload(f.read(), "status.json", is_binary=True)
+        if Path(history_json_path).exists():
+            with open(history_json_path, "rb") as f:
+                cloud.push_payload(f.read(), "history.json", is_binary=True)
+
+
 def _build_v11_live_macro_row(**kwargs) -> pd.DataFrame:
     return _build_v12_live_macro_row(**kwargs)
 
@@ -705,13 +738,8 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     result.metadata["v14_shadow_mode"] = True
     result.metadata["recovery_hmm_shadow"] = _load_recovery_hmm_shadow_diagnostics()
 
-    # 1. Export Web Snapshot Locally (Production Baseline)
-    from src.output.web_exporter import export_history_json, export_web_snapshot
-
     web_json_path = "src/web/public/status.json"
     history_json_path = "src/web/public/history.json"
-    export_web_snapshot(result, output_path=web_json_path)
-    export_history_json(output_path=history_json_path)
 
     if args.json:
         print(to_json(result))
@@ -733,24 +761,20 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
                 logger.error("Failed to send Discord signal notification.")
 
     if not args.no_save:
-        from src.store.db import save_signal
-
-        save_signal(result)
-        _upsert_v11_macro_feedback(raw_row, "data/macro_historical_dump.csv")
-
-        # 3. Synchronize State & Distribution to Cloud
-        if cloud.is_ci:
-            # Sync core state files
-            cloud.push_state(sync_files)
-            # Sync Public status.json to the ROOT of the namespace (e.g. prod/status.json)
-            with open(web_json_path, "rb") as f:
-                cloud.push_payload(f.read(), "status.json", is_binary=True)
-            # Sync Public history.json to the ROOT of the namespace (e.g. prod/history.json)
-            if Path(history_json_path).exists():
-                with open(history_json_path, "rb") as f:
-                    cloud.push_payload(f.read(), "history.json", is_binary=True)
-
+        _persist_and_export_web_artifacts(
+            result=result,
+            raw_row=raw_row,
+            cloud=cloud,
+            sync_files=sync_files,
+            web_json_path=web_json_path,
+            history_json_path=history_json_path,
+        )
         logger.info("v11 signal persisted and cloud state synchronized.")
+    else:
+        from src.output.web_exporter import export_history_json, export_web_snapshot
+
+        export_web_snapshot(result, output_path=web_json_path)
+        export_history_json(output_path=history_json_path)
 
 
 def main(argv: list[str] | None = None) -> None:
