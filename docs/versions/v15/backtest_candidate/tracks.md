@@ -98,7 +98,7 @@ B-01 (创建 TDD 测试 test_kelly_pnl.py)
 ---
 
 ### B-08 — 生成最终 PNL 指标报告 (AC-7)
-- **状态**: `[TODO]`
+- **状态**: `[DONE]`
 - **命令**: 
   ```bash
   docker-compose run kelly-pnl
