@@ -118,3 +118,19 @@ services:
       --trace-path artifacts/v14_panorama/mainline/regime_process_trace.csv
       --regime-audit src/engine/v11/resources/regime_audit.json
       --output-dir artifacts/kelly_ab
+
+  kelly-pnl:
+    image: qqq-monitor:py313
+    build: .
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - ./artifacts:/app/artifacts
+      - .env:/app/.env
+    env_file:
+      - .env
+    command: >
+      python scripts/kelly_pnl_backtest.py
+      --trace-path artifacts/v14_panorama/mainline/regime_process_trace.csv
+      --regime-audit src/engine/v11/resources/regime_audit.json
+      --output-dir artifacts/kelly_ab
