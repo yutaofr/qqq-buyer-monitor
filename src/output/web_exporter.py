@@ -233,6 +233,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                         "reason": "Resonance Engine Initializing",
                     },
                 ),
+                "qld_permission": metadata.get("signal", {}).get("qld_permission", {}),
             },
             "evidence": {
                 "logic_trace": result.logic_trace,
@@ -240,6 +241,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "execution_overlay": execution_overlay,
                 "bayesian_diagnostics": metadata.get("v13_4_diagnostics", {}),
                 "price_topology": metadata.get("price_topology", {}),
+                "qld_permission": metadata.get("signal", {}).get("qld_permission", {}),
             },
             "diagnostics": {
                 "tractor": {

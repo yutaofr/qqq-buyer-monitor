@@ -350,6 +350,11 @@
                 </div>
 
                 <div class="space-y-6">
+                    <p id="ui-qld-permission-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">QLD 權限層</p>
+                    <div id="qld-permission-container" class="feature-grid px-2 sm:px-4"></div>
+                </div>
+
+                <div class="space-y-6">
                     <p id="ui-feature-values-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">特徵數值明細</p>
                     <div id="feature-values-container" class="feature-grid px-2 sm:px-4"></div>
                 </div>
@@ -668,6 +673,38 @@
             `).join('');
         }
 
+        function renderQLDPermission(qldPermission) {
+            const container = document.getElementById('qld-permission-container');
+            container.innerHTML = '';
+            const qld = qldPermission || {};
+            const leftKernel = qld.left_side_kernel || {};
+            const stageOverride = qld.regime_specific_override || {};
+            const clusters = stageOverride.clusters || {};
+            const activeClusters = Object.entries(clusters)
+                .filter(([, value]) => Boolean(value))
+                .map(([key]) => humanizeKey(key))
+                .join(', ');
+            const entries = [
+                ['ENTRY MODE', qld.entry_mode || '--'],
+                ['REASON CODE', qld.reason_code || '--'],
+                ['QLD ALLOWED', qld.qld_allowed],
+                ['SUB1X ALLOWED', qld.allow_sub1x_qld],
+                ['FORCED BUCKET', qld.forced_bucket || '--'],
+                ['REENTRY SIGNAL', qld.relaxed_entry_signal],
+                ['LEFT-SIDE SCORE', leftKernel.score],
+                ['LEFT-SIDE ACTIVE', leftKernel.active],
+                ['STAGE OVERRIDE ACTIVE', stageOverride.active],
+                ['STAGE OVERRIDE SCORE', stageOverride.score],
+                ['ACTIVE CLUSTERS', activeClusters || '--'],
+            ];
+            container.innerHTML = entries.map(([key, value]) => `
+                <div class="feature-chip">
+                    <p class="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">${escapeHtml(humanizeKey(key))}</p>
+                    <p class="text-base sm:text-lg font-black text-white mt-2 break-all">${escapeHtml(formatScalar(value))}</p>
+                </div>
+            `).join('');
+        }
+
         function localizeTrend(trend) {
             if (currentLang === 'en') {
                 return trend || 'FLAT';
@@ -800,9 +837,13 @@
             };
             renderFeatureValues(enrichedFeatureValues);
             renderExecutionOverlay(data.evidence.execution_overlay);
+            renderQLDPermission(data.evidence.qld_permission || data.signal.qld_permission);
             const enrichedLogicTrace = [...(data.evidence.logic_trace || [])];
             if (data.evidence.price_topology) {
                 enrichedLogicTrace.push({ step: 'price_topology', result: data.evidence.price_topology });
+            }
+            if (data.evidence.qld_permission) {
+                enrichedLogicTrace.push({ step: 'qld_permission', result: data.evidence.qld_permission });
             }
             if (data.evidence.bayesian_diagnostics) {
                 enrichedLogicTrace.push({ step: 'bayesian_diagnostics', result: data.evidence.bayesian_diagnostics });

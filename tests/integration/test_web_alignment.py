@@ -60,12 +60,14 @@ def test_web_frontend_contract_alignment(tmp_path):
         "data.signal.is_floor_active",
         "data.signal.hydration_anchor",
         "data.signal.resonance",
+        "data.signal.qld_permission",
         "data.signal.price_topology",
         "data.signal.lock_active",
         "data.meta.calculated_at_utc",
         "data.evidence.logic_trace",
         "data.evidence.feature_values",
         "data.evidence.execution_overlay",
+        "data.evidence.qld_permission",
         "data.evidence.bayesian_diagnostics",
         "data.evidence.price_topology",
     ]
@@ -93,6 +95,7 @@ def test_web_frontend_contract_alignment(tmp_path):
     assert data["signal"]["lock_active"] is False
     assert "logic-trace-container" in html_content
     assert "feature-values-container" in html_content
+    assert "qld-permission-container" in html_content
 
     print("\nWeb Alignment: SUCCESS. V12.0 Engine and Frontend are in sync.")
 
