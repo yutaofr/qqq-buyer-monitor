@@ -88,7 +88,7 @@ B-01 (创建 TDD 测试 test_kelly_pnl.py)
 ---
 
 ### B-07 — 执行 A/B 实验修正确认 (AC-6)
-- **状态**: `[TODO]`
+- **状态**: `[DONE]`
 - **命令**: 
   ```bash
   docker-compose run kelly-ab
