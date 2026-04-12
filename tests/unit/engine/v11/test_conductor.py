@@ -566,3 +566,26 @@ def test_conductor_uses_business_day_training_classes_for_model_validation(tmp_p
 
     assert conductor.model_regimes == ["LATE_CYCLE"]
     assert conductor.gnb.classes_.tolist() == ["LATE_CYCLE"]
+
+def test_conductor_instantiates_kelly_deployment_policy_with_correct_args(tmp_path, mocker):
+    regime_path = tmp_path / "regimes.csv"
+    macro_path = tmp_path / "macro.csv"
+    prior_path = tmp_path / "prior_state.json"
+
+    dates = pd.bdate_range("2024-01-01", periods=320)
+    _build_v12_macro_frame(dates).to_csv(macro_path, index=False)
+    _build_regime_frame(dates).to_csv(regime_path, index=False)
+
+    spy = mocker.patch("src.engine.v11.conductor.KellyDeploymentPolicy")
+
+    conductor = V11Conductor(
+        macro_data_path=str(macro_path),
+        regime_data_path=str(regime_path),
+        prior_state_path=str(prior_path),
+    )
+
+    spy.assert_called_once()
+    kwargs = spy.call_args[1]
+    assert kwargs.get("kelly_scale") == 0.25
+    assert kwargs.get("erp_weight") == 0.2
+    assert "regime_sharpes" in kwargs
