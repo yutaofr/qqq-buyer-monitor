@@ -921,6 +921,7 @@ class V11Conductor:
                 "resonance_reason": resonance_result["reason"],
                 "qld_allowed": qld_permission.qld_allowed,
                 "qld_sub1x_allowed": qld_permission.allow_sub1x_qld,
+                "qld_entry_mode": qld_permission.entry_mode,
                 "qld_permission_reason": qld_permission.reason,
             },
         )

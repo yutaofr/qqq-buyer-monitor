@@ -221,3 +221,143 @@ def test_buy_qld_only_relaxes_entry_when_permission_is_already_open():
     assert blocked.relaxed_entry_signal == 0.0
     assert allowed.allow_sub1x_qld is True
     assert allowed.relaxed_entry_signal > blocked.relaxed_entry_signal
+
+
+def test_left_side_probe_opens_on_generic_exhaustion_plus_macro_relief():
+    evaluator = QLDPermissionEvaluator()
+
+    context = _context().assign(
+        real_yield_10y_pct=[1.95 - (0.0025 * i) for i in range(260)],
+        credit_spread_bps=[540.0 - (0.8 * i) for i in range(260)],
+    )
+    decision = evaluator.evaluate(
+        context_df=context,
+        baseline_result=_baseline(tractor_prob=0.10, sidecar_prob=0.13),
+        resonance_result={"action": "HOLD", "confidence": 0.45},
+        overlay={"positive_score": 0.72, "negative_score": 0.18},
+        effective_entropy=0.66,
+        topology_state={
+            "regime": "BUST",
+            "confidence": 0.28,
+            "expected_beta": 0.67,
+            "damage_memory": 0.74,
+            "recovery_impulse": 0.31,
+            "repair_persistence": 0.42,
+            "bust_pressure": 0.34,
+            "bullish_divergence": 0.18,
+            "recovery_prob_delta": 0.014,
+            "recovery_prob_acceleration": 0.006,
+        },
+        quality_audit=_quality(),
+        base_reentry_signal=0.58,
+        target_beta=0.66,
+    )
+
+    assert decision.reason_code == "LEFT_SIDE_PROBE"
+    assert decision.allow_sub1x_qld is True
+    assert decision.forced_bucket == "QLD"
+    assert decision.entry_mode == "LEFT_SIDE_PROBE"
+    assert decision.left_side_kernel["active"] is True
+    assert decision.regime_specific_override["active"] is True
+
+
+def test_left_side_probe_can_release_sell_binding_when_exhaustion_is_confirmed():
+    evaluator = QLDPermissionEvaluator()
+
+    context = _context().assign(
+        real_yield_10y_pct=[1.95 - (0.003 * i) for i in range(260)],
+        credit_spread_bps=[560.0 - (1.1 * i) for i in range(260)],
+    )
+    decision = evaluator.evaluate(
+        context_df=context,
+        baseline_result=_baseline(tractor_prob=0.09, sidecar_prob=0.12),
+        resonance_result={"action": "SELL_QLD", "confidence": 0.88},
+        overlay={"positive_score": 0.76, "negative_score": 0.14},
+        effective_entropy=0.63,
+        topology_state={
+            "regime": "BUST",
+            "confidence": 0.24,
+            "expected_beta": 0.68,
+            "damage_memory": 0.82,
+            "recovery_impulse": 0.35,
+            "repair_persistence": 0.46,
+            "bust_pressure": 0.30,
+            "bullish_divergence": 0.22,
+            "recovery_prob_delta": 0.018,
+            "recovery_prob_acceleration": 0.008,
+        },
+        quality_audit=_quality(erp_quality=0.4, capex_quality=0.4),
+        base_reentry_signal=0.60,
+        target_beta=0.66,
+    )
+
+    assert decision.qld_allowed is True
+    assert decision.reason_code == "LEFT_SIDE_PROBE"
+    assert decision.entry_mode == "LEFT_SIDE_PROBE"
+    assert decision.forced_bucket == "QLD"
+
+
+def test_left_side_probe_requires_stage_specific_support_not_just_generic_damage():
+    evaluator = QLDPermissionEvaluator()
+
+    flat_context = _context().assign(
+        real_yield_10y_pct=[1.85 + (0.001 * i) for i in range(260)],
+        credit_spread_bps=[420.0 + (0.2 * i) for i in range(260)],
+    )
+    decision = evaluator.evaluate(
+        context_df=flat_context,
+        baseline_result=_baseline(tractor_prob=0.10, sidecar_prob=0.14),
+        resonance_result={"action": "HOLD", "confidence": 0.40},
+        overlay={"positive_score": 0.42, "negative_score": 0.41},
+        effective_entropy=0.64,
+        topology_state={
+            "regime": "BUST",
+            "confidence": 0.26,
+            "expected_beta": 0.66,
+            "damage_memory": 0.72,
+            "recovery_impulse": 0.29,
+            "repair_persistence": 0.36,
+            "bust_pressure": 0.36,
+            "bullish_divergence": 0.01,
+            "recovery_prob_delta": 0.010,
+            "recovery_prob_acceleration": 0.004,
+        },
+        quality_audit=_quality(erp_quality=0.4, capex_quality=0.4),
+        base_reentry_signal=0.57,
+        target_beta=0.66,
+    )
+
+    assert decision.left_side_kernel["active"] is True
+    assert decision.regime_specific_override["active"] is False
+    assert decision.allow_sub1x_qld is False
+    assert decision.reason_code == "SUB1X_BLOCKED"
+
+
+def test_confirmed_recovery_keeps_expansion_path_not_left_side_probe():
+    evaluator = QLDPermissionEvaluator()
+
+    decision = evaluator.evaluate(
+        context_df=_context(),
+        baseline_result=_baseline(),
+        resonance_result={"action": "BUY_QLD", "confidence": 0.92},
+        overlay={"positive_score": 0.86, "negative_score": 0.05},
+        effective_entropy=0.32,
+        topology_state={
+            "regime": "RECOVERY",
+            "confidence": 0.84,
+            "expected_beta": 0.88,
+            "damage_memory": 0.40,
+            "recovery_impulse": 0.24,
+            "repair_persistence": 0.55,
+            "bust_pressure": 0.22,
+            "recovery_prob_delta": 0.018,
+            "recovery_prob_acceleration": 0.007,
+        },
+        quality_audit=_quality(),
+        base_reentry_signal=0.76,
+        target_beta=0.74,
+    )
+
+    assert decision.allow_sub1x_qld is True
+    assert decision.entry_mode == "RECOVERY_EXPANSION"
+    assert decision.reason_code in {"SUB1X_QLD_AUTHORIZED", "FUNDAMENTAL_OVERRIDE_RELEASE"}
