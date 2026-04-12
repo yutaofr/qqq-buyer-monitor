@@ -567,6 +567,7 @@ def test_conductor_uses_business_day_training_classes_for_model_validation(tmp_p
     assert conductor.model_regimes == ["LATE_CYCLE"]
     assert conductor.gnb.classes_.tolist() == ["LATE_CYCLE"]
 
+
 def test_conductor_instantiates_kelly_deployment_policy_with_correct_args(tmp_path, mocker):
     regime_path = tmp_path / "regimes.csv"
     macro_path = tmp_path / "macro.csv"
@@ -578,7 +579,7 @@ def test_conductor_instantiates_kelly_deployment_policy_with_correct_args(tmp_pa
 
     spy = mocker.patch("src.engine.v11.conductor.KellyDeploymentPolicy")
 
-    conductor = V11Conductor(
+    V11Conductor(
         macro_data_path=str(macro_path),
         regime_data_path=str(regime_path),
         prior_state_path=str(prior_path),

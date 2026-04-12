@@ -181,9 +181,7 @@ def summarize_execution_window(
     if support_ts is not None and start_ts < support_ts:
         start_ts = support_ts
         window_status = "partial_coverage"
-    window = frame[
-        (frame["date"] >= start_ts) & (frame["date"] <= end_ts)
-    ].copy()
+    window = frame[(frame["date"] >= start_ts) & (frame["date"] <= end_ts)].copy()
     qld_mask = window.get("target_bucket", pd.Series(dtype=object)).astype(str).eq("QLD")
     first_qld_date = (
         pd.Timestamp(window.loc[qld_mask, "date"].iloc[0]).date().isoformat()

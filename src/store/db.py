@@ -55,7 +55,9 @@ def _extract_target_beta_from_json_blob(json_blob: str) -> float:
     try:
         payload = json.loads(json_blob)
     except json.JSONDecodeError:
-        logger.warning("Legacy signals row contains invalid json_blob; defaulting target_beta to 0.0")
+        logger.warning(
+            "Legacy signals row contains invalid json_blob; defaulting target_beta to 0.0"
+        )
         return 0.0
 
     target_beta = payload.get("target_beta")

@@ -84,9 +84,7 @@ def update_high_entropy_streak(
         )
     )
     severe_deadlock = (
-        effective_entropy >= 0.90
-        and transition_intensity < 0.45
-        and top1_margin < 0.08
+        effective_entropy >= 0.90 and transition_intensity < 0.45 and top1_margin < 0.08
     )
 
     if directional_relief:

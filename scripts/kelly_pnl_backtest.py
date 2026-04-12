@@ -61,6 +61,7 @@ def _compute_pnl_curve(
 
     return pd.Series(navs, index=trace.index)
 
+
 def _compute_performance_metrics(
     nav_series: pd.Series,
     risk_free_rate: float = 0.045,
@@ -70,8 +71,12 @@ def _compute_performance_metrics(
     """
     if len(nav_series) < 2:
         return {
-            "cagr": 0.0, "max_drawdown": 0.0, "sharpe": 0.0,
-            "sortino": 0.0, "calmar": 0.0, "total_return": 0.0
+            "cagr": 0.0,
+            "max_drawdown": 0.0,
+            "sharpe": 0.0,
+            "sortino": 0.0,
+            "calmar": 0.0,
+            "total_return": 0.0,
         }
 
     nav_values = nav_series.values
@@ -123,7 +128,7 @@ def _compute_performance_metrics(
         "sharpe": sharpe,
         "sortino": sortino,
         "calmar": calmar,
-        "total_return": float(total_return)
+        "total_return": float(total_return),
     }
 
 
@@ -166,7 +171,9 @@ def main(argv=None):
         else:
             multiplier_col = f"{v}_multiplier"
 
-        nav_series = _compute_pnl_curve(trace, multiplier_col, base_daily_deploy=0.01, transaction_cost=0.0005)
+        nav_series = _compute_pnl_curve(
+            trace, multiplier_col, base_daily_deploy=0.01, transaction_cost=0.0005
+        )
         pnl_curves[v] = nav_series
         metrics_all[v] = _compute_performance_metrics(nav_series, risk_free_rate=0.045)
 
@@ -186,7 +193,7 @@ def main(argv=None):
     best_tk_vid = ""
     for v in variants:
         m = metrics_all[v]
-        row = f"| {v} | {m['cagr']*100:.2f}% | {m['max_drawdown']*100:.2f}% | {m['sharpe']:.2f} | {m['sortino']:.2f} | {m['calmar']:.2f} | {m['total_return']*100:.2f}% |"
+        row = f"| {v} | {m['cagr'] * 100:.2f}% | {m['max_drawdown'] * 100:.2f}% | {m['sharpe']:.2f} | {m['sortino']:.2f} | {m['calmar']:.2f} | {m['total_return'] * 100:.2f}% |"
         report_lines.append(row)
         if v != "pseudo_kelly" and m["cagr"] > best_tk_cagr:
             best_tk_cagr = m["cagr"]
@@ -199,24 +206,35 @@ def main(argv=None):
     mdd_diff = (b_m["max_drawdown"] - p_m["max_drawdown"]) * 100
 
     report_lines.append("\n## Key Findings\n")
-    report_lines.append(f"- **最佳 True Kelly 变体**: `{best_tk_vid}` (CAGR: {b_m['cagr']*100:.2f}%, Sharpe: {b_m['sharpe']:.2f})")
+    report_lines.append(
+        f"- **最佳 True Kelly 变体**: `{best_tk_vid}` (CAGR: {b_m['cagr'] * 100:.2f}%, Sharpe: {b_m['sharpe']:.2f})"
+    )
     diff_sign = "+" if cagr_diff > 0 else ""
     report_lines.append(f"- **CAGR Delta vs Pseudo Kelly**: {diff_sign}{cagr_diff:.2f}%")
     mdd_greater = "Yes" if b_m["max_drawdown"] < p_m["max_drawdown"] else "No"
-    report_lines.append(f"- **True Kelly 的回撤是否大于假凯利**: {mdd_greater} (差值: +{-mdd_diff:.2f}%)")
+    report_lines.append(
+        f"- **True Kelly 的回撤是否大于假凯利**: {mdd_greater} (差值: +{-mdd_diff:.2f}%)"
+    )
 
     report_lines.append("\n## Conclusion\n")
 
     if b_m["sharpe"] > p_m["sharpe"] or b_m["calmar"] > p_m["calmar"]:
-         report_lines.append("- ✅ **建议**: True Kelly 在风险回撤修正收益上具有优势 (更好的 Sharpe/Calmar)。支持融合生产主线。")
+        report_lines.append(
+            "- ✅ **建议**: True Kelly 在风险回撤修正收益上具有优势 (更好的 Sharpe/Calmar)。支持融合生产主线。"
+        )
     else:
-         report_lines.append("- ⚠️ **警告**: True Kelly 指标下穿。伪造回溯存在劣化，需重新审视参数 `kelly_scale`。")
+        report_lines.append(
+            "- ⚠️ **警告**: True Kelly 指标下穿。伪造回溯存在劣化，需重新审视参数 `kelly_scale`。"
+        )
 
     if b_m["max_drawdown"] < p_m["max_drawdown"] * 1.5:
-        report_lines.append("- 🚨 **高风险警告**: True Kelly 最大回撤超过 Pseudo Kelly 1.5倍。由于资金周转过速必须降倍 `kelly_scale`。")
+        report_lines.append(
+            "- 🚨 **高风险警告**: True Kelly 最大回撤超过 Pseudo Kelly 1.5倍。由于资金周转过速必须降倍 `kelly_scale`。"
+        )
 
     (output_dir / "pnl_report.md").write_text("\n".join(report_lines) + "\n")
     print(f"[kelly_pnl] Report saved to {output_dir}")
+
 
 if __name__ == "__main__":
     main()

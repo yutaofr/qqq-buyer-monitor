@@ -177,12 +177,9 @@ class QLDPermissionEvaluator:
         )
         topo_confidence = _clip01(_topology_metric(topology_state, "confidence"))
         topo_expected_beta = _coerce_float(_topology_metric(topology_state, "expected_beta"))
-        topology_recovery = (
-            topo_regime == "RECOVERY"
-            and (
-                topo_confidence >= self.topology_confidence_threshold
-                or topo_expected_beta >= self.topology_expected_beta_threshold
-            )
+        topology_recovery = topo_regime == "RECOVERY" and (
+            topo_confidence >= self.topology_confidence_threshold
+            or topo_expected_beta >= self.topology_expected_beta_threshold
         )
         risk_ready = (
             tractor_valid
@@ -267,9 +264,7 @@ class QLDPermissionEvaluator:
             if resonance_action == "BUY_QLD":
                 relaxed_entry_signal = _clip01(relaxed_entry_signal + (0.5 * self.buy_bonus))
             forced_bucket = (
-                "QLD"
-                if float(target_beta) >= self.left_side_force_beta_threshold
-                else None
+                "QLD" if float(target_beta) >= self.left_side_force_beta_threshold else None
             )
             return QLDPermissionDecision(
                 qld_allowed=True,
@@ -308,7 +303,9 @@ class QLDPermissionEvaluator:
         if allow_sub1x_qld:
             relaxed_entry_signal = max(
                 _clip01(base_reentry_signal),
-                self.override_signal_floor if bool(fundamental_override.get("active", False)) else 0.0,
+                self.override_signal_floor
+                if bool(fundamental_override.get("active", False))
+                else 0.0,
             )
             if resonance_action == "BUY_QLD":
                 relaxed_entry_signal = _clip01(relaxed_entry_signal + self.buy_bonus)
@@ -440,7 +437,9 @@ class QLDPermissionEvaluator:
         capex_fast = float(capex_series.ewm(span=21, min_periods=21).mean().iloc[-1])
         capex_slow = float(capex_series.ewm(span=63, min_periods=63).mean().iloc[-1])
         erp_latest = float(erp_window.iloc[-1])
-        erp_delta_21d = float(erp_window.iloc[-1] - erp_window.iloc[-22]) if erp_window.shape[0] >= 22 else 0.0
+        erp_delta_21d = (
+            float(erp_window.iloc[-1] - erp_window.iloc[-22]) if erp_window.shape[0] >= 22 else 0.0
+        )
 
         checks = {
             "capex_trend": capex_fast > capex_slow,
@@ -487,9 +486,7 @@ class QLDPermissionEvaluator:
         repair_persistence = _topology_metric(topology_state, "repair_persistence")
         bust_pressure = _topology_metric(topology_state, "bust_pressure")
         recovery_prob_delta = _topology_metric(topology_state, "recovery_prob_delta")
-        recovery_prob_acceleration = _topology_metric(
-            topology_state, "recovery_prob_acceleration"
-        )
+        recovery_prob_acceleration = _topology_metric(topology_state, "recovery_prob_acceleration")
 
         risk_stabilizing = all(
             (
@@ -549,7 +546,9 @@ class QLDPermissionEvaluator:
         real_yield_series = _extract_series(context_df, "real_yield_10y_pct")
         credit_spread_series = _extract_series(context_df, "credit_spread_bps")
         erp_series = _extract_series(context_df, "erp_ttm_pct")
-        breadth_latest = _coerce_float(breadth_series.iloc[-1], 0.0) if not breadth_series.empty else 0.0
+        breadth_latest = (
+            _coerce_float(breadth_series.iloc[-1], 0.0) if not breadth_series.empty else 0.0
+        )
         breadth_delta_21d = _delta(breadth_series, 21)
         real_yield_delta_21d = _delta(real_yield_series, 21)
         credit_spread_delta_21d = _delta(credit_spread_series, 21)
@@ -586,8 +585,7 @@ class QLDPermissionEvaluator:
                 and credit_spread_delta_21d <= 0.0
             ),
             "capitulation_reversal": (
-                bullish_divergence >= 0.12
-                and positive_score >= max(0.60, negative_score + 0.10)
+                bullish_divergence >= 0.12 and positive_score >= max(0.60, negative_score + 0.10)
             ),
         }
         score = float(sum(bool(value) for value in clusters.values()) / len(clusters))

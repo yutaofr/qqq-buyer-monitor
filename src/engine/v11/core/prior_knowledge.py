@@ -619,9 +619,7 @@ class PriorKnowledgeBase:
             "bootstrap_fingerprint": self.bootstrap_fingerprint,
         }
         serialized = json.dumps(payload, indent=2, sort_keys=True)
-        temp_path = self.storage_path.with_suffix(
-            f"{self.storage_path.suffix}.{os.getpid()}.tmp"
-        )
+        temp_path = self.storage_path.with_suffix(f"{self.storage_path.suffix}.{os.getpid()}.tmp")
         temp_path.write_text(serialized)
         os.replace(temp_path, self.storage_path)
 

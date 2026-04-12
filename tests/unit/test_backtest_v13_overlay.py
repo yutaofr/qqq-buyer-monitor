@@ -208,9 +208,7 @@ def test_run_v11_audit_threads_cached_baseline_trace_into_daily_run(tmp_path, mo
 
     class FakeConductor:
         def __init__(self, *args, **kwargs):
-            self.gnb = SimpleNamespace(
-                classes_=["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"]
-            )
+            self.gnb = SimpleNamespace(classes_=["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"])
 
         def daily_run(self, raw_t0_data, baseline_result=None):
             captured.append(baseline_result)
