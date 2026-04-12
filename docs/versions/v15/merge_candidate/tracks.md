@@ -64,7 +64,7 @@ M-01 (TDD 更新 test_conductor)
 ---
 
 ### M-05 — 实境回测宏实验 (AC-3)
-- **状态**: `[TODO]`
+- **状态**: `[DONE]`
 - **操作**: 
   ```bash
   docker-compose run backtest
