@@ -147,7 +147,7 @@ T-01 (阅读 SRD 与代码审计)
 ---
 
 ### T-09 — 实现 `kelly_ab_comparison.py`
-- **状态**: `[TODO]`
+- **状态**: `[DONE]`
 - **锁定文件**: `scripts/kelly_ab_comparison.py` [NEW]
 - **依赖前置**: T-08
 - **实现要点**:
@@ -161,7 +161,7 @@ T-01 (阅读 SRD 与代码审计)
 ---
 
 ### T-10 — `docker-compose.yml` 追加 `kelly-ab` service
-- **状态**: `[TODO]`
+- **状态**: `[DONE]`
 - **锁定文件**: `docker-compose.yml` [APPEND ONLY]
 - **依赖前置**: T-09
 - **操作**: 仅在文件末尾追加以下内容，不修改任何现有 service：
@@ -235,8 +235,8 @@ T-01 (阅读 SRD 与代码审计)
 | T-06 | kelly_deployment_policy.py | `[DONE]` | `src/engine/v11/signal/kelly_deployment_policy.py` |
 | T-07 | TC-P* GREEN 验收 | `[DONE]` | — |
 | T-08 | 全量回归验收 | `[DONE]` | — |
-| T-09 | kelly_ab_comparison.py | `[TODO]` | `scripts/kelly_ab_comparison.py` |
-| T-10 | docker-compose 追加 | `[TODO]` | `docker-compose.yml` (+追加) |
+| T-09 | kelly_ab_comparison.py | `[DONE]` | `scripts/kelly_ab_comparison.py` |
+| T-10 | docker-compose 追加 | `[DONE]` | `docker-compose.yml` (+追加) |
 | T-11 | AC-5 最终验收 | `[TODO]` | `artifacts/kelly_ab/` |
 | T-12 | Git 审计与 PR 准备 | `[TODO]` | — |
 

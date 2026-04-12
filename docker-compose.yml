@@ -102,3 +102,19 @@ services:
     env_file:
       - .env
     command: python scripts/forensic_ortho_audit.py
+
+  kelly-ab:
+    image: qqq-monitor:py313
+    build: .
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - ./artifacts:/app/artifacts
+      - .env:/app/.env
+    env_file:
+      - .env
+    command: >
+      python scripts/kelly_ab_comparison.py
+      --trace-path artifacts/v12_audit/execution_trace.csv
+      --regime-audit src/engine/v11/resources/regime_audit.json
+      --output-dir artifacts/kelly_ab
