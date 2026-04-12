@@ -22,7 +22,6 @@ from src.engine.v11.core.kelly_criterion import (
     compute_kelly_fraction,
     kelly_fraction_to_deployment_state,
 )
-from src.models.deployment import deployment_multiplier_for_state
 
 # 实验矩阵
 VARIANTS = [
@@ -66,16 +65,16 @@ def _compute_all_variant_decisions(
     返回 DataFrame，列名格式: {variant_id}_fraction, {variant_id}_state
     """
     df = trace.copy()
-    
+
     for variant in VARIANTS:
         vid = variant["id"]
         ks = variant["kelly_scale"]
         ew = variant["erp_weight"]
-        
+
         fractions = []
         states = []
-        
-        for idx, row in df.iterrows():
+
+        for _idx, row in df.iterrows():
             posteriors = {
                 "MID_CYCLE": float(row["prob_MID_CYCLE"]),
                 "LATE_CYCLE": float(row["prob_LATE_CYCLE"]),
@@ -93,10 +92,10 @@ def _compute_all_variant_decisions(
             s = kelly_fraction_to_deployment_state(f)
             fractions.append(f)
             states.append(s)
-            
+
         df[f"{vid}_fraction"] = fractions
         df[f"{vid}_state"] = states
-        
+
     return df
 
 
@@ -108,13 +107,13 @@ def _compute_metrics(
     计算每个变体的对比指标
     """
     metrics = {}
-    
+
     variant_cols = [v["id"] for v in VARIANTS]
     if pseudo_kelly_col in trace.columns:
         variant_ids = variant_cols + ["pseudo_kelly"]
     else:
         variant_ids = variant_cols
-        
+
     for vid in variant_ids:
         if vid == "pseudo_kelly":
             state_col = pseudo_kelly_col
@@ -122,30 +121,30 @@ def _compute_metrics(
         else:
             state_col = f"{vid}_state"
             frac_col = f"{vid}_fraction"
-            
+
         dist = trace[state_col].value_counts(normalize=True).to_dict()
-        
+
         switches = (trace[state_col] != trace[state_col].shift()).sum() - 1
         if switches < 0:
             switches = 0
         switch_rate = float(switches / len(trace)) if len(trace) > 1 else 0.0
-        
+
         recovery_fast = 0.0
         bust_pause = 0.0
         mid_base = 0.0
-        
+
         recov_df = trace[trace["actual_regime"] == "RECOVERY"]
         if len(recov_df) > 0:
             recovery_fast = float((recov_df[state_col] == "DEPLOY_FAST").mean())
-            
+
         bust_df = trace[trace["actual_regime"] == "BUST"]
         if len(bust_df) > 0:
             bust_pause = float((bust_df[state_col] == "DEPLOY_PAUSE").mean())
-            
+
         mid_df = trace[trace["actual_regime"] == "MID_CYCLE"]
         if len(mid_df) > 0:
             mid_base = float((mid_df[state_col] == "DEPLOY_BASE").mean())
-            
+
         fraction_stats = {}
         if frac_col is not None:
             desc = trace[frac_col].describe()
@@ -157,7 +156,7 @@ def _compute_metrics(
                 "p25": float(desc["25%"]),
                 "p75": float(desc["75%"])
             }
-            
+
         metrics[vid] = {
             "state_distribution": dist,
             "switch_rate": switch_rate,
@@ -175,13 +174,13 @@ def _compute_metrics(
 def _render_markdown_report(metrics: dict, output_path: Path) -> None:
     """生成 Markdown 对比报告"""
     lines = ["# Kelly A/B Comparison Report\n"]
-    
+
     lines.append("| Variant | Switch Rate | Composite Alignment | Recovery=FAST | Bust=PAUSE | Mid=BASE |")
     lines.append("|---------|-------------|---------------------|---------------|------------|----------|")
-    
+
     best_vid = None
     best_score = -1.0
-    
+
     for vid, m in metrics.items():
         sr = m["switch_rate"]
         align = m["regime_alignment"]
@@ -189,15 +188,15 @@ def _render_markdown_report(metrics: dict, output_path: Path) -> None:
         rec_fast = align["recovery_fast_rate"]
         bus_pau = align["bust_pause_rate"]
         mid_bas = align["mid_base_rate"]
-        
+
         if vid != "pseudo_kelly" and comp > best_score:
             best_score = comp
             best_vid = vid
-            
+
         lines.append(f"| {vid} | {sr:.1%} | {comp:.1%} | {rec_fast:.1%} | {bus_pau:.1%} | {mid_bas:.1%} |")
-        
+
     lines.append(f"\n**Recommendation**: Variant `{best_vid}` has the highest composite regime alignment score ({best_score:.1%}).\n")
-    
+
     lines.append("## Distribution Details\n")
     for vid, m in metrics.items():
         lines.append(f"### {vid}")
@@ -207,7 +206,7 @@ def _render_markdown_report(metrics: dict, output_path: Path) -> None:
             fs = m["fraction_stats"]
             lines.append(f"- Kelly Frac: mean {fs['mean']:.3f}, std {fs['std']:.3f}, range [{fs['min']:.3f}, {fs['max']:.3f}]")
         lines.append("")
-        
+
     output_path.write_text("\n".join(lines))
 
 
