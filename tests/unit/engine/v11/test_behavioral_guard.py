@@ -62,10 +62,45 @@ def test_behavioral_guard_can_reengage_qld_on_strong_recovery_signal_below_1x_be
     decisions = []
 
     for _ in range(3):
-        decisions.append(guard.apply(_sizing(0.96, 0.10), reentry_signal=0.95))
+        decisions.append(
+            guard.apply(
+                _sizing(0.96, 0.10),
+                reentry_signal=0.95,
+                allow_sub1x_qld=True,
+            )
+        )
 
     assert decisions[-1].target_bucket == "QLD"
     assert any(decision.action_required for decision in decisions)
+
+
+def test_behavioral_guard_blocks_sub_1x_qld_without_permission():
+    guard = BehavioralGuard(initial_bucket="QQQ", evidence=0.0)
+
+    decisions = [
+        guard.apply(
+            _sizing(0.96, 0.10),
+            reentry_signal=0.95,
+            allow_sub1x_qld=False,
+        )
+        for _ in range(4)
+    ]
+
+    assert all(decision.target_bucket == "QQQ" for decision in decisions)
+    assert not any(decision.action_required for decision in decisions)
+
+
+def test_behavioral_guard_forces_existing_qld_bucket_back_to_qqq_when_permission_is_revoked():
+    guard = BehavioralGuard(initial_bucket="QLD", evidence=0.0)
+
+    decision = guard.apply(
+        _sizing(1.08, 0.10),
+        qld_allowed=False,
+    )
+
+    assert decision.target_bucket == "QQQ"
+    assert decision.action_required is True
+    assert decision.reason.startswith("DELEVERAGE")
 
 
 def test_behavioral_guard_reentry_boundary_relaxes_only_when_entropy_is_low():

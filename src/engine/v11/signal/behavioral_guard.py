@@ -53,9 +53,16 @@ class BehavioralGuard:
         forced_reason: str | None = None,
         kill_switch_active: bool = False,
         reentry_signal: float = 0.0,
+        qld_allowed: bool = True,
+        allow_sub1x_qld: bool = False,
     ) -> ExecutionDecision:
         previous_bucket = self.current_bucket
-        qld_entry_boundary = self._qld_entry_boundary(reentry_signal, sizing.entropy)
+        qld_entry_boundary = self._qld_entry_boundary(
+            reentry_signal,
+            sizing.entropy,
+            minimum_boundary=0.65 if allow_sub1x_qld else 0.80,
+            responsiveness=1.00 if allow_sub1x_qld else 0.40,
+        )
 
         if kill_switch_active and self.current_bucket != "QLD":
             self.current_bucket = "QLD"
@@ -106,6 +113,8 @@ class BehavioralGuard:
             sizing.target_beta,
             current_bucket=previous_bucket,
             qld_entry_boundary=qld_entry_boundary,
+            qld_allowed=qld_allowed,
+            allow_sub1x_qld=allow_sub1x_qld,
         )
         if desired_bucket != previous_bucket:
             self.evidence += self._switch_margin(
@@ -113,11 +122,15 @@ class BehavioralGuard:
                 desired_bucket,
                 sizing.target_beta,
                 qld_entry_boundary=qld_entry_boundary,
+                qld_allowed=qld_allowed,
+                allow_sub1x_qld=allow_sub1x_qld,
             )
             barrier = self._entropy_barrier(
                 sizing.entropy,
                 bucket_count=len(self._BUCKET_ORDER),
             )
+            if allow_sub1x_qld and desired_bucket == "QLD":
+                barrier *= 0.35
             if self.evidence < barrier:
                 self.current_bucket = previous_bucket
                 self.last_target_beta = sizing.target_beta
@@ -153,10 +166,16 @@ class BehavioralGuard:
         self.evidence = 0.0
 
     @staticmethod
-    def _qld_entry_boundary(reentry_signal: float, entropy: float = 1.0) -> float:
+    def _qld_entry_boundary(
+        reentry_signal: float,
+        entropy: float = 1.0,
+        *,
+        minimum_boundary: float = 0.80,
+        responsiveness: float = 0.40,
+    ) -> float:
         signal = min(1.0, max(0.0, float(reentry_signal)))
         conviction = 1.0 - min(1.0, max(0.0, float(entropy)))
-        return max(0.80, 1.0 - (0.40 * signal * conviction))
+        return max(float(minimum_boundary), 1.0 - (float(responsiveness) * signal * conviction))
 
     def _bucket_from_beta(
         self,
@@ -164,12 +183,22 @@ class BehavioralGuard:
         *,
         current_bucket: str | None = None,
         qld_entry_boundary: float = 1.0,
+        qld_allowed: bool = True,
+        allow_sub1x_qld: bool = True,
     ) -> str:
-        qld_exit_boundary = max(0.70, qld_entry_boundary - 0.08)
+        if not qld_allowed:
+            return "QQQ" if target_beta >= 0.5 else "CASH"
+
+        effective_entry_boundary = (
+            float(qld_entry_boundary) if allow_sub1x_qld else max(1.0, float(qld_entry_boundary))
+        )
+        qld_exit_boundary = max(0.70, effective_entry_boundary - 0.08)
+        if not allow_sub1x_qld:
+            qld_exit_boundary = max(1.0, qld_exit_boundary)
         if (current_bucket or self.current_bucket) == "QLD":
             if target_beta >= qld_exit_boundary:
                 return "QLD"
-        elif target_beta >= qld_entry_boundary:
+        elif target_beta >= effective_entry_boundary:
             return "QLD"
         if target_beta >= 0.5:
             return "QQQ"
@@ -193,6 +222,8 @@ class BehavioralGuard:
         target_beta: float,
         *,
         qld_entry_boundary: float = 1.0,
+        qld_allowed: bool = True,
+        allow_sub1x_qld: bool = True,
     ) -> float:
         current_idx = cls._BUCKET_ORDER.get(current_bucket, 1)
         desired_idx = cls._BUCKET_ORDER.get(desired_bucket, 1)
@@ -201,7 +232,12 @@ class BehavioralGuard:
 
         lower = min(current_idx, desired_idx)
         upper = max(current_idx, desired_idx)
-        boundaries = (cls._BOUNDARIES[0], float(qld_entry_boundary))
+        qld_boundary = (
+            float(qld_entry_boundary)
+            if (qld_allowed and allow_sub1x_qld)
+            else max(1.0, float(qld_entry_boundary))
+        )
+        boundaries = (cls._BOUNDARIES[0], qld_boundary)
         crossed_boundaries = boundaries[lower:upper]
         return float(sum(abs(float(target_beta) - boundary) for boundary in crossed_boundaries))
 

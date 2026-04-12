@@ -34,7 +34,10 @@
 ## 4. 工程實施規範 (Engineering Standards)
 
 - **無未來函數**：所有 $\Delta$ 與 $Acc$ 計算僅提取截止至 $t_0$ 的歷史向量。
-- **隔離副作用**：共振結果僅作為字典字段注入 `conductor` 輸出，不直接干預 `BehavioralGuard` 的桶位分配，保持物理層的原子性。
+- **執行隔離**：`ResonanceDetector` 仍不直接寫倉位，但其輸出現在經由 `QLDPermissionEvaluator` 進入執行層。
+  - `SELL_QLD` 可在權限層直接撤銷 `QLD`
+  - `BUY_QLD` 只能在硬性權限門已打開時放鬆 re-entry
+  - `ResonanceDetector` 本身仍不負責 beta 預測，只提供戰術 veto / release
 - **100% 覆蓋**：所有門檻變更必須通過 `tests/unit/test_resonance_detector.py` 的回歸測試。
 
 ---

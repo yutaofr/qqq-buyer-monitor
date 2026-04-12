@@ -52,6 +52,78 @@ def _resolve_execution_entropy(runtime: dict[str, Any]) -> float:
     return float(quality_audit.get("effective_entropy", runtime.get("entropy", 0.0)))
 
 
+def _load_baseline_trace(trace_path: str | None) -> pd.DataFrame | None:
+    if not trace_path:
+        return None
+    path = Path(trace_path)
+    if not path.exists():
+        return None
+
+    frame = pd.read_csv(path)
+    if frame.empty:
+        return None
+    if "date" not in frame.columns:
+        first = frame.columns[0]
+        if str(first).startswith("Unnamed"):
+            frame = frame.rename(columns={first: "date"})
+    if "date" not in frame.columns:
+        return None
+
+    frame["date"] = pd.to_datetime(frame["date"], errors="coerce").dt.tz_localize(None)
+    frame = frame.dropna(subset=["date"]).sort_values("date").set_index("date")
+    if frame.empty:
+        return None
+
+    for column in ("tractor_prob", "sidecar_prob"):
+        if column in frame.columns:
+            frame[column] = pd.to_numeric(frame[column], errors="coerce")
+    if "sidecar_valid" in frame.columns:
+        frame["sidecar_valid"] = frame["sidecar_valid"].fillna(False).astype(bool)
+    else:
+        frame["sidecar_valid"] = frame["sidecar_prob"].notna()
+    return frame
+
+
+def _baseline_result_from_trace(
+    trace: pd.DataFrame | None,
+    *,
+    observation_date: pd.Timestamp,
+) -> dict[str, Any] | None:
+    if trace is None or trace.empty:
+        return None
+
+    dt = pd.Timestamp(observation_date).tz_localize(None).normalize()
+    eligible = trace.loc[trace.index <= dt]
+    if eligible.empty:
+        return None
+
+    row = eligible.iloc[-1]
+    previous = eligible.iloc[-2] if len(eligible) >= 2 else row
+    sidecar_valid = bool(row.get("sidecar_valid", False))
+    sidecar_prob = float(row.get("sidecar_prob", 0.0) or 0.0) if sidecar_valid else 0.0
+    prev_sidecar_prob = (
+        float(previous.get("sidecar_prob", 0.0) or 0.0)
+        if bool(previous.get("sidecar_valid", False))
+        else 0.0
+    )
+    tractor_prob = float(row.get("tractor_prob", 0.0) or 0.0)
+    prev_tractor_prob = float(previous.get("tractor_prob", 0.0) or 0.0)
+    return {
+        "tractor": {
+            "prob": tractor_prob,
+            "prev_prob": prev_tractor_prob,
+            "delta_1d": tractor_prob - prev_tractor_prob,
+            "status": "success_cached_trace",
+        },
+        "sidecar": {
+            "prob": sidecar_prob,
+            "prev_prob": prev_sidecar_prob,
+            "delta_1d": sidecar_prob - prev_sidecar_prob,
+            "status": "success_cached_trace" if sidecar_valid else "degraded_cached_trace",
+        },
+    }
+
+
 def _load_price_history(
     cache_path: str,
     *,
@@ -247,9 +319,14 @@ def run_v11_audit(
         with open(registry_path) as f:
             json.load(f)
     overlay_mode = experiment.get("overlay_mode")
+    baseline_trace_path = str(
+        experiment.get("baseline_trace_path", "artifacts/v14_panorama/baseline_oos_trace.csv")
+    )
     price_cache_path = str(experiment.get("price_cache_path", "data/qqq_history_cache.csv"))
     allow_price_download = bool(experiment.get("allow_price_download", False))
     price_end_date = experiment.get("price_end_date")
+    overlay_suppress_collinear = bool(experiment.get("overlay_suppress_collinear", True))
+    qld_permission_toggles = dict(experiment.get("qld_permission_toggles", {}))
     use_canonical_pipeline = True
     state_support = summarize_regime_state_support(regime_df, audit_regimes=ordered_regimes)
     support_ready_eval_dt = find_first_supported_evaluation_start(
@@ -278,6 +355,7 @@ def run_v11_audit(
     benchmark_price_df.index = (
         pd.to_datetime(benchmark_price_df.index, utc=True).tz_localize(None).normalize()
     )
+    baseline_trace = _load_baseline_trace(baseline_trace_path)
 
     # v14.0 INDUSTRIAL PIT AUDIT: Reindex macro data onto the canonical trading calendar
     # This prevents temporal contamination by ensuring macro data is only visible on trading days
@@ -606,12 +684,18 @@ def run_v11_audit(
                 prior_state_path=str(prior_state_path),
                 snapshot_dir=str(snapshot_dir),
                 overlay_mode=overlay_mode,
+                overlay_suppress_collinear=overlay_suppress_collinear,
+                qld_permission_toggles=qld_permission_toggles,
                 training_cutoff=cutoff_dt,
                 price_history_path=price_cache_path,
                 allow_prior_bootstrap_drift=True,
             )
             t0_data = pd.DataFrame([row]).set_index("observation_date")
-            runtime = conductor.daily_run(t0_data)
+            baseline_result = _baseline_result_from_trace(
+                baseline_trace,
+                observation_date=dt,
+            )
+            runtime = conductor.daily_run(t0_data, baseline_result=baseline_result)
             class_count = getattr(getattr(conductor, "gnb", None), "classes_", None)
             if class_count is None:
                 class_count_value = len(ordered_regimes)
@@ -740,6 +824,15 @@ def run_v11_audit(
                     "resonance_reason": str(
                         runtime.get("signal", {}).get("resonance", {}).get("reason", "No Resonance")
                     ),
+                    "tractor_prob": float(
+                        ((baseline_result or {}).get("tractor", {}) or {}).get("prob", 0.0)
+                    ),
+                    "sidecar_prob": float(
+                        ((baseline_result or {}).get("sidecar", {}) or {}).get("prob", 0.0)
+                    ),
+                    "sidecar_valid": str(
+                        ((baseline_result or {}).get("sidecar", {}) or {}).get("status", "")
+                    ).startswith("success"),
                 }
             )
             forensic_rows.append(

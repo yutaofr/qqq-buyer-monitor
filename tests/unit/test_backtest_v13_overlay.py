@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import json
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -162,6 +163,119 @@ def test_run_v11_audit_supports_overlay_mode_matrix_without_mutating_raw_beta(
     assert traces["DISABLED"]["target_beta"].equals(traces["SHADOW"]["target_beta"])
     assert (traces["NEGATIVE_ONLY"]["deployment_overlay_multiplier"] <= 1.0).all()
     assert (traces["FULL"]["beta_overlay_multiplier"] <= 1.0).all()
+
+
+def test_run_v11_audit_threads_cached_baseline_trace_into_daily_run(tmp_path, monkeypatch):
+    dates = pd.bdate_range("2024-01-01", periods=320)
+    macro_path = tmp_path / "macro.csv"
+    regime_path = tmp_path / "regimes.csv"
+    cache_path = tmp_path / "qqq_cache.csv"
+    baseline_trace_path = tmp_path / "baseline_trace.csv"
+    artifact_dir = tmp_path / "audit"
+
+    _build_v12_macro_frame(dates).to_csv(macro_path, index=False)
+    pd.DataFrame(
+        {
+            "observation_date": dates,
+            "regime": ["MID_CYCLE"] * 80 + ["LATE_CYCLE"] * 80 + ["BUST"] * 80 + ["RECOVERY"] * 80,
+        }
+    ).to_csv(regime_path, index=False)
+    pd.DataFrame(
+        {
+            "Close": np.linspace(100.0, 130.0, len(dates)),
+            "Volume": np.linspace(1_000_000.0, 2_000_000.0, len(dates)),
+        },
+        index=dates,
+    ).to_csv(cache_path)
+    pd.DataFrame(
+        {
+            "date": dates,
+            "tractor_prob": np.linspace(0.12, 0.02, len(dates)),
+            "sidecar_prob": np.linspace(0.08, 0.01, len(dates)),
+            "sidecar_valid": [True] * len(dates),
+        }
+    ).to_csv(baseline_trace_path, index=False)
+
+    monkeypatch.setattr(
+        "src.output.backtest_plots.save_v11_fidelity_figure", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        "src.output.backtest_plots.save_v11_probabilistic_audit_figure",
+        lambda *args, **kwargs: None,
+    )
+
+    captured: list[dict] = []
+
+    class FakeConductor:
+        def __init__(self, *args, **kwargs):
+            self.gnb = SimpleNamespace(
+                classes_=["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"]
+            )
+
+        def daily_run(self, raw_t0_data, baseline_result=None):
+            captured.append(baseline_result)
+            return {
+                "probabilities": {"MID_CYCLE": 0.6, "RECOVERY": 0.4},
+                "probability_dynamics": {},
+                "target_beta": 0.9,
+                "raw_target_beta": 0.9,
+                "beta_expectation": 0.9,
+                "protected_beta": 0.9,
+                "overlay_beta": 0.9,
+                "overlay": {
+                    "beta_overlay_multiplier": 1.0,
+                    "deployment_overlay_multiplier": 1.0,
+                    "overlay_state": "NEUTRAL",
+                },
+                "quality_audit": {"posterior_entropy": 0.3, "effective_entropy": 0.3},
+                "prior_details": {},
+                "price_topology": {
+                    "regime": "RECOVERY",
+                    "expected_beta": 0.9,
+                    "confidence": 0.7,
+                    "posterior_blend_weight": 0.25,
+                    "beta_anchor_weight": 0.35,
+                },
+                "v13_4_diagnostics": {"penalties_applied": {}},
+                "deployment": {
+                    "deployment_state": "DEPLOY_BASE",
+                    "deployment_multiplier": 1.0,
+                },
+                "v11_execution": {
+                    "lock_active": False,
+                    "target_bucket": "QQQ",
+                },
+                "raw_regime": "MID_CYCLE",
+                "stable_regime": "MID_CYCLE",
+                "signal": {
+                    "resonance": {
+                        "action": "HOLD",
+                        "confidence": 0.0,
+                        "reason": "none",
+                    }
+                },
+                "forensic_snapshot_path": "",
+            }
+
+    monkeypatch.setattr("src.engine.v11.conductor.V11Conductor", FakeConductor)
+
+    backtest_module.run_v11_audit(
+        dataset_path=str(macro_path),
+        regime_path=str(regime_path),
+        evaluation_start="2025-01-02",
+        artifact_dir=str(artifact_dir),
+        experiment_config={
+            "price_cache_path": str(cache_path),
+            "allow_price_download": False,
+            "price_end_date": "2026-03-31",
+            "baseline_trace_path": str(baseline_trace_path),
+        },
+    )
+
+    assert captured, "expected canonical backtest to call daily_run()"
+    assert all(result is not None for result in captured)
+    assert all("tractor" in result for result in captured)
+    assert all("sidecar" in result for result in captured)
 
 
 def test_acceptance_mode_fails_on_missing_price_cache():
