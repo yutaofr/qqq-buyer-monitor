@@ -333,6 +333,78 @@ def test_left_side_probe_requires_stage_specific_support_not_just_generic_damage
     assert decision.reason_code == "SUB1X_BLOCKED"
 
 
+def test_bubble_unwind_exhaustion_cluster_can_authorize_left_side_probe():
+    evaluator = QLDPermissionEvaluator()
+
+    context = _context().assign(
+        erp_ttm_pct=[0.018 + (0.00012 * i) for i in range(260)],
+        breadth_proxy=[0.12 + (0.0012 * i) for i in range(260)],
+        real_yield_10y_pct=[0.011 + (0.0002 * i) for i in range(260)],
+    )
+    decision = evaluator.evaluate(
+        context_df=context,
+        baseline_result=_baseline(tractor_prob=0.11, sidecar_prob=0.15),
+        resonance_result={"action": "HOLD", "confidence": 0.42},
+        overlay={"positive_score": 0.68, "negative_score": 0.16},
+        effective_entropy=0.67,
+        topology_state={
+            "regime": "BUST",
+            "confidence": 0.22,
+            "expected_beta": 0.65,
+            "damage_memory": 0.76,
+            "recovery_impulse": 0.28,
+            "repair_persistence": 0.39,
+            "bust_pressure": 0.40,
+            "bullish_divergence": 0.15,
+            "recovery_prob_delta": 0.012,
+            "recovery_prob_acceleration": 0.005,
+        },
+        quality_audit=_quality(erp_quality=0.4, capex_quality=0.4),
+        base_reentry_signal=0.56,
+        target_beta=0.65,
+    )
+
+    assert decision.reason_code == "LEFT_SIDE_PROBE"
+    assert decision.regime_specific_override["clusters"]["bubble_unwind_exhaustion"] is True
+    assert decision.regime_specific_override["clusters"]["credit_crisis_repair"] is False
+
+
+def test_credit_crisis_repair_cluster_can_authorize_left_side_probe():
+    evaluator = QLDPermissionEvaluator()
+
+    context = _context().assign(
+        credit_spread_bps=[780.0 - (1.9 * i) for i in range(260)],
+        real_yield_10y_pct=[0.020 - (0.00018 * i) for i in range(260)],
+        breadth_proxy=[0.18 + (0.0015 * i) for i in range(260)],
+    )
+    decision = evaluator.evaluate(
+        context_df=context,
+        baseline_result=_baseline(tractor_prob=0.10, sidecar_prob=0.14),
+        resonance_result={"action": "HOLD", "confidence": 0.40},
+        overlay={"positive_score": 0.74, "negative_score": 0.18},
+        effective_entropy=0.65,
+        topology_state={
+            "regime": "BUST",
+            "confidence": 0.24,
+            "expected_beta": 0.66,
+            "damage_memory": 0.80,
+            "recovery_impulse": 0.32,
+            "repair_persistence": 0.44,
+            "bust_pressure": 0.28,
+            "bullish_divergence": 0.13,
+            "recovery_prob_delta": 0.016,
+            "recovery_prob_acceleration": 0.007,
+        },
+        quality_audit=_quality(erp_quality=0.4, capex_quality=0.4),
+        base_reentry_signal=0.58,
+        target_beta=0.66,
+    )
+
+    assert decision.reason_code == "LEFT_SIDE_PROBE"
+    assert decision.regime_specific_override["clusters"]["credit_crisis_repair"] is True
+    assert decision.regime_specific_override["clusters"]["bubble_unwind_exhaustion"] is False
+
+
 def test_confirmed_recovery_keeps_expansion_path_not_left_side_probe():
     evaluator = QLDPermissionEvaluator()
 

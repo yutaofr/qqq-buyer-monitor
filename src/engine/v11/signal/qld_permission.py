@@ -545,16 +545,40 @@ class QLDPermissionEvaluator:
         topology_state: dict[str, Any] | Any,
         fundamental_override: dict[str, Any],
     ) -> dict[str, Any]:
+        breadth_series = _extract_series(context_df, "breadth_proxy")
         real_yield_series = _extract_series(context_df, "real_yield_10y_pct")
         credit_spread_series = _extract_series(context_df, "credit_spread_bps")
+        erp_series = _extract_series(context_df, "erp_ttm_pct")
+        breadth_latest = _coerce_float(breadth_series.iloc[-1], 0.0) if not breadth_series.empty else 0.0
+        breadth_delta_21d = _delta(breadth_series, 21)
         real_yield_delta_21d = _delta(real_yield_series, 21)
         credit_spread_delta_21d = _delta(credit_spread_series, 21)
+        erp_delta_21d = _delta(erp_series, 21)
         positive_score = _clip01(overlay.get("positive_score", 0.0))
         negative_score = _clip01(overlay.get("negative_score", 0.0))
         bullish_divergence = _topology_metric(topology_state, "bullish_divergence")
 
         clusters = {
             "fundamental_support": bool(fundamental_override.get("active", False)),
+            "bubble_unwind_exhaustion": (
+                breadth_series.shape[0] >= 22
+                and erp_series.shape[0] >= 22
+                and breadth_latest <= 0.45
+                and breadth_delta_21d >= 0.02
+                and erp_delta_21d >= 0.001
+                and positive_score >= max(0.58, negative_score + 0.08)
+                and bullish_divergence >= 0.10
+                and abs(real_yield_delta_21d) <= 0.01
+            ),
+            "credit_crisis_repair": (
+                real_yield_series.shape[0] >= 22
+                and credit_spread_series.shape[0] >= 22
+                and breadth_series.shape[0] >= 22
+                and real_yield_delta_21d <= 0.0
+                and credit_spread_delta_21d <= -10.0
+                and breadth_delta_21d >= 0.02
+                and positive_score >= max(0.62, negative_score + 0.10)
+            ),
             "macro_relief": (
                 real_yield_series.shape[0] >= 22
                 and credit_spread_series.shape[0] >= 22
@@ -574,6 +598,9 @@ class QLDPermissionEvaluator:
             "reasons": reasons or ["all_checks_passed"],
             "clusters": clusters,
             "metrics": {
+                "breadth_latest": breadth_latest,
+                "breadth_delta_21d": breadth_delta_21d,
+                "erp_delta_21d": erp_delta_21d,
                 "real_yield_delta_21d": real_yield_delta_21d,
                 "credit_spread_delta_21d": credit_spread_delta_21d,
                 "bullish_divergence": bullish_divergence,
