@@ -502,3 +502,18 @@ def test_persist_and_export_web_artifacts_fails_closed_when_history_export_fails
         )
 
     assert stale_history.exists() is False
+
+def test_build_v11_signal_result_carries_kelly_fraction():
+    runtime = {
+        "date": "2026-03-30",
+        "signal": {"target_bucket": "QQQ"},
+        "deployment": {"deployment_state": "DEPLOY_FAST", "kelly_fraction": 0.35},
+        "probabilities": {"LATE_CYCLE": 0.4},
+        "stable_regime": "LATE_CYCLE",
+        "target_beta": 0.5,
+        "target_allocation": {"qqq_dollars": 50000.0, "qld_notional_dollars": 0.0, "cash_dollars": 50000.0},
+    }
+
+    result = main_module._build_v11_signal_result(runtime, price=100.0)
+
+    assert result.metadata["kelly_fraction"] == 0.35

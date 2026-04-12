@@ -323,3 +323,30 @@ def test_export_web_snapshot_includes_recovery_hmm_shadow_diagnostics(tmp_path, 
     assert shadow["decision_gate"] == "CANDIDATE_FOR_INTEGRATION"
     assert shadow["acceptance"]["q1_2023_above_or_equal_0_85"] is True
     assert shadow["comparison"]["recovery_release_gap"] == 122
+
+def test_export_web_snapshot_includes_kelly_fraction(tmp_path, monkeypatch):
+    result = SignalResult(
+        date=date(2026, 4, 12),
+        price=550.0,
+        target_beta=0.75,
+        probabilities={"MID_CYCLE": 1.0},
+        priors={"MID_CYCLE": 1.0},
+        entropy=0.0,
+        stable_regime="MID_CYCLE",
+        target_allocation=TargetAllocationState(0.25, 0.75, 0.0, 0.75),
+        logic_trace=[],
+        explanation="kelly fraction test",
+        metadata={"kelly_fraction": 0.42},
+    )
+    output_path = tmp_path / "status.json"
+
+    monkeypatch.setattr(MarketCursor, "get_market_state", lambda self, now: "ACTIVE")
+    monkeypatch.setattr(
+        MarketCursor,
+        "get_expires_at_utc",
+        lambda self, now: datetime(2026, 4, 13, 17, 30, tzinfo=UTC),
+    )
+
+    assert export_web_snapshot(result, output_path=output_path) is True
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["signal"]["kelly_fraction"] == 0.42

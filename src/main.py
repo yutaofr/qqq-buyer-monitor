@@ -218,6 +218,7 @@ def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalRes
             "feature_values": runtime_result.get("feature_values", {}),
             "prior_details": runtime_result.get("prior_details", {}),
             "deployment_readiness": float(runtime_result.get("deployment_readiness", 0.0)),
+            "kelly_fraction": float(deployment.get("kelly_fraction", 0.0)),
             "deployment_readiness_overlay": float(
                 runtime_result.get(
                     "deployment_readiness_overlay", runtime_result.get("deployment_readiness", 0.0)
