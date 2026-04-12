@@ -74,7 +74,7 @@ M-01 (TDD 更新 test_conductor)
 ---
 
 ### M-06 — 法务与物理隔离穿越封锁检验 (AC-4)
-- **状态**: `[TODO]`
+- **状态**: `[DONE]`
 - **目标**: `forensic` 工具用于探测系统运行中潜在产生的高延迟及先知式 `lookahead` 数据穿越 Bug (Time Traversal 漏洞)。确保没有泄漏。
 - **验收**:
   ```bash
