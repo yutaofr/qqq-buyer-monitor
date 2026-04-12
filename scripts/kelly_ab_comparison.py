@@ -25,11 +25,11 @@ from src.engine.v11.core.kelly_criterion import (
 
 # 实验矩阵
 VARIANTS = [
-    {"id": "half_erp_low",     "kelly_scale": 0.5,  "erp_weight": 0.2},
-    {"id": "half_erp_mid",     "kelly_scale": 0.5,  "erp_weight": 0.4},
-    {"id": "half_erp_high",    "kelly_scale": 0.5,  "erp_weight": 0.8},
-    {"id": "quarter_erp_low",  "kelly_scale": 0.25, "erp_weight": 0.2},
-    {"id": "quarter_erp_mid",  "kelly_scale": 0.25, "erp_weight": 0.4},
+    {"id": "half_erp_low", "kelly_scale": 0.5, "erp_weight": 0.2},
+    {"id": "half_erp_mid", "kelly_scale": 0.5, "erp_weight": 0.4},
+    {"id": "half_erp_high", "kelly_scale": 0.5, "erp_weight": 0.8},
+    {"id": "quarter_erp_low", "kelly_scale": 0.25, "erp_weight": 0.2},
+    {"id": "quarter_erp_mid", "kelly_scale": 0.25, "erp_weight": 0.4},
     {"id": "quarter_erp_high", "kelly_scale": 0.25, "erp_weight": 0.8},
 ]
 
@@ -41,7 +41,14 @@ def _load_trace(trace_path: str) -> pd.DataFrame:
     加载 execution_trace.csv，提取每行的 posterior 概率、entropy、erp 和 actual_regime。
     """
     df = pd.read_csv(trace_path)
-    required = ["actual_regime", "entropy", "prob_MID_CYCLE", "prob_LATE_CYCLE", "prob_BUST", "prob_RECOVERY"]
+    required = [
+        "actual_regime",
+        "entropy",
+        "prob_MID_CYCLE",
+        "prob_LATE_CYCLE",
+        "prob_BUST",
+        "prob_RECOVERY",
+    ]
     for col in required:
         if col not in df.columns:
             raise ValueError(f"Missing required col: {col}")
@@ -49,7 +56,9 @@ def _load_trace(trace_path: str) -> pd.DataFrame:
         if "target_beta" in df.columns:
             beta_min = 0.5
             beta_max = 1.2
-            beta_norm = (df["target_beta"].clip(beta_min, beta_max) - beta_min) / (beta_max - beta_min)
+            beta_norm = (df["target_beta"].clip(beta_min, beta_max) - beta_min) / (
+                beta_max - beta_min
+            )
             df["erp_percentile"] = (1.0 - beta_norm).clip(0.0, 1.0)
         else:
             df["erp_percentile"] = 0.5
@@ -79,7 +88,7 @@ def _compute_all_variant_decisions(
                 "MID_CYCLE": float(row["prob_MID_CYCLE"]),
                 "LATE_CYCLE": float(row["prob_LATE_CYCLE"]),
                 "BUST": float(row["prob_BUST"]),
-                "RECOVERY": float(row["prob_RECOVERY"])
+                "RECOVERY": float(row["prob_RECOVERY"]),
             }
             f = compute_kelly_fraction(
                 posteriors=posteriors,
@@ -87,7 +96,7 @@ def _compute_all_variant_decisions(
                 entropy=float(row["entropy"]),
                 erp_percentile=float(row["erp_percentile"]),
                 kelly_scale=ks,
-                erp_weight=ew
+                erp_weight=ew,
             )
             s = kelly_fraction_to_deployment_state(f)
             fractions.append(f)
@@ -154,7 +163,7 @@ def _compute_metrics(
                 "min": float(desc["min"]),
                 "max": float(desc["max"]),
                 "p25": float(desc["25%"]),
-                "p75": float(desc["75%"])
+                "p75": float(desc["75%"]),
             }
 
         metrics[vid] = {
@@ -164,9 +173,9 @@ def _compute_metrics(
                 "recovery_fast_rate": recovery_fast,
                 "bust_pause_rate": bust_pause,
                 "mid_base_rate": mid_base,
-                "composite_score": (recovery_fast + bust_pause + mid_base) / 3.0
+                "composite_score": (recovery_fast + bust_pause + mid_base) / 3.0,
             },
-            "fraction_stats": fraction_stats
+            "fraction_stats": fraction_stats,
         }
     return metrics
 
@@ -175,8 +184,12 @@ def _render_markdown_report(metrics: dict, output_path: Path) -> None:
     """生成 Markdown 对比报告"""
     lines = ["# Kelly A/B Comparison Report\n"]
 
-    lines.append("| Variant | Switch Rate | Composite Alignment | Recovery=FAST | Bust=PAUSE | Mid=BASE |")
-    lines.append("|---------|-------------|---------------------|---------------|------------|----------|")
+    lines.append(
+        "| Variant | Switch Rate | Composite Alignment | Recovery=FAST | Bust=PAUSE | Mid=BASE |"
+    )
+    lines.append(
+        "|---------|-------------|---------------------|---------------|------------|----------|"
+    )
 
     best_vid = None
     best_score = -1.0
@@ -193,9 +206,13 @@ def _render_markdown_report(metrics: dict, output_path: Path) -> None:
             best_score = comp
             best_vid = vid
 
-        lines.append(f"| {vid} | {sr:.1%} | {comp:.1%} | {rec_fast:.1%} | {bus_pau:.1%} | {mid_bas:.1%} |")
+        lines.append(
+            f"| {vid} | {sr:.1%} | {comp:.1%} | {rec_fast:.1%} | {bus_pau:.1%} | {mid_bas:.1%} |"
+        )
 
-    lines.append(f"\n**Recommendation**: Variant `{best_vid}` has the highest composite regime alignment score ({best_score:.1%}).\n")
+    lines.append(
+        f"\n**Recommendation**: Variant `{best_vid}` has the highest composite regime alignment score ({best_score:.1%}).\n"
+    )
 
     lines.append("## Distribution Details\n")
     for vid, m in metrics.items():
@@ -204,7 +221,9 @@ def _render_markdown_report(metrics: dict, output_path: Path) -> None:
         lines.append(f"- State Dist: {dist_str}")
         if m["fraction_stats"]:
             fs = m["fraction_stats"]
-            lines.append(f"- Kelly Frac: mean {fs['mean']:.3f}, std {fs['std']:.3f}, range [{fs['min']:.3f}, {fs['max']:.3f}]")
+            lines.append(
+                f"- Kelly Frac: mean {fs['mean']:.3f}, std {fs['std']:.3f}, range [{fs['min']:.3f}, {fs['max']:.3f}]"
+            )
         lines.append("")
 
     output_path.write_text("\n".join(lines))

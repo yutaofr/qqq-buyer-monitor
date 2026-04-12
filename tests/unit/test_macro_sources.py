@@ -76,7 +76,9 @@ def test_fetch_shiller_ttm_eps_falls_back_to_cached_macro_history(monkeypatch, t
         "_load_shiller_sheet",
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
     )
-    monkeypatch.setattr(global_macro, "fetch_historical_fred_series", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        global_macro, "fetch_historical_fred_series", lambda *_args, **_kwargs: None
+    )
     monkeypatch.setenv("MACRO_DATA_PATH", str(macro_path))
 
     with caplog.at_level(logging.INFO):

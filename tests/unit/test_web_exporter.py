@@ -108,7 +108,12 @@ def test_export_web_snapshot_v11_contract(tmp_path, monkeypatch):
     assert payload["evidence"]["feature_values"]["vix"] == 20.0
     assert payload["evidence"]["execution_overlay"]["positive_score"] == 0.22
     assert payload["evidence"]["bayesian_diagnostics"]["penalties_applied"]["MID_CYCLE"] == 0.4
-    assert payload["evidence"]["qld_permission"]["regime_specific_override"]["clusters"]["bubble_unwind_exhaustion"] is True
+    assert (
+        payload["evidence"]["qld_permission"]["regime_specific_override"]["clusters"][
+            "bubble_unwind_exhaustion"
+        ]
+        is True
+    )
 
 
 def test_export_web_snapshot_preserves_dual_surface_semantics(tmp_path, monkeypatch):

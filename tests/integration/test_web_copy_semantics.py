@@ -26,4 +26,6 @@ def test_frontend_explains_permission_precedence_over_resonance():
     ]
 
     for phrase in required_phrases:
-        assert phrase in html_content, f"Frontend must explain semantic precedence with phrase: {phrase}"
+        assert phrase in html_content, (
+            f"Frontend must explain semantic precedence with phrase: {phrase}"
+        )

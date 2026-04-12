@@ -33,8 +33,8 @@ from src.engine.v11.core.price_topology import (
 from src.engine.v11.core.prior_knowledge import PriorKnowledgeBase
 from src.engine.v11.probability_seeder import ProbabilitySeeder
 from src.engine.v11.signal.behavioral_guard import BehavioralGuard
-from src.engine.v11.signal.kelly_deployment_policy import KellyDeploymentPolicy
 from src.engine.v11.signal.inertial_beta_mapper import InertialBetaMapper
+from src.engine.v11.signal.kelly_deployment_policy import KellyDeploymentPolicy
 from src.engine.v11.signal.qld_permission import QLDPermissionEvaluator
 from src.engine.v11.signal.regime_stabilizer import RegimeStabilizer
 from src.engine.v11.signal.resonance_detector import ResonanceDetector
@@ -894,7 +894,9 @@ class V11Conductor:
         execution = self.behavior_guard.apply(
             sizing,
             forced_bucket=qld_permission.forced_bucket,
-            forced_reason=qld_permission.reason if qld_permission.forced_bucket is not None else None,
+            forced_reason=qld_permission.reason
+            if qld_permission.forced_bucket is not None
+            else None,
             reentry_signal=qld_permission.relaxed_entry_signal,
             qld_allowed=qld_permission.qld_allowed,
             allow_sub1x_qld=qld_permission.allow_sub1x_qld,

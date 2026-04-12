@@ -65,6 +65,7 @@ def main(argv: list[str] | None = None) -> int:
             },
         )
         import pandas as pd
+
         execution_df = pd.read_csv(scenario_dir / "execution_trace.csv")
         records.append(
             build_scenario_record(
@@ -90,9 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         report_lines.append(f"## {record['name']}")
         report_lines.append(record["description"])
         if "no_regression" in record:
-            report_lines.append(
-                f"- No regression: `{record['no_regression']['passed']}`"
-            )
+            report_lines.append(f"- No regression: `{record['no_regression']['passed']}`")
         report_lines.append(
             f"- 2022 defense mean beta: `{record['windows']['2022_defense']['mean_target_beta']:.3f}`"
         )
