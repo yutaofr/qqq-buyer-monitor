@@ -47,7 +47,13 @@ def _load_trace(trace_path: str) -> pd.DataFrame:
         if col not in df.columns:
             raise ValueError(f"Missing required col: {col}")
     if "erp_percentile" not in df.columns:
-        df["erp_percentile"] = 0.5
+        if "target_beta" in df.columns:
+            beta_min = 0.5
+            beta_max = 1.2
+            beta_norm = (df["target_beta"].clip(beta_min, beta_max) - beta_min) / (beta_max - beta_min)
+            df["erp_percentile"] = (1.0 - beta_norm).clip(0.0, 1.0)
+        else:
+            df["erp_percentile"] = 0.5
     return df
 
 
