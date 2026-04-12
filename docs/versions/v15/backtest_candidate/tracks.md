@@ -118,7 +118,7 @@ B-01 (创建 TDD 测试 test_kelly_pnl.py)
 ---
 
 ### B-10 — Code 冻结与 PR 批准合并
-- **状态**: `[TODO]`
+- **状态**: `[DONE]`
 - **命令**: `git diff`, `git status`
 - **操作**: 将修复后的 AB 测试与新的回测工具 Push 到 `feature/true-kelly-deployment`，通知架构层执行主干融合。
 

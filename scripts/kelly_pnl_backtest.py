@@ -2,8 +2,16 @@
 Kelly PnL Backtest: True Kelly vs Pseudo Kelly.
 """
 
-import pandas as pd
+import argparse
+import json
+from pathlib import Path
+
 import numpy as np
+import pandas as pd
+
+from scripts.kelly_ab_comparison import _compute_all_variant_decisions, _load_trace
+from src.models.deployment import deployment_multiplier_for_state
+
 
 def _compute_pnl_curve(
     trace: pd.DataFrame,
@@ -18,39 +26,39 @@ def _compute_pnl_curve(
     navs = np.ones(n, dtype=float)
     if n == 0:
         return pd.Series([], dtype=float)
-        
+
     closes = trace["close"].values
     multipliers = trace[multiplier_col].values
-    
+
     current_nav = 1.0
     prev_close = closes[0]
     prev_multiplier = multipliers[0]
-    
+
     for i in range(1, n):
         close_t = closes[i]
         mult_t = multipliers[i]
-        
+
         daily_return = 0.0
         # If not NaN, we can calculate return against previous valid close
         if not np.isnan(close_t) and not np.isnan(prev_close) and prev_close > 0.0:
             daily_return = close_t / prev_close - 1.0
-            
+
         deployed_fraction = max(0.0, min(1.0, base_daily_deploy * mult_t))
         pnl_contribution = deployed_fraction * daily_return
-        
+
         cost_t = 0.0
         if mult_t != prev_multiplier:
             cost_t = transaction_cost
-            
+
         current_nav = current_nav * (1.0 + pnl_contribution - cost_t)
         current_nav = max(0.0, current_nav)
         navs[i] = current_nav
-        
+
         # update previous valid states
         if not np.isnan(close_t):
             prev_close = close_t
         prev_multiplier = mult_t
-        
+
     return pd.Series(navs, index=trace.index)
 
 def _compute_performance_metrics(
@@ -65,11 +73,11 @@ def _compute_performance_metrics(
             "cagr": 0.0, "max_drawdown": 0.0, "sharpe": 0.0,
             "sortino": 0.0, "calmar": 0.0, "total_return": 0.0
         }
-        
+
     nav_values = nav_series.values
     nav_init = nav_values[0]
     nav_final = nav_values[-1]
-    
+
     n_days = len(nav_series) - 1
     if nav_init > 0.0 and n_days > 0:
         cagr = (nav_final / nav_init) ** (252 / n_days) - 1.0
@@ -77,9 +85,9 @@ def _compute_performance_metrics(
     else:
         cagr = 0.0
         total_return = 0.0
-        
+
     daily_returns = nav_series.pct_change().dropna().values
-    
+
     # Max Drawdown
     # Fix for constant nav arrays or dividing by zero
     running_max = np.maximum.accumulate(nav_values)
@@ -87,28 +95,28 @@ def _compute_performance_metrics(
     safe_running_max = np.where(running_max == 0, 1e-8, running_max)
     drawdowns = (nav_values - running_max) / safe_running_max
     max_drawdown = float(np.min(drawdowns))
-    
+
     # Sharpe
     daily_excess = daily_returns - (risk_free_rate / 252.0)
     std_return = np.std(daily_returns, ddof=1) if len(daily_returns) > 1 else 0.0
-    
+
     sharpe = 0.0
     if std_return > 1e-8:
         sharpe = float(np.mean(daily_excess) / std_return * np.sqrt(252))
-        
+
     # Sortino
     downside_returns = daily_returns[daily_returns < 0]
     std_downside = np.std(downside_returns, ddof=1) if len(downside_returns) > 1 else 0.0
-    
+
     sortino = 0.0
     if std_downside > 1e-8:
         sortino = float(np.mean(daily_excess) / std_downside * np.sqrt(252))
-        
+
     # Calmar
     calmar = 0.0
     if abs(max_drawdown) > 1e-8:
         calmar = float(cagr / abs(max_drawdown))
-        
+
     return {
         "cagr": float(cagr),
         "max_drawdown": max_drawdown,
@@ -118,11 +126,6 @@ def _compute_performance_metrics(
         "total_return": float(total_return)
     }
 
-import argparse
-import json
-from pathlib import Path
-from scripts.kelly_ab_comparison import _load_trace, _compute_all_variant_decisions
-from src.models.deployment import deployment_multiplier_for_state
 
 def main(argv=None):
     """
@@ -162,7 +165,7 @@ def main(argv=None):
             multiplier_col = "deployment_multiplier"
         else:
             multiplier_col = f"{v}_multiplier"
-            
+
         nav_series = _compute_pnl_curve(trace, multiplier_col, base_daily_deploy=0.01, transaction_cost=0.0005)
         pnl_curves[v] = nav_series
         metrics_all[v] = _compute_performance_metrics(nav_series, risk_free_rate=0.045)
