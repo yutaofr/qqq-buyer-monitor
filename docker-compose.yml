@@ -11,6 +11,8 @@ services:
       - QQQ_DB_PATH=/app/data/signals.db
     env_file:
       - .env
+    environment:
+      - PYTHONPATH=/app
     command: python -m src.main
 
   test:
@@ -23,6 +25,8 @@ services:
       - QQQ_DB_PATH=/tmp/test_signals.db
     env_file:
       - .env
+    environment:
+      - PYTHONPATH=/app
     command: pytest tests/ -v --tb=short
 
   backtest:
@@ -33,6 +37,8 @@ services:
       - ./data:/app/data
     env_file:
       - .env
+    environment:
+      - PYTHONPATH=/app
     command: python -m src.backtest
 
   metrics:
@@ -44,6 +50,8 @@ services:
       - .env:/app/.env
     env_file:
       - .env
+    environment:
+      - PYTHONPATH=/app
     command: python scripts/v14_expert_metrics.py
 
   verification:
@@ -55,6 +63,8 @@ services:
       - .env:/app/.env
     env_file:
       - .env
+    environment:
+      - PYTHONPATH=/app
     command: python scripts/verify_alignment.py
 
   audit-bayesian:
@@ -66,6 +76,8 @@ services:
       - .env:/app/.env
     env_file:
       - .env
+    environment:
+      - PYTHONPATH=/app
     command: python scripts/audit_bayesian_regime_lock.py
 
   v14-audit:
@@ -77,6 +89,8 @@ services:
       - .env:/app/.env
     env_file:
       - .env
+    environment:
+      - PYTHONPATH=/app
     command: >
       sh -c "python scripts/run_v14_panorama_matrix.py && 
              python scripts/run_worldview_backtest_audit.py"
@@ -90,6 +104,8 @@ services:
       - .env:/app/.env
     env_file:
       - .env
+    environment:
+      - PYTHONPATH=/app
     command: python tests/forensic/test_pit_leakage.py
 
   ortho-audit:
@@ -101,6 +117,8 @@ services:
       - .env:/app/.env
     env_file:
       - .env
+    environment:
+      - PYTHONPATH=/app
     command: python scripts/forensic_ortho_audit.py
 
   kelly-ab:
@@ -113,6 +131,8 @@ services:
       - .env:/app/.env
     env_file:
       - .env
+    environment:
+      - PYTHONPATH=/app
     command: >
       python scripts/kelly_ab_comparison.py
       --trace-path artifacts/v14_panorama/mainline/regime_process_trace.csv
