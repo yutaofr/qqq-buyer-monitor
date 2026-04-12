@@ -57,6 +57,9 @@
         .resonance-sell { border: 2px solid var(--red) !important; animation: resonance-pulse-sell 1.5s infinite; background: rgba(239, 68, 68, 0.1) !important; }
         
         @keyframes flow { 0% { background-position: 100% 0; } 100% { background-position: 0% 0; } }
+        
+        @keyframes wave { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+        .kelly-wave { animation: wave 8s linear infinite; transform-origin: bottom center; }
     </style>
 </head>
 <body id="body" class="min-h-screen flex flex-col items-center justify-start py-6 sm:py-16 px-4 bg-[#020617] text-slate-200 overflow-x-hidden">
@@ -124,19 +127,31 @@
             </div>
         </div>
 
-        <div class="space-y-8 sm:space-y-10 text-center mb-10 sm:mb-12">
+        <div class="space-y-4 sm:space-y-5 text-center mb-10 sm:mb-12">
             
             <div class="grid grid-cols-2 gap-4 sm:gap-5">
                 <div class="factor-card p-5 sm:p-6 rounded-[1.8rem] sm:rounded-[2.5rem] flex flex-col items-start bg-white/[0.03]">
                     <p id="ui-entropy-label" class="text-[10px] font-black text-slate-500 uppercase mb-2">資訊熵</p>
                     <p id="entropy" class="text-2xl sm:text-3xl font-black text-emerald-400/90">--</p>
                 </div>
-                <div class="factor-card p-5 sm:p-6 rounded-[1.8rem] sm:rounded-[2.5rem] flex flex-col items-start bg-white/[0.03]">
-                    <p id="ui-deploy-label" class="text-[10px] font-black text-slate-500 uppercase mb-2">佈局節奏</p>
-                    <p id="deploy" class="text-xl sm:text-2xl font-black transition-colors duration-1000">--</p>
-                    <p id="deploy-readiness" class="text-[11px] font-bold text-slate-400 mt-2">--</p>
+                <div class="factor-card p-5 sm:p-6 rounded-[1.8rem] sm:rounded-[2.5rem] flex flex-col items-start bg-white/[0.03] relative overflow-hidden group hover:border-white/10 transition-all">
+                    <!-- Integrated Kelly Water Level -->
+                    <div id="kelly-water-level" class="absolute bottom-0 left-0 w-[200%] h-0 transition-all duration-[3000ms] ease-[cubic-bezier(0.16,1,0.3,1)] kelly-wave bg-gradient-to-r from-emerald-500/10 via-blue-500/10 to-emerald-500/10 pointer-events-none z-0"></div>
+                    
+                    <div class="relative z-10 w-full">
+                        <div class="flex justify-between items-start mb-2">
+                            <p id="ui-deploy-label" class="text-[10px] font-black text-slate-500 uppercase tracking-widest">佈局節奏</p>
+                            <p id="kelly-fraction-value" class="text-[10px] font-black text-slate-400 font-mono">--</p>
+                        </div>
+                        <p id="deploy" class="text-xl sm:text-2xl font-black transition-colors duration-1000">--</p>
+                        <div class="flex justify-between items-center mt-2">
+                            <p id="deploy-readiness" class="text-[11px] font-bold text-slate-400">--</p>
+                            <p id="kelly-fraction-hint" class="text-[8px] font-black text-slate-500 uppercase tracking-tighter opacity-0 group-hover:opacity-100 transition-opacity">--</p>
+                        </div>
+                    </div>
                 </div>
             </div>
+
         </div>
 
         <!-- NEW: Unified Panorama Ensemble & Execution Panel -->
@@ -415,6 +430,7 @@
                 'ui-mode-label': 'Mode', 'ui-data-status-label': 'Data Status',
                 'ui-btn-insights': 'Logic Details', 'ui-btn-docs': 'Docs',
                 'ui-posterior-label': 'Posterior Probability', 'ui-prior-label': 'Runtime Prior',
+                'ui-kelly-fraction-label': 'Kelly Water Level',
                 'ui-logic-tree-label': 'Logic Tree', 'ui-logic-trace-label': 'Logic Trace',
                 'ui-execution-overlay-label': 'Execution Overlay', 'ui-feature-values-label': 'Feature Values',
                 'ui-engine-label': 'Engine', 'ui-anchor-label': 'Prior Anchor', 'ui-generated-label': 'Generated (UTC)',
@@ -472,6 +488,7 @@
                 'ui-mode-label': '模式', 'ui-data-status-label': '數據狀態',
                 'ui-btn-insights': '邏輯詳情', 'ui-btn-docs': '說明文件',
                 'ui-posterior-label': '後驗機率分佈', 'ui-prior-label': '運行時先驗',
+                'ui-kelly-fraction-label': '凱利目標水位尺',
                 'ui-logic-tree-label': '聯動決策樹', 'ui-logic-trace-label': '邏輯下鑽分析',
                 'ui-execution-overlay-label': '執行疊加層', 'ui-feature-values-label': '特徵數值明細',
                 'ui-engine-label': '核心引擎版本', 'ui-anchor-label': '資料血緣回溯', 'ui-generated-label': '更新時間',
@@ -914,6 +931,38 @@
             document.getElementById('beta-overlay-multiplier').textContent = (data.signal.beta_overlay_multiplier || 1.0).toFixed(2);
             document.getElementById('deployment-overlay-multiplier').textContent = (data.signal.deployment_overlay_multiplier || 1.0).toFixed(2);
             document.getElementById('market-label').textContent = mapping[mkt] || mkt;
+
+            // Kelly Fraction Water Level UI Render
+            const kellyFraction = data.signal.kelly_fraction;
+            const kellyEl = document.getElementById('kelly-fraction-value');
+            const waterEl = document.getElementById('kelly-water-level');
+            const hintEl = document.getElementById('kelly-fraction-hint');
+            
+            if (kellyFraction != null) {
+                const fractionPct = (kellyFraction * 100).toFixed(1);
+                kellyEl.textContent = 'K ' + fractionPct + '%';
+                // Water height ranges from 5% to 100%
+                waterEl.style.height = Math.min(100, Math.max(5, kellyFraction * 100)) + '%';
+                
+                if (kellyFraction >= 0.8) {
+                    waterEl.className = "absolute bottom-0 left-0 w-[200%] transition-all duration-[3000ms] kelly-wave ease-[cubic-bezier(0.16,1,0.3,1)] bg-gradient-to-r from-rose-500/10 via-orange-500/10 to-rose-500/10 pointer-events-none z-0";
+                    hintEl.textContent = currentLang === 'en' ? "Max Kelly" : "滿水凱利";
+                    kellyEl.className = "text-[10px] font-black text-rose-400 font-mono transition-colors";
+                } else if (kellyFraction >= 0.3) {
+                    waterEl.className = "absolute bottom-0 left-0 w-[200%] transition-all duration-[3000ms] kelly-wave ease-[cubic-bezier(0.16,1,0.3,1)] bg-gradient-to-r from-emerald-500/10 via-blue-500/10 to-emerald-500/10 pointer-events-none z-0";
+                    hintEl.textContent = currentLang === 'en' ? "Optimal" : "優化";
+                    kellyEl.className = "text-[10px] font-black text-emerald-400 font-mono transition-colors";
+                } else {
+                    waterEl.className = "absolute bottom-0 left-0 w-[200%] transition-all duration-[3000ms] kelly-wave ease-[cubic-bezier(0.16,1,0.3,1)] bg-gradient-to-r from-blue-500/5 via-slate-500/5 to-blue-500/5 pointer-events-none z-0";
+                    hintEl.textContent = currentLang === 'en' ? "Hold" : "保留";
+                    kellyEl.className = "text-[10px] font-black text-blue-300 font-mono transition-colors";
+                }
+            } else {
+                kellyEl.textContent = 'K --';
+                waterEl.style.height = '0%';
+                hintEl.textContent = 'Shadow';
+                kellyEl.className = "text-[10px] font-black text-slate-600 font-mono";
+            }
 
             // Replay Detection: If data is more than 3 days old compared to current wall time
             const replayBadge = document.getElementById('replay-badge');
