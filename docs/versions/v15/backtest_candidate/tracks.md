@@ -108,7 +108,7 @@ B-01 (创建 TDD 测试 test_kelly_pnl.py)
 ---
 
 ### B-09 — 全量回路安全阻断器 (AC-9)
-- **状态**: `[TODO]`
+- **状态**: `[DONE]`
 - **命令**: 
   ```bash
   docker-compose run test

@@ -9,10 +9,9 @@ services:
       - .env:/app/.env
     environment:
       - QQQ_DB_PATH=/app/data/signals.db
+      - PYTHONPATH=/app
     env_file:
       - .env
-    environment:
-      - PYTHONPATH=/app
     command: python -m src.main
 
   test:
@@ -23,10 +22,9 @@ services:
       - .env:/app/.env
     environment:
       - QQQ_DB_PATH=/tmp/test_signals.db
+      - PYTHONPATH=/app
     env_file:
       - .env
-    environment:
-      - PYTHONPATH=/app
     command: pytest tests/ -v --tb=short
 
   backtest:
