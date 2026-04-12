@@ -200,6 +200,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 ),
                 "beta_overlay_multiplier": metadata.get("beta_overlay_multiplier", 1.0),
                 "deployment_overlay_multiplier": metadata.get("deployment_overlay_multiplier", 1.0),
+                "kelly_fraction": metadata.get("kelly_fraction"),
                 "overlay_state": metadata.get("overlay_state", "NEUTRAL"),
                 "overlay_summary": metadata.get("overlay_summary", "NEUTRAL"),
                 "beta_ceiling": metadata.get("beta_ceiling", 1.20),
