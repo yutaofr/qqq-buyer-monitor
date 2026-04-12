@@ -238,7 +238,7 @@ T-01 (阅读 SRD 与代码审计)
 | T-09 | kelly_ab_comparison.py | `[DONE]` | `scripts/kelly_ab_comparison.py` |
 | T-10 | docker-compose 追加 | `[DONE]` | `docker-compose.yml` (+追加) |
 | T-11 | AC-5 最终验收 | `[DONE]` | `artifacts/kelly_ab/` |
-| T-12 | Git 审计与 PR 准备 | `[TODO]` | — |
+| T-12 | Git 审计与 PR 准备 | `[DONE]` | — |
 
 ---
 
