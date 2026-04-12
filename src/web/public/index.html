@@ -21,8 +21,8 @@
         .factor-card { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08); transition: all 0.4s; }
         .text-ghost { opacity: 0.2; transition: all 0.8s; filter: blur(0.5px); }
         .node-active { color: var(--emerald); opacity: 1 !important; font-weight: 900; text-shadow: 0 0 30px rgba(16, 185, 129, 0.8); border-color: rgba(16, 185, 129, 0.5) !important; background: rgba(16, 185, 129, 0.15) !important; filter: none !important; transform: scale(1.1); }
-        #insights-panel { max-height: 0; overflow: hidden; opacity: 0; transition: all 1s; }
-        #insights-panel.open { max-height: 4000px; opacity: 1; margin-top: 2rem; }
+        #insights-panel { max-height: 0; overflow: hidden; opacity: 0; }
+        #insights-panel.open { max-height: none; opacity: 1; margin-top: 2rem; }
         .tree-line { width: 2px; background: rgba(255, 255, 255, 0.05); height: 35px; }
         .tree-line.active { background: linear-gradient(to bottom, var(--emerald), transparent); opacity: 0.6; }
         .prob-bar { height: 8px; border-radius: 6px; transition: width 1.8s cubic-bezier(0.34, 1.56, 0.64, 1); }
@@ -91,8 +91,8 @@
         .resonance-hold { border: 1px solid rgba(255, 255, 255, 0.1) !important; }
     </style>
 </head>
-<body id="body" class="min-h-screen flex flex-col items-center justify-center p-3 sm:p-4 bg-[#020617] text-slate-200 overflow-x-hidden">
-    <div class="max-w-[460px] w-full mx-auto glass rounded-[3.5rem] sm:rounded-[4rem] p-8 sm:p-10 relative overflow-hidden">
+<body id="body" class="min-h-screen flex flex-col items-center justify-start py-6 sm:py-16 px-4 bg-[#020617] text-slate-200 overflow-x-hidden">
+    <div class="w-full max-w-[460px] mx-auto glass rounded-[2.5rem] sm:rounded-[4rem] px-5 sm:px-10 pt-8 sm:pt-10 pb-12 sm:pb-16 relative mb-12 shadow-[0_50px_100px_-20px_rgba(0,0,0,1)] transition-all duration-700">
         <!-- Top Status Bar -->
         <div class="absolute top-8 sm:top-12 left-0 right-0 px-8 sm:px-12 flex justify-between items-center">
             <div class="flex items-center space-x-2">
@@ -296,8 +296,8 @@
                         <p id="resonance-action" class="text-[10px] font-black text-white italic">--</p>
                         <p id="resonance-reason" class="text-[7px] font-bold text-slate-500 uppercase">--</p>
                     </div>
-                </div>
-            </div>
+            </div> <!-- Close flex-col (179) -->
+        </div> <!-- Close #panorama-panel (175) -->
 
         <!-- Actions -->
         <div class="grid grid-cols-2 gap-3 sm:gap-4 mb-4">
@@ -363,16 +363,44 @@
                     <p id="ui-logic-trace-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">邏輯下鑽分析</p>
                     <div id="logic-trace-container" class="space-y-3 px-2 sm:px-4"></div>
                 </div>
+            </div> <!-- Close insights-inner (316) -->
+        </div> <!-- Close #insights-panel expander (315) -->
 
-                
-                <div class="pt-10 border-t border-white/5 text-[10px] font-black text-slate-600 uppercase text-left">
-                    <div class="flex justify-between"><span id="ui-engine-label">核心引擎版本</span><span id="engine-version" class="text-slate-400">--</span></div>
-                    <div class="flex justify-between"><span id="ui-anchor-label">資料血緣回溯</span><span id="hydration-anchor" class="text-slate-400">2018-01-01</span></div>
-                    <div class="flex justify-between"><span id="ui-generated-label">更新時間</span><span id="calc-at" class="text-slate-400">--</span></div>
-                    <div class="flex justify-between"><span id="ui-data-status-label">數據狀態</span><span id="data-source" class="text-slate-400">--</span></div>
+    <!-- Integrated Global Footer (INSIDE Card, Independent of Expander) -->
+    <div class="mt-12 pt-8 border-t border-white/5 space-y-6 pb-2">
+        <div class="flex flex-col items-center space-y-4">
+            <div class="flex items-center space-x-2.5 opacity-30">
+                <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+                <span class="text-[9px] font-black text-emerald-400 uppercase tracking-[0.4em]">Bayesian Core Integrity</span>
+            </div>
+            
+            <div class="flex flex-wrap justify-center gap-x-5 gap-y-2.5 px-2">
+                <div class="flex flex-col items-center">
+                    <span class="text-[8px] font-black uppercase tracking-widest text-slate-600">Version</span>
+                    <span id="engine-version" class="text-[10px] text-slate-300 font-mono">--</span>
+                </div>
+                <div class="flex flex-col items-center">
+                    <span class="text-[8px] font-black uppercase tracking-widest text-slate-600">Anchor</span>
+                    <span id="hydration-anchor" class="text-[10px] text-slate-300 font-mono">2018-01-01</span>
+                </div>
+                <div class="flex flex-col items-center">
+                    <span class="text-[8px] font-black uppercase tracking-widest text-slate-600">Updated</span>
+                    <span id="calc-at" class="text-[10px] text-emerald-500 font-mono">--</span>
+                </div>
+                <div class="flex flex-col items-center">
+                    <span class="text-[8px] font-black uppercase tracking-widest text-slate-600">Status</span>
+                    <span id="data-source" class="text-[10px] text-blue-400 font-bold uppercase tracking-tight">--</span>
                 </div>
             </div>
         </div>
+        
+        <div class="opacity-15">
+            <p class="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em] italic text-center">© 2026 QQQ Entropy Monitor / ULTIMA v14.4</p>
+        </div>
+    </div>
+</div> <!-- Final close for main .glass container (95) -->
+</body>
+</html>
 
     <script>
         // Environment & Data Source Configuration
@@ -619,7 +647,7 @@
                 const summary = summarizeResult(entry.result);
                 const body = escapeHtml(JSON.stringify(entry.result ?? null, null, 2));
                 container.innerHTML += `
-                    <details class="evidence-card" ${index === steps.length - 1 ? 'open' : ''}>
+                    <details class="evidence-card" ${(index === steps.length - 1 && stepKey !== 'bayesian_diagnostics') ? 'open' : ''}>
                         <summary class="flex items-start justify-between gap-4">
                             <div>
                                 <p class="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-400/80">${stepPrefix} ${index + 1}${stepSuffix}</p>
@@ -732,7 +760,8 @@
         function renderDistribution(containerId, distribution, fallbackText, dynamicsMap) {
             const container = document.getElementById(containerId);
             container.innerHTML = '';
-            const entries = Object.entries(distribution || {}).sort((a, b) => b[1] - a[1]);
+            const order = ['BUST', 'LATE_CYCLE', 'MID_CYCLE', 'RECOVERY'];
+            const entries = Object.entries(distribution || {}).sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
             if (!entries.length) {
                 container.innerHTML = `<p class="text-[11px] font-bold text-slate-500">${fallbackText}</p>`;
                 return;
