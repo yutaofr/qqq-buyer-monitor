@@ -33,7 +33,7 @@ from src.engine.v11.core.price_topology import (
 from src.engine.v11.core.prior_knowledge import PriorKnowledgeBase
 from src.engine.v11.probability_seeder import ProbabilitySeeder
 from src.engine.v11.signal.behavioral_guard import BehavioralGuard
-from src.engine.v11.signal.deployment_policy import ProbabilisticDeploymentPolicy
+from src.engine.v11.signal.kelly_deployment_policy import KellyDeploymentPolicy
 from src.engine.v11.signal.inertial_beta_mapper import InertialBetaMapper
 from src.engine.v11.signal.qld_permission import QLDPermissionEvaluator
 from src.engine.v11.signal.regime_stabilizer import RegimeStabilizer
@@ -220,11 +220,14 @@ class V11Conductor:
         self.overlay_mode = overlay_mode
         self.high_entropy_streak = int(execution_state.get("high_entropy_streak", 0) or 0)
         self.qld_permission_evaluator = QLDPermissionEvaluator(**dict(qld_permission_toggles or {}))
-        self.deployment_policy = ProbabilisticDeploymentPolicy(
+        self.deployment_policy = KellyDeploymentPolicy(
             initial_state=str(
                 execution_state.get("deployment_state", "DEPLOY_BASE") or "DEPLOY_BASE"
             ),
             evidence=float(execution_state.get("deployment_evidence", 0.0) or 0.0),
+            kelly_scale=0.25,
+            erp_weight=0.2,
+            regime_sharpes=self.regime_sharpes,
         )
         self.resonance_detector = ResonanceDetector()
         self.resonance_detector.risk_ready_days = int(
