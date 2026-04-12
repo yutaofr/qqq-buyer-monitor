@@ -17,8 +17,11 @@ PROCESS_KEYS: tuple[str, ...] = (
 )
 
 WINDOWS: dict[str, tuple[str, str]] = {
+    "2000_left_side": ("2000-03-01", "2000-05-31"),
     "2022_defense": ("2022-01-03", "2022-10-31"),
+    "2022_left_side": ("2022-09-15", "2022-11-30"),
     "2023_rerisk": ("2023-02-01", "2023-06-30"),
+    "2025_left_side": ("2025-03-01", "2025-05-31"),
 }
 
 DEFAULT_TOLERANCES: dict[str, float] = {
@@ -53,6 +56,7 @@ def build_qld_permission_ablation_scenarios(
                     "bind_resonance_sell": False,
                     "enable_fundamental_override": False,
                     "enable_sub1x_guard": False,
+                    "enable_left_side_probe": False,
                 },
             },
         },
@@ -66,6 +70,7 @@ def build_qld_permission_ablation_scenarios(
                     "bind_resonance_sell": True,
                     "enable_fundamental_override": False,
                     "enable_sub1x_guard": False,
+                    "enable_left_side_probe": False,
                 },
             },
         },
@@ -79,6 +84,7 @@ def build_qld_permission_ablation_scenarios(
                     "bind_resonance_sell": False,
                     "enable_fundamental_override": True,
                     "enable_sub1x_guard": True,
+                    "enable_left_side_probe": False,
                 },
             },
         },
@@ -92,6 +98,7 @@ def build_qld_permission_ablation_scenarios(
                     "bind_resonance_sell": False,
                     "enable_fundamental_override": False,
                     "enable_sub1x_guard": False,
+                    "enable_left_side_probe": False,
                 },
             },
         },
@@ -105,6 +112,21 @@ def build_qld_permission_ablation_scenarios(
                     "bind_resonance_sell": False,
                     "enable_fundamental_override": False,
                     "enable_sub1x_guard": True,
+                    "enable_left_side_probe": False,
+                },
+            },
+        },
+        {
+            "name": "left_side_probe",
+            "description": "enable generic left-side kernel plus stage-specific probe overrides",
+            "experiment_config": {
+                **common,
+                "overlay_suppress_collinear": False,
+                "qld_permission_toggles": {
+                    "bind_resonance_sell": False,
+                    "enable_fundamental_override": False,
+                    "enable_sub1x_guard": True,
+                    "enable_left_side_probe": True,
                 },
             },
         },
@@ -118,6 +140,7 @@ def build_qld_permission_ablation_scenarios(
                     "bind_resonance_sell": True,
                     "enable_fundamental_override": True,
                     "enable_sub1x_guard": True,
+                    "enable_left_side_probe": True,
                 },
             },
         },

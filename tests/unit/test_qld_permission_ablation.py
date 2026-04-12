@@ -22,10 +22,13 @@ def test_build_qld_permission_ablation_scenarios_exposes_all_expected_switches()
         "fundamental_override",
         "collinear_suppression",
         "sub1x_guard",
+        "left_side_probe",
         "all_on",
     ]
     assert scenarios[0]["experiment_config"]["qld_permission_toggles"]["bind_resonance_sell"] is False
+    assert scenarios[0]["experiment_config"]["qld_permission_toggles"]["enable_left_side_probe"] is False
     assert scenarios[2]["experiment_config"]["qld_permission_toggles"]["enable_sub1x_guard"] is True
+    assert scenarios[5]["experiment_config"]["qld_permission_toggles"]["enable_left_side_probe"] is True
     assert scenarios[-1]["experiment_config"]["qld_permission_toggles"]["enable_sub1x_guard"] is True
 
 
