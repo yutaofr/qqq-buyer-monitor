@@ -286,11 +286,11 @@
                     </div>
                 </div>
 
-                <!-- Resonance Radar (Moved & Shrunk) -->
+                <!-- Resonance Signal (Moved & Shrunk) -->
                 <div id="resonance-radar" class="mt-3 py-1.5 px-4 rounded-xl flex items-center justify-between border border-white/5 bg-white/5 transition-all duration-500 opacity-60">
                     <div class="flex items-center space-x-2">
                         <div id="resonance-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></div>
-                        <span id="ui-resonance-label" class="text-[8px] font-black uppercase text-slate-500 tracking-widest leading-none">共振雷達</span>
+                        <span id="ui-resonance-label" class="text-[8px] font-black uppercase text-slate-500 tracking-widest leading-none">共振信號層</span>
                     </div>
                     <div class="text-right leading-tight">
                         <p id="resonance-action" class="text-[10px] font-black text-white italic">--</p>
@@ -350,7 +350,10 @@
                 </div>
 
                 <div class="space-y-6">
-                    <p id="ui-qld-permission-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">QLD 權限層</p>
+                    <div class="space-y-2 px-2 sm:px-4 text-center">
+                        <p id="ui-qld-permission-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest">QLD 技術權限狀態</p>
+                        <p id="ui-qld-permission-note" class="text-[10px] font-bold text-slate-500 leading-relaxed">以下內容僅反映系統技術狀態與共振信號，不構成投資建議，最終以 QLD 權限層為準。</p>
+                    </div>
                     <div id="qld-permission-container" class="feature-grid px-2 sm:px-4"></div>
                 </div>
 
@@ -455,7 +458,9 @@
                 'ui-logic-tree-label': 'Logic Tree', 'ui-logic-trace-label': 'Logic Trace',
                 'ui-execution-overlay-label': 'Execution Overlay', 'ui-feature-values-label': 'Feature Values',
                 'ui-engine-label': 'Engine', 'ui-anchor-label': 'Prior Anchor', 'ui-generated-label': 'Generated (UTC)',
-                'ui-resonance-label': 'Resonance Radar',
+                'ui-qld-permission-label': 'QLD Technical Permission State',
+                'ui-qld-permission-note': 'System technical state only. Not investment advice. Final interpretation follows the QLD permission layer.',
+                'ui-resonance-label': 'Resonance Signal Layer',
                 'ui-history-label': '6-Month Regime Evolution (Empirical)',
                 'ui-flip-hint-front': 'Tap to view 6-month historical trend',
                 'ui-flip-hint-back': 'Tap to return to live distribution',
@@ -472,7 +477,8 @@
                     'CRISIS': 'Crisis', 'STRESS': 'Stress', 'NEUTRAL': 'Neutral', 'EUPHORIC': 'Euphoric',
                     'BUST': 'Bust', 'MID_CYCLE': 'Mid Cycle', 'LATE_CYCLE': 'Late Cycle', 'RECOVERY': 'Recovery',
                     'CASH': 'Cash', 'QQQ': '1x Pos', 'QLD': '2x Lev',
-                    'ACTIVE': 'LIVE', 'FROZEN': 'OFF-MARKET', 'UNKNOWN': 'UNKNOWN'
+                    'ACTIVE': 'LIVE', 'FROZEN': 'OFF-MARKET', 'UNKNOWN': 'UNKNOWN',
+                    'TECHNICAL STATE': 'Technical State', 'SYSTEM NOTE': 'System Note'
                 },
                 'steps': {
                     'probabilistic_inference': 'Inference', 'entropy_haircut': 'Entropy Haircut',
@@ -498,7 +504,9 @@
                 'ui-logic-tree-label': '聯動決策樹', 'ui-logic-trace-label': '邏輯下鑽分析',
                 'ui-execution-overlay-label': '執行疊加層', 'ui-feature-values-label': '特徵數值明細',
                 'ui-engine-label': '核心引擎版本', 'ui-anchor-label': '資料血緣回溯', 'ui-generated-label': '更新時間',
-                'ui-resonance-label': '戰術共振雷達',
+                'ui-qld-permission-label': 'QLD 技術權限狀態',
+                'ui-qld-permission-note': '以下內容僅反映系統技術狀態與共振信號，不構成投資建議，最終以 QLD 權限層為準。',
+                'ui-resonance-label': '戰術共振信號層',
                 'ui-history-label': '6 個月體制演變（實證）',
                 'ui-flip-hint-front': '點擊查看 6 個月歷史趨勢',
                 'ui-flip-hint-back': '點擊返回實時分佈',
@@ -522,7 +530,8 @@
                     'POSITIVE SCORE': '正向評分', 'DIAG BETA': '診斷敞口', 'DIAG PACE': '診斷節奏', 'FALLBACK': '觸發回退',
                     'BREAKEVEN': '盈虧平衡', 'COPPER GOLD': '銅金比', 'NET LIQUIDITY': '淨流動性',
                     'GLOBAL BETA': '全球系統風險', 'VIX TERM STRUCTURE': '波動率結構', 'MOMENTUM': '動量因子',
-                    'DEPLOY_BASE': '標準佈局', 'BUCKET_HOLD': '持倉不變', 'TARGET_BUCKET': '目標倉位', 'LOCK_ACTIVE': '鎖定生效'
+                    'DEPLOY_BASE': '標準佈局', 'BUCKET_HOLD': '持倉不變', 'TARGET_BUCKET': '目標倉位', 'LOCK_ACTIVE': '鎖定生效',
+                    'TECHNICAL STATE': '技術狀態', 'SYSTEM NOTE': '系統說明'
                 },
                 'steps': {
                     'probabilistic_inference': '後驗推斷', 'entropy_haircut': '資訊熵懲罰',
@@ -701,6 +710,49 @@
             `).join('');
         }
 
+        function summarizeQldPermission(qld) {
+            const reasonCode = String(qld.reason_code || '');
+            const forcedBucket = String(qld.forced_bucket || '');
+            if (forcedBucket === 'QLD') {
+                if (reasonCode === 'LEFT_SIDE_PROBE') {
+                    return currentLang === 'en' ? 'QLD LEFT-SIDE WINDOW OPEN' : 'QLD 左側試探窗口已打開';
+                }
+                if (reasonCode === 'FUNDAMENTAL_OVERRIDE_RELEASE') {
+                    return currentLang === 'en' ? 'QLD RECOVERY WINDOW CONFIRMED' : 'QLD 恢復擴張窗口已確認';
+                }
+                return currentLang === 'en' ? 'QLD TECHNICAL PERMISSION OPEN' : 'QLD 技術權限已打開';
+            }
+            if (forcedBucket === 'QQQ' || reasonCode === 'RESONANCE_SELL_BINDING') {
+                return currentLang === 'en' ? 'QLD TECHNICAL PERMISSION REVOKED' : 'QLD 技術權限已撤回';
+            }
+            if (Boolean(qld.allow_sub1x_qld)) {
+                return currentLang === 'en' ? 'QLD TECHNICAL WINDOW ACTIVE' : 'QLD 技術窗口已激活';
+            }
+            return currentLang === 'en' ? 'QLD PERMISSION UNDER REVIEW' : 'QLD 權限仍在觀察';
+        }
+
+        function summarizeQldPermissionDetail(qld) {
+            const mode = String(qld.entry_mode || '');
+            if (mode === 'LEFT_SIDE_PROBE') {
+                return currentLang === 'en'
+                    ? 'System detected a left-side probe state. This is technical-state output only, not investment advice.'
+                    : '系統檢測到左側試探狀態。此處僅為技術狀態輸出，不構成投資建議。';
+            }
+            if (mode === 'RECOVERY_EXPANSION') {
+                return currentLang === 'en'
+                    ? 'System detected a recovery-expansion state. Final interpretation follows the QLD permission layer.'
+                    : '系統檢測到恢復擴張狀態，最終以 QLD 權限層為準。';
+            }
+            if (String(qld.forced_bucket || '') === 'QQQ') {
+                return currentLang === 'en'
+                    ? 'System revoked QLD exposure and retained the unlevered state.'
+                    : '系統已撤回 QLD 技術暴露，保留非槓桿狀態。';
+            }
+            return currentLang === 'en'
+                ? 'System is scanning technical-state evidence for QLD permission.'
+                : '系統正在掃描 QLD 權限所需的技術狀態證據。';
+        }
+
         function renderQLDPermission(qldPermission) {
             const container = document.getElementById('qld-permission-container');
             container.innerHTML = '';
@@ -712,6 +764,10 @@
                 .filter(([, value]) => Boolean(value))
                 .map(([key]) => humanizeKey(key))
                 .join(', ');
+            const summaryEntries = [
+                ['TECHNICAL STATE', summarizeQldPermission(qld)],
+                ['SYSTEM NOTE', summarizeQldPermissionDetail(qld)],
+            ];
             const entries = [
                 ['ENTRY MODE', qld.entry_mode || '--'],
                 ['REASON CODE', qld.reason_code || '--'],
@@ -725,7 +781,7 @@
                 ['STAGE OVERRIDE SCORE', stageOverride.score],
                 ['ACTIVE CLUSTERS', activeClusters || '--'],
             ];
-            container.innerHTML = entries.map(([key, value]) => `
+            container.innerHTML = summaryEntries.concat(entries).map(([key, value]) => `
                 <div class="feature-chip">
                     <p class="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">${escapeHtml(humanizeKey(key))}</p>
                     <p class="text-base sm:text-lg font-black text-white mt-2 break-all">${escapeHtml(formatScalar(value))}</p>
@@ -940,20 +996,22 @@
                 radar.className = 'mt-3 py-1.5 px-4 rounded-xl flex items-center justify-between border transition-all duration-1000 resonance-buy opacity-100';
                 rDot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]';
                 rAction.className = 'text-[11px] font-black text-emerald-400 tracking-tighter';
-                rAction.textContent = currentLang === 'en' ? 'ADD LEVERAGE' : '建議加槓桿';
+                rAction.textContent = currentLang === 'en' ? 'QLD UPSIDE RESONANCE' : 'QLD 上行共振信號';
                 rReason.textContent = (resonance.prompt || resonance.reason || '--');
             } else if (resonance.action === 'SELL_QLD') {
                 radar.className = 'mt-3 py-1.5 px-4 rounded-xl flex items-center justify-between border transition-all duration-1000 resonance-sell opacity-100';
                 rDot.className = 'w-1.5 h-1.5 rounded-full bg-red-400 shadow-[0_0_8px_rgba(239,68,68,0.8)]';
                 rAction.className = 'text-[11px] font-black text-red-400 tracking-tighter';
-                rAction.textContent = currentLang === 'en' ? 'REDUCE LEVERAGE' : '建議降槓桿';
+                rAction.textContent = currentLang === 'en' ? 'QLD RISK-COMPRESSION SIGNAL' : 'QLD 風險收縮信號';
                 rReason.textContent = (resonance.prompt || resonance.reason || '--');
             } else {
                 radar.className = 'mt-3 py-1.5 px-4 rounded-xl flex items-center justify-between border transition-all duration-1000 resonance-hold opacity-40 grayscale';
                 rDot.className = 'w-1.5 h-1.5 rounded-full bg-slate-500 shadow-none';
                 rAction.className = 'text-[10px] font-bold text-slate-400 tracking-tighter italic';
-                rAction.textContent = currentLang === 'en' ? 'SCANNING...' : '掃描中...';
-                rReason.textContent = `Confidence: ${(resonance.confidence * 100).toFixed(1)}%`;
+                rAction.textContent = currentLang === 'en' ? 'NO NEW RESONANCE SIGNAL' : '暫無新增共振信號';
+                rReason.textContent = currentLang === 'en'
+                    ? `Signal confidence ${(resonance.confidence * 100).toFixed(1)}%`
+                    : `信號信心度 ${(resonance.confidence * 100).toFixed(1)}%`;
             }
         }
 
