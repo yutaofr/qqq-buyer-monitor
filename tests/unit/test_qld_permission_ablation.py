@@ -54,6 +54,56 @@ def test_summarize_execution_window_reports_qld_days_and_first_entry_date():
     assert summary["rows"] == 4
     assert summary["qld_days"] == 2
     assert summary["first_qld_date"] == "2023-02-03"
+    assert summary["supported"] is True
+    assert summary["window_status"] == "covered"
+
+
+def test_summarize_execution_window_marks_unsupported_history_when_window_predates_support():
+    frame = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2023-02-01", "2023-02-02"]),
+            "target_beta": [0.7, 0.8],
+            "raw_target_beta": [0.7, 0.8],
+            "overlay_beta": [0.7, 0.8],
+            "target_bucket": ["QQQ", "QLD"],
+        }
+    )
+
+    summary = summarize_execution_window(
+        frame,
+        start="2008-11-01",
+        end="2009-06-30",
+        support_start="2013-01-30",
+    )
+
+    assert summary["rows"] == 0
+    assert summary["supported"] is False
+    assert summary["window_status"] == "unsupported_history"
+    assert summary["support_start"] == "2013-01-30"
+
+
+def test_summarize_execution_window_marks_partial_coverage_when_support_starts_inside_window():
+    frame = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2013-01-30", "2013-01-31", "2013-02-01"]),
+            "target_beta": [0.6, 0.75, 0.8],
+            "raw_target_beta": [0.6, 0.75, 0.8],
+            "overlay_beta": [0.6, 0.75, 0.8],
+            "target_bucket": ["QQQ", "QLD", "QLD"],
+        }
+    )
+
+    summary = summarize_execution_window(
+        frame,
+        start="2013-01-01",
+        end="2013-02-01",
+        support_start="2013-01-30",
+    )
+
+    assert summary["rows"] == 3
+    assert summary["supported"] is True
+    assert summary["window_status"] == "partial_coverage"
+    assert summary["first_qld_date"] == "2013-01-31"
 
 
 def test_evaluate_no_regression_marks_candidate_fail_when_process_and_rerisk_degrade():

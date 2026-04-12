@@ -18,6 +18,8 @@ PROCESS_KEYS: tuple[str, ...] = (
 
 WINDOWS: dict[str, tuple[str, str]] = {
     "2000_left_side": ("2000-03-01", "2000-05-31"),
+    "2002_left_side": ("2002-09-01", "2002-10-31"),
+    "2008_left_side": ("2008-11-01", "2009-06-30"),
     "2022_defense": ("2022-01-03", "2022-10-31"),
     "2022_left_side": ("2022-09-15", "2022-11-30"),
     "2023_rerisk": ("2023-02-01", "2023-06-30"),
@@ -152,14 +154,35 @@ def summarize_execution_window(
     *,
     start: str,
     end: str,
+    support_start: str | None = None,
 ) -> dict[str, Any]:
     frame = execution_df.copy()
     if "date" not in frame.columns:
         raise ValueError("execution trace must include a `date` column")
     frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
     frame = frame.dropna(subset=["date"]).sort_values("date")
+    start_ts = pd.Timestamp(start)
+    end_ts = pd.Timestamp(end)
+    support_ts = pd.Timestamp(support_start) if support_start else None
+    window_status = "covered"
+    if support_ts is not None and end_ts < support_ts:
+        return {
+            "rows": 0,
+            "mean_target_beta": 0.0,
+            "mean_raw_target_beta": 0.0,
+            "mean_overlay_beta": 0.0,
+            "qld_days": 0,
+            "qld_share": 0.0,
+            "first_qld_date": None,
+            "supported": False,
+            "window_status": "unsupported_history",
+            "support_start": support_ts.date().isoformat(),
+        }
+    if support_ts is not None and start_ts < support_ts:
+        start_ts = support_ts
+        window_status = "partial_coverage"
     window = frame[
-        (frame["date"] >= pd.Timestamp(start)) & (frame["date"] <= pd.Timestamp(end))
+        (frame["date"] >= start_ts) & (frame["date"] <= end_ts)
     ].copy()
     qld_mask = window.get("target_bucket", pd.Series(dtype=object)).astype(str).eq("QLD")
     first_qld_date = (
@@ -185,6 +208,9 @@ def summarize_execution_window(
         "qld_days": int(qld_mask.sum()) if not window.empty else 0,
         "qld_share": float(qld_mask.mean()) if not window.empty else 0.0,
         "first_qld_date": first_qld_date,
+        "supported": True,
+        "window_status": window_status,
+        "support_start": support_ts.date().isoformat() if support_ts is not None else None,
     }
 
 
@@ -195,8 +221,16 @@ def build_scenario_record(
     summary: dict[str, Any],
     execution_df: pd.DataFrame,
 ) -> dict[str, Any]:
+    support_start = summary.get("evaluation_start_effective") or summary.get(
+        "evaluation_start_requested"
+    )
     windows = {
-        label: summarize_execution_window(execution_df, start=start, end=end)
+        label: summarize_execution_window(
+            execution_df,
+            start=start,
+            end=end,
+            support_start=support_start,
+        )
         for label, (start, end) in WINDOWS.items()
     }
     process = {key: summary.get(key) for key in PROCESS_KEYS}

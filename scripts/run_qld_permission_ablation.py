@@ -102,6 +102,15 @@ def main(argv: list[str] | None = None) -> int:
         report_lines.append(
             f"- 2023 re-risk QLD days: `{record['windows']['2023_rerisk']['qld_days']}`"
         )
+        unsupported_windows = [
+            name
+            for name, window in record["windows"].items()
+            if not bool(window.get("supported", True))
+        ]
+        if unsupported_windows:
+            report_lines.append(
+                f"- Unsupported windows: `{', '.join(sorted(unsupported_windows))}`"
+            )
         report_lines.append("")
     (artifact_dir / "report.md").write_text("\n".join(report_lines), encoding="utf-8")
     return 0
