@@ -503,7 +503,7 @@ def test_run_v11_audit_uses_mainline_black_box_when_canonical_pipeline_enabled(
         def __init__(self, *args, **kwargs):
             calls.append(dict(kwargs))
 
-        def daily_run(self, raw_t0_data):
+        def daily_run(self, raw_t0_data, baseline_result=None):
             dt = pd.Timestamp(raw_t0_data.index[-1])
             return {
                 "date": dt,
@@ -648,7 +648,7 @@ def test_run_v11_audit_reports_oos_and_training_class_support(tmp_path, monkeypa
                 classes = ["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"]
             self.gnb = type("FakeModel", (), {"classes_": classes})()
 
-        def daily_run(self, t0_data):
+        def daily_run(self, t0_data, baseline_result=None):
             return {
                 "probabilities": {
                     "MID_CYCLE": 0.7,

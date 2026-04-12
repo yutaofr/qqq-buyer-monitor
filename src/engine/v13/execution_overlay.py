@@ -68,11 +68,17 @@ def _normalize_mode(raw_mode: str | None, *, allowed_modes: set[str], default_mo
 class ExecutionOverlayEngine:
     """v13 execution overlay with monotone, bounded conditioning."""
 
-    def __init__(self, *, audit_path: str | Path | None = None):
+    def __init__(
+        self,
+        *,
+        audit_path: str | Path | None = None,
+        suppress_collinear_qqew: bool = True,
+    ):
         self.audit_path = Path(
             audit_path or Path(__file__).parent / "resources" / "execution_overlay_audit.json"
         )
         self.audit = json.loads(self.audit_path.read_text(encoding="utf-8"))
+        self.suppress_collinear_qqew = bool(suppress_collinear_qqew)
         mode_policy = dict(self.audit.get("mode_policy", {}))
         self.allowed_modes = {
             str(mode).upper()
@@ -138,6 +144,8 @@ class ExecutionOverlayEngine:
             }
 
         latest = frame.iloc[-1] if not frame.empty else pd.Series(dtype=object)
+        breadth_source = str(latest.get("source_breadth_proxy", "") or "")
+        breadth_quality = _clip01(latest.get("breadth_quality_score", 0.0))
 
         if "adv_dec_ratio" not in frame.columns and any(
             field in frame.columns for field in repurposed_fields
@@ -149,8 +157,6 @@ class ExecutionOverlayEngine:
                 quality=0.0,
             )
         else:
-            breadth_source = str(latest.get("source_breadth_proxy", "") or "")
-            breadth_quality = _clip01(latest.get("breadth_quality_score", 0.0))
             raw_inputs["adv_dec_ratio"] = latest.get("adv_dec_ratio")
             input_quality["breadth_proxy"] = breadth_quality
             if (
@@ -185,7 +191,15 @@ class ExecutionOverlayEngine:
         concentration_quality = _clip01(latest.get("ndx_concentration_quality_score", 0.0))
         raw_inputs["ndx_concentration"] = latest.get("ndx_concentration")
         input_quality["ndx_concentration"] = concentration_quality
-        if (
+        breadth_is_qqew_derived = breadth_source.startswith("derived:qqq-qqew-breadth")
+        if self.suppress_collinear_qqew and breadth_is_qqew_derived:
+            admission(
+                "ndx_concentration",
+                admitted=False,
+                reason="suppressed_collinear_with_derived_breadth",
+                quality=concentration_quality,
+            )
+        elif (
             "ndx_concentration" in frame.columns
             and source_ok(concentration_source)
             and concentration_quality >= minimum_quality

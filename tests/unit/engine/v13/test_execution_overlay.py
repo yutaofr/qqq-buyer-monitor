@@ -112,6 +112,26 @@ def test_execution_overlay_rejects_repurposed_proxy_fields_as_production_evidenc
     assert result["derived_features"]["breadth_stress"] is None
 
 
+def test_execution_overlay_suppresses_concentration_when_breadth_is_derived_from_qqq_qqew():
+    from src.engine.v13.execution_overlay import ExecutionOverlayEngine
+
+    engine = ExecutionOverlayEngine()
+    context = _overlay_history(
+        breadth_last=0.18,
+        concentration_last=0.15,
+        last_close=124.0,
+        last_volume=700_000.0,
+    )
+    context["source_breadth_proxy"] = ["derived:qqq-qqew-breadth"] * len(context)
+
+    result = engine.evaluate(context)
+
+    assert result["derived_features"]["breadth_stress"] is not None
+    assert result["derived_features"]["concentration_stress"] is None
+    assert result["admission_decisions"]["ndx_concentration"]["admitted"] is False
+    assert "collinear" in result["admission_decisions"]["ndx_concentration"]["reason"]
+
+
 def test_execution_overlay_constant_inputs_do_not_create_phantom_penalties():
     from src.engine.v13.execution_overlay import ExecutionOverlayEngine
 

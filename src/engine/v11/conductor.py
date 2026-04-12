@@ -35,6 +35,7 @@ from src.engine.v11.probability_seeder import ProbabilitySeeder
 from src.engine.v11.signal.behavioral_guard import BehavioralGuard
 from src.engine.v11.signal.deployment_policy import ProbabilisticDeploymentPolicy
 from src.engine.v11.signal.inertial_beta_mapper import InertialBetaMapper
+from src.engine.v11.signal.qld_permission import QLDPermissionEvaluator
 from src.engine.v11.signal.regime_stabilizer import RegimeStabilizer
 from src.engine.v11.signal.resonance_detector import ResonanceDetector
 from src.engine.v13.execution_overlay import ExecutionOverlayEngine
@@ -76,6 +77,8 @@ class V11Conductor:
         price_history_path: str = "data/qqq_history_cache.csv",
         initial_model: GaussianNB | None = None,
         overlay_mode: str | None = None,
+        overlay_suppress_collinear: bool = True,
+        qld_permission_toggles: dict[str, bool] | None = None,
         training_cutoff: str | datetime | None = None,
         allow_prior_bootstrap_drift: bool = False,
     ):
@@ -211,9 +214,12 @@ class V11Conductor:
         self.behavior_guard.cooldown_days_remaining = int(
             execution_state.get("bucket_cooldown_days", 0) or 0
         )
-        self.overlay_engine = ExecutionOverlayEngine()
+        self.overlay_engine = ExecutionOverlayEngine(
+            suppress_collinear_qqew=overlay_suppress_collinear
+        )
         self.overlay_mode = overlay_mode
         self.high_entropy_streak = int(execution_state.get("high_entropy_streak", 0) or 0)
+        self.qld_permission_evaluator = QLDPermissionEvaluator(**dict(qld_permission_toggles or {}))
         self.deployment_policy = ProbabilisticDeploymentPolicy(
             initial_state=str(
                 execution_state.get("deployment_state", "DEPLOY_BASE") or "DEPLOY_BASE"
@@ -838,12 +844,10 @@ class V11Conductor:
             entropy=norm_h,
             raw_t0_data=raw_t0_data,
         )
-        reentry_signal = max(
+        base_reentry_signal = max(
             float(overlay.get("positive_score", 0.0) or 0.0),
             float(topology_state.confidence if topology_state.regime == "RECOVERY" else 0.0),
         )
-        execution = self.behavior_guard.apply(sizing, reentry_signal=reentry_signal)
-        bucket = execution.target_bucket
 
         quality = float(quality_audit["quality_score"])
 
@@ -873,6 +877,26 @@ class V11Conductor:
             previous_effective_entropy=previous_effective_entropy,
             risk_context=risk_context,
         )
+        qld_permission = self.qld_permission_evaluator.evaluate(
+            context_df=context_df,
+            baseline_result=baseline_result,
+            resonance_result=resonance_result,
+            overlay=overlay,
+            effective_entropy=norm_h,
+            topology_state=topology_state,
+            quality_audit=quality_audit,
+            base_reentry_signal=base_reentry_signal,
+            target_beta=final_beta,
+        )
+        execution = self.behavior_guard.apply(
+            sizing,
+            forced_bucket=qld_permission.forced_bucket,
+            forced_reason=qld_permission.reason if qld_permission.forced_bucket is not None else None,
+            reentry_signal=qld_permission.relaxed_entry_signal,
+            qld_allowed=qld_permission.qld_allowed,
+            allow_sub1x_qld=qld_permission.allow_sub1x_qld,
+        )
+        bucket = execution.target_bucket
 
         forensic_snapshot_path = self._write_runtime_snapshot(
             raw_t0_data=raw_t0_data,
@@ -895,6 +919,9 @@ class V11Conductor:
                 "resonance_action": resonance_result["action"],
                 "resonance_confidence": resonance_result["confidence"],
                 "resonance_reason": resonance_result["reason"],
+                "qld_allowed": qld_permission.qld_allowed,
+                "qld_sub1x_allowed": qld_permission.allow_sub1x_qld,
+                "qld_permission_reason": qld_permission.reason,
             },
         )
 
@@ -920,6 +947,7 @@ class V11Conductor:
                 ),
                 "high_entropy_streak": self.high_entropy_streak,
                 "resonance": resonance_result,
+                "qld_permission": qld_permission.to_dict(),
             },
             "priors": runtime_priors,
             "prior_details": prior_details,
