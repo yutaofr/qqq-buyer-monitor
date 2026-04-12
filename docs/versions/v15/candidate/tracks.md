@@ -178,7 +178,7 @@ T-01 (阅读 SRD 与代码审计)
         - .env
       command: >
         python scripts/kelly_ab_comparison.py
-        --trace-path artifacts/v12_audit/execution_trace.csv
+        --trace-path artifacts/v14_panorama/mainline/regime_process_trace.csv
         --regime-audit src/engine/v11/resources/regime_audit.json
         --output-dir artifacts/kelly_ab
   ```
@@ -187,7 +187,7 @@ T-01 (阅读 SRD 与代码审计)
 ---
 
 ### T-11 — AC-5 最终验收（A/B 脚本运行）
-- **状态**: `[TODO]`
+- **状态**: `[DONE]`
 - **锁定文件**: (只读)
 - **依赖前置**: T-10
 - **命令**:
@@ -237,7 +237,7 @@ T-01 (阅读 SRD 与代码审计)
 | T-08 | 全量回归验收 | `[DONE]` | — |
 | T-09 | kelly_ab_comparison.py | `[DONE]` | `scripts/kelly_ab_comparison.py` |
 | T-10 | docker-compose 追加 | `[DONE]` | `docker-compose.yml` (+追加) |
-| T-11 | AC-5 最终验收 | `[TODO]` | `artifacts/kelly_ab/` |
+| T-11 | AC-5 最终验收 | `[DONE]` | `artifacts/kelly_ab/` |
 | T-12 | Git 审计与 PR 准备 | `[TODO]` | — |
 
 ---
