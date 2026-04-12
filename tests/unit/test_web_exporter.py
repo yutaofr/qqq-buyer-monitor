@@ -49,6 +49,26 @@ def _v11_result() -> SignalResult:
                 "admission_decisions": {"qqq_tape": {"admitted": True, "reason": "admitted"}},
                 "neutral_fallback_triggered": False,
             },
+            "signal": {
+                "qld_permission": {
+                    "qld_allowed": True,
+                    "allow_sub1x_qld": True,
+                    "forced_bucket": "QLD",
+                    "entry_mode": "LEFT_SIDE_PROBE",
+                    "reason_code": "LEFT_SIDE_PROBE",
+                    "reason": "Left-side probe opened on exhaustion plus stage-specific support.",
+                    "relaxed_entry_signal": 0.72,
+                    "left_side_kernel": {"active": True, "score": 0.78},
+                    "regime_specific_override": {
+                        "active": True,
+                        "score": 0.40,
+                        "clusters": {
+                            "bubble_unwind_exhaustion": True,
+                            "credit_crisis_repair": False,
+                        },
+                    },
+                }
+            },
         },
     )
 
@@ -83,10 +103,12 @@ def test_export_web_snapshot_v11_contract(tmp_path, monkeypatch):
     assert payload["signal"]["beta_overlay_multiplier"] == 0.98
     assert payload["signal"]["deployment_overlay_multiplier"] == 1.04
     assert payload["signal"]["price_topology"]["regime"] == "LATE_CYCLE"
+    assert payload["signal"]["qld_permission"]["entry_mode"] == "LEFT_SIDE_PROBE"
     assert payload["signal"]["forensic_snapshot_path"].endswith(".json")
     assert payload["evidence"]["feature_values"]["vix"] == 20.0
     assert payload["evidence"]["execution_overlay"]["positive_score"] == 0.22
     assert payload["evidence"]["bayesian_diagnostics"]["penalties_applied"]["MID_CYCLE"] == 0.4
+    assert payload["evidence"]["qld_permission"]["regime_specific_override"]["clusters"]["bubble_unwind_exhaustion"] is True
 
 
 def test_export_web_snapshot_preserves_dual_surface_semantics(tmp_path, monkeypatch):
