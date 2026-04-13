@@ -1,6 +1,7 @@
 import logging
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 from pandas.tseries.holiday import AbstractHolidayCalendar, GoodFriday, USFederalHolidayCalendar
@@ -15,6 +16,7 @@ from src.engine.v11.utils.bootstrap_models import (
 )
 
 logger = logging.getLogger(__name__)
+EASTERN = ZoneInfo("America/New_York")
 
 
 class _FallbackNYSEHolidayCalendar(AbstractHolidayCalendar):
@@ -27,18 +29,63 @@ class BootstrapGuardian:
         macro_csv_path: str = "data/macro_historical_dump.csv",
         price_cache_path: str = "data/qqq_history_cache.csv",
         cold_start_seed_path: str = "src/engine/v11/resources/v13_6_cold_start_seed.json",
+        now_provider=None,
     ):
         self.macro_csv_path = Path(macro_csv_path)
         self.price_cache_path = Path(price_cache_path)
         self.cold_start_seed_path = Path(cold_start_seed_path)
+        self._now_provider = now_provider or (lambda: datetime.now(UTC))
 
-        end_date = date.today()
+        end_date = self._current_nyse_date()
         # Get exactly 1260 trading days (approx 5 years)
         start_date = end_date - timedelta(days=2000)
         self.business_days = self._build_business_days(start_date=start_date, end_date=end_date)
+        self.business_day_set = set(self.business_days)
         # Keep only the last 1260 business days
         if len(self.business_days) > 1260:
             self.business_days = self.business_days[-1260:]
+            self.business_day_set = set(self.business_days)
+
+    def _now_utc(self) -> datetime:
+        return pd.Timestamp(self._now_provider()).tz_convert(UTC).to_pydatetime()
+
+    def _current_nyse_date(self) -> date:
+        return self._now_utc().astimezone(EASTERN).date()
+
+    def current_business_date(self) -> date:
+        current_date = self._current_nyse_date()
+        if current_date in self.business_day_set:
+            return current_date
+        previous_days = [d for d in self.business_days if d < current_date]
+        return previous_days[-1] if previous_days else current_date
+
+    def latest_completed_session_date(self) -> date:
+        now_utc = self._now_utc()
+        today_nyse = now_utc.astimezone(EASTERN).date()
+
+        try:
+            import pandas_market_calendars as mcal  # type: ignore
+        except Exception:
+            mcal = None
+
+        if mcal is not None:
+            nyse = mcal.get_calendar("NYSE")
+            schedule = nyse.schedule(
+                start_date=today_nyse - timedelta(days=10),
+                end_date=today_nyse,
+            )
+            if not schedule.empty:
+                closed = schedule[schedule["market_close"] <= pd.Timestamp(now_utc)]
+                if not closed.empty:
+                    return closed.index[-1].date()
+
+        if today_nyse in self.business_day_set and now_utc.astimezone(EASTERN).time() >= time(
+            16, 0
+        ):
+            return today_nyse
+
+        previous_days = [d for d in self.business_days if d < today_nyse]
+        return previous_days[-1] if previous_days else today_nyse
 
     @staticmethod
     def _build_business_days(*, start_date: date, end_date: date) -> list[date]:
@@ -75,8 +122,9 @@ class BootstrapGuardian:
             # Usually we only care about filling gaps up to the latest date we have.
             # Actually, we should check against the valid business days up to today.
             # But the test specifically uses the max date in the dataframe if it's past today, or the end of business_days
-            max_existing = max(existing_dates) if len(existing_dates) > 0 else date.today()
-            window_end = min(date.today(), max_existing)
+            current_date = self._current_nyse_date()
+            max_existing = max(existing_dates) if len(existing_dates) > 0 else current_date
+            window_end = min(current_date, max_existing)
 
             # Find the business days that fall into our 1260 day window and <= window_end
             target_days = [d for d in self.business_days if d <= window_end]
@@ -110,7 +158,8 @@ class BootstrapGuardian:
             latest_date = datetime.strptime(latest_str, "%Y-%m-%d").date()
 
             # Calculate business days stale
-            b_days_since = [d for d in self.business_days if d > latest_date and d <= date.today()]
+            required_session = self.latest_completed_session_date()
+            b_days_since = [d for d in self.business_days if d > latest_date and d <= required_session]
             return CacheStaleness(latest_date, len(b_days_since))
 
         except Exception as e:

@@ -1,6 +1,6 @@
 import json
 import tempfile
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -84,6 +84,33 @@ def test_audit_price_cache_staleness(mock_filesystem):
     report = guardian.audit()
     assert report.price_cache_staleness.days_stale > 0
     assert report.price_cache_staleness.last_date == date(2026, 3, 27)
+
+
+def test_audit_price_cache_allows_last_completed_session_during_monday_premarket(mock_filesystem):
+    price_df = pd.DataFrame(
+        {
+            "Date": [
+                "2026-04-08 00:00:00-04:00",
+                "2026-04-09 00:00:00-04:00",
+                "2026-04-10 00:00:00-04:00",
+            ],
+            "Close": [600.0, 601.0, 602.0],
+            "Volume": [60000000.0, 61000000.0, 62000000.0],
+        }
+    )
+    price_df.to_csv(mock_filesystem["price_csv"], index=False)
+
+    guardian = BootstrapGuardian(
+        macro_csv_path=mock_filesystem["macro_csv"],
+        price_cache_path=mock_filesystem["price_csv"],
+        cold_start_seed_path=mock_filesystem["seed_json"],
+        now_provider=lambda: datetime(2026, 4, 13, 4, 56, 49, tzinfo=UTC),
+    )
+
+    report = guardian.audit()
+
+    assert report.price_cache_staleness.last_date == date(2026, 4, 10)
+    assert report.price_cache_staleness.days_stale == 0
 
 
 def test_repair_backfill_resolves_gaps(mock_filesystem, monkeypatch):

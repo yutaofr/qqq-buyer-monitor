@@ -2,6 +2,7 @@ import json
 import sys
 import types
 from argparse import Namespace
+from datetime import UTC, date, datetime
 
 import pandas as pd
 import pytest
@@ -429,6 +430,220 @@ def test_run_v11_pipeline_reaudits_after_price_cache_refresh(monkeypatch):
 
     assert refreshed["called"] == 1
     assert guardian.audits == 2
+
+
+def test_resolve_runtime_observation_date_uses_current_business_day_during_premarket():
+    resolved = main_module._resolve_runtime_observation_date(
+        date(2026, 4, 10),
+        now=datetime(2026, 4, 13, 4, 56, 49, tzinfo=UTC),
+    )
+
+    assert resolved == date(2026, 4, 13)
+
+
+def test_upsert_v11_macro_feedback_preserves_friday_row_for_monday_premarket(tmp_path):
+    macro_path = tmp_path / "macro_historical_dump.csv"
+    pd.DataFrame(
+        [
+            {
+                "observation_date": "2026-04-10",
+                "effective_date": "2026-04-10",
+                "build_version": "existing",
+                "qqq_close": 602.0,
+            }
+        ]
+    ).to_csv(macro_path, index=False)
+
+    monday_row = main_module._build_v12_live_macro_row(
+        observation_date=pd.Timestamp("2026-04-13"),
+        effective_date=pd.Timestamp("2026-04-13"),
+        build_version="v12_live_feedback",
+        credit_spread=342.0,
+        real_yield_pct_points=2.1,
+        net_liquidity=5818.9,
+        treasury_vol=0.0081,
+        copper_gold_ratio=0.201,
+        breakeven_pct_points=2.3,
+        core_capex=12.5,
+        usdjpy=151.2,
+        erp_ttm_pct_points=4.2,
+        qqq_close=602.0,
+        qqq_close_source="direct:yfinance",
+        qqq_close_quality_score=1.0,
+        reference_capital=100000.0,
+        current_nav=100000.0,
+    )
+
+    main_module._upsert_v11_macro_feedback(monday_row, str(macro_path))
+
+    stored = pd.read_csv(macro_path)
+    assert stored["observation_date"].tolist() == ["2026-04-10", "2026-04-13"]
+
+
+def test_run_v11_pipeline_uses_monday_observation_date_with_friday_price_during_premarket(
+    monkeypatch,
+):
+    captured = {}
+
+    class _CloudBridge:
+        def __init__(self):
+            self.is_ci = False
+
+        def pull_state(self, local_files):
+            return True
+
+    class _HealthyGuardian:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def audit(self):
+            return type(
+                "Report",
+                (),
+                {
+                    "is_healthy": True,
+                    "macro_gaps": [],
+                    "price_cache_staleness": type("Staleness", (), {"days_stale": 0})(),
+                },
+            )()
+
+    class _Conductor:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def daily_run(self, raw_row, baseline_result=None):
+            captured["raw_row"] = raw_row.copy()
+            return {
+                "date": "2026-04-13",
+                "target_beta": 0.75,
+                "target_allocation": {
+                    "qqq_dollars": 75000.0,
+                    "qld_notional_dollars": 0.0,
+                    "cash_dollars": 25000.0,
+                },
+                "probabilities": {"MID_CYCLE": 0.7, "LATE_CYCLE": 0.2, "RECOVERY": 0.1},
+                "stable_regime": "MID_CYCLE",
+                "signal": {"target_bucket": "QQQ"},
+            }
+
+    monkeypatch.setattr(main_module, "CloudPersistenceBridge", _CloudBridge)
+    monkeypatch.setattr(
+        main_module,
+        "_resolve_runtime_observation_date",
+        lambda *args, **kwargs: date(2026, 4, 13),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "_build_v11_signal_result",
+        lambda runtime, price: type("Result", (), {"metadata": {}, "logic_trace": []})(),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "_persist_and_export_web_artifacts",
+        lambda **kwargs: captured.__setitem__("persisted_raw_row", kwargs["raw_row"].copy()),
+    )
+    monkeypatch.setattr("src.collector.price.fetch_price_data", lambda: {
+        "price": 602.98,
+        "date": date(2026, 4, 10),
+        "history": pd.DataFrame(
+            {
+                "Close": [600.11, 602.98],
+                "Volume": [35000000, 36000000],
+            },
+            index=pd.to_datetime(["2026-04-09", "2026-04-10"]),
+        ),
+    })
+    monkeypatch.setattr(
+        "src.collector.breadth.fetch_breadth",
+        lambda as_of=None: {
+            "adv_dec_ratio": 0.58,
+            "source": "observed:^ADD",
+            "quality": 1.0,
+            "ndx_concentration": 0.03,
+            "ndx_concentration_source": "derived:qqq-qqew",
+            "ndx_concentration_quality": 1.0,
+        },
+    )
+    monkeypatch.setattr(
+        "src.collector.macro_v3.fetch_real_yield_snapshot",
+        lambda: {"value": 2.1, "source": "direct:fred"},
+    )
+    monkeypatch.setattr(
+        "src.collector.macro.fetch_credit_spread_snapshot",
+        lambda: {"value": 342.0, "source": "direct:fred"},
+    )
+    monkeypatch.setattr(
+        "src.collector.macro_v3.fetch_net_liquidity_snapshot",
+        lambda: {"value": 5818.9, "source": "direct:fred"},
+    )
+    monkeypatch.setattr(
+        "src.collector.global_macro.fetch_treasury_realized_vol",
+        lambda: {"value": 0.0081, "source": "direct:fred_dgs10"},
+    )
+    monkeypatch.setattr(
+        "src.collector.global_macro.fetch_copper_gold_ratio",
+        lambda: {"ratio": 0.201, "source": "direct:yfinance"},
+    )
+    monkeypatch.setattr(
+        "src.collector.global_macro.fetch_breakeven_inflation",
+        lambda: {"value": 0.023, "source": "direct:fred_t10yie"},
+    )
+    monkeypatch.setattr(
+        "src.collector.global_macro.fetch_core_capex_momentum",
+        lambda: {"delta": 12.5, "source": "direct:fred_neworder"},
+    )
+    monkeypatch.setattr(
+        "src.collector.global_macro.fetch_usdjpy_snapshot",
+        lambda: {"value": 151.2, "source": "direct:yfinance"},
+    )
+    monkeypatch.setattr(
+        "src.collector.global_macro.fetch_shiller_ttm_eps",
+        lambda: {"erp": 0.042, "source": "direct:shiller"},
+    )
+    monkeypatch.setattr(
+        "src.collector.global_macro.fetch_vix_term_structure_snapshot",
+        lambda: {"vix": 19.1, "vxv": 21.4},
+    )
+    monkeypatch.setattr(
+        "src.engine.baseline.execution.run_baseline_inference",
+        lambda price_history=None: {"tractor": {"prob": 0.2, "status": "ok"}, "sidecar": {"prob": 0.1, "status": "ok"}},
+    )
+    monkeypatch.setattr("src.engine.v11.conductor.V11Conductor", _Conductor)
+    monkeypatch.setattr(
+        "src.engine.aggregator.FullPanoramaAggregator.aggregate",
+        lambda runtime, baseline_result: {
+            "ensemble_verdict": "HOLD",
+            "ensemble_verdict_label": "Hold",
+            "s4_protective_beta": 0.4,
+            "s5_aggressive_beta": 1.0,
+            "standard_beta": 0.75,
+            "tractor_valid": True,
+            "sidecar_valid": True,
+            "calm_eligible": True,
+        },
+    )
+    monkeypatch.setattr("src.output.cli.print_signal", lambda *args, **kwargs: None)
+
+    stub_module = types.ModuleType("src.engine.v11.utils.bootstrap_guardian")
+    stub_module.BootstrapGuardian = _HealthyGuardian
+    monkeypatch.setitem(sys.modules, "src.engine.v11.utils.bootstrap_guardian", stub_module)
+
+    main_module.run_v11_pipeline(
+        Namespace(
+            json=False,
+            notify_discord=False,
+            no_save=False,
+            no_color=True,
+        )
+    )
+
+    raw_row = captured["raw_row"].iloc[0]
+    persisted_row = captured["persisted_raw_row"].iloc[0]
+
+    assert pd.Timestamp(raw_row["observation_date"]).date() == date(2026, 4, 13)
+    assert pd.Timestamp(persisted_row["observation_date"]).date() == date(2026, 4, 13)
+    assert raw_row["qqq_close"] == pytest.approx(602.98)
+    assert raw_row["source_qqq_close"] == "direct:yfinance"
 
 
 def test_persist_and_export_web_artifacts_saves_signal_before_history_export(monkeypatch):
