@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import shutil
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -135,6 +136,18 @@ def _refresh_price_cache_from_live_data(
         pd.Timestamp(live_payload["date"]).date().isoformat(),
     )
     return True
+
+
+def _resolve_runtime_observation_date(
+    price_record_date: date | pd.Timestamp | str,
+    *,
+    now: datetime | None = None,
+) -> date:
+    from src.engine.v11.utils.bootstrap_guardian import BootstrapGuardian
+
+    now_provider = (lambda: now.astimezone(UTC)) if now is not None else None
+    guardian = BootstrapGuardian(now_provider=now_provider)
+    return max(pd.Timestamp(price_record_date).date(), guardian.current_business_date())
 
 
 def _build_v11_signal_result(runtime_result: dict, *, price: float) -> SignalResult:
@@ -655,8 +668,11 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         vix_1m = None
         vix_3m = None
 
+    runtime_observation_date = _resolve_runtime_observation_date(price_data["date"])
+
     raw_row = _build_v12_live_macro_row(
-        observation_date=pd.Timestamp(price_data["date"]),
+        observation_date=pd.Timestamp(runtime_observation_date),
+        effective_date=pd.Timestamp(runtime_observation_date),
         build_version="v12_live_feedback",
         credit_spread=float(credit_spread),
         credit_spread_source=credit_spread_source,
