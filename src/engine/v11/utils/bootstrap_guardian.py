@@ -194,7 +194,7 @@ class BootstrapGuardian:
                 return result
 
             hist_df = hist_df.copy()
-            hist_df["Date"] = pd.to_datetime(hist_df["Date"], errors="coerce")
+            hist_df["Date"] = pd.to_datetime(hist_df["Date"], errors="coerce", utc=True)
             hist_df = hist_df[hist_df["Date"].notna()].copy()
             if hist_df.empty:
                 logger.warning(

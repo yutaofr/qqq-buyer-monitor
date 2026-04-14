@@ -146,6 +146,32 @@ def test_repair_backfill_resolves_gaps(mock_filesystem, monkeypatch):
     assert len(report2.macro_gaps) == 0
 
 
+def test_repair_backfill_handles_mixed_timezone_price_cache(mock_filesystem):
+    guardian = BootstrapGuardian(
+        macro_csv_path=mock_filesystem["macro_csv"],
+        price_cache_path=mock_filesystem["price_csv"],
+        cold_start_seed_path=mock_filesystem["seed_json"],
+    )
+
+    pd.DataFrame(
+        {
+            "Date": [
+                "2026-04-08 00:00:00-04:00",
+                "2026-04-09 04:00:00+0000",
+                "2026-04-10 00:00:00-04:00",
+            ],
+            "Close": [600.0, 601.0, 602.0],
+            "Volume": [60000000.0, 61000000.0, 62000000.0],
+        }
+    ).to_csv(mock_filesystem["price_csv"], index=False)
+
+    report = guardian.audit()
+    result = guardian.repair(report)
+
+    assert result.total_rows_added >= 2
+    assert len(guardian.audit().macro_gaps) == 0
+
+
 def test_1260_day_window_restriction(mock_filesystem):
     """RED: It should only care about gaps within the last 1260 business days."""
     # Let's create an ancient gap > 1260 days ago
