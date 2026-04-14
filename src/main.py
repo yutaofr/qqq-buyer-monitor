@@ -512,6 +512,14 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         cold_start_seed_path=prior_seed_path,
     )
     audit_report = guardian.audit()
+    if not audit_report.is_healthy and getattr(audit_report, "macro_gaps", []):
+        repair_result = guardian.repair(audit_report)
+        logger.info(
+            "Bootstrap Guardian repaired macro continuity gaps: rows_added=%s fields_repaired=%s",
+            getattr(repair_result, "total_rows_added", 0),
+            getattr(repair_result, "total_fields_repaired", 0),
+        )
+        audit_report = guardian.audit()
     if (
         not audit_report.is_healthy
         and not getattr(audit_report, "macro_gaps", [])

@@ -312,6 +312,70 @@ def test_run_v11_pipeline_fails_closed_when_bootstrap_guardian_remains_unhealthy
     assert guardian.repair_called is False
 
 
+def test_run_v11_pipeline_repairs_macro_gaps_before_failing_closed(monkeypatch):
+    captured = {"repair_called": 0, "audits": 0}
+    stop = RuntimeError("stop after guardian repair")
+
+    class _CloudBridge:
+        def __init__(self):
+            self.is_ci = False
+
+        def pull_state(self, local_files):
+            return True
+
+    class _Guardian:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def audit(self):
+            captured["audits"] += 1
+            if captured["audits"] == 1:
+                return type(
+                    "Report",
+                    (),
+                    {
+                        "is_healthy": False,
+                        "macro_gaps": [object()],
+                        "price_cache_staleness": type("Staleness", (), {"days_stale": 0})(),
+                    },
+                )()
+            return type(
+                "Report",
+                (),
+                {
+                    "is_healthy": True,
+                    "macro_gaps": [],
+                    "price_cache_staleness": type("Staleness", (), {"days_stale": 0})(),
+                },
+            )()
+
+        def repair(self, report):
+            captured["repair_called"] += 1
+            return type("Repair", (), {"total_rows_added": 2, "total_fields_repaired": 4})()
+
+    monkeypatch.setattr(main_module, "CloudPersistenceBridge", _CloudBridge)
+    stub_module = types.ModuleType("src.engine.v11.utils.bootstrap_guardian")
+    stub_module.BootstrapGuardian = _Guardian
+    monkeypatch.setitem(sys.modules, "src.engine.v11.utils.bootstrap_guardian", stub_module)
+    monkeypatch.setattr(
+        "src.collector.price.fetch_price_data",
+        lambda: (_ for _ in ()).throw(stop),
+    )
+
+    with pytest.raises(RuntimeError, match="stop after guardian repair"):
+        main_module.run_v11_pipeline(
+            Namespace(
+                json=False,
+                notify_discord=False,
+                no_save=True,
+                no_color=True,
+            )
+        )
+
+    assert captured["repair_called"] == 1
+    assert captured["audits"] == 2
+
+
 def test_materialize_prior_state_uses_canonical_seed_when_runtime_state_missing(tmp_path):
     seed_path = tmp_path / "canonical_seed.json"
     runtime_path = tmp_path / "runtime" / "prior_state.json"
