@@ -107,3 +107,53 @@ class TestRunAEMASeries:
         s = run_aema_series(p, s0=0.10, alpha_up=0.50, alpha_down=0.08)
         expected = update_aema(0.10, 0.30, 0.50, 0.08)
         np.testing.assert_allclose(s.iloc[0], expected, atol=1e-12)
+
+
+class TestCircuitBreakerBypass:
+    """SRD 4.1: p_cp > circuit_breaker → bypass AEMA entirely."""
+
+    def test_above_threshold_returns_raw(self):
+        """p_cp=0.85 > CB=0.70 → output = 0.85 exactly (no smoothing)."""
+        s = update_aema(0.10, 0.85, alpha_up=0.50, alpha_down=0.08,
+                        circuit_breaker=0.70)
+        np.testing.assert_allclose(s, 0.85, atol=1e-12)
+
+    def test_below_threshold_uses_ema(self):
+        """p_cp=0.60 < CB=0.70 → normal EMA (not bypass)."""
+        s = update_aema(0.10, 0.60, alpha_up=0.50, alpha_down=0.08,
+                        circuit_breaker=0.70)
+        expected = 0.50 * 0.60 + 0.50 * 0.10  # alpha_up branch
+        np.testing.assert_allclose(s, expected, atol=1e-12)
+
+    def test_state_updated_to_crisis_level(self):
+        """After bypass, next calm step decays from crisis value (Option A).
+
+        Step 1: p_cp=0.85 > CB=0.70 → s=0.85 (bypass)
+        Step 2: p_cp=0.01 < CB=0.70 → s = 0.08*0.01 + 0.92*0.85 = 0.7828
+        The system remembers the crisis.
+        """
+        s = update_aema(0.10, 0.85, 0.50, 0.08, circuit_breaker=0.70)
+        assert s == pytest.approx(0.85)
+
+        s_next = update_aema(s, 0.01, 0.50, 0.08, circuit_breaker=0.70)
+        expected = 0.08 * 0.01 + 0.92 * 0.85  # alpha_down from crisis level
+        np.testing.assert_allclose(s_next, expected, atol=1e-12)
+        assert s_next > 0.78, "State must decay slowly from crisis peak"
+
+    def test_exactly_at_threshold_not_bypassed(self):
+        """p_cp=0.70 == CB=0.70 → normal EMA (bypass is strictly >)."""
+        s = update_aema(0.30, 0.70, 0.50, 0.08, circuit_breaker=0.70)
+        expected = 0.50 * 0.70 + 0.50 * 0.30
+        np.testing.assert_allclose(s, expected, atol=1e-12)
+
+    def test_series_with_circuit_breaker(self):
+        """Verify bypass in series mode."""
+        import pandas as pd
+        p = pd.Series([0.01, 0.01, 0.85, 0.01])
+        s = run_aema_series(p, s0=0.0, alpha_up=0.50, alpha_down=0.08,
+                            circuit_breaker=0.70)
+        # Step 3 (index 2): p=0.85 > 0.70 → bypass, s=0.85
+        np.testing.assert_allclose(s.iloc[2], 0.85, atol=1e-12)
+        # Step 4 (index 3): p=0.01, slow decay from 0.85
+        assert s.iloc[3] > 0.78
+
