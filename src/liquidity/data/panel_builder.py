@@ -48,6 +48,11 @@ _FRED_SERIES = {
     "VIXCLS":    "VIXCLS",      # VIX close (daily)
 }
 
+# Fallback series for historical periods where primary data is unavailable
+_FRED_FALLBACKS = {
+    "SOFR": "TEDRATE",   # TED Spread as SOFR proxy for pre-2018
+}
+
 
 def build_pit_aligned_panel(
     start_date: str,
@@ -106,13 +111,27 @@ def build_pit_aligned_panel(
     full_calendar = trading_days[trading_days >= padded_start]
 
     # ━━━ Step 3: Fetch all raw data ━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # 3a: FRED macro series
+    # 3a: FRED macro series (with fallback for historical gaps)
     fred_raw: dict[str, pd.DataFrame] = {}
     for label, series_id in _FRED_SERIES.items():
-        logger.info("Fetching FRED: %s", series_id)
-        fred_raw[label] = load_fred_series(
-            series_id, padded_start_str, end_date,
-        )
+        try:
+            logger.info("Fetching FRED: %s", series_id)
+            fred_raw[label] = load_fred_series(
+                series_id, padded_start_str, end_date,
+            )
+        except RuntimeError:
+            fallback_id = _FRED_FALLBACKS.get(label)
+            if fallback_id is None:
+                raise
+            logger.warning(
+                "FRED %s unavailable for [%s, %s]. Falling back to %s.",
+                series_id, padded_start_str, end_date, fallback_id,
+            )
+            raw = load_fred_series(fallback_id, padded_start_str, end_date)
+            # Rename fallback column to the expected label so downstream
+            # PIT_RULES and directional_transform work without changes
+            raw = raw.rename(columns={fallback_id: label})
+            fred_raw[label] = raw
 
     # 3b: Price data
     logger.info("Fetching OHLC: QQQ, QLD, TLT")
