@@ -56,8 +56,15 @@ def run_backtest(
 
     bocpd   = BOCPDEngine(config)
     alloc   = Allocator(config)
+    exec_cfg = config["execution"]
+    map_cfg  = config["mapping"]
     nav_acc = NavAccumulator(
-        slippage_bps=config["execution"]["s0_bps"],
+        slippage_bps=exec_cfg["s0_bps"],   # fallback only (when s_t not given)
+        s0_bps=exec_cfg["s0_bps"],
+        s1_bps=exec_cfg["s1_bps"],
+        sigma_calm=map_cfg["sigma_calm"],
+        sigma_stress=map_cfg["sigma_stress"],
+        sigma_normal=exec_cfg["sigma_normal"],
     )
 
     nav_vals:    list[float] = []
@@ -91,12 +98,13 @@ def run_backtest(
         # Post burn-in: full control chain
         weight, alloc_log = alloc.step(p_cp, lambda_macro)
 
-        # Step 4: NAV update
+        # Step 4: NAV update with SRD 6.2 dynamic slippage
         nav_acc.step(
             weight_qld=weight,
             qqq_ret=float(row["QQQ_ret"]),
             qld_ret=float(row["QLD_ret"]),
             prev_weight=prev_weight,
+            s_t=alloc_log["s_t"],
         )
 
         nav_vals.append(nav_acc.current_nav)

@@ -81,9 +81,10 @@ class Allocator:
             target_weight: 0.0 or 1.0.
             log_dict: diagnostic fields for backtest attribution.
         """
-        # Step 1: AEMA smoothing
+        # Step 1: AEMA smoothing (with SRD 4.1 circuit breaker bypass)
         self._s_t = update_aema(
-            self._s_t, p_cp_raw, self._alpha_up, self._alpha_down
+            self._s_t, p_cp_raw, self._alpha_up, self._alpha_down,
+            circuit_breaker=self._circuit_breaker,
         )
 
         # Step 2: Circuit breaker check (before deadband)
