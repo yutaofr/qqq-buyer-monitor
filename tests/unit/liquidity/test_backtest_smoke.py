@@ -96,11 +96,11 @@ class TestRunBacktestLog:
         missing = required - set(log.columns)
         assert not missing, f"Log missing columns: {missing}"
 
-    def test_log_weight_binary(self, backtest_result):
-        """Weight must be 0.0 or 1.0 (POC binary allocation)."""
-        weights = backtest_result["log"]["weight"].unique()
-        assert set(weights).issubset({0.0, 1.0}), (
-            f"Non-binary weights found: {weights}"
+    def test_log_weight_in_range(self, backtest_result):
+        """Weight must be in [0, 1] (continuous SRD 4.3 allocation)."""
+        w = backtest_result["log"]["weight"]
+        assert (w >= 0.0).all() and (w <= 1.0).all(), (
+            f"Weight out of [0, 1]: min={w.min()}, max={w.max()}"
         )
 
     def test_log_p_cp_in_01(self, backtest_result):
@@ -118,11 +118,11 @@ class TestRunBacktestBehavior:
     """Behavioral checks under calm synthetic inputs."""
 
     def test_calm_signals_eventually_enter_qld(self, backtest_result):
-        """Sustained calm should result in at least one QLD entry."""
+        """Sustained calm should result in at least some QLD allocation."""
         log = backtest_result["log"]
-        qld_days = (log["weight"] == 1.0).sum()
+        qld_days = (log["weight"] > 0).sum()
         assert qld_days > 0, (
-            "System never entered QLD on 700 days of calm synthetic data. "
+            "System never allocated to QLD on 700 days of calm synthetic data. "
             f"Max s_t seen: {log['s_t'].max():.4f}"
         )
 

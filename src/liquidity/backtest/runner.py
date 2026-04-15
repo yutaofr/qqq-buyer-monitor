@@ -109,12 +109,17 @@ def run_backtest(
 
         nav_vals.append(nav_acc.current_nav)
         log_records.append({
-            "weight":     weight,
-            "p_cp":       p_cp,
-            "s_t":        alloc_log["s_t"],
-            "signal":     alloc_log["signal"],
-            "days_held":  alloc_log["days_held"],
+            "weight":          weight,
+            "p_cp":            p_cp,
+            "s_t":             alloc_log["s_t"],
+            "signal":          alloc_log["signal"],
+            "days_held":       alloc_log["days_held"],
             "circuit_breaker": alloc_log["circuit_breaker"],
+            "l_target":        alloc_log["l_target"],
+            "l_final":         alloc_log["l_final"],
+            "qld":             alloc_log["qld"],
+            "qqq":             alloc_log["qqq"],
+            "cash":            alloc_log["cash"],
         })
         post_burn_idx.append(date)
         prev_weight = weight
