@@ -1,15 +1,13 @@
-"""Control chain orchestrator: AEMA → Deadband → HoldPeriod → Weight.
+"""Control chain orchestrator: AEMA → Leverage Map → Deadband → HoldPeriod → Allocation.
 
-SRD v1.2 Section 4: Integrates all control modules into a single stateful
-step function that the backtest runner calls once per trading day.
+SRD v1.2 Section 4: Full continuous leverage control chain.
 
-Data flow:
-    p_cp_raw (BOCPD) → AEMA → s_t → Deadband → signal → HoldPeriod → weight
-
-Output:
-    target_weight: 0.0 (QQQ only) | 1.0 (full QLD)
-    POC uses binary allocation. Production extension: continuous L ∈ [1,2]
-    via leverage mapping (SRD 4.4), omitted from POC scope.
+Data flow per step:
+    p_cp_raw (BOCPD) → AEMA → s_t
+    s_t → compute_leverage → L_target
+    L_target → deadband(L_target, L_current) → L_actual
+    L_actual → hold_period guard → L_final
+    L_final → compute_allocation → (QLD, QQQ, Cash)
 
 State is encapsulated inside the Allocator instance.
 """
@@ -17,16 +15,11 @@ State is encapsulated inside the Allocator instance.
 from __future__ import annotations
 
 from src.liquidity.control.aema import update_aema
-from src.liquidity.control.deadband import (
-    DeadbandSignal,
-    DeadbandState,
-    update_deadband,
-)
-from src.liquidity.control.hold_period import HoldPeriodGuard
+from src.liquidity.control.leverage_map import compute_allocation, compute_leverage
 
 
 class Allocator:
-    """Stateful control chain executor.
+    """Stateful control chain executor with continuous leverage mapping.
 
     One instance per backtest segment. Do not share across segments
     (state is not reset between calls).
@@ -36,29 +29,34 @@ class Allocator:
     """
 
     def __init__(self, config: dict) -> None:
-        aema_cfg    = config["aema"]
+        aema_cfg     = config["aema"]
         deadband_cfg = config["deadband"]
-        hold_cfg    = config["hold_period"]
+        hold_cfg     = config["hold_period"]
+        map_cfg      = config["mapping"]
 
-        self._alpha_up         = aema_cfg["alpha_up"]
-        self._alpha_down       = aema_cfg["alpha_down"]
-        self._circuit_breaker  = aema_cfg["circuit_breaker"]
-        self._deadband_params  = {
-            "delta_down":     deadband_cfg["delta_down"],
-            "delta_up":       deadband_cfg["delta_up"],
-            "recovery_coeff": deadband_cfg["recovery_coeff"],
-            "circuit_breaker": aema_cfg["circuit_breaker"],
-        }
-        self._guard = HoldPeriodGuard(min_hold_days=hold_cfg["min_qld_hold_days"])
+        # AEMA params
+        self._alpha_up        = aema_cfg["alpha_up"]
+        self._alpha_down      = aema_cfg["alpha_down"]
+        self._circuit_breaker = aema_cfg["circuit_breaker"]
 
-        # Mutable state
-        self._s_t: float = 0.0
-        self._db_state: DeadbandState = DeadbandState(
-            in_qld=False,
-            exit_threshold=None,
-            days_held=0,
-        )
-        self._weight: float = 0.0
+        # Deadband params (SRD 4.4)
+        self._delta_down      = deadband_cfg["delta_down"]
+        self._delta_up        = deadband_cfg["delta_up"]
+        self._recovery_coeff  = deadband_cfg["recovery_coeff"]
+
+        # Hold period
+        self._min_hold        = hold_cfg["min_qld_hold_days"]
+
+        # Leverage map params (SRD 4.2)
+        self._sigma_calm      = map_cfg["sigma_calm"]
+        self._sigma_stress    = map_cfg["sigma_stress"]
+        self._sigma_target    = map_cfg["sigma_target"]
+
+        # ── Mutable state ──────────────────────────────────────
+        self._s_t: float           = 0.0
+        self._l_current: float     = 0.0    # current effective leverage
+        self._days_in_qld: int     = 0      # days with L >= 1 (QLD position)
+        self._weight: float        = 0.0    # QLD weight for backward compat
 
     # ─────────────────────────────────────────────────────────
     # Public API
@@ -67,83 +65,129 @@ class Allocator:
     def step(
         self,
         p_cp_raw: float,
-        lambda_macro: float,   # noqa: ARG002 — reserved for future leverage map
+        lambda_macro: float,
     ) -> tuple[float, dict]:
-        """Execute one step of the control chain.
+        """Execute one step of the full continuous control chain.
 
         Args:
             p_cp_raw:     Raw changepoint probability from BOCPDEngine.update().
-            lambda_macro: Current macro hazard rate (reserved for continuous
-                          leverage mapping in production; unused in POC).
+            lambda_macro: Current macro hazard rate.
 
         Returns:
             (target_weight, log_dict)
-            target_weight: 0.0 or 1.0.
+            target_weight: QLD weight ∈ [0, 1] from the Allocation.
             log_dict: diagnostic fields for backtest attribution.
         """
-        # Step 1: AEMA smoothing (with SRD 4.1 circuit breaker bypass)
+        # Step 1: AEMA smoothing (with circuit breaker bypass)
         self._s_t = update_aema(
             self._s_t, p_cp_raw, self._alpha_up, self._alpha_down,
             circuit_breaker=self._circuit_breaker,
         )
 
-        # Step 2: Circuit breaker check (before deadband)
+        # Step 2: Leverage mapping (SRD 4.2)
+        l_target = compute_leverage(
+            self._s_t, self._sigma_calm, self._sigma_stress, self._sigma_target,
+        )
+
+        # Step 3: Circuit breaker check
         circuit_triggered = self._s_t >= self._circuit_breaker
 
-        # Step 3: Deadband transition
-        new_db_state, raw_signal = update_deadband(
-            self._db_state, self._s_t, self._deadband_params
-        )
+        # Step 4: Asymmetric deadband (SRD 4.4 — continuous L)
+        l_actual = self._apply_deadband(l_target)
 
-        # Step 4: Hold period enforcement
-        enforced_signal = self._guard.enforce(
-            signal=raw_signal,
-            days_held=self._db_state.days_held,
-            circuit_breaker_triggered=circuit_triggered,
-        )
+        # Step 5: Hold period enforcement (SRD 4.5)
+        l_final = self._enforce_hold_period(l_actual, circuit_triggered)
 
-        # Step 5: Apply enforced signal to state and weight
-        if enforced_signal == DeadbandSignal.ENTER_QLD:
-            self._db_state = new_db_state
-            self._weight = 1.0
-        elif enforced_signal == DeadbandSignal.EXIT_QLD:
-            # Override: guard may have blocked exit → use enforced result
-            self._db_state = DeadbandState(
-                in_qld=False,
-                exit_threshold=new_db_state.exit_threshold,
-                days_held=0,
-            )
-            self._weight = 0.0
-        else:  # HOLD
-            # Keep in_qld from raw transition (counter increments)
-            # but override signal to HOLD
-            self._db_state = new_db_state if raw_signal == DeadbandSignal.HOLD \
-                else DeadbandState(
-                    in_qld=self._db_state.in_qld,
-                    exit_threshold=self._db_state.exit_threshold,
-                    days_held=self._db_state.days_held + 1 if self._db_state.in_qld else 0,
-                )
-            # Weight unchanged
+        # Step 6: Update state tracking
+        had_qld = self._l_current >= 1.0
+        has_qld = l_final >= 1.0
+
+        if has_qld:
+            self._days_in_qld += 1
+        else:
+            self._days_in_qld = 0
+
+        self._l_current = l_final
+
+        # Step 7: Allocation (SRD 4.3)
+        alloc = compute_allocation(l_final)
+        self._weight = alloc.qld
 
         log = {
             "s_t":             self._s_t,
-            "signal":          enforced_signal.name,
-            "weight":          self._weight,
-            "days_held":       self._db_state.days_held,
+            "l_target":        l_target,
+            "l_actual":        l_actual,
+            "l_final":         l_final,
+            "signal":          self._classify_signal(had_qld, has_qld),
+            "weight":          alloc.qld,
+            "days_held":       self._days_in_qld,
             "circuit_breaker": circuit_triggered,
+            "qld":             alloc.qld,
+            "qqq":             alloc.qqq,
+            "cash":            alloc.cash,
         }
-        return self._weight, log
+        return alloc.qld, log
 
     def get_weight(self) -> float:
-        """Return the current target position weight."""
+        """Return the current QLD position weight."""
         return self._weight
 
     def get_state(self) -> dict:
         """Return a snapshot of the current allocator state."""
         return {
-            "s_t":            self._s_t,
-            "in_qld":         self._db_state.in_qld,
-            "exit_threshold": self._db_state.exit_threshold,
-            "days_held":      self._db_state.days_held,
-            "weight":         self._weight,
+            "s_t":         self._s_t,
+            "l_current":   self._l_current,
+            "in_qld":      self._l_current >= 1.0,
+            "days_held":   self._days_in_qld,
+            "weight":      self._weight,
         }
+
+    # ─────────────────────────────────────────────────────────
+    # Private helpers
+    # ─────────────────────────────────────────────────────────
+
+    def _apply_deadband(self, l_target: float) -> float:
+        """SRD 4.4: three-branch asymmetric deadband on continuous L.
+
+        Returns:
+            Adjusted leverage after deadband filter.
+        """
+        delta = l_target - self._l_current
+
+        if delta < -self._delta_down:
+            # De-lever: immediate full execution (protection priority)
+            return l_target
+        if delta > self._delta_up:
+            # Re-lever: gradual recovery (conservative)
+            return self._l_current + self._recovery_coeff * delta
+        # Inside deadband: no adjustment
+        return self._l_current
+
+    def _enforce_hold_period(
+        self,
+        l_actual: float,
+        circuit_triggered: bool,
+    ) -> float:
+        """SRD 4.5: block de-lever from QLD before min hold period.
+
+        Only blocks transitions FROM QLD (L >= 1 → L < 1).
+        Circuit breaker overrides the hold period.
+        """
+        currently_in_qld = self._l_current >= 1.0
+        would_exit_qld   = l_actual < 1.0
+
+        if currently_in_qld and would_exit_qld:
+            if circuit_triggered:
+                return l_actual   # emergency exit allowed
+            if self._days_in_qld < self._min_hold:
+                return self._l_current  # block: hold period not met
+        return l_actual
+
+    @staticmethod
+    def _classify_signal(had_qld: bool, has_qld: bool) -> str:
+        """Classify the transition for logging."""
+        if not had_qld and has_qld:
+            return "ENTER_QLD"
+        if had_qld and not has_qld:
+            return "EXIT_QLD"
+        return "HOLD"

@@ -1,14 +1,11 @@
-"""Tests for the allocator — control chain orchestrator (Story 4.4).
+"""Tests for the allocator — continuous leverage control chain (P0-1 rewrite).
 
-SRD v1.2 Section 4: Integrates AEMA → deadband → hold_period → lever map.
+SRD v1.2 Section 4: Integrates AEMA → Leverage Map → Deadband → Hold Period.
 
 The allocator is a stateful step function:
-    step(p_cp_raw, lambda_macro) → (target_weight, allocation_log)
+    step(p_cp_raw, lambda_macro) → (qld_weight, allocation_log)
 
-target_weight:
-    0.0 = 100% QQQ (no leverage)
-    1.0 = 100% QLD (2× leverage via the ETF)
-    Values in between: transition (POC uses binary, production: continuous)
+qld_weight ∈ [0, 1]: QLD allocation from three-way split.
 """
 
 import numpy as np
@@ -44,19 +41,19 @@ class TestAllocatorInitialState:
 
 
 class TestAllocatorCalmEntry:
-    """Sustained calm → system enters QLD."""
+    """Sustained calm → system enters QLD via continuous leverage."""
 
     def test_sustained_calm_enters_qld(self, allocator):
-        """20 steps of near-zero stress → target_weight becomes 1.0."""
+        """20 steps of near-zero stress → QLD weight > 0."""
         for _ in range(20):
             weight, _ = allocator.step(p_cp_raw=0.005, lambda_macro=0.002)
-        assert weight == 1.0, (
+        assert weight > 0.5, (
             f"Expected QLD entry after 20 calm steps, got weight={weight}"
         )
 
     def test_entry_sets_in_qld_true(self, allocator):
-        """After entry, in_qld state flag is True."""
-        for _ in range(20):
+        """After sustained calm, leverage >= 1 → in_qld True."""
+        for _ in range(30):
             allocator.step(p_cp_raw=0.005, lambda_macro=0.002)
         state = allocator.get_state()
         assert state["in_qld"] is True
@@ -67,47 +64,45 @@ class TestAllocatorStressExit:
 
     def test_stress_exits_after_min_hold(self, config, allocator):
         """Enter QLD → hold 63+ days → stress spike → exit."""
-        # Phase 1: Enter QLD (calm for 20 steps)
-        for _ in range(20):
+        # Phase 1: Enter QLD (calm for 30 steps)
+        for _ in range(30):
             allocator.step(p_cp_raw=0.005, lambda_macro=0.002)
-        assert allocator.get_weight() == 1.0, "Should be in QLD"
+        assert allocator.get_state()["in_qld"] is True
 
-        # Phase 2: Hold for 63 more calm steps (total in QLD: 63+20 steps, but
-        # days_held counts from entry — need exactly 63 steps of HOLD)
-        # Run calm until days_held >= 63
-        min_hold = config["hold_period"]["min_qld_hold_days"]
-        for _ in range(min_hold + 5):
+        # Phase 2: Hold for 70 more calm steps (total > 63)
+        for _ in range(70):
             allocator.step(p_cp_raw=0.005, lambda_macro=0.002)
 
         # Phase 3: Large stress spike — should exit
-        weight, log = allocator.step(p_cp_raw=0.95, lambda_macro=0.016)
-        # May not exit on first spike (AEMA dampens), so run a few high-stress steps
-        for _ in range(5):
+        for _ in range(10):
             weight, log = allocator.step(p_cp_raw=0.95, lambda_macro=0.016)
 
         assert weight == 0.0, (
-            f"Expected exit from QLD after {min_hold}+ days + stress spike, "
-            f"got weight={weight}. State={allocator.get_state()}"
+            f"Expected exit from QLD after stress spike. "
+            f"weight={weight}, state={allocator.get_state()}"
         )
 
     def test_stress_blocked_before_min_hold(self, allocator):
-        """Enter QLD → stress spike before 63 days → still holds (no circuit break)."""
+        """Enter QLD → moderate stress before 63 days → hold period blocks exit."""
         # Enter QLD
-        for _ in range(20):
+        for _ in range(30):
             allocator.step(p_cp_raw=0.005, lambda_macro=0.002)
-        assert allocator.get_weight() == 1.0
+        assert allocator.get_state()["in_qld"] is True
 
-        # Stress spike after only 10 days in QLD (below min hold, no circuit breaker)
+        # 10 more calm steps (total ~40, < 63)
         for _ in range(10):
             allocator.step(p_cp_raw=0.005, lambda_macro=0.002)
 
         # Moderate stress (below circuit breaker 0.70)
         for _ in range(5):
-            weight, _ = allocator.step(p_cp_raw=0.45, lambda_macro=0.010)
+            weight, _ = allocator.step(p_cp_raw=0.50, lambda_macro=0.010)
 
-        # Should still be in QLD (min hold not reached, no circuit breaker)
+        # Hold period should prevent exit even though stress is rising
         state = allocator.get_state()
-        assert state["days_held"] < 63 or weight == 1.0
+        if state["days_held"] < 63:
+            assert state["in_qld"] is True, (
+                "Hold period should block exit before 63 days"
+            )
 
 
 class TestAllocatorCircuitBreaker:
@@ -116,17 +111,42 @@ class TestAllocatorCircuitBreaker:
     def test_circuit_breaker_exits_before_min_hold(self, config, allocator):
         """s_t > circuit_breaker=0.70 → immediate exit even before 63 days."""
         # Enter QLD
-        for _ in range(20):
+        for _ in range(30):
             allocator.step(p_cp_raw=0.005, lambda_macro=0.002)
-        assert allocator.get_weight() == 1.0
+        assert allocator.get_state()["in_qld"] is True
 
-        # p_cp=1.0 repeatedly → AEMA stress will exceed circuit breaker
-        for _ in range(10):
-            weight, _ = allocator.step(p_cp_raw=1.0, lambda_macro=0.016)
+        # p_cp=0.90 repeatedly → AEMA bypasses, s_t will exceed CB
+        for _ in range(15):
+            weight, _ = allocator.step(p_cp_raw=0.90, lambda_macro=0.016)
 
         assert weight == 0.0, (
-            f"Circuit breaker should force exit before min hold. weight={weight}"
+            f"Circuit breaker should force exit. weight={weight}"
         )
+
+
+class TestAllocatorContinuousAllocation:
+    """Verify continuous L → three-way allocation."""
+
+    def test_log_has_three_way_weights(self, allocator):
+        _, log = allocator.step(p_cp_raw=0.01, lambda_macro=0.002)
+        for key in ["qld", "qqq", "cash"]:
+            assert key in log
+
+    def test_log_weights_sum_to_one(self, allocator):
+        """QLD + QQQ + Cash ≈ 1.0."""
+        for _ in range(50):
+            _, log = allocator.step(p_cp_raw=0.01, lambda_macro=0.002)
+            total = log["qld"] + log["qqq"] + log["cash"]
+            np.testing.assert_allclose(total, 1.0, atol=1e-6)
+
+    def test_moderate_stress_gives_partial_allocation(self, allocator):
+        """s_t ≈ 0.5 → L ≈ 0.57 → QQQ + Cash, no QLD."""
+        # Drive stress toward moderate
+        for _ in range(50):
+            _, log = allocator.step(p_cp_raw=0.50, lambda_macro=0.008)
+        # Should have no QLD (L < 1) and some Cash
+        assert log["qld"] == 0.0
+        assert log["cash"] > 0
 
 
 class TestAllocatorLog:
@@ -134,7 +154,8 @@ class TestAllocatorLog:
 
     def test_log_has_required_keys(self, allocator):
         _, log = allocator.step(p_cp_raw=0.01, lambda_macro=0.002)
-        required_keys = {"s_t", "signal", "weight", "days_held", "circuit_breaker"}
+        required_keys = {"s_t", "signal", "weight", "days_held", "circuit_breaker",
+                         "l_target", "l_actual", "l_final", "qld", "qqq", "cash"}
         missing = required_keys - set(log.keys())
         assert not missing, f"Log missing keys: {missing}"
 
@@ -155,10 +176,10 @@ class TestAllocatorIsolation:
         a2 = Allocator(config)
 
         # a1: calm (enter QLD)
-        for _ in range(25):
+        for _ in range(30):
             a1.step(p_cp_raw=0.005, lambda_macro=0.002)
         # a2: stress (stay out)
-        for _ in range(25):
+        for _ in range(30):
             a2.step(p_cp_raw=0.90, lambda_macro=0.016)
 
         assert a1.get_weight() != a2.get_weight(), (
