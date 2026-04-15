@@ -1,0 +1,219 @@
+"""PiT-aligned panel builder — the system's real-world data entry point.
+
+Orchestrates all data loaders, PiT alignment, signal computation, and
+lookback padding to produce a zero-NaN panel for the backtest runner.
+
+Architecture: "Align each series independently, concat at the end."
+Each raw Series goes through its own PiT rule (offset + fill) before
+being reindexed to the trading calendar. After alignment, all Series
+share the exact same DatetimeIndex, so pd.concat(axis=1) is safe.
+
+This is the ONLY module that touches the network (FRED, yfinance).
+All downstream modules receive a clean, deterministic DataFrame.
+"""
+
+from __future__ import annotations
+
+import logging
+
+import pandas as pd
+
+from src.liquidity.config import load_config
+from src.liquidity.data.fred_loader import load_fred_series
+from src.liquidity.data.pit_aligner import PIT_RULES, _assert_no_nan, apply_pit_offset
+from src.liquidity.data.price_loader import load_constituent_returns, load_ohlc
+from src.liquidity.data.trading_calendar import (
+    MAX_LOOKBACK,
+    build_trading_calendar,
+    compute_padded_start,
+)
+from src.liquidity.signal.ed_accel import compute_ed, compute_ed_accel
+from src.liquidity.signal.fisher_rho import compute_fisher_rho
+from src.liquidity.signal.macro_hazard import (
+    composite_stress,
+    directional_transform,
+    map_to_hazard,
+    rolling_percentile_rank,
+)
+from src.liquidity.signal.spread_anomaly import compute_spread_anomaly
+
+logger = logging.getLogger(__name__)
+
+# FRED series IDs used in the pipeline
+_FRED_SERIES = {
+    "WALCL":     "WALCL",       # Fed Reserves (H.4.1, weekly)
+    "RRPONTSYD": "RRPONTSYD",   # Reverse Repo (daily)
+    "WTREGEN":   "WTREGEN",     # TGA balance (weekly)
+    "SOFR":      "SOFR",        # SOFR rate (daily)
+    "VIXCLS":    "VIXCLS",      # VIX close (daily)
+}
+
+
+def build_pit_aligned_panel(
+    start_date: str,
+    end_date: str,
+    config: dict | None = None,
+    top_n_constituents: int = 50,
+) -> pd.DataFrame:
+    """Build a complete PiT-aligned panel with zero NaN.
+
+    This is the single entry point for real-world data. It:
+    1. Builds the trading calendar from yfinance QQQ data
+    2. Computes the padded start date (MAX_LOOKBACK trading days before start)
+    3. Fetches all FRED + yfinance data from padded_start to end_date
+    4. Applies per-series PiT offset and calendar alignment
+    5. Computes all signal features on the full (padded) panel
+    6. Trims to [start_date, end_date]
+    7. Asserts zero NaN (hard ValueError if violated)
+
+    Args:
+        start_date:          Backtest start (YYYY-MM-DD). Panel begins here.
+        end_date:            Backtest end (YYYY-MM-DD). Panel ends here.
+        config:              Parameter dict. If None, loads from bocpd_params.json.
+        top_n_constituents:  Number of NDX constituents for ED computation.
+
+    Returns:
+        pd.DataFrame with DatetimeIndex ∈ [start_date, end_date], columns:
+            QQQ_ret, QLD_ret           — daily returns
+            ED_ACCEL                   — eigenvalue dispersion acceleration
+            SPREAD_ANOMALY             — VIX Z-score
+            FISHER_RHO                 — Fisher-z corr(ED, spread)
+            LAMBDA_MACRO               — composite macro hazard rate
+        Guarantee: zero NaN in all columns.
+
+    Raises:
+        RuntimeError: if any data source returns empty.
+        ValueError:   if NaN remains after padding (lookback insufficient).
+    """
+    if config is None:
+        config = load_config()
+
+    macro_cfg = config["macro_hazard"]
+
+    # ━━━ Step 1: Trading calendar ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    logger.info("Building trading calendar from yfinance QQQ...")
+    trading_days = build_trading_calendar(start_date, end_date)
+
+    # ━━━ Step 2: Padded start ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    padded_start = compute_padded_start(trading_days, start_date, MAX_LOOKBACK)
+    padded_start_str = padded_start.strftime("%Y-%m-%d")
+    logger.info(
+        "Padded start: %s (lookback %d TD before %s)",
+        padded_start_str, MAX_LOOKBACK, start_date,
+    )
+
+    # Full trading calendar from padded_start to end_date
+    full_calendar = trading_days[trading_days >= padded_start]
+
+    # ━━━ Step 3: Fetch all raw data ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 3a: FRED macro series
+    fred_raw: dict[str, pd.DataFrame] = {}
+    for label, series_id in _FRED_SERIES.items():
+        logger.info("Fetching FRED: %s", series_id)
+        fred_raw[label] = load_fred_series(
+            series_id, padded_start_str, end_date,
+        )
+
+    # 3b: Price data
+    logger.info("Fetching OHLC: QQQ, QLD, TLT")
+    ohlc = load_ohlc(["QQQ", "QLD", "TLT"], padded_start_str, end_date)
+
+    logger.info("Fetching NDX constituent returns (top %d)", top_n_constituents)
+    constituent_rets = load_constituent_returns(
+        padded_start_str, end_date,
+    )
+
+    # ━━━ Step 4: Per-series PiT alignment ━━━━━━━━━━━━━━━━━━━━
+    # Each series gets its own PiT offset + fill, then reindexed
+    # to full_calendar. Output: clean Series with trading-day index.
+    aligned: dict[str, pd.Series] = {}
+
+    for label, raw_df in fred_raw.items():
+        rule_key = label  # PIT_RULES keys match our labels
+        if rule_key in PIT_RULES:
+            pit_cfg = PIT_RULES[rule_key]
+            aligned[label] = apply_pit_offset(
+                raw_df, label, pit_cfg, full_calendar,
+            )
+        else:
+            # No special PiT rule — just reindex to trading days + ffill
+            series = pd.Series(
+                raw_df.iloc[:, -1].values,
+                index=pd.to_datetime(raw_df["observation_date"]),
+                name=label,
+            )
+            aligned[label] = series.reindex(full_calendar).ffill()
+
+    # Price returns (already on trading-day index from yfinance)
+    qqq_close = ohlc["QQQ"]["QQQ_Close"]
+    qld_close = ohlc["QLD"]["QLD_Close"]
+    aligned["QQQ_ret"] = qqq_close.pct_change().reindex(full_calendar)
+    aligned["QLD_ret"] = qld_close.pct_change().reindex(full_calendar)
+    # Fill first row NaN from pct_change with 0
+    aligned["QQQ_ret"] = aligned["QQQ_ret"].fillna(0.0)
+    aligned["QLD_ret"] = aligned["QLD_ret"].fillna(0.0)
+
+    # ━━━ Step 5: Signal feature computation (on full padded panel) ━━━
+    # 5a: ED acceleration
+    logger.info("Computing ED acceleration...")
+    ed_series = compute_ed(constituent_rets, window=60)
+    ed_accel = compute_ed_accel(ed_series, median_window=10)
+    aligned["ED_ACCEL"] = ed_accel.reindex(full_calendar).ffill().fillna(0.0)
+
+    # 5b: Spread anomaly (VIX Z-score)
+    logger.info("Computing spread anomaly...")
+    vix = aligned["VIXCLS"]
+    spread = compute_spread_anomaly(vix, lookback=252)
+    aligned["SPREAD_ANOMALY"] = spread.reindex(full_calendar).ffill().fillna(0.0)
+
+    # 5c: Fisher(ρ) — correlation between ED and spread
+    logger.info("Computing Fisher(ρ)...")
+    fisher = compute_fisher_rho(
+        aligned["ED_ACCEL"], aligned["SPREAD_ANOMALY"], window=20,
+    )
+    aligned["FISHER_RHO"] = fisher.reindex(full_calendar).ffill().fillna(0.0)
+
+    # 5d: Macro hazard rate (λ_macro)
+    logger.info("Computing macro hazard rate...")
+    transformed = directional_transform(
+        walcl=aligned["WALCL"],
+        rrp=aligned["RRPONTSYD"],
+        tga=aligned["WTREGEN"],
+        fra_ois=aligned["SOFR"],
+    )
+    ranks = {
+        k: rolling_percentile_rank(v, lookback=macro_cfg["rank_lookback"])
+        for k, v in transformed.items()
+    }
+    composite = composite_stress(ranks, weights=macro_cfg["weights"])
+    lambda_macro = map_to_hazard(
+        composite,
+        lambda_floor=macro_cfg["lambda_floor"],
+        lambda_ceil=macro_cfg["lambda_ceil"],
+    )
+    aligned["LAMBDA_MACRO"] = lambda_macro.reindex(full_calendar).ffill().fillna(
+        macro_cfg["lambda_floor"]
+    )
+
+    # ━━━ Step 6: Assemble padded panel ━━━━━━━━━━━━━━━━━━━━━━━
+    output_cols = [
+        "QQQ_ret", "QLD_ret",
+        "ED_ACCEL", "SPREAD_ANOMALY", "FISHER_RHO", "LAMBDA_MACRO",
+    ]
+    padded_panel = pd.DataFrame(
+        {col: aligned[col] for col in output_cols},
+        index=full_calendar,
+    )
+
+    # ━━━ Step 7: Trim to [start_date, end_date] ━━━━━━━━━━━━━━
+    panel = padded_panel.loc[start_date:end_date].copy()
+    logger.info(
+        "Panel shape: %s (padded: %s → trimmed: %s)",
+        panel.shape, len(padded_panel), len(panel),
+    )
+
+    # ━━━ Step 8: NaN safety gate ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    _assert_no_nan(panel, start_date, end_date)
+
+    logger.info("Panel built successfully. Zero NaN confirmed.")
+    return panel
