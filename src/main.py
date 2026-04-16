@@ -128,6 +128,10 @@ def enter_zombie_mode(reason: str, exc_info: Exception | None = None) -> None:
     logger.critical("Process is now in ZOMBIE MODE (Main thread sleep loop). PID %d remains alive.", os.getpid())
     logger.critical("Delete %s to re-enable cold start on next run.", SENTINEL_FILE_PATH)
 
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        logger.critical("PYTEST detected. Raising exception instead of infinite sleep loop.")
+        raise RuntimeError(f"ZOMBIE_MODE_TRIGGERED: {reason}")
+
     while True:
         logger.info("ZOMBIE MODE ACTIVE. forensic debug window open...")
         time.sleep(60)
@@ -960,7 +964,11 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 def main(argv: list[str] | None = None) -> None:
     # Pre-flight SRE Check: Identify existing death scene before doing anything
     if Path(SENTINEL_FILE_PATH).exists():
-        enter_zombie_mode("Pre-flight check: Existing .bootstrap_deadletter found.")
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            logger.warning("PYTEST detected. Ignoring and unlinking stale sentinel file.")
+            Path(SENTINEL_FILE_PATH).unlink()
+        else:
+            enter_zombie_mode("Pre-flight check: Existing .bootstrap_deadletter found.")
 
     parser = argparse.ArgumentParser(
         description="QQQ Monitor Entry Point (v11 Bayesian Convergence)"
