@@ -206,14 +206,16 @@ def test_prior_knowledge_recovers_from_concatenated_json_tail(tmp_path, bootstra
     }
     storage_path.write_text(json.dumps(payload) + 'tate"\n}')
 
-    library = PriorKnowledgeBase(
-        storage_path=storage_path,
-        bootstrap_regimes=bootstrap_history,
-        allow_bootstrap_fingerprint_drift=True,
-    )
+    import pytest
 
-    assert library.execution_state["stable_regime"] == "RECOVERY"
-    assert library.counts["MID_CYCLE"] == pytest.approx(4.0)
+    from src.engine.v11.core.prior_knowledge import StateCorruptionError
+
+    with pytest.raises(StateCorruptionError):
+        PriorKnowledgeBase(
+            storage_path=storage_path,
+            bootstrap_regimes=bootstrap_history,
+            allow_bootstrap_fingerprint_drift=True,
+        )
 
 
 def test_recovery_prior_release_score_can_start_inside_bust_when_repair_is_confirmed():

@@ -12,7 +12,7 @@ import src.backtest as backtest_module
 
 
 def _build_v12_macro_frame(dates: pd.DatetimeIndex) -> pd.DataFrame:
-    monthly_block = np.repeat(np.linspace(8.0, 18.0, 14), 30)[: len(dates)]
+    monthly_block = np.repeat(np.linspace(8.0, 18.0, 100), 30)[: len(dates)]
     return pd.DataFrame(
         {
             "observation_date": dates,
@@ -56,7 +56,7 @@ def test_load_price_history_fails_closed_when_cache_missing_in_acceptance_mode(t
 
 
 def test_run_v11_audit_emits_v13_overlay_execution_trace(tmp_path, monkeypatch):
-    dates = pd.bdate_range("2024-01-01", periods=320)
+    dates = pd.bdate_range("2014-01-01", periods=3000)
     macro_path = tmp_path / "macro.csv"
     regime_path = tmp_path / "regimes.csv"
     artifact_dir = tmp_path / "audit"
@@ -66,7 +66,7 @@ def test_run_v11_audit_emits_v13_overlay_execution_trace(tmp_path, monkeypatch):
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * 100 + ["LATE_CYCLE"] * 80 + ["BUST"] * 80 + ["RECOVERY"] * 60,
+            "regime": ["MID_CYCLE"] * (len(dates) - 220) + ["LATE_CYCLE"] * 80 + ["BUST"] * 80 + ["RECOVERY"] * 60,
         }
     ).to_csv(regime_path, index=False)
     pd.DataFrame(
@@ -114,7 +114,7 @@ def test_run_v11_audit_emits_v13_overlay_execution_trace(tmp_path, monkeypatch):
 def test_run_v11_audit_supports_overlay_mode_matrix_without_mutating_raw_beta(
     tmp_path, monkeypatch
 ):
-    dates = pd.bdate_range("2024-01-01", periods=320)
+    dates = pd.bdate_range("2014-01-01", periods=3000)
     macro_path = tmp_path / "macro.csv"
     regime_path = tmp_path / "regimes.csv"
     cache_path = tmp_path / "qqq_cache.csv"
@@ -123,7 +123,7 @@ def test_run_v11_audit_supports_overlay_mode_matrix_without_mutating_raw_beta(
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * 100 + ["LATE_CYCLE"] * 80 + ["BUST"] * 80 + ["RECOVERY"] * 60,
+            "regime": ["MID_CYCLE"] * (len(dates) - 220) + ["LATE_CYCLE"] * 80 + ["BUST"] * 80 + ["RECOVERY"] * 60,
         }
     ).to_csv(regime_path, index=False)
     pd.DataFrame(
@@ -166,7 +166,7 @@ def test_run_v11_audit_supports_overlay_mode_matrix_without_mutating_raw_beta(
 
 
 def test_run_v11_audit_threads_cached_baseline_trace_into_daily_run(tmp_path, monkeypatch):
-    dates = pd.bdate_range("2024-01-01", periods=320)
+    dates = pd.bdate_range("2014-01-01", periods=3000)
     macro_path = tmp_path / "macro.csv"
     regime_path = tmp_path / "regimes.csv"
     cache_path = tmp_path / "qqq_cache.csv"
@@ -177,7 +177,7 @@ def test_run_v11_audit_threads_cached_baseline_trace_into_daily_run(tmp_path, mo
     pd.DataFrame(
         {
             "observation_date": dates,
-            "regime": ["MID_CYCLE"] * 80 + ["LATE_CYCLE"] * 80 + ["BUST"] * 80 + ["RECOVERY"] * 80,
+            "regime": ["MID_CYCLE"] * (len(dates) - 240) + ["LATE_CYCLE"] * 80 + ["BUST"] * 80 + ["RECOVERY"] * 80,
         }
     ).to_csv(regime_path, index=False)
     pd.DataFrame(

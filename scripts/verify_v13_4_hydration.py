@@ -1,5 +1,7 @@
 """Final Verification Script for SRD-v13.4. Checks Entropy and UI metadata."""
 
+from pathlib import Path
+
 import pandas as pd
 
 from src.engine.v11.conductor import V11Conductor
@@ -9,12 +11,14 @@ def verify():
     print("=== SRD-v13.4 Final Verification ===")
 
     # 1. Load the hydrated prior
-    hydrated_prior_path = "data/v13_hydrated_prior.json"
+    hydrated_prior_path = Path("data/v13_6_ex_hydrated_prior.json")
+    if not hydrated_prior_path.exists():
+        hydrated_prior_path = Path("data/v13_hydrated_prior.json")
     macro_path = "data/macro_historical_dump.csv"
 
     conductor = V11Conductor(
         macro_data_path=macro_path,
-        prior_state_path=hydrated_prior_path,
+        prior_state_path=str(hydrated_prior_path),
         snapshot_dir="/tmp/v13_verification",
     )
 

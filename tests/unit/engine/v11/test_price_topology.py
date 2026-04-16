@@ -496,6 +496,42 @@ def test_recovery_process_alignment_releases_bust_overhang_more_aggressively():
     assert corrected["LATE_CYCLE"] < 0.17
 
 
+def test_recovery_process_alignment_releases_derivative_confirmed_bust_bottom():
+    topology = PriceTopologyState(
+        regime="BUST",
+        probabilities={
+            "MID_CYCLE": 0.02,
+            "LATE_CYCLE": 0.23,
+            "BUST": 0.52,
+            "RECOVERY": 0.25,
+        },
+        expected_beta=0.72,
+        confidence=1.0,
+        posterior_blend_weight=0.30,
+        beta_anchor_weight=0.50,
+        transition_intensity=0.0,
+        recovery_impulse=0.03,
+        damage_memory=0.68,
+        bust_pressure=0.20,
+        bullish_divergence=0.0,
+        bearish_divergence=0.0,
+        recovery_prob_delta=0.026,
+        recovery_prob_acceleration=0.027,
+    )
+    posteriors = {
+        "MID_CYCLE": 0.005,
+        "LATE_CYCLE": 0.10,
+        "BUST": 0.80,
+        "RECOVERY": 0.095,
+    }
+
+    corrected = align_posteriors_with_recovery_process(posteriors, topology)
+
+    assert corrected["RECOVERY"] - posteriors["RECOVERY"] > 0.05
+    assert corrected["BUST"] < posteriors["BUST"]
+    assert sum(corrected.values()) == pytest.approx(1.0)
+
+
 def test_recovery_process_alignment_preserves_repair_persistence_through_mild_fade():
     topology = PriceTopologyState(
         regime="RECOVERY",

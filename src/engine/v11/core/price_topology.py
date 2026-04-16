@@ -412,10 +412,17 @@ def anchor_beta_with_topology(raw_beta: float, topology: PriceTopologyState) -> 
 
 
 def _recovery_process_alignment_weight(topology: PriceTopologyState) -> float:
-    if float(topology.recovery_impulse) < 0.12 or float(topology.damage_memory) < 0.20:
+    if float(topology.damage_memory) < 0.20:
         return 0.0
     positive_delta = float(np.clip(topology.recovery_prob_delta / 0.04, 0.0, 1.5))
     positive_accel = float(np.clip(topology.recovery_prob_acceleration / 0.02, 0.0, 1.5))
+    derivative_confirmed_repair = (
+        positive_delta >= 0.60
+        and positive_accel >= 0.60
+        and float(topology.bust_pressure) <= 0.35
+    )
+    if float(topology.recovery_impulse) < 0.12 and not derivative_confirmed_repair:
+        return 0.0
     repair_persistence = _topology_repair_persistence(topology)
     benchmark_recovery = float(topology.probabilities.get("RECOVERY", 0.0))
     benchmark_bust = float(topology.probabilities.get("BUST", 0.0))
