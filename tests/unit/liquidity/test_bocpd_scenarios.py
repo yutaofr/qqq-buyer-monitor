@@ -115,16 +115,18 @@ class TestSC2_RunLengthCollapse:
 class TestSC4_ExactNIGAfterShock:
     """SC-4: After 20 calm steps + 1 shock, verify exact NIG values at r=1.
 
-    At r=1 post-shock: this represents the hypothesis that the new regime
-    started at the shock step (1 step ago). So suff_stats[1] contains the
-    NIG stats after absorbing exactly ONE observation: x=[4,4,4] from the prior.
+    At r=1 post-shock: hypothesis that the new regime started at the shock step.
+    suff_stats[1] contains the NIG stats after absorbing ONE observation x=[4,4,4]
+    from the prior, with forgetting_lambda=0.98 applied.
 
-    Prior: mu_0=0, kappa_0=5, alpha_0=2.5, beta_0=1.5
-    Expected (same as test_nig.py SC-4 ground truth):
-        kappa = 6
-        mu    = 4/6 ≈ 0.6̄
-        alpha = 3.0
-        beta  = 1.5 + 0.5 * 5 * 16 / 6 ≈ 8.1̄6̄
+    Prior: mu_0=0, kappa_0=5, alpha_0=2.5, beta_0=1.5, lambda=0.98
+
+    Step 1 (decay + absorb x=[4,4,4]):
+        kappa_decayed = 0.98 × 5.0 = 4.9
+        kappa_new = 4.9 + 1 = 5.9
+        mu_new    = (4.9 × 0 + 4.0) / 5.9 = 4.0 / 5.9
+        alpha_new = 0.98 × 2.5 + 0.5 = 2.95
+        beta_new  = 0.98 × 1.5 + 0.5 × 4.9 × 16.0 / 5.9
     """
 
     @pytest.fixture()
@@ -138,31 +140,43 @@ class TestSC4_ExactNIGAfterShock:
 
     def test_kappa_at_r1(self, engine_post_shock):
         state = engine_post_shock.get_state()
+        lam = 0.98
+        kappa_0, x = 5.0, 4.0
+        kappa_decayed = lam * kappa_0
+        expected_kappa = kappa_decayed + 1.0   # 5.9
         np.testing.assert_allclose(
-            state.suff_stats[1, 0, 1],  # dim=0, kappa
-            6.0, atol=1e-10,
+            state.suff_stats[1, 0, 1], expected_kappa, atol=1e-10,
         )
 
     def test_mu_at_r1(self, engine_post_shock):
         state = engine_post_shock.get_state()
+        lam = 0.98
+        kappa_0, mu_0, x = 5.0, 0.0, 4.0
+        kappa_decayed = lam * kappa_0
+        kappa_new = kappa_decayed + 1.0
+        expected_mu = (kappa_decayed * mu_0 + x) / kappa_new  # 4/5.9
         np.testing.assert_allclose(
-            state.suff_stats[1, 0, 0],  # dim=0, mu
-            4.0 / 6.0, atol=1e-10,
+            state.suff_stats[1, 0, 0], expected_mu, atol=1e-10,
         )
 
     def test_alpha_at_r1(self, engine_post_shock):
         state = engine_post_shock.get_state()
+        lam = 0.98
+        expected_alpha = lam * 2.5 + 0.5   # 2.95
         np.testing.assert_allclose(
-            state.suff_stats[1, 0, 2],  # dim=0, alpha
-            3.0, atol=1e-10,
+            state.suff_stats[1, 0, 2], expected_alpha, atol=1e-10,
         )
 
     def test_beta_at_r1(self, engine_post_shock):
         state = engine_post_shock.get_state()
-        expected_beta = 1.5 + 0.5 * 5.0 * 16.0 / 6.0
+        lam = 0.98
+        kappa_0, mu_0, beta_0, x = 5.0, 0.0, 1.5, 4.0
+        kappa_decayed = lam * kappa_0
+        kappa_new = kappa_decayed + 1.0
+        beta_decayed = lam * beta_0
+        expected_beta = beta_decayed + 0.5 * kappa_decayed * (x - mu_0) ** 2 / kappa_new
         np.testing.assert_allclose(
-            state.suff_stats[1, 0, 3],  # dim=0, beta
-            expected_beta, atol=1e-10,
+            state.suff_stats[1, 0, 3], expected_beta, atol=1e-10,
         )
 
     def test_r0_still_prior(self, config, engine_post_shock):

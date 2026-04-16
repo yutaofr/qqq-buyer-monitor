@@ -195,7 +195,6 @@ class BOCPDEngine:
             self._stats[:-1, :, :],
             x_t,
             forgetting_lambda=self._forgetting_lambda,
-            prior_stats=self._prior,
         )
 
         # Store tau_t for diagnostic access

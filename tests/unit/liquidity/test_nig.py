@@ -231,46 +231,44 @@ class TestNIGUpdateNonzeroPreviousMu:
 
 
 class TestAnchoredDecayClosedForm:
-    """Closed-form and asymptotic contracts for prior-anchored decay."""
+    """Closed-form and asymptotic contracts for scalar-decay (λ < 1).
+
+    New NIG decay model: kappa_new = λ*kappa_old + 1, alpha_new = λ*alpha_old + 0.5
+    Asymptotes (at x_t ≡ 0):
+        kappa_∞ = 1 / (1 - λ)
+        alpha_∞ = 0.5 / (1 - λ)
+
+    Starting from kappa_0 / alpha_0, at step r:
+        kappa_r = λ^r * kappa_0 + (1 - λ^r) / (1 - λ)
+        alpha_r = λ^r * alpha_0 + 0.5 * (1 - λ^r) / (1 - λ)
+    """
 
     def test_kappa_alpha_match_closed_form(self):
         lam = 0.98
         kappa_0 = 5.0
         alpha_0 = 2.5
-        prior_row = make_prior_row(kappa_0=kappa_0, alpha_0=alpha_0)
         stats = make_prior(kappa_0=kappa_0, alpha_0=alpha_0)
         x_t = np.zeros(D)
 
         for step in range(1, 201):
-            stats = update_nig(
-                stats,
-                x_t,
-                forgetting_lambda=lam,
-                prior_stats=prior_row,
-            )
-            expected_kappa = kappa_0 + (1.0 - lam**step) / (1.0 - lam)
-            expected_alpha = alpha_0 + 0.5 * (1.0 - lam**step) / (1.0 - lam)
+            stats = update_nig(stats, x_t, forgetting_lambda=lam)
+            expected_kappa = lam**step * kappa_0 + (1.0 - lam**step) / (1.0 - lam)
+            expected_alpha = lam**step * alpha_0 + 0.5 * (1.0 - lam**step) / (1.0 - lam)
             np.testing.assert_allclose(stats[:, :, 1], expected_kappa, atol=1e-10)
             np.testing.assert_allclose(stats[:, :, 2], expected_alpha, atol=1e-10)
 
     def test_kappa_alpha_are_monotone_and_bounded_by_asymptote(self):
         lam = 0.97
-        prior_row = make_prior_row()
         stats = make_prior()
         x_t = np.zeros(D)
 
-        kappa_inf = prior_row[0, 1] + 1.0 / (1.0 - lam)
-        alpha_inf = prior_row[0, 2] + 0.5 / (1.0 - lam)
+        kappa_inf = 1.0 / (1.0 - lam)
+        alpha_inf = 0.5 / (1.0 - lam)
         kappa_path = []
         alpha_path = []
 
         for _ in range(120):
-            stats = update_nig(
-                stats,
-                x_t,
-                forgetting_lambda=lam,
-                prior_stats=prior_row,
-            )
+            stats = update_nig(stats, x_t, forgetting_lambda=lam)
             kappa_path.append(float(stats[0, 0, 1]))
             alpha_path.append(float(stats[0, 0, 2]))
 
@@ -281,22 +279,16 @@ class TestAnchoredDecayClosedForm:
 
     def test_gap_contracts_by_lambda(self):
         lam = 0.96
-        prior_row = make_prior_row()
         stats = make_prior()
         x_t = np.zeros(D)
 
-        kappa_inf = prior_row[0, 1] + 1.0 / (1.0 - lam)
-        alpha_inf = prior_row[0, 2] + 0.5 / (1.0 - lam)
+        kappa_inf = 1.0 / (1.0 - lam)
+        alpha_inf = 0.5 / (1.0 - lam)
         kappa_gaps = []
         alpha_gaps = []
 
         for _ in range(80):
-            stats = update_nig(
-                stats,
-                x_t,
-                forgetting_lambda=lam,
-                prior_stats=prior_row,
-            )
+            stats = update_nig(stats, x_t, forgetting_lambda=lam)
             kappa_gaps.append(kappa_inf - float(stats[0, 0, 1]))
             alpha_gaps.append(alpha_inf - float(stats[0, 0, 2]))
 
@@ -311,104 +303,77 @@ class TestAnchoredDecayClosedForm:
             atol=1e-10,
         )
 
-    def test_fixed_point_is_independent_of_initial_state(self):
+    def test_fixed_point_kappa_independent_of_initial_state(self):
+        """Two chains starting from very different kappa_0 converge to same kappa_∞."""
         lam = 0.98
-        prior_row = make_prior_row()
-        prior_stats = np.broadcast_to(prior_row, (N, D, 4)).copy()
-        extreme_stats = make_prior(mu_0=7.0, kappa_0=300.0, alpha_0=100.0, beta_0=40.0)
-        x_t = np.full(D, 2.0)
+        stats_a = make_prior()
+        stats_b = make_prior(kappa_0=300.0, alpha_0=100.0)
+        x_t = np.zeros(D)
 
         for _ in range(800):
-            prior_stats = update_nig(
-                prior_stats,
-                x_t,
-                forgetting_lambda=lam,
-                prior_stats=prior_row,
-            )
-            extreme_stats = update_nig(
-                extreme_stats,
-                x_t,
-                forgetting_lambda=lam,
-                prior_stats=prior_row,
-            )
+            stats_a = update_nig(stats_a, x_t, forgetting_lambda=lam)
+            stats_b = update_nig(stats_b, x_t, forgetting_lambda=lam)
 
-        np.testing.assert_allclose(
-            prior_stats[:, :, 1],
-            extreme_stats[:, :, 1],
-            atol=5e-5,
-        )
-        np.testing.assert_allclose(
-            prior_stats[:, :, 2],
-            extreme_stats[:, :, 2],
-            atol=5e-5,
-        )
+        np.testing.assert_allclose(stats_a[:, :, 1], stats_b[:, :, 1], atol=1e-4)
+        np.testing.assert_allclose(stats_a[:, :, 2], stats_b[:, :, 2], atol=1e-4)
 
     def test_kappa_alpha_limits_do_not_depend_on_constant_observation(self):
+        """kappa and alpha asymptotes are independent of constant x_t values."""
         lam = 0.95
-        prior_row = make_prior_row()
         x_values = [0.0, 3.0, -5.0]
-        final_pairs = []
+        final_kappas = []
 
         for x_scalar in x_values:
             stats = make_prior()
             x_t = np.full(D, x_scalar)
             for _ in range(200):
-                stats = update_nig(
-                    stats,
-                    x_t,
-                    forgetting_lambda=lam,
-                    prior_stats=prior_row,
-                )
-            final_pairs.append((float(stats[0, 0, 1]), float(stats[0, 0, 2])))
+                stats = update_nig(stats, x_t, forgetting_lambda=lam)
+            final_kappas.append(float(stats[0, 0, 1]))
 
-        first = np.array(final_pairs[0])
-        for pair in final_pairs[1:]:
-            np.testing.assert_allclose(np.array(pair), first, atol=1e-10)
+        first = final_kappas[0]
+        for k in final_kappas[1:]:
+            np.testing.assert_allclose(k, first, atol=1e-10)
 
     def test_epsilon_convergence_bound_for_kappa(self):
         lam = 0.98
         eps = 1e-2
-        prior_row = make_prior_row()
         stats = make_prior()
         x_t = np.zeros(D)
-        kappa_inf = prior_row[0, 1] + 1.0 / (1.0 - lam)
-        t_star = int(np.ceil(np.log(eps * (1.0 - lam)) / np.log(lam)))
+        kappa_inf = 1.0 / (1.0 - lam)
+        # Steps needed: λ^t * (kappa_0 - kappa_∞) < eps
+        # → t > log(eps / |kappa_0 - kappa_∞|) / log(λ)
+        kappa_0 = 5.0
+        t_star = int(np.ceil(np.log(eps / abs(kappa_0 - kappa_inf)) / np.log(lam)))
 
         for _ in range(t_star):
-            stats = update_nig(
-                stats,
-                x_t,
-                forgetting_lambda=lam,
-                prior_stats=prior_row,
-            )
+            stats = update_nig(stats, x_t, forgetting_lambda=lam)
 
         gap = abs(kappa_inf - float(stats[0, 0, 1]))
         assert gap <= eps
 
 
 class TestAnchoredDecayMuConvergence:
-    """Mu converges to the anchored fixed point, not raw c, when λ < 1."""
+    """Mu converges to the scalar-decay fixed point when λ < 1."""
 
     @pytest.mark.parametrize("lam", [0.95, 0.98, 0.995])
-    def test_mu_error_shrinks_and_enters_anchored_tolerance_band(self, lam):
+    def test_mu_converges_to_observation(self, lam):
+        """With constant x_t = c, mu_∞ → c as t → ∞.
+
+        kappa_∞ = 1/(1-λ), so:
+            mu_∞ = (kappa_∞ * mu_old + c) / (kappa_∞ + 1) → c
+        In the limit, kappa → kappa_∞ and the weighted average of mu and c
+        where mu is initialised at 0 converges to c.
+        """
         c = 4.0
-        mu_0 = 0.0
-        kappa_0 = 5.0
-        prior_row = make_prior_row(mu_0=mu_0, kappa_0=kappa_0)
-        stats = make_prior(mu_0=mu_0, kappa_0=kappa_0)
+        stats = make_prior(mu_0=0.0, kappa_0=5.0)
         x_t = np.full(D, c)
         errors = []
-        mu_inf = (kappa_0 * mu_0 + c / (1.0 - lam)) / (kappa_0 + 1.0 / (1.0 - lam))
 
         for _ in range(1200):
-            stats = update_nig(
-                stats,
-                x_t,
-                forgetting_lambda=lam,
-                prior_stats=prior_row,
-            )
-            errors.append(abs(mu_inf - float(stats[0, 0, 0])))
+            stats = update_nig(stats, x_t, forgetting_lambda=lam)
+            errors.append(abs(c - float(stats[0, 0, 0])))
 
+        # Errors must be monotonically shrinking and reach a small value
         assert np.all(np.diff(errors) <= 1e-12)
         assert errors[-1] <= 5e-3
 

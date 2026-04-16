@@ -62,9 +62,9 @@ class TestLoadConfig:
         assert config["hazard"]["R_MAX"] == 504
 
     def test_forgetting_lambda_default(self):
-        """Default is disabled to preserve the v16 baseline path."""
+        """SRD v1.3: lambda=0.98 → kappa_∞=50, keeps Student-t thick-tailed."""
         config = load_config()
-        assert config["forgetting"]["lambda"] == 1.0
+        assert config["forgetting"]["lambda"] == 0.98
 
     def test_ed_signal_filters(self):
         """ED must use the production min coverage / min names filter."""

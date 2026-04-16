@@ -24,85 +24,55 @@ def update_nig(
     old_stats: np.ndarray,
     x_t: np.ndarray,
     forgetting_lambda: float = 1.0,
-    prior_stats: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Online recursive NIG conjugate update.
+    """Online recursive NIG conjugate update with optional forgetting factor.
 
-    SRD 3.4 — Recursive equations (applied identically to all N run-lengths):
-
+    SRD 3.4 — Standard update (λ = 1.0):
         kappa_new = kappa_old + 1
         mu_new    = (kappa_old * mu_old + x_t) / kappa_new
         alpha_new = alpha_old + 0.5
         beta_new  = beta_old + 0.5 * kappa_old * (x_t - mu_old)^2 / kappa_new
 
+    With forgetting (λ < 1.0):
+        kappa_new = λ * kappa_old + 1
+        mu_new    = (λ * kappa_old * mu_old + x_t) / kappa_new
+        alpha_new = λ * alpha_old + 0.5
+        beta_new  = λ * beta_old + 0.5 * (λ * kappa_old) * (x_t - mu_old)^2 / kappa_new
+
+    Asymptotes: kappa_∞ = 1/(1-λ)  alpha_∞ = 0.5/(1-λ)
+    At λ=0.98: kappa_∞ = 50, alpha_∞ = 25 → ν_eff = 2×25/τ — stays thick-tailed.
+
     Vectorized over all (N, D) simultaneously — zero Python loops.
 
-    Prior-anchored decay (optional):
-        When forgetting_lambda < 1, the old posterior is first shrunk back
-        toward the fixed prior before absorbing x_t:
-
-            kappa^- = kappa_0 + λ (kappa_old - kappa_0)
-            alpha^- = alpha_0 + λ (alpha_old - alpha_0)
-            eta^-   = kappa_0*mu_0 + λ (kappa_old*mu_old - kappa_0*mu_0)
-            mu^-    = eta^- / kappa^-
-            beta^-  = beta_0 + λ (beta_old - beta_0)
-
-        The standard NIG update is then applied to this decayed state. With
-        λ=1 the update exactly matches the SRD v1.2 baseline.
-
     Args:
-        old_stats: shape (N, D, 4), where the last axis holds
-                   [mu, kappa, alpha, beta] for each run-length × dim.
-        x_t:       shape (D,), the current observation vector.
-        forgetting_lambda: decay factor λ in (0, 1]. Default 1.0.
-        prior_stats: prior row with shape (D, 4) or broadcastable equivalent.
-                     Required when forgetting_lambda < 1.
+        old_stats: shape (N, D, 4) — [mu, kappa, alpha, beta] per run-length × dim.
+        x_t:       shape (D,) — current observation.
+        forgetting_lambda: decay factor λ ∈ (0, 1]. Default 1.0 (no decay).
 
     Returns:
-        new_stats: shape (N, D, 4), same dtype as old_stats.
-                   The input is NOT mutated.
+        new_stats: shape (N, D, 4), same dtype. Input is NOT mutated.
     """
     if not (0.0 < forgetting_lambda <= 1.0):
         raise ValueError("forgetting_lambda must lie in (0, 1].")
 
-    # Read out current parameters — views, no copies needed yet
-    mu_old = old_stats[:, :, 0]      # (N, D)
+    mu_old    = old_stats[:, :, 0]   # (N, D)
     kappa_old = old_stats[:, :, 1]   # (N, D)
     alpha_old = old_stats[:, :, 2]   # (N, D)
-    beta_old = old_stats[:, :, 3]    # (N, D)
+    beta_old  = old_stats[:, :, 3]   # (N, D)
 
-    # Broadcast x_t from (D,) to (1, D) — matches (N, D) arithmetic
     x = x_t[np.newaxis, :]           # (1, D) → broadcasts to (N, D)
 
-    if forgetting_lambda == 1.0:
-        mu_eff = mu_old
-        kappa_eff = kappa_old
-        alpha_eff = alpha_old
-        beta_eff = beta_old
-    else:
-        if prior_stats is None:
-            raise ValueError("prior_stats is required when forgetting_lambda < 1.")
+    # Apply forgetting: shrink old evidence to λ × its current weight
+    kappa_decayed = forgetting_lambda * kappa_old   # (N, D)
+    alpha_decayed = forgetting_lambda * alpha_old   # (N, D)
+    beta_decayed  = forgetting_lambda * beta_old    # (N, D)
 
-        prior = np.broadcast_to(prior_stats, old_stats.shape)
-        mu_0 = prior[:, :, 0]
-        kappa_0 = prior[:, :, 1]
-        alpha_0 = prior[:, :, 2]
-        beta_0 = prior[:, :, 3]
+    # Absorb x_t into the decayed prior (standard NIG update algebra)
+    kappa_new = kappa_decayed + 1.0
+    mu_new    = (kappa_decayed * mu_old + x) / kappa_new
+    alpha_new = alpha_decayed + 0.5
+    beta_new  = beta_decayed + 0.5 * kappa_decayed * (x - mu_old) ** 2 / kappa_new
 
-        kappa_eff = kappa_0 + forgetting_lambda * (kappa_old - kappa_0)
-        alpha_eff = alpha_0 + forgetting_lambda * (alpha_old - alpha_0)
-        eta_0 = kappa_0 * mu_0
-        eta_eff = eta_0 + forgetting_lambda * (kappa_old * mu_old - eta_0)
-        mu_eff = eta_eff / kappa_eff
-        beta_eff = beta_0 + forgetting_lambda * (beta_old - beta_0)
-
-    # Recursive NIG update
-    kappa_new = kappa_eff + 1.0
-    mu_new = (kappa_eff * mu_eff + x) / kappa_new
-    alpha_new = alpha_eff + 0.5
-    beta_new = beta_eff + 0.5 * kappa_eff * (x - mu_eff) ** 2 / kappa_new
-
-    # Assemble output — allocate new array to guarantee no mutation
     new_stats = np.empty_like(old_stats)
     new_stats[:, :, 0] = mu_new
     new_stats[:, :, 1] = kappa_new
