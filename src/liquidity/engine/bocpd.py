@@ -27,6 +27,8 @@ Five-step update loop (SRD 8.2):
 from __future__ import annotations
 
 from dataclasses import dataclass
+import base64
+import io
 
 import numpy as np
 
@@ -239,6 +241,27 @@ class BOCPDEngine:
         self._probs = state.run_length_probs.copy()
         self._stats = state.suff_stats.copy()
         self._t = state.t
+        
+    def dump_state(self) -> dict:
+        """Binary persistence of state limits matrix size explosion over time."""
+        buf = io.BytesIO()
+        np.savez_compressed(
+            buf,
+            probs=self._probs,
+            stats=self._stats
+        )
+        return {
+            "b64_arrays": base64.b64encode(buf.getvalue()).decode("utf-8"),
+            "t": self._t
+        }
+        
+    def load_state(self, state_dict: dict) -> None:
+        """Resume exact memory layout from binary dump."""
+        self._t = state_dict["t"]
+        buf = io.BytesIO(base64.b64decode(state_dict["b64_arrays"]))
+        with np.load(buf, allow_pickle=False) as data:
+            self._probs = data["probs"].copy()
+            self._stats = data["stats"].copy()
 
     # ─────────────────────────────────────────────────────────
     # Private helpers

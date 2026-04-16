@@ -74,12 +74,21 @@ class Allocator:
         vol_guard_cfg = config.get("regime_vol_guard", {})
         self._vol_guard_enabled = vol_guard_cfg.get("enabled", False)
         if self._vol_guard_enabled:
+            spread_prior = config.get("nig_priors", {}).get("spread_anomaly", {})
+            try:
+                b0 = float(spread_prior.get("beta_0", 1.5))
+                a0 = float(spread_prior.get("alpha_0", 2.5))
+                abs_floor = b0 / (a0 - 1.0) if a0 > 1.0 else 0.0
+            except ZeroDivisionError:
+                abs_floor = 0.0
+            
             self._vol_guard = RegimeVolatilityFloor(
                 window=vol_guard_cfg.get("window", 252),
                 quantile=vol_guard_cfg.get("quantile", 0.95),
                 stress_max_leverage=vol_guard_cfg.get("stress_max_leverage", 0.50),
                 min_obs=vol_guard_cfg.get("min_obs", 63),
                 floor_alpha_down=vol_guard_cfg.get("floor_alpha_down", 0.02),
+                abs_floor_variance=abs_floor,
             )
         else:
             self._vol_guard = None
@@ -103,6 +112,8 @@ class Allocator:
         lambda_macro: float,
         regime_severity_raw: float = 0.0,
         regime_sigma2_spread: float | None = None,
+        qqq_price: float | None = None,
+        qqq_sma200: float | None = None,
     ) -> tuple[float, dict]:
         """Execute one step of the full continuous control chain.
 
@@ -147,10 +158,17 @@ class Allocator:
             self._s_t, self._sigma_calm, self._sigma_stress, self._sigma_target,
         )
 
-        vol_guard_cap = 1.0
+        vol_guard_cap = 2.0
         if self._vol_guard_enabled and regime_sigma2_spread is not None:
             vol_guard_cap = self._vol_guard.update(regime_sigma2_spread)
             l_target = min(l_target, vol_guard_cap)
+
+        # Step 2b: Momentum Lockout (SMA-200) - SRD 4.2.1
+        momentum_lockout = False
+        if qqq_price is not None and qqq_sma200 is not None and qqq_sma200 > 0:
+            if qqq_price < qqq_sma200:
+                momentum_lockout = True
+                l_target = min(l_target, 1.0)
 
         # Step 3: Circuit breaker check
         circuit_triggered = self._s_t >= self._circuit_breaker
@@ -192,11 +210,40 @@ class Allocator:
             "weight":          alloc.qld,
             "days_held":       self._days_in_qld,
             "circuit_breaker": circuit_triggered,
+            "momentum_lockout": momentum_lockout,
             "qld":             alloc.qld,
             "qqq":             alloc.qqq,
             "cash":            alloc.cash,
         }
         return alloc.qld, log
+
+    @property
+    def current_leverage(self) -> float:
+        """Get the current requested target leverage L_target."""
+        return getattr(self, "_l_current", 0.0)
+        
+    def dump_state(self) -> dict:
+        state = {
+            "s_cp_t": self._s_cp_t,
+            "s_level_t": self._s_level_t,
+            "s_t": self._s_t,
+            "l_current": self._l_current,
+            "days_in_qld": self._days_in_qld,
+            "weight": self._weight,
+        }
+        if self._vol_guard_enabled:
+            state["vol_guard"] = self._vol_guard.dump_state()
+        return state
+        
+    def load_state(self, state_dict: dict) -> None:
+        self._s_cp_t = state_dict["s_cp_t"]
+        self._s_level_t = state_dict["s_level_t"]
+        self._s_t = state_dict["s_t"]
+        self._l_current = state_dict["l_current"]
+        self._days_in_qld = state_dict["days_in_qld"]
+        self._weight = state_dict["weight"]
+        if self._vol_guard_enabled and "vol_guard" in state_dict:
+            self._vol_guard.load_state(state_dict["vol_guard"])
 
     def get_weight(self) -> float:
         """Return the current QLD position weight."""
@@ -224,14 +271,27 @@ class Allocator:
         Returns:
             Adjusted leverage after deadband filter.
         """
+        import numpy as np
         delta = l_target - self._l_current
 
         if delta < -self._delta_down:
             # De-lever: immediate full execution (protection priority)
             return l_target
-        if delta > self._delta_up:
-            # Re-lever: gradual recovery (conservative)
-            return self._l_current + self._recovery_coeff * delta
+            
+        if delta > 0:
+            # Mathematics for AEMA compatibility: use a relative remaining gap 
+            # instead of absolute delta so Zeno's paradox won't trap the recovery.
+            # We use dynamic ceiling (1.0 for defense phase, 2.0 for aggro phase)
+            ceiling = float(np.ceil(l_target))
+            if ceiling < 1.0:
+                ceiling = 1.0
+                
+            relative_gap = delta / (ceiling - self._l_current + 1e-6)
+            
+            if relative_gap > self._delta_up:
+                # Re-lever: gradual recovery (conservative)
+                return self._l_current + self._recovery_coeff * delta
+                
         # Inside deadband: no adjustment
         return self._l_current
 

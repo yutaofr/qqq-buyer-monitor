@@ -203,6 +203,10 @@ def build_pit_aligned_panel(
     aligned["QQQ_ret"] = aligned["QQQ_ret"].fillna(0.0)
     aligned["QLD_ret"] = aligned["QLD_ret"].fillna(0.0)
 
+    # 4c: QQQ Trend indicators for Allocator Momentum Lockout
+    aligned["QQQ_price"] = qqq_close.reindex(full_calendar).ffill()
+    aligned["QQQ_sma200"] = qqq_close.rolling(window=200, min_periods=100).mean().reindex(full_calendar).ffill()
+
     # ━━━ Step 5: Signal feature computation (on full padded panel) ━━━
     # 5a: ED acceleration
     logger.info("Computing ED acceleration...")
@@ -218,22 +222,22 @@ def build_pit_aligned_panel(
     ed_is_degraded = ed_accel_aligned.isna() | (ed_valid_names < ed_cfg["min_names"])
     aligned["ED_VALID_NAMES"] = ed_valid_names
     aligned["ED_IS_DEGRADED"] = ed_is_degraded
-    aligned["ED_ACCEL"] = ed_accel_aligned.ffill().fillna(0.0)
+    aligned["_BATCH_ED_ACCEL"] = ed_accel_aligned.ffill().fillna(0.0)
 
     # 5b: Spread anomaly (VIX Z-score)
     logger.info("Computing spread anomaly...")
     vix = aligned["VIXCLS"]
     spread = compute_spread_anomaly(vix, lookback=252)
-    aligned["SPREAD_ANOMALY"] = spread.reindex(full_calendar).ffill().fillna(0.0)
+    aligned["_BATCH_SPREAD_ANOMALY"] = spread.reindex(full_calendar).ffill().fillna(0.0)
 
     # 5c: Fisher(ρ) — correlation between ED and spread
     logger.info("Computing Fisher(ρ)...")
     fisher = compute_fisher_rho(
-        ed_accel_aligned, aligned["SPREAD_ANOMALY"], window=20,
+        ed_accel_aligned, aligned["_BATCH_SPREAD_ANOMALY"], window=20,
     )
     fisher_is_degraded = fisher.isna() | ed_is_degraded
     aligned["FISHER_IS_DEGRADED"] = fisher_is_degraded
-    aligned["FISHER_RHO"] = fisher.ffill().fillna(0.0)
+    aligned["_BATCH_FISHER_RHO"] = fisher.ffill().fillna(0.0)
 
     # 5d: Macro hazard rate (λ_macro)
     logger.info("Computing macro hazard rate...")
@@ -253,15 +257,16 @@ def build_pit_aligned_panel(
         lambda_floor=macro_cfg["lambda_floor"],
         lambda_ceil=macro_cfg["lambda_ceil"],
     )
-    aligned["LAMBDA_MACRO"] = lambda_macro.reindex(full_calendar).ffill().fillna(
+    aligned["_BATCH_LAMBDA_MACRO"] = lambda_macro.reindex(full_calendar).ffill().fillna(
         macro_cfg["lambda_floor"]
     )
 
     # ━━━ Step 6: Assemble padded panel ━━━━━━━━━━━━━━━━━━━━━━━
     output_cols = [
-        "QQQ_ret", "QLD_ret",
-        "ED_ACCEL", "SPREAD_ANOMALY", "FISHER_RHO", "LAMBDA_MACRO",
+        "QQQ_ret", "QLD_ret", "QQQ_price", "QQQ_sma200",
+        "_BATCH_ED_ACCEL", "_BATCH_SPREAD_ANOMALY", "_BATCH_FISHER_RHO", "_BATCH_LAMBDA_MACRO",
         "ED_VALID_NAMES", "ED_IS_DEGRADED", "FISHER_IS_DEGRADED",
+        "VIXCLS", "WALCL", "RRPONTSYD", "WTREGEN", "SOFR"
     ]
     padded_panel = pd.DataFrame(
         {col: aligned[col] for col in output_cols},
@@ -270,6 +275,8 @@ def build_pit_aligned_panel(
 
     # ━━━ Step 7: Trim to [start_date, end_date] ━━━━━━━━━━━━━━
     panel = padded_panel.loc[start_date:end_date].copy()
+    constituents = constituent_rets.loc[start_date:end_date].copy()
+    
     panel.attrs["constituent_loader"] = {
         "requested_tickers": constituent_diag["requested_tickers"],
         "loaded_tickers": constituent_diag["loaded_tickers"],
@@ -294,7 +301,11 @@ def build_pit_aligned_panel(
         )
 
     # ━━━ Step 8: NaN safety gate ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    _assert_no_nan(panel, start_date, end_date)
+    _assert_no_nan(panel[[
+        "QQQ_ret", "QLD_ret",
+        "_BATCH_ED_ACCEL", "_BATCH_SPREAD_ANOMALY", 
+        "_BATCH_FISHER_RHO", "_BATCH_LAMBDA_MACRO",
+    ]], start_date, end_date)
 
-    logger.info("Panel built successfully. Zero NaN confirmed.")
-    return panel
+    logger.info("Panel built successfully. Zero NaN confirmed in critical columns.")
+    return panel, constituents

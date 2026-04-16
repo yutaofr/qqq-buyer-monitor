@@ -46,16 +46,22 @@ BURN_IN       = 252
 # ─────────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="module")
-def real_panel():
+def real_data_tuple():
     """Build PiT-aligned panel from real data (cached)."""
     return build_pit_aligned_panel(SEGMENT_START, SEGMENT_END)
 
 
 @pytest.fixture(scope="module")
-def backtest_result(real_panel):
+def real_panel(real_data_tuple):
+    return real_data_tuple[0]
+
+
+@pytest.fixture(scope="module")
+def backtest_result(real_data_tuple):
     """Run full backtest on real panel."""
     config = load_config()
-    result = run_backtest(real_panel, config, burn_in=BURN_IN)
+    panel, constituent_rets = real_data_tuple
+    result = run_backtest(panel, constituent_rets, config, burn_in=BURN_IN)
     return result
 
 
