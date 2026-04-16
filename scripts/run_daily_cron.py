@@ -7,12 +7,14 @@ run_daily_cron.py
 最后用中文输出极其明确的持仓状态与 QLD 买卖信号。
 """
 
+import json
 import logging
 import os
 import sys
 import warnings
 from datetime import datetime, timedelta
 
+import numpy as np
 import pandas as pd
 import requests
 
@@ -27,6 +29,21 @@ logging.getLogger("src.liquidity").setLevel(logging.CRITICAL)
 
 VERCEL_TOKEN = os.environ.get("VERCEL_BLOB_READ_WRITE_TOKEN")
 STATE_URL = "https://blob.vercel-storage.com/qqq_engine_state.json"
+
+
+def sanitize_for_json(obj):
+    """Recursively convert numpy types to standard Python types for JSON serialization."""
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(i) for i in obj]
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, (np.float64, np.float32)):
+        return float(obj)
+    elif isinstance(obj, (np.int64, np.int32)):
+        return int(obj)
+    return obj
 
 
 def fetch_state():
@@ -58,11 +75,22 @@ def push_state(state_dict):
     if not VERCEL_TOKEN:
         print("[警告] 环境变量无 VERCEL_BLOB_READ_WRITE_TOKEN，跳过状态落盘。")
         return
-    headers = {"Authorization": f"Bearer {VERCEL_TOKEN}", "x-api-version": "7"}
+    # Vercel Blob REST API: PUT /[filename]?api-version=7
+    # Body must be raw bytes; Content-Type must be set explicitly.
+    # refs: https://vercel.com/docs/storage/vercel-blob/rest-api
+    upload_url = f"{STATE_URL}?api-version=7"
+    headers = {
+        "Authorization": f"Bearer {VERCEL_TOKEN}",
+        "Content-Type": "application/json",
+        "x-vercel-blob-overwrite": "1",
+    }
     try:
-        res = requests.put(STATE_URL, headers=headers, json=state_dict)
+        # 递归清理 numpy 类型以确保 JSON 兼容性
+        clean_state = sanitize_for_json(state_dict)
+        payload_bytes = json.dumps(clean_state).encode("utf-8")
+        res = requests.put(upload_url, headers=headers, data=payload_bytes)
         res.raise_for_status()
-        print("✅ 引擎最新物理状态已成功硬入盘至 Vercel 公共云存储。")
+        print(f"✅ 引擎最新物理状态已成功硬入盘至 Vercel 公共云存储。(size={len(payload_bytes)} bytes)")
     except Exception as e:
         print(f"❌ 状态落盘 Vercel 失败: {e}")
 
@@ -188,7 +216,7 @@ def main():
         start_date = (datetime.now() - timedelta(days=365 * 3)).strftime("%Y-%m-%d")
 
     end_date = datetime.now().strftime("%Y-%m-%d")
-    should_skip_calc = start_date >= end_date
+    should_skip_calc = start_date > end_date
 
     if should_skip_calc:
         if cloud_state:
@@ -205,42 +233,41 @@ def main():
             sys.exit(1)
 
         if panel.empty:
-            print("\n[错误] 获取到的数据面板为空，请检查网络或 API。")
-            sys.exit(1)
+            print(f"✅ 今日 ({end_date}) 的观测数据尚未就绪或为非交易日，进入直接报告模式。")
+        else:
+            rets_matrix = c_rets.to_numpy(dtype=float)
 
-        rets_matrix = c_rets.to_numpy(dtype=float)
+            # 3. 极速推进事件流
+            for i, (date, row) in enumerate(panel.iterrows()):
+                # 记录前一天的 QLD 权重，用于判断当天的买卖动作
+                if i == len(panel) - 1:
+                    prev_weight = pipeline._alloc.get_weight()
 
-        # 3. 极速推进事件流
-        for i, (date, row) in enumerate(panel.iterrows()):
-            # 记录前一天的 QLD 权重，用于判断当天的买卖动作
-            if i == len(panel) - 1:
-                prev_weight = pipeline._alloc.get_weight()
+                obs = {
+                    "vix": float(row["VIXCLS"]),
+                    "walcl": float(row["WALCL"]),
+                    "rrp": float(row["RRPONTSYD"]),
+                    "tga": float(row["WTREGEN"]),
+                    "sofr": float(row["SOFR"]),
+                    "constituent_returns": rets_matrix[i, :],
+                    "qqq_price": float(row.get("QQQ_price", 0.0)),
+                    "qqq_sma200": float(row.get("QQQ_sma200", 0.0)),
+                }
 
-            obs = {
-                "vix": float(row["VIXCLS"]),
-                "walcl": float(row["WALCL"]),
-                "rrp": float(row["RRPONTSYD"]),
-                "tga": float(row["WTREGEN"]),
-                "sofr": float(row["SOFR"]),
-                "constituent_returns": rets_matrix[i, :],
-                "qqq_price": float(row.get("QQQ_price", 0.0)),
-                "qqq_sma200": float(row.get("QQQ_sma200", 0.0)),
+                weight, log_diag = pipeline.step(timestamp=date, raw_obs=obs)
+                latest_log = log_diag
+                latest_date = date
+                latest_row = row
+
+            # 4. 绝对落盘 (Bit-Identical Checkpointing)
+            new_state = {
+                "last_timestamp": str(latest_date),
+                "engine_state": pipeline.dump_state(),
+                "latest_log": latest_log,
+                "latest_row": latest_row.to_dict() if hasattr(latest_row, "to_dict") else latest_row,
+                "prev_weight": prev_weight,
             }
-
-            weight, log_diag = pipeline.step(timestamp=date, raw_obs=obs)
-            latest_log = log_diag
-            latest_date = date
-            latest_row = row
-
-        # 4. 绝对落盘 (Bit-Identical Checkpointing)
-        new_state = {
-            "last_timestamp": str(latest_date),
-            "engine_state": pipeline.dump_state(),
-            "latest_log": latest_log,
-            "latest_row": latest_row.to_dict() if hasattr(latest_row, "to_dict") else latest_row,
-            "prev_weight": prev_weight,
-        }
-        push_state(new_state)
+            push_state(new_state)
 
     # 5. 信号解析与中文渲染
     generate_and_send_report(latest_log, latest_date, latest_row, prev_weight)
