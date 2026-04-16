@@ -489,8 +489,9 @@ def _persist_and_export_web_artifacts(
     history_json_path: str,
 ) -> None:
     import logging
+
     from src.output.web_exporter import export_history_json, export_web_snapshot
-    from src.store.db import save_signal, load_history
+    from src.store.db import load_history, save_signal
     from src.store.history_backfill import run_db_backfill
 
     logger = logging.getLogger(__name__)

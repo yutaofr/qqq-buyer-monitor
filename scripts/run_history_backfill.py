@@ -7,17 +7,15 @@ so that export_history_json() will produce a valid history.json.
 
 from __future__ import annotations
 
-import argparse
 import logging
-from pathlib import Path
-import numpy as np
+import math
+
 import pandas as pd
 
 from src.engine.v11.conductor import V11Conductor
-from src.store.db import save_signal, init_db
-from src.output.web_exporter import export_history_json
 from src.main import _build_v11_signal_result
-import math
+from src.output.web_exporter import export_history_json
+from src.store.db import init_db, save_signal
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -27,13 +25,13 @@ def backfill(macro_path: str, limit: int = 150):
 
     # Ensure DB is created
     init_db("data/signals.db")
-    
+
     full_df = pd.read_csv(macro_path, parse_dates=["observation_date"]).set_index("observation_date")
     full_df = full_df.sort_index()
 
     # Get the last 'limit' trading days
     replay_dates = full_df.index.unique()[-limit:]
-    
+
     # We will use the V11Conductor with the exact same paths as prod
     conductor = V11Conductor(macro_data_path=macro_path)
 
@@ -47,7 +45,7 @@ def backfill(macro_path: str, limit: int = 150):
         # Force valid values for critical missing columns
         if "qqq_close" not in pit_data_full.columns:
             pit_data_full["qqq_close"] = 400.0
-            
+
         # FillNa for rows that have the column but value is missing
         pit_data_full["qqq_close"] = pit_data_full["qqq_close"].fillna(400.0)
 
@@ -57,12 +55,12 @@ def backfill(macro_path: str, limit: int = 150):
 
         try:
             runtime = conductor.daily_run(pit_data_full.tail(1))
-            
+
             # Additional safety for price
             price = pit_data_full["qqq_close"].iloc[-1]
             if pd.isna(price) or not math.isfinite(price):
                 price = 400.0
-                
+
             result = _build_v11_signal_result(runtime, price=float(price))
             save_signal(result)
         except Exception as e:
