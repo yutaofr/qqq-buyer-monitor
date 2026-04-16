@@ -613,10 +613,23 @@ def test_run_v11_pipeline_uses_monday_observation_date_with_friday_price_during_
         "_resolve_runtime_observation_date",
         lambda *args, **kwargs: date(2026, 4, 13),
     )
+    from src.models import SignalResult, TargetAllocationState
     monkeypatch.setattr(
         main_module,
         "_build_v11_signal_result",
-        lambda runtime, price: type("Result", (), {"metadata": {}, "logic_trace": []})(),
+        lambda runtime, price: SignalResult(
+            date=date(2026, 4, 13),
+            price=price,
+            target_beta=0.75,
+            probabilities={"MID_CYCLE": 0.5, "BUST": 0.1, "LATE_CYCLE": 0.2, "RECOVERY": 0.2},
+            priors={},
+            entropy=0.5,
+            stable_regime="MID_CYCLE",
+            target_allocation=TargetAllocationState(),
+            logic_trace=[],
+            explanation="",
+            metadata={},
+        ),
     )
     monkeypatch.setattr(
         main_module,

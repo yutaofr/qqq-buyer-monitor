@@ -165,5 +165,6 @@ def test_kelly_multiplier_slow():
 
 def test_kelly_multiplier_base_and_fast():
     # TC-K20
-    assert kelly_fraction_to_deployment_multiplier(0.5) == 1.0
+    # V16: Both BASE and FAST return 2.0 (Leverage Unlocked)
+    assert kelly_fraction_to_deployment_multiplier(0.5) == 2.0
     assert kelly_fraction_to_deployment_multiplier(0.8) == 2.0

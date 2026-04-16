@@ -30,7 +30,13 @@ def main():
         env["V11_REFERENCE_CAPITAL"] = "100000"
         env["V11_CURRENT_NAV"] = "100000"
         prior_state_path = data_dir / "v11_prior_state.json"
+        db_path = data_dir / "signals.db"
+        macro_path = data_dir / "macro_historical_dump.csv"
+        
         env["PRIOR_STATE_PATH"] = str(prior_state_path)
+        env["PRIOR_SEED_PATH"] = "mock_seed.json"
+        env["QQQ_DB_PATH"] = str(db_path)
+        env["MACRO_DUMP_PATH"] = str(macro_path)
         env["VERCEL_BLOB_READ_WRITE_TOKEN"] = ""
         env["ALERT_WEBHOOK_URL"] = ""
 

@@ -10,7 +10,7 @@ def test_policy_init_defaults():
     assert policy.evidence == 0.0
     assert policy.kelly_scale == 0.5
     assert policy.erp_weight == 0.4
-    assert policy.regime_sharpes["MID_CYCLE"] == 1.0
+    assert policy.regime_sharpes["MID_CYCLE"] == 2.0
 
 
 def test_entropy_barrier():
