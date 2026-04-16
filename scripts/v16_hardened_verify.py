@@ -1,14 +1,14 @@
-import os
+import io
 import json
 import logging
-import tempfile
+import os
 import sys
-import io
-from pathlib import Path
+import tempfile
 
 # --- Platform Compatibility Mocks ---
 # These are necessary just to let PriorKnowledgeBase import
-import typing
+from pathlib import Path
+
 # Define the mocks before importing our code
 sys.modules["numpy"] = sys.modules["pandas"] = type('Mock', (), {'Timestamp': lambda x: type('Mock', (), {'date': lambda: type('Mock', (), {'isoformat': lambda: '2026-04-16'})})})()
 sys.modules["src.regime_topology"] = type('Mock', (), {
@@ -22,7 +22,10 @@ sys.modules["src.regime_topology"] = type('Mock', (), {
 sys.path.insert(0, os.getcwd())
 
 # Import our ACTUAL hardened components
-from src.engine.v11.core.prior_knowledge import PriorKnowledgeBase, StateCorruptionError
+from src.engine.v11.core.prior_knowledge import (  # noqa: E402
+    PriorKnowledgeBase,
+    StateCorruptionError,
+)
 
 # Configure Logging to capture the REAL Chinese logs
 log_stream = io.StringIO()
@@ -45,31 +48,31 @@ def hardened_lifecycle_loop(state_path, seed_path, current_date):
         if lock_file.exists():
             logger_main.warning("发现残留锁文件 %s。正在执行强行锁定...", lock_file.name)
         lock_file.touch(exist_ok=False)
-        
+
         try:
             # 1. Initialization (Conductor init -> PKB _load)
             try:
                 pkb = PriorKnowledgeBase(storage_path=state_path, regimes=["MID_CYCLE"])
-                
+
                 # 2. Idempotency Guard (Date + SUCCESS status)
                 last_date = pkb.last_observation_date
                 last_status = pkb.execution_state.get("lifecycle_status", "NONE")
-                
+
                 if last_date == current_date and last_status == "SUCCESS":
                     logger_main.info("Idempotency Protection Active: Date %s already status SUCCESS. Skipping.", current_date)
                     return True
 
                 # 3. Mark Run
                 pkb.update_execution_state(lifecycle_status="IN_PROGRESS")
-                
+
                 if last_date:
                     logger_main.info("检测到历史状态 (Last: %s, Status: %s)，执行暖启动。", last_date, last_status)
                 else:
                     logger_main.info("未检测到历史状态，执行冷启动。")
-                
+
                 # Simulating daily_run work...
                 # ... work ...
-                
+
                 # 4. Finalize
                 pkb.last_observation_date = current_date
                 pkb.update_execution_state(lifecycle_status="SUCCESS")
@@ -78,15 +81,15 @@ def hardened_lifecycle_loop(state_path, seed_path, current_date):
 
             except (StateCorruptionError, Exception) as exc:
                 logger_main.error("缓存损坏或不可恢复，强制执行冷启动 (Recovery Triggered: %s)", exc)
-                
+
                 # Destruction of toxic state
                 if state_path.exists():
                     state_path.unlink()
-                
+
                 # Cold Start Fallback
                 pkb = PriorKnowledgeBase(storage_path=state_path, regimes=["MID_CYCLE"])
                 pkb.update_execution_state(lifecycle_status="IN_PROGRESS")
-                
+
                 # Simulating daily_run work...
                 pkb.last_observation_date = current_date
                 pkb.update_execution_state(lifecycle_status="SUCCESS")
@@ -95,7 +98,7 @@ def hardened_lifecycle_loop(state_path, seed_path, current_date):
         finally:
             if lock_file.exists():
                 lock_file.unlink()
-                
+
     except Exception as e:
         logger_main.error("Critical Failure in Lifecycle: %s", e)
         return False
@@ -105,11 +108,11 @@ def run_chaos_monkey():
         tmp_path = Path(tmp_dir)
         state_path = tmp_path / "v11_prior_state.json"
         seed_path = tmp_path / "seed.json"
-        
+
         print("\n" + "="*80)
         print("V16 HARDENED INITIALIZATION CHAOS TEST (REAL DISK I/O)")
         print("="*80)
-        
+
         # --- Scenario A: Clean Boot ---
         print("\n>>> Scenario A: Clean Boot (First Deployment)")
         log_stream.truncate(0)
@@ -130,7 +133,7 @@ def run_chaos_monkey():
         data = json.loads(state_path.read_text())
         data["execution_state"]["lifecycle_status"] = "IN_PROGRESS"
         state_path.write_text(json.dumps(data))
-        
+
         log_stream.truncate(0)
         log_stream.seek(0)
         hardened_lifecycle_loop(state_path, seed_path, "2026-04-17") # New day
@@ -140,12 +143,12 @@ def run_chaos_monkey():
         print(">>> Scenario D: Zero-Tolerance Corruption Fallback (REAL DISK UNLINK)")
         # Write real garbage to disk
         state_path.write_text("THIS IS POISONED GARBAGE - NOT JSON", encoding="utf-8")
-        
+
         log_stream.truncate(0)
         log_stream.seek(0)
         hardened_lifecycle_loop(state_path, seed_path, "2026-04-18")
         print(log_stream.getvalue())
-        
+
         if not state_path.exists():
             print("ERROR: State path should exist (recreated after cold start)!")
         else:

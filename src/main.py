@@ -8,6 +8,7 @@ has been removed for architecture sanity.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import logging
 import os
@@ -16,9 +17,7 @@ import signal
 import sys
 import time
 import traceback
-from datetime import date, datetime, timezone
-import datetime as dt
-UTC = timezone.utc
+from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -28,6 +27,8 @@ from src.constants import ENGINE_VERSION, SENTINEL_FILE_PATH
 from src.engine.canonical_arbitration import apply_v16_topology_arbitration
 from src.models import SignalResult, TargetAllocationState
 from src.store.cloud_manager import CloudPersistenceBridge
+
+UTC = dt.UTC
 
 logging.basicConfig(
     level=logging.INFO,
@@ -806,27 +807,24 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 
     # 4. Bayesian Execution (v11) with Hardened Lifecycle
     from src.engine.v11.core.prior_knowledge import StateCorruptionError
-    
-    # 4. Bayesian Execution (v11) with Hardened Lifecycle
-    from src.engine.v11.core.prior_knowledge import StateCorruptionError
-    
+
     # Industrial Guard: Physical Lock File to prevent concurrent execution collisions
     lock_file = Path(prior_file_path).with_suffix(".lock")
     if lock_file.exists():
         logger.warning("发现残留锁文件 %s。如果是程序非正常退出，请手动删除。正在执行强行锁定...", lock_file)
-        
+
     try:
         lock_file.touch(exist_ok=False)
-        
+
         runtime_observation_date_str = pd.Timestamp(runtime_observation_date).date().isoformat()
-        
+
         try:
             conductor = V11Conductor(prior_state_path=prior_file_path)
 
             # Atomic Idempotency Guard: Date + SUCCESS status bit
             last_date = conductor.prior_book.last_observation_date
             last_status = conductor.prior_book.execution_state.get("lifecycle_status", "NONE")
-            
+
             if last_date == runtime_observation_date_str and last_status == "SUCCESS":
                 logger.info(
                     "Idempotency Protection Active: Date %s already status SUCCESS. Skipping.",
@@ -836,7 +834,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
 
             # V16.1: Mark start of run to prevent 'Dirty Reruns'
             conductor.prior_book.update_execution_state(lifecycle_status="IN_PROGRESS")
-            
+
             if last_date:
                 logger.info("检测到历史状态 (Last: %s, Status: %s)，执行暖启动。", last_date, last_status)
             else:
@@ -847,14 +845,14 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
         except (StateCorruptionError, Exception) as exc:
             # We explicitly catch StateCorruptionError to log the exact failure
             logger.error("缓存损坏或不可恢复，强制执行冷启动 (Recovery Triggered: %s)", exc)
-            
+
             # Fallback to Cold Start: Wipe corrupted state and re-materialize from seed
             if Path(prior_file_path).exists():
                 try:
                     Path(prior_file_path).unlink()
                 except Exception:
                     pass
-                    
+
             _materialize_prior_state(prior_file_path, prior_seed_path)
 
             # Industrial Circuit Breaker: If second attempt fails, enter Zombie Mode
@@ -936,7 +934,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
                 history_json_path=history_json_path,
             )
             logger.info("v11 signal persisted and cloud state synchronized.")
-            
+
             # V16.1: Seal the run as SUCCESS
             conductor.prior_book.update_execution_state(lifecycle_status="SUCCESS")
             logger.info("生命周期状态封闭为 SUCCESS。")

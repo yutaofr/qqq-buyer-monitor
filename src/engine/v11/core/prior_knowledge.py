@@ -622,7 +622,7 @@ class PriorKnowledgeBase:
         }
         serialized = json.dumps(payload, indent=2, sort_keys=True)
         temp_path = self.storage_path.with_suffix(f".{os.getpid()}.tmp")
-        
+
         # INDUSTRIAL ATOMIC WRITE PROTOCOL (Database Grade)
         try:
             # 1. Write to temporary file
@@ -630,10 +630,10 @@ class PriorKnowledgeBase:
                 f.write(serialized)
                 f.flush()
                 os.fsync(f.fileno())  # Physical flush of file data
-                
+
             # 2. Atomic rename (swaps dentry in RAM)
             os.replace(temp_path, self.storage_path)
-            
+
             # 3. Fsync PARENT DIRECTORY to ensure the entry update is persisted
             # This prevents file loss in the event of a hard reset (power failure)
             # following the directory update but before the OS flushes its journal.
@@ -643,7 +643,7 @@ class PriorKnowledgeBase:
                     os.fsync(dir_fd)
                 finally:
                     os.close(dir_fd)
-                    
+
         except Exception as e:
             logger.error("Atomic write failed for %s: %s", self.storage_path, e)
             raise

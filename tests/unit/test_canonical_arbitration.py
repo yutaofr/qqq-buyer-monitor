@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import date
 
-from src.models import SignalResult, TargetAllocationState
 from src.engine.canonical_arbitration import apply_v16_topology_arbitration
+from src.models import SignalResult, TargetAllocationState
 
 
 def _bayesian_result(*, target_beta: float = 0.59, bust: float = 0.29) -> SignalResult:

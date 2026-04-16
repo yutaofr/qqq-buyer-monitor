@@ -2,7 +2,7 @@ import io
 import logging
 import os
 import subprocess
-import time
+import time  # noqa: F401
 from collections.abc import Sequence
 from urllib.parse import urlencode
 
@@ -56,7 +56,7 @@ def fetch_fred_api(
             # 429 and 5xx are retryable via decorator if they raise exceptions
             # Raise for status to trigger the retry mechanism
             response.raise_for_status()
-        
+
         data = response.json()
         observations = data.get("observations", [])
         if not observations:

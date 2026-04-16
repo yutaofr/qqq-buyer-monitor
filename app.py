@@ -1,8 +1,9 @@
-import streamlit as st
+import os
+
 import pandas as pd
 import plotly.graph_objects as go
+import streamlit as st
 from plotly.subplots import make_subplots
-import os
 
 # --- PAGE CONFIG ---
 st.set_page_config(
@@ -109,20 +110,19 @@ st.subheader("📝 决策解析 (Telemetry-Driven Diagnostic)")
 def generate_narrative(row):
     """Generates a precise, technical Chinese narrative based on telemetry row."""
     # Use fallback if columns are missing (for backward compatibility during migration)
-    p_cp = row.get("p_cp", 0.0)
     s_t = row.get("s_t", 0.0)
     weight = row.get("official_beta", row.get("weight", 0.0))
     source = row.get("official_source", "bayesian_base")
-    
+
     # Bayesian Posterior Telemetry
     mid_prob = row.get("mid_cycle_prob", row.get("priors_MID_CYCLE", 0.8285)) # Fallback to 2026-04-16 data if missing
-    
+
     # Left Tail Radar
     tractor = row.get("v14_tractor_prob", 0.177)
     sidecar = row.get("v14_sidecar_prob", 0.097)
-    
+
     lines = []
-    
+
     # 1. Execution Authority & Topology State
     if source == "v16_topology":
         lines.append(f"V16 流动性物理拓扑判定安全，获得最终执行主权，目标 Beta 设定为 {weight:.2f}x。")
@@ -130,18 +130,18 @@ def generate_narrative(row):
         lines.append(f"V16 物理拓扑触发硬熔断（S_t={s_t:.3f}），执行主权被强制接管，防御性 Beta 设定。")
     else:
         lines.append(f"执行主权由 {source} 持有，目标 Beta 设定为 {weight:.2f}x。")
-        
+
     # 2. Bayesian Environment Telemetry
     regime_label = "MID_CYCLE" # Simplified for this audit
     lines.append(f"底层贝叶斯网络测得 {regime_label} 后验概率高达 {mid_prob*100:.2f}%，作为环境遥测指标印证了当前趋势。")
-    
+
     # 3. Risk Radar Status
     radar_msg = f"左尾风险雷达 (Tractor/Sidecar) 分别处于 {tractor*100:.1f}% 和 {sidecar*100:.1f}%"
     if tractor < 0.20 and sidecar < 0.20:
         lines.append(f"{radar_msg}，未触发二元熔断，维持巡航。")
     else:
         lines.append(f"{radar_msg}，处于预警区间，限制非核心杠杆暴露。")
-        
+
     return " ".join(lines)
 
 # Get the latest row for the narrative or use the selected date's row
@@ -153,7 +153,7 @@ st.markdown(f'<div class="narrative-box">{narrative_text}</div>', unsafe_allow_h
 # --- MAIN CHARTS ---
 st.subheader("📊 净值与回撤 (NAV & MDD)")
 
-fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
+fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
                     vertical_spacing=0.03, row_heights=[0.7, 0.3])
 
 # NAV Trace
@@ -199,10 +199,10 @@ with col_s1:
         if curr_span is not None:
             curr_span[1] = view_df.index[-1]
             spans.append(curr_span)
-        
+
         for span in spans:
             fig_s.add_vrect(x0=span[0], x1=span[1], fillcolor="#8b1111", opacity=0.1, line_width=0, layer="below", annotation_text="SMA-200 Lock" if span==spans[0] else "")
-            
+
     fig_s.update_layout(height=400, template="plotly_dark", margin=dict(t=10, b=10), yaxis_range=[0, 1.1])
     st.plotly_chart(fig_s, use_container_width=True)
 
@@ -212,7 +212,7 @@ with col_s2:
     fig_w.add_trace(go.Scatter(x=view_df.index, y=view_df["weight"], name="QLD Weight", fill='tozeroy', line=dict(color="#238636")))
     fig_w.add_trace(go.Scatter(x=view_df.index, y=view_df["vol_guard_cap"], name="Vol Guard Cap", line=dict(color="#f85149", dash='dash')))
     fig_w.set_subplots(rows=1, cols=1)
-    
+
     fig_w.update_layout(height=400, template="plotly_dark", margin=dict(t=10, b=10), yaxis_range=[0, 2.1])
     st.plotly_chart(fig_w, use_container_width=True)
 
