@@ -71,24 +71,53 @@ def fetch_state():
     return None
 
 
+def _delete_all_state_blobs(auth_headers: dict) -> int:
+    """删除 Vercel Blob 中所有以 qqq_engine_state 为前缀的旧文件，返回删除数量。"""
+    list_url = "https://blob.vercel-storage.com?prefix=qqq_engine_state&api-version=7"
+    try:
+        res = requests.get(list_url, headers=auth_headers)
+        res.raise_for_status()
+        blobs = res.json().get("blobs", [])
+        if not blobs:
+            return 0
+        # Vercel Blob 批量删除：DELETE with JSON body {"urls": [...]}
+        blob_urls = [b["url"] for b in blobs]
+        del_res = requests.delete(
+            "https://blob.vercel-storage.com?api-version=7",
+            headers={**auth_headers, "Content-Type": "application/json"},
+            data=json.dumps({"urls": blob_urls}).encode("utf-8"),
+        )
+        del_res.raise_for_status()
+        return len(blob_urls)
+    except Exception as e:
+        print(f"[警告] 清理旧 Blob 文件失败（不影响本次上传）: {e}")
+        return 0
+
+
 def push_state(state_dict):
     if not VERCEL_TOKEN:
         print("[警告] 环境变量无 VERCEL_BLOB_READ_WRITE_TOKEN，跳过状态落盘。")
         return
+
+    auth_headers = {"Authorization": f"Bearer {VERCEL_TOKEN}"}
+
+    # Step 1: 先删除所有历史快照，防止文件无限堆积
+    deleted = _delete_all_state_blobs(auth_headers)
+    if deleted > 0:
+        print(f"🗑️ 已清理 {deleted} 个历史 Blob 文件。")
+
+    # Step 2: 上传新快照
     # Vercel Blob REST API: PUT /[filename]?api-version=7
     # Body must be raw bytes; Content-Type must be set explicitly.
-    # refs: https://vercel.com/docs/storage/vercel-blob/rest-api
     upload_url = f"{STATE_URL}?api-version=7"
-    headers = {
-        "Authorization": f"Bearer {VERCEL_TOKEN}",
+    upload_headers = {
+        **auth_headers,
         "Content-Type": "application/json",
-        "x-vercel-blob-overwrite": "1",
     }
     try:
-        # 递归清理 numpy 类型以确保 JSON 兼容性
         clean_state = sanitize_for_json(state_dict)
         payload_bytes = json.dumps(clean_state).encode("utf-8")
-        res = requests.put(upload_url, headers=headers, data=payload_bytes)
+        res = requests.put(upload_url, headers=upload_headers, data=payload_bytes)
         res.raise_for_status()
         print(f"✅ 引擎最新物理状态已成功硬入盘至 Vercel 公共云存储。(size={len(payload_bytes)} bytes)")
     except Exception as e:
