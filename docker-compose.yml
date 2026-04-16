@@ -168,3 +168,18 @@ services:
     command: >
       python scripts/kelly_parity_backtest.py
       --output-dir artifacts/kelly_parity
+
+  dashboard:
+    image: qqq-monitor:py313
+    build: .
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - .env:/app/.env
+    env_file:
+      - .env
+    ports:
+      - "8501:8501"
+    environment:
+      - PYTHONPATH=/app
+    command: streamlit run app.py --server.address 0.0.0.0

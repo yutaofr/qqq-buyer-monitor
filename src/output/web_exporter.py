@@ -47,6 +47,57 @@ def _discretize_allocation(beta: float) -> str:
     return "Beta >1.05x (進攻/槓桿)"
 
 
+def update_telemetry_csv(result: SignalResult, csv_path: str | Path = "telemetry_data.csv") -> bool:
+    """Updates or appends the SignalResult to the telemetry CSV for the dashboard."""
+    try:
+        path = Path(csv_path)
+        metadata = result.metadata or {}
+        canonical = metadata.get("canonical_decision", {})
+        v16 = canonical.get("v16_topology", {})
+
+        row_data = {
+            "date": result.date.isoformat(),
+            "state": "active",
+            "weight": result.target_beta,
+            "p_cp": v16.get("p_cp", 0.0),
+            "s_t": v16.get("s_t", 0.0),
+            "vol_guard_cap": v16.get("vol_guard_cap", 2.0),
+            "circuit_breaker": v16.get("circuit_breaker", False),
+            "momentum_lockout": v16.get("momentum_lockout", False),
+            "qld": result.target_allocation.target_qld_pct,
+            "qqq": result.target_allocation.target_qqq_pct,
+            "cash": result.target_allocation.target_cash_pct,
+            "NAV": metadata.get("NAV", 1.0),  # Placeholder if not provided
+            "v14_tractor_prob": metadata.get("v14_baseline_prob", 0.0),
+            "v14_sidecar_prob": metadata.get("v14_sidecar_prob", 0.0),
+            "official_beta": canonical.get("official_target_beta", result.target_beta),
+            "official_source": canonical.get("source", "unknown"),
+            "mid_cycle_prob": result.probabilities.get("MID_CYCLE", 0.0),
+            "late_cycle_prob": result.probabilities.get("LATE_CYCLE", 0.0),
+            "bust_prob": result.probabilities.get("BUST", 0.0),
+            "recovery_prob": result.probabilities.get("RECOVERY", 0.0),
+        }
+
+        if path.exists():
+            df = pd.read_csv(path)
+            # Ensure date column is string for comparison
+            date_col = "date" if "date" in df.columns else df.columns[0]
+            df[date_col] = pd.to_datetime(df[date_col]).dt.date.astype(str)
+            # Filter matches
+            df = df[df[date_col] != row_data["date"]]
+            new_row = pd.DataFrame([row_data])
+            updated = pd.concat([df, new_row], ignore_index=True)
+            updated.to_csv(path, index=False)
+        else:
+            pd.DataFrame([row_data]).to_csv(path, index=False)
+        
+        logger.info("Telemetry CSV updated for date %s", row_data["date"])
+        return True
+    except Exception as exc:
+        logger.error("Telemetry CSV update failed: %s", exc)
+        return False
+
+
 class MarketCursor:
     """Handles market calendar aware calculations."""
 
@@ -287,6 +338,9 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
+
+        # Update telemetry CSV for dashboard
+        update_telemetry_csv(result)
 
         # Trigger history export if using default output path
         if not output_path:

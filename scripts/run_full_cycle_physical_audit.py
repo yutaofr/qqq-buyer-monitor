@@ -120,5 +120,20 @@ def main():
         logger.info(f"QQQ 2022 Drop:         {(qqq_2022.iloc[-1] - 1.0)*100:.2f}% (MDD: {((qqq_2022 - qqq_2022.cummax())/qqq_2022.cummax()).min()*100:.2f}%)")
         logger.info(f"Strategy 2022 Drop:    {(strat_2022.iloc[-1] - 1.0)*100:.2f}% (MDD: {((strat_2022 - strat_2022.cummax())/strat_2022.cummax()).min()*100:.2f}%)")
 
+    # 4. Telemetry Export for Dashboard
+    logger.info("\n========== TELEMETRY EXPORT ==========")
+    export_df = log_df.copy()
+    export_df["NAV"] = nav_se
+    export_df["QQQ_Hold"] = (1.0 + qqq_rets).cumprod().loc[nav_se.index]
+    export_df["QLD_Hold"] = (1.0 + qld_rets).cumprod().loc[nav_se.index]
+    
+    # Normalize benchmarks to start at 1.0 same as Strategy NAV
+    export_df["QQQ_Hold"] = export_df["QQQ_Hold"] / export_df["QQQ_Hold"].iloc[0]
+    export_df["QLD_Hold"] = export_df["QLD_Hold"] / export_df["QLD_Hold"].iloc[0]
+
+    output_path = "telemetry_data.csv"
+    export_df.to_csv(output_path)
+    logger.info(f"Exported telemetry data to {output_path} ({len(export_df)} rows)")
+
 if __name__ == "__main__":
     main()
