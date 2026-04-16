@@ -129,34 +129,46 @@ class TestINV4_PriorLock:
 
 
 class TestINV6_KappaLinearGrowth:
-    """INV-6: kappa[r] == kappa_0 + r after >= r update steps.
+    """INV-6: kappa[r] follows forgetting-factor decay formula after >= r update steps.
 
-    kappa is a pure run-length counter — it grows by 1 per observation
-    absorbed, regardless of x_t values. This makes it the definitive
-    diagnostic for off-by-one errors in the suff_stats shift.
+    With forgetting_lambda=0.98, kappa starts from kappa_0 (fresh prior) and evolves:
+        kappa after 1 absorption = λ * kappa_0 + 1
+        kappa after r absorptions = λ^r * kappa_0 + (1-λ^r)/(1-λ)
 
-    Correct:   [5, 6, 7, 8, 9]  for kappa_0=5 after 5 steps
-    Corrupted: [6, 6, 7, 8, 9]  — r=0 was overwritten (shift error)
+    r=0 is always reset to the raw prior (INV-4), so kappa[0] == kappa_0.
+    r=1..4 carry increasing absorption counts.
+
+    Correct pattern for kappa_0=5, λ=0.98, r=0..4:
+        r=0 → 5.0  (raw prior, always reset)
+        r=1 → 0.98*5 + 1 = 5.9
+        r=2 → 0.98*5.9 + 1 = 6.782
+        r=3 → 0.98*6.782 + 1 = 7.646
+        r=4 → 0.98*7.646 + 1 = 8.493
     """
 
     def test_kappa_invariant_after_5_steps(self, config, engine, calm_obs):
         kappa_0 = config["nig_priors"]["ed_accel"]["kappa_0"]  # 5.0
+        lam = config["forgetting"]["lambda"]
 
         for x_t in calm_obs:
             engine.update(x_t, lambda_macro=0.01)
 
         state = engine.get_state()
-        # After 5 steps: kappa[r] == kappa_0 + r for r = 0..4
-        for r in range(5):
-            expected_kappa = kappa_0 + r
+        # r=0: always raw prior (INV-4)
+        np.testing.assert_allclose(
+            state.suff_stats[0, 0, 1], kappa_0, atol=1e-12,
+            err_msg="INV-6: kappa[0] must always equal kappa_0 (INV-4)",
+        )
+        # r=1..4: follows decay formula
+        for r in range(1, 5):
+            expected_kappa = lam**r * kappa_0 + (1.0 - lam**r) / (1.0 - lam)
             np.testing.assert_allclose(
-                state.suff_stats[r, 0, 1],  # dim=0 (ed_accel), param=kappa
+                state.suff_stats[r, 0, 1],
                 expected_kappa,
-                atol=1e-12,
+                atol=1e-10,
                 err_msg=(
                     f"INV-6: kappa[{r}]={state.suff_stats[r, 0, 1]:.6f} "
-                    f"!= expected {expected_kappa}. "
-                    f"Correct: {list(range(int(kappa_0), int(kappa_0)+5))}  "
+                    f"!= decay-formula expected {expected_kappa:.6f}. "
                     f"Got: {[state.suff_stats[i, 0, 1] for i in range(5)]}"
                 ),
             )
