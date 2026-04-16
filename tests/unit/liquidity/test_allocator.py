@@ -104,6 +104,35 @@ class TestAllocatorStressExit:
                 "Hold period should block exit before 63 days"
             )
 
+    def test_regime_severity_exits_when_p_cp_is_low(self, config):
+        """Water-level stress must de-risk even after p_cp spike has faded."""
+        config["regime_severity"]["enabled"] = True
+        config = {
+            **config,
+            "regime_severity": {
+                **config["regime_severity"],
+                "alpha_up": 0.50,
+                "alpha_down": 0.08,
+                "combine": "max",
+            },
+        }
+        allocator = Allocator(config)
+
+        for _ in range(100):
+            allocator.step(p_cp_raw=0.005, lambda_macro=0.002, regime_severity_raw=0.0)
+        assert allocator.get_state()["in_qld"] is True
+
+        for _ in range(10):
+            weight, log = allocator.step(
+                p_cp_raw=0.005,
+                lambda_macro=0.002,
+                regime_severity_raw=0.95,
+            )
+
+        assert log["s_level_t"] > log["s_cp_t"]
+        assert log["s_t"] == log["s_level_t"]
+        assert weight == 0.0
+
 
 class TestAllocatorCircuitBreaker:
     """Extreme stress overrides hold period."""
@@ -155,7 +184,10 @@ class TestAllocatorLog:
     def test_log_has_required_keys(self, allocator):
         _, log = allocator.step(p_cp_raw=0.01, lambda_macro=0.002)
         required_keys = {"s_t", "signal", "weight", "days_held", "circuit_breaker",
-                         "l_target", "l_actual", "l_final", "qld", "qqq", "cash"}
+                         "l_target", "l_actual", "l_final", "qld", "qqq", "cash",
+                         "s_cp_t", "s_level_t", "regime_severity_raw",
+                         "regime_severity_norm", "regime_severity_floor",
+                         "regime_severity_ceil"}
         missing = required_keys - set(log.keys())
         assert not missing, f"Log missing keys: {missing}"
 

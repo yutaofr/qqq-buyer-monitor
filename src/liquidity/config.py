@@ -14,7 +14,8 @@ def load_config() -> dict:
 
     Returns:
         dict with top-level keys: hazard, nig_priors, aema, deadband,
-        hold_period, mapping, execution, macro_hazard.
+        hold_period, mapping, execution, price_loader, ed_signal, proxy_universe,
+        macro_hazard, overdrive, forgetting, regime_severity.
     """
     path = Path(__file__).parent / "resources" / "bocpd_params.json"
     with open(path) as f:

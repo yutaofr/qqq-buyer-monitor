@@ -56,6 +56,10 @@ def load_fred_series(
             f"Check FRED_API_KEY in .env or network connectivity."
         )
 
+    raw = raw.copy()
+    raw["observation_date"] = pd.to_datetime(raw["observation_date"], errors="coerce")
+    raw = raw.dropna(subset=["observation_date"])
+
     filtered = raw[
         (raw["observation_date"] >= pd.Timestamp(start_date))
         & (raw["observation_date"] <= pd.Timestamp(end_date))

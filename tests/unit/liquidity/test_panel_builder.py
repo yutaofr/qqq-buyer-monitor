@@ -51,6 +51,18 @@ def _make_constituent_rets(start: str, end: str, top_n: int) -> pd.DataFrame:
     )
 
 
+def _make_constituent_diag(start: str, end: str, top_n: int) -> dict:
+    idx = pd.bdate_range(start, end)
+    valid = pd.Series(top_n, index=idx, name="ED_VALID_NAMES", dtype=int)
+    return {
+        "requested_tickers": [f"STOCK_{i}" for i in range(top_n)],
+        "loaded_tickers": [f"STOCK_{i}" for i in range(top_n)],
+        "failed_tickers": [],
+        "available_names": pd.Series(top_n, index=idx, name="AVAILABLE_NAMES", dtype=int),
+        "valid_names": valid,
+    }
+
+
 def _make_trading_calendar(start: str, end: str) -> pd.DatetimeIndex:
     """Mock trading calendar: simple bday range."""
     return pd.bdate_range(start, end)
@@ -80,12 +92,15 @@ def _mock_all_io():
         ),
         patch(
             "src.liquidity.data.panel_builder.load_ohlc",
-            side_effect=lambda tickers, s, e: _make_ohlc(tickers, "2006-01-01", e),
+            side_effect=lambda tickers, s, e, **kwargs: _make_ohlc(
+                tickers, "2006-01-01", e
+            ),
         ),
         patch(
-            "src.liquidity.data.panel_builder.load_constituent_returns",
-            side_effect=lambda s, e: _make_constituent_rets(
-                "2006-01-01", e, 50
+            "src.liquidity.data.panel_builder.load_constituent_returns_with_diagnostics",
+            side_effect=lambda s, e, **kwargs: (
+                _make_constituent_rets("2006-01-01", e, kwargs.get("top_n", 50)),
+                _make_constituent_diag("2006-01-01", e, kwargs.get("top_n", 50)),
             ),
         ),
     ):
@@ -107,7 +122,8 @@ class TestBuildPanelStructure:
 
     def test_has_required_columns(self):
         required = {"QQQ_ret", "QLD_ret", "ED_ACCEL", "SPREAD_ANOMALY",
-                     "FISHER_RHO", "LAMBDA_MACRO"}
+                     "FISHER_RHO", "LAMBDA_MACRO", "ED_VALID_NAMES",
+                     "ED_IS_DEGRADED", "FISHER_IS_DEGRADED"}
         missing = required - set(self.panel.columns)
         assert not missing, f"Missing columns: {missing}"
 
@@ -163,6 +179,10 @@ class TestBuildPanelValues:
     def test_ed_accel_finite(self):
         assert np.all(np.isfinite(self.panel["ED_ACCEL"].values))
 
+    def test_degraded_flags_are_boolean(self):
+        assert self.panel["ED_IS_DEGRADED"].dtype == bool
+        assert self.panel["FISHER_IS_DEGRADED"].dtype == bool
+
 
 class TestPaddingMechanism:
     """Verify that padding protects the formal backtest interval."""
@@ -188,3 +208,75 @@ class TestPaddingMechanism:
         # Panel should span ~1.5 years of trading days
         expected_min_rows = 250  # ~1 year minimum
         assert len(panel) > expected_min_rows
+
+
+class TestDynamicUniverseParameters:
+    def test_panel_builder_uses_proxy_universe_and_ed_filters(self, _mock_all_io):
+        from src.liquidity.data.panel_builder import build_pit_aligned_panel
+
+        with (
+            patch(
+                "src.liquidity.data.panel_builder.load_ohlc",
+                return_value=_make_ohlc(["QQQ", "QLD", "TLT"], "2006-01-01", "2010-06-30"),
+            ) as ohlc_mock,
+            patch(
+                "src.liquidity.data.panel_builder.load_constituent_returns_with_diagnostics",
+                return_value=(
+                    _make_constituent_rets("2006-01-01", "2010-06-30", 50),
+                    _make_constituent_diag("2006-01-01", "2010-06-30", 50),
+                ),
+            ) as load_mock,
+            patch(
+                "src.liquidity.data.panel_builder.compute_ed",
+                return_value=pd.Series(
+                    np.linspace(0.4, 0.8, len(pd.bdate_range("2003-01-01", "2010-12-31"))),
+                    index=pd.bdate_range("2003-01-01", "2010-12-31"),
+                    name="ED",
+                ),
+            ) as ed_mock,
+        ):
+            build_pit_aligned_panel("2009-01-02", "2010-06-30")
+
+        _, ohlc_kwargs = ohlc_mock.call_args
+        assert ohlc_kwargs["chunk_size"] == 5
+        assert ohlc_kwargs["max_retries"] == 3
+        assert ohlc_kwargs["base_delay_seconds"] == 1.0
+        assert ohlc_kwargs["jitter_seconds"] == 0.25
+
+        _, load_kwargs = load_mock.call_args
+        assert load_kwargs["top_n"] == 50
+        assert load_kwargs["min_listing_days"] == 63
+        assert load_kwargs["liquidity_lookback"] == 60
+        assert load_kwargs["chunk_size"] == 5
+        assert load_kwargs["max_retries"] == 3
+        assert load_kwargs["base_delay_seconds"] == 1.0
+        assert load_kwargs["jitter_seconds"] == 0.25
+
+        _, ed_kwargs = ed_mock.call_args
+        assert ed_kwargs["window"] == 60
+        assert ed_kwargs["min_coverage"] == 0.9
+        assert ed_kwargs["min_names"] == 20
+
+    def test_panel_builder_marks_degraded_rows_when_valid_names_too_low(self, _mock_all_io):
+        from src.liquidity.data.panel_builder import build_pit_aligned_panel
+
+        idx = pd.bdate_range("2006-01-01", "2010-06-30")
+        valid_names = pd.Series(25, index=idx, name="ED_VALID_NAMES", dtype=int)
+        valid_names.loc["2009-01-02":"2009-02-02"] = 10
+
+        with patch(
+            "src.liquidity.data.panel_builder.load_constituent_returns_with_diagnostics",
+            return_value=(
+                _make_constituent_rets("2006-01-01", "2010-06-30", 50),
+                {
+                    **_make_constituent_diag("2006-01-01", "2010-06-30", 50),
+                    "valid_names": valid_names,
+                    "failed_tickers": ["BAD1"],
+                },
+            ),
+        ):
+            panel = build_pit_aligned_panel("2009-01-02", "2010-06-30")
+
+        assert panel["ED_IS_DEGRADED"].any()
+        assert panel["FISHER_IS_DEGRADED"].any()
+        assert panel.attrs["constituent_loader"]["failed_tickers"] == ["BAD1"]

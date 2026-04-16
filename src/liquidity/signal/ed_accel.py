@@ -14,7 +14,12 @@ import numpy as np
 import pandas as pd
 
 
-def compute_ed(returns: pd.DataFrame, window: int = 60) -> pd.Series:
+def compute_ed(
+    returns: pd.DataFrame,
+    window: int = 60,
+    min_coverage: float = 0.0,
+    min_names: int = 1,
+) -> pd.Series:
     """Compute rolling Eigenvalue Dispersion (ED).
 
     ED = max(eigenvalue) / sum(eigenvalues)
@@ -26,16 +31,38 @@ def compute_ed(returns: pd.DataFrame, window: int = 60) -> pd.Series:
     Args:
         returns: DataFrame of constituent daily returns. columns = tickers.
         window:  Rolling window in trading days. Default 60.
+        min_coverage: Minimum non-NaN ratio required for a stock to stay in
+            the current rolling window. Default 0.0 preserves the baseline.
+        min_names: Minimum surviving stock count required to compute ED for
+            the current window. If fewer remain, ED = NaN. Default 1.
 
     Returns:
         pd.Series with same index as returns. First (window-1) values are NaN.
         Values in (0, 1]. NaN returned for degenerate (zero-variance) windows.
     """
-    def _ed_one_window(mat: np.ndarray) -> float:
-        """Compute ED for a single window matrix (shape: window × n_stocks)."""
-        # Remove all-zero columns to handle degenerate inputs
+    if not (0.0 <= min_coverage <= 1.0):
+        raise ValueError("min_coverage must lie in [0, 1].")
+    if min_names < 1:
+        raise ValueError("min_names must be >= 1.")
+
+    def _ed_one_window(window_frame: pd.DataFrame) -> float:
+        """Compute ED for one rolling window after local universe filtering."""
+        coverage = window_frame.notna().mean(axis=0)
+        surviving_cols = coverage[coverage >= min_coverage].index
+        if len(surviving_cols) < min_names:
+            return np.nan
+
+        clean_frame = window_frame.loc[:, surviving_cols].dropna(axis=0, how="any")
+        if clean_frame.shape[0] < 2:
+            return np.nan
+
+        mat = clean_frame.to_numpy(dtype=float)
+
+        # Remove zero-variance columns after row-level NaN cleanup.
         col_std = mat.std(axis=0)
         mat = mat[:, col_std > 0]
+        if mat.shape[1] < min_names:
+            return np.nan
         if mat.shape[1] == 0:
             return np.nan
         cov = np.cov(mat.T)
@@ -49,13 +76,12 @@ def compute_ed(returns: pd.DataFrame, window: int = 60) -> pd.Series:
             return np.nan
         return float(eigenvalues.max() / total)
 
-    values = returns.values  # (T, n_stocks)
     n = len(returns)
     ed_vals = np.full(n, np.nan)
 
     for i in range(window - 1, n):
-        window_data = values[i - window + 1 : i + 1]
-        ed_vals[i] = _ed_one_window(window_data)
+        window_frame = returns.iloc[i - window + 1 : i + 1]
+        ed_vals[i] = _ed_one_window(window_frame)
 
     return pd.Series(ed_vals, index=returns.index, name="ED")
 
