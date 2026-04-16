@@ -90,7 +90,7 @@ def update_telemetry_csv(result: SignalResult, csv_path: str | Path = "telemetry
             updated.to_csv(path, index=False)
         else:
             pd.DataFrame([row_data]).to_csv(path, index=False)
-        
+
         logger.info("Telemetry CSV updated for date %s", row_data["date"])
         return True
     except Exception as exc:

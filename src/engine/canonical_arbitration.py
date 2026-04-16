@@ -179,7 +179,7 @@ def apply_v16_topology_arbitration(
     bayesian_beta = min(result.target_beta, vol_cap) if is_fresh else result.target_beta
     source = "bayesian_base" if bayesian_beta == result.target_beta else "bayesian_base_vol_capped"
     reason = "V16 topology was stale, non-bullish, or blocked by Bayesian BUST dominance." if source == "bayesian_base" else "Bayesian base clamped by V16 Vol Guard."
-    
+
     if bayesian_beta > 1.0:
         b_qld = bayesian_beta - 1.0
         b_qqq = 2.0 - bayesian_beta

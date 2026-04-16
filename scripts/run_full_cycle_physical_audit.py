@@ -126,7 +126,7 @@ def main():
     export_df["NAV"] = nav_se
     export_df["QQQ_Hold"] = (1.0 + qqq_rets).cumprod().loc[nav_se.index]
     export_df["QLD_Hold"] = (1.0 + qld_rets).cumprod().loc[nav_se.index]
-    
+
     # Normalize benchmarks to start at 1.0 same as Strategy NAV
     export_df["QQQ_Hold"] = export_df["QQQ_Hold"] / export_df["QQQ_Hold"].iloc[0]
     export_df["QLD_Hold"] = export_df["QLD_Hold"] / export_df["QLD_Hold"].iloc[0]

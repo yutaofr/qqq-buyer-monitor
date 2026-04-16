@@ -545,8 +545,17 @@ def test_upsert_v11_macro_feedback_preserves_friday_row_for_monday_premarket(tmp
 
 
 def test_run_v11_pipeline_uses_monday_observation_date_with_friday_price_during_premarket(
-    monkeypatch,
+    monkeypatch, tmp_path
 ):
+    """
+    V16.2 REGRESSION GUARD: Ensure that on Monday pre-market, we use Monday as the
+    observation date but Friday as the last closed price.
+    """
+    mock_prior_path = tmp_path / "v13_6_ex_hydrated_prior.json"
+    mock_prior_path.write_text("{}")  # Valid empty JSON for cold start
+    monkeypatch.setenv("PRIOR_STATE_PATH", str(mock_prior_path))
+
+    # We need to mock several things to avoid hitting live network or missing files
     captured = {}
 
     class _CloudBridge:

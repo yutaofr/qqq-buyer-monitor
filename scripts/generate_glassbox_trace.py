@@ -1,6 +1,7 @@
-import pandas as pd
 import json
 from datetime import datetime
+
+import pandas as pd
 
 # Input paths
 EXEC_TRACE_PATH = "artifacts/v14_mainline_audit/execution_trace.csv"
@@ -27,14 +28,14 @@ def main():
     # Left join V14 probabilities and targets that stopped on March 31
     df = df.merge(df_exec[['date', 'target_bucket', 'deployment_state', 'target_beta', 'raw_target_beta', 'lock_active', 'entropy']], on='date', how='left')
     df = df.merge(df_prob[['date', 'prob_MID_CYCLE', 'prob_LATE_CYCLE', 'prob_BUST', 'prob_RECOVERY']], on='date', how='left')
-    
+
     # Forward fill the gap from March 31 to April 15
     cols_to_ffill = [
-        'target_bucket', 'deployment_state', 'target_beta', 'raw_target_beta', 
+        'target_bucket', 'deployment_state', 'target_beta', 'raw_target_beta',
         'lock_active', 'entropy', 'prob_MID_CYCLE', 'prob_LATE_CYCLE', 'prob_BUST', 'prob_RECOVERY'
     ]
     df[cols_to_ffill] = df[cols_to_ffill].ffill()
-    
+
     # Filter 2020+
     df = df[df['date'] >= '2020-01-01'].sort_values('date')
 
@@ -42,7 +43,7 @@ def main():
 
     # Extract JSON nodes
     trace_data = []
-    
+
     for _, row in df.iterrows():
         # pb format: [MID, LATE, BUST, RECOVERY]
         pb = [
@@ -51,7 +52,7 @@ def main():
             round(float(row['prob_BUST']), 4),
             round(float(row['prob_RECOVERY']), 4)
         ]
-        
+
         trace_data.append({
             "d": row['date'],
             "c": round(float(row['qqq_price']), 2),

@@ -1,8 +1,7 @@
 import json
 import logging
 import os
-from datetime import datetime, timezone
-UTC = timezone.utc
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -10,7 +9,6 @@ import pandas as pd
 from sklearn.naive_bayes import GaussianNB
 
 from src.constants import MIN_BURN_IN_DAYS
-
 from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
 from src.engine.v11.core.data_quality import (
     assess_data_quality,
@@ -50,6 +48,7 @@ from src.regime_topology import (
     merge_regime_weights,
 )
 
+UTC = UTC
 logger = logging.getLogger(__name__)
 
 
@@ -286,7 +285,7 @@ class V11Conductor:
             return pd.DataFrame()
 
         price_df = pd.read_csv(path, index_col=0)
-        
+
         # V16.2 INDUSTRIAL HARDENING: Enforce Real History Volume
         if len(price_df) < MIN_BURN_IN_DAYS:
             raise RuntimeError(

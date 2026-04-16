@@ -21,25 +21,26 @@ def exponential_backoff(
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> T:
             import random
-            
+
             attempt = 0
+            call_retries = kwargs.pop("retries", retries)
             while True:
                 try:
                     return func(*args, **kwargs)
                 except retry_on as exc:
                     attempt += 1
-                    if attempt > retries:
+                    if attempt > call_retries:
                         logger.error(
-                            f"Final attempt failed for {func.__name__} after {retries} retries: {exc}"
+                            f"Final attempt failed for {func.__name__} after {call_retries} retries: {exc}"
                         )
                         raise
-                    
+
                     delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
                     if jitter:
                         delay *= (0.5 + random.random())
-                    
+
                     logger.warning(
-                        f"Retrying {func.__name__} in {delay:.2f}s (attempt {attempt}/{retries}) due to: {exc}"
+                        f"Retrying {func.__name__} in {delay:.2f}s (attempt {attempt}/{call_retries}) due to: {exc}"
                     )
                     time.sleep(delay)
         return wrapper
