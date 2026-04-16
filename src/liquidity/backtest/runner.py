@@ -102,6 +102,7 @@ def run_backtest(
             p_cp,
             lambda_macro,
             regime_severity_raw=regime_severity,
+            regime_sigma2_spread=regime_diag.get("regime_sigma2_spread"),
         )
 
         # Step 4: NAV update with SRD 6.2 dynamic slippage
@@ -127,6 +128,7 @@ def run_backtest(
             "regime_severity_norm": alloc_log["regime_severity_norm"],
             "regime_severity_floor": alloc_log["regime_severity_floor"],
             "regime_severity_ceil": alloc_log["regime_severity_ceil"],
+            "vol_guard_cap": alloc_log.get("vol_guard_cap", 1.0),
             "dominant_run_length": regime_diag["dominant_run_length"],
             "dominant_run_prob": regime_diag["dominant_run_prob"],
             "regime_sigma2_ed": regime_diag["regime_sigma2_ed"],
