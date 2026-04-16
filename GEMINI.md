@@ -35,6 +35,7 @@ To prevent system degradation ("Spaghetti Code") and enforce proper engineering 
 - **TDD-First**: All bug fixes and features must begin with a targeted failing test. Do not declare a task done without regression checks.
 - **Confined Modifications**: Stick strictly to the assigned file scopes. Do not restructure the entire codebase or modify unassigned modules.
 - **Anti-Spaghetti measures**: Avoid God-classes, keep functions concise (under 200 lines if possible), and isolate side effects (e.g., IO, state persistence) from core deterministic logic (`execution_pipeline`, `bayesian_inference`). Never "Fix Forward" a foundational bug by adding layered `if/else` hacks.
+- **Environment & Credentials**: All FRED API keys required for backtesting and data retrieval MUST be sourced from the `.env` file. Do not hardcode keys or use external secrets during local development or backtests.
 
 ---
 © 2026 QQQ Entropy AI Governance.
