@@ -74,10 +74,13 @@ def update_nig(
     beta_new  = beta_decayed + 0.5 * kappa_decayed * (x - mu_old) ** 2 / kappa_new
 
     new_stats = np.empty_like(old_stats)
-    new_stats[:, :, 0] = mu_new
-    new_stats[:, :, 1] = kappa_new
-    new_stats[:, :, 2] = alpha_new
-    new_stats[:, :, 3] = beta_new
+    nan_mask = np.isnan(x_t)
+    
+    # Bayesian NaN Marginalization: Skip update for missing dimensions
+    new_stats[:, :, 0] = np.where(nan_mask, mu_old, mu_new)
+    new_stats[:, :, 1] = np.where(nan_mask, kappa_old, kappa_new)
+    new_stats[:, :, 2] = np.where(nan_mask, alpha_old, alpha_new)
+    new_stats[:, :, 3] = np.where(nan_mask, beta_old, beta_new)
 
     return new_stats
 
@@ -130,6 +133,10 @@ def predictive_logpdf(
     log_kernel = -((nu + 1.0) / 2.0) * np.log1p(deviation_sq / (nu * sigma2))
 
     log_components = log_normalizer + log_kernel            # (N, D)
+    
+    # Bayesian NaN Marginalization: Missing dims contribute 0 to log-density (marginalized out)
+    log_components[:, np.isnan(x_t)] = 0.0
+    
     # Sum over D dimensions (conditional independence)
     log_dens = np.sum(log_components, axis=1)               # (N,)
 

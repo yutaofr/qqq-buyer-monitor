@@ -26,6 +26,8 @@ SRD reference: Architecture extension after Story 6.2 (Forgetting Factor).
 from __future__ import annotations
 
 from collections import deque
+import base64
+import io
 
 import numpy as np
 
@@ -62,6 +64,8 @@ class RegimeVolatilityFloor:
         stress_max_leverage: float = 0.50,
         min_obs:             int   = 63,
         floor_alpha_down:    float = 0.02,
+        abs_floor_variance:  float = 0.0,
+        calm_max_leverage:   float = 2.0,
     ) -> None:
         if not (0.0 < quantile < 1.0):
             raise ValueError("quantile must be in (0, 1).")
@@ -69,17 +73,21 @@ class RegimeVolatilityFloor:
             raise ValueError("stress_max_leverage must be in [0, 1].")
         if not (0.0 < floor_alpha_down <= 1.0):
             raise ValueError("floor_alpha_down must be in (0, 1].")
+        if abs_floor_variance < 0.0:
+            raise ValueError("abs_floor_variance must be non-negative.")
 
         self._buf              = deque(maxlen=window)
         self._quantile         = quantile
         self._stress_max_lev   = stress_max_leverage
         self._min_obs          = min_obs
         self._floor_alpha_down = floor_alpha_down
+        self._abs_floor_variance = abs_floor_variance
+        self._calm_max_lev     = calm_max_leverage
 
         # Smoothed cap value (starts permissive)
-        self._smoothed_cap: float = 1.0
+        self._smoothed_cap: float = self._calm_max_lev
         # Raw (unsmoothed) cap at the last call
-        self._raw_cap: float = 1.0
+        self._raw_cap: float = self._calm_max_lev
         # Last threshold value
         self._threshold: float = float("inf")
 
@@ -96,18 +104,21 @@ class RegimeVolatilityFloor:
             sigma2: NIG predictive variance for the spread dimension.
 
         Returns:
-            A leverage cap in [``stress_max_leverage``, 1.0].
+            A leverage cap in [``stress_max_leverage``, ``calm_max_leverage``].
         """
         self._buf.append(float(sigma2))
 
         # Not enough data yet → permissive
         if len(self._buf) < self._min_obs:
-            self._raw_cap   = 1.0
+            self._raw_cap   = self._calm_max_lev
             self._threshold = float("inf")
         else:
-            self._threshold = float(np.quantile(list(self._buf), self._quantile))
+            self._threshold = max(
+                float(np.quantile(list(self._buf), self._quantile)),
+                self._abs_floor_variance
+            )
             self._raw_cap   = (
-                self._stress_max_lev if sigma2 > self._threshold else 1.0
+                self._stress_max_lev if sigma2 > self._threshold else self._calm_max_lev
             )
 
         # Asymmetric smoothing: snap tight immediately, release slowly
@@ -121,9 +132,29 @@ class RegimeVolatilityFloor:
                 + (1.0 - self._floor_alpha_down) * self._smoothed_cap
             )
 
-        # Never go above 1.0
-        self._smoothed_cap = min(self._smoothed_cap, 1.0)
+        # Never go above calm_max_leverage
+        self._smoothed_cap = min(self._smoothed_cap, self._calm_max_lev)
         return self._smoothed_cap
+
+    def dump_state(self) -> dict:
+        buf = io.BytesIO()
+        np.savez_compressed(buf, buf_arr=np.array(self._buf, dtype=np.float64) if len(self._buf) > 0 else np.empty(0))
+        return {
+            "b64_buf": base64.b64encode(buf.getvalue()).decode("utf-8"),
+            "smoothed_cap": self._smoothed_cap,
+            "raw_cap": self._raw_cap,
+            "threshold": self._threshold,
+        }
+        
+    def load_state(self, state_dict: dict) -> None:
+        self._smoothed_cap = state_dict["smoothed_cap"]
+        self._raw_cap = state_dict["raw_cap"]
+        self._threshold = state_dict["threshold"]
+        buf = io.BytesIO(base64.b64decode(state_dict["b64_buf"]))
+        with np.load(buf, allow_pickle=False) as data:
+            self._buf.clear()
+            if len(data["buf_arr"]) > 0:
+                self._buf.extend(data["buf_arr"].tolist())
 
     @property
     def is_active(self) -> bool:

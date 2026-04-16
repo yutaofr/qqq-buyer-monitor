@@ -115,15 +115,15 @@ class TestBuildPanelStructure:
     @pytest.fixture(autouse=True)
     def _setup(self, _mock_all_io):
         from src.liquidity.data.panel_builder import build_pit_aligned_panel
-        self.panel = build_pit_aligned_panel("2009-01-02", "2010-06-30")
+        self.panel, self.constituents = build_pit_aligned_panel("2009-01-02", "2010-06-30")
 
     def test_returns_dataframe(self):
         assert isinstance(self.panel, pd.DataFrame)
 
     def test_has_required_columns(self):
-        required = {"QQQ_ret", "QLD_ret", "ED_ACCEL", "SPREAD_ANOMALY",
-                     "FISHER_RHO", "LAMBDA_MACRO", "ED_VALID_NAMES",
-                     "ED_IS_DEGRADED", "FISHER_IS_DEGRADED"}
+        required = {"QQQ_ret", "QLD_ret", "_BATCH_ED_ACCEL", "_BATCH_SPREAD_ANOMALY",
+                     "_BATCH_FISHER_RHO", "_BATCH_LAMBDA_MACRO", "ED_VALID_NAMES",
+                     "ED_IS_DEGRADED", "FISHER_IS_DEGRADED", "VIXCLS", "WALCL", "RRPONTSYD", "WTREGEN", "SOFR"}
         missing = required - set(self.panel.columns)
         assert not missing, f"Missing columns: {missing}"
 
@@ -154,7 +154,7 @@ class TestBuildPanelValues:
     @pytest.fixture(autouse=True)
     def _setup(self, _mock_all_io):
         from src.liquidity.data.panel_builder import build_pit_aligned_panel
-        self.panel = build_pit_aligned_panel("2009-01-02", "2010-06-30")
+        self.panel, self.constituents = build_pit_aligned_panel("2009-01-02", "2010-06-30")
 
     def test_qqq_ret_finite(self):
         assert np.all(np.isfinite(self.panel["QQQ_ret"].values))
@@ -166,7 +166,7 @@ class TestBuildPanelValues:
         """λ_macro must be in [lambda_floor, lambda_ceil]."""
         from src.liquidity.config import load_config
         cfg = load_config()
-        lm = self.panel["LAMBDA_MACRO"]
+        lm = self.panel["_BATCH_LAMBDA_MACRO"]
         floor = cfg["macro_hazard"]["lambda_floor"]
         ceil  = cfg["macro_hazard"]["lambda_ceil"]
         # Allow small tolerance for NaN fallback filling
@@ -174,10 +174,10 @@ class TestBuildPanelValues:
         assert (lm <= ceil + 1e-10).all(), f"Above ceil: max={lm.max()}"
 
     def test_spread_anomaly_finite(self):
-        assert np.all(np.isfinite(self.panel["SPREAD_ANOMALY"].values))
+        assert np.all(np.isfinite(self.panel["_BATCH_SPREAD_ANOMALY"].values))
 
     def test_ed_accel_finite(self):
-        assert np.all(np.isfinite(self.panel["ED_ACCEL"].values))
+        assert np.all(np.isfinite(self.panel["_BATCH_ED_ACCEL"].values))
 
     def test_degraded_flags_are_boolean(self):
         assert self.panel["ED_IS_DEGRADED"].dtype == bool
@@ -194,7 +194,7 @@ class TestPaddingMechanism:
     def test_panel_starts_exactly_at_start_date(self, _mock_all_io):
         """Output panel must NOT include padded data before start_date."""
         from src.liquidity.data.panel_builder import build_pit_aligned_panel
-        panel = build_pit_aligned_panel("2009-01-02", "2010-06-30")
+        panel, _ = build_pit_aligned_panel("2009-01-02", "2010-06-30")
         # First date must be >= start_date
         assert panel.index[0] >= pd.Timestamp("2009-01-02")
 
@@ -204,7 +204,7 @@ class TestPaddingMechanism:
         padded_start should be around 2007-01-02.
         """
         from src.liquidity.data.panel_builder import build_pit_aligned_panel
-        panel = build_pit_aligned_panel("2009-01-02", "2010-06-30")
+        panel, _ = build_pit_aligned_panel("2009-01-02", "2010-06-30")
         # Panel should span ~1.5 years of trading days
         expected_min_rows = 250  # ~1 year minimum
         assert len(panel) > expected_min_rows
@@ -275,7 +275,7 @@ class TestDynamicUniverseParameters:
                 },
             ),
         ):
-            panel = build_pit_aligned_panel("2009-01-02", "2010-06-30")
+            panel, _ = build_pit_aligned_panel("2009-01-02", "2010-06-30")
 
         assert panel["ED_IS_DEGRADED"].any()
         assert panel["FISHER_IS_DEGRADED"].any()

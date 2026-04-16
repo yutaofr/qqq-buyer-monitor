@@ -23,37 +23,48 @@ N_DAYS  = 700           # > 504 (MAX_LOOKBACK) + 252 (burn-in) to allow entry
 N_STOCKS = 5            # small for speed
 
 
-def _build_synthetic_panel(n_days: int = N_DAYS) -> pd.DataFrame:
+def _build_synthetic_panel(n_days: int = N_DAYS) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Build a fully deterministic synthetic panel.
 
     Features:
-        ED_ACCEL:       0.0 (calm markets, no eigenvalue dispersion change)
-        SPREAD_ANOMALY: 0.0 (VIX at historical average — no stress signal)
-        FISHER_RHO:     0.0 (neutral equity-bond correlation)
-        LAMBDA_MACRO:   0.002 (minimum hazard — fully calm macro)
+        VIX at 15.0 (calm markets)
+        WALCL, RRP, TGA at stable levels
+        SOFR at 0.05
+        Constituent returns: 50 independent normal variables (low correlation = calm ED)
         QQQ return:     +0.04% per day (slight upward drift)
         QLD return:     +0.08% per day (2× QQQ, deterministic)
     """
     idx = pd.bdate_range("2005-01-03", periods=n_days)
-    return pd.DataFrame(
+    
+    panel = pd.DataFrame(
         {
-            "ED_ACCEL":       0.0,
-            "SPREAD_ANOMALY": 0.0,
-            "FISHER_RHO":     0.0,
-            "LAMBDA_MACRO":   0.002,
+            "VIXCLS":         15.0,
+            "WALCL":          4e6,
+            "RRPONTSYD":      0.0,
+            "WTREGEN":        3e5,
+            "SOFR":           0.05,
             "QQQ_ret":        0.0004,   # 0.04%/day deterministic
             "QLD_ret":        0.0008,   # 0.08%/day deterministic
         },
         index=idx,
     )
+    
+    # 50 uncorrelated stocks -> ED will be small and stable -> ed_accel ~ 0
+    np.random.seed(42)  # Deterministic test
+    constituent_rets = pd.DataFrame(
+        np.random.normal(0.0, 0.01, (n_days, 50)),
+        index=idx
+    )
+    
+    return panel, constituent_rets
 
 
 @pytest.fixture(scope="module")
 def backtest_result():
     config  = load_config()
     config["regime_vol_guard"]["enabled"] = False
-    panel   = _build_synthetic_panel()
-    return run_backtest(panel, config, burn_in=BURN_IN)
+    panel, constituent_rets = _build_synthetic_panel()
+    return run_backtest(panel, constituent_rets, config, burn_in=BURN_IN)
 
 
 class TestRunBacktestStructure:
