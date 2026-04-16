@@ -1,7 +1,8 @@
 import json
 import logging
 import os
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+UTC = timezone.utc
 from pathlib import Path
 
 import numpy as np
@@ -283,6 +284,14 @@ class V11Conductor:
             return pd.DataFrame()
 
         price_df = pd.read_csv(path, index_col=0)
+        
+        # V16.2 INDUSTRIAL HARDENING: Enforce Real History Volume
+        if len(price_df) < 1000:
+            raise RuntimeError(
+                f"数据源被截断或拉取失败 (Current: {len(price_df)} rows, Required: 1000). "
+                "拒绝启动以防止 Burn-in 能量注入不足导致的状态漂移。"
+            )
+
         index = pd.to_datetime(price_df.index, errors="coerce", utc=True)
         index = index.tz_convert(None)
         price_df.index = index.normalize()
@@ -789,6 +798,22 @@ class V11Conductor:
         final_beta = self.beta_mapper.calculate_inertial_beta(overlay_beta, norm_h)
         final_beta = anchor_beta_with_topology(final_beta, topology_state)
 
+        # v16.0 COLD START HARDENING: AEMA Burn-in Lock
+        # For the first 252 days of a cold start, Beta is forced to 0 or 1.0 (binary)
+        # to ensure the memory-building phase is not contaminated by fractional hedging.
+        total_history = sum(self.prior_book.counts.values())
+        is_burn_in = total_history < 252
+        if is_burn_in:
+            locked_beta = 1.0 if final_beta >= 0.55 else 0.0
+            if locked_beta != final_beta:
+                logger.info(
+                    "AEMA BURN-IN LOCK ACTIVE: Total history %d < 252. Forcing binary beta: %.2f -> %.2f",
+                    total_history,
+                    final_beta,
+                    locked_beta,
+                )
+                final_beta = locked_beta
+
         # 5. Bayesian Kelly Entry (v11.14 -> v11.15)
         # CDR = Information Clarity * Positive Expectation * Structural Value
         deployment_decision = self.deployment_policy.decide(
@@ -1007,6 +1032,8 @@ class V11Conductor:
             effective_entropy=float(norm_h),
             resonance_risk_ready_days=int(self.resonance_detector.risk_ready_days),
             resonance_waterfall_ready_days=int(self.resonance_detector.waterfall_ready_days),
+            vol_guard_cap=float(baseline_result.get("vol_guard_cap", 2.0)) if baseline_result else 2.0,
+            aema_water_level=float(baseline_result.get("aema_water_level", 0.0)) if baseline_result else 0.0,
         )
 
         return runtime_result

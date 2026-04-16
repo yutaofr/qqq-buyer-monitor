@@ -12,7 +12,9 @@ import json
 import logging
 import os
 import shutil
-from datetime import UTC, date, datetime
+from datetime import date, datetime, timezone
+import datetime as dt
+UTC = timezone.utc
 from pathlib import Path
 
 import pandas as pd
@@ -759,10 +761,63 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     # Reordered to provide baseline_result to conductor (v14.5)
     baseline_result = run_baseline_inference(price_history=price_history["Close"])
 
-    # 4. Bayesian Execution (v11)
-    runtime = V11Conductor(prior_state_path=prior_file_path).daily_run(
-        raw_row, baseline_result=baseline_result
-    )
+    # 4. Bayesian Execution (v11) with Hardened Lifecycle
+    from src.engine.v11.core.prior_knowledge import StateCorruptionError
+    
+    # Industrial Guard: Physical Lock File to prevent concurrent execution collisions
+    lock_file = Path(prior_file_path).with_suffix(".lock")
+    if lock_file.exists():
+        # Check if the lock is stale (optional, but good practice)
+        logger.warning("发现残留锁文件 %s。如果是程序非正常退出，请手动删除。正在执行强行锁定...", lock_file)
+        
+    try:
+        lock_file.touch(exist_ok=False)
+    except FileExistsError:
+        logger.error("重大冲突：检测到另一个进程正在运行 (Lock file: %s)。程序退出以保护状态原子性。", lock_file)
+        return
+
+    runtime_observation_date_str = pd.Timestamp(runtime_observation_date).date().isoformat()
+    
+    try:
+        conductor = V11Conductor(prior_state_path=prior_file_path)
+
+        # Atomic Idempotency Guard: Date + SUCCESS status bit
+        last_date = conductor.prior_book.last_observation_date
+        last_status = conductor.prior_book.execution_state.get("lifecycle_status", "NONE")
+        
+        if last_date == runtime_observation_date_str and last_status == "SUCCESS":
+            logger.info(
+                "Idempotency Protection Active: Date %s already status SUCCESS. Skipping.",
+                runtime_observation_date_str,
+            )
+            return
+
+        # V16.1: Mark start of run to prevent 'Dirty Reruns'
+        conductor.prior_book.update_execution_state(lifecycle_status="IN_PROGRESS")
+        
+        if last_date:
+            logger.info("检测到历史状态 (Last: %s, Status: %s)，执行暖启动。", last_date, last_status)
+        else:
+            logger.info("未检测到历史状态，执行冷启动。")
+
+        runtime = conductor.daily_run(raw_row, baseline_result=baseline_result)
+
+    except (StateCorruptionError, Exception) as exc:
+        # We explicitly catch StateCorruptionError to log the exact failure
+        logger.error("缓存损坏或不可恢复，强制执行冷启动 (Recovery Triggered: %s)", exc)
+        
+        # Fallback to Cold Start: Wipe corrupted state and re-materialize from seed
+        if Path(prior_file_path).exists():
+            try:
+                Path(prior_file_path).unlink()
+            except Exception:
+                pass
+                
+        _materialize_prior_state(prior_file_path, prior_seed_path)
+
+        conductor = V11Conductor(prior_state_path=prior_file_path)
+        conductor.prior_book.update_execution_state(lifecycle_status="IN_PROGRESS")
+        runtime = conductor.daily_run(raw_row, baseline_result=baseline_result)
 
     # 4. Shadow Mode Diagnostics (Reference Only)
     # Both Tractor and Sidecar results will be stored in metadata.
@@ -833,6 +888,10 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
             history_json_path=history_json_path,
         )
         logger.info("v11 signal persisted and cloud state synchronized.")
+        
+        # V16.1: Seal the run as SUCCESS
+        conductor.prior_book.update_execution_state(lifecycle_status="SUCCESS")
+        logger.info("生命周期状态封闭为 SUCCESS。")
     else:
         from src.output.web_exporter import export_history_json, export_web_snapshot
 

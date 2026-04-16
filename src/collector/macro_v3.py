@@ -9,6 +9,7 @@ from src.collector.macro import (
     fetch_historical_fred_series,
 )
 from src.collector.treasury import fetch_treasury_yields
+from src.utils.retry import exponential_backoff
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,7 @@ def fetch_earnings_revisions_breadth(ticker: str = None) -> float | None:
     return 10.0  # Placeholder for revision breadth
 
 
+@exponential_backoff(retries=3)
 def fetch_move_index() -> float | None:
     """Fetch Bond Volatility Index (MOVE Index) via ^MOVE."""
     try:

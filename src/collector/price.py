@@ -7,9 +7,12 @@ from datetime import date, timedelta
 
 import yfinance as yf
 
+from src.utils.retry import exponential_backoff
+
 logger = logging.getLogger(__name__)
 
 
+@exponential_backoff(retries=3, base_delay=2.0, max_delay=10.0)
 def fetch_price_data(ticker: str = "QQQ", as_of: date | None = None) -> dict:
     """
     Fetch closing price, 200-day MA, and 52-week high for *ticker*.

@@ -183,3 +183,16 @@ services:
     environment:
       - PYTHONPATH=/app
     command: streamlit run app.py --server.address 0.0.0.0
+
+  lifecycle-test:
+    image: qqq-monitor:py313
+    build: .
+    volumes:
+      - .:/app
+      - .env:/app/.env
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - PRIOR_SEED_PATH=src/engine/v11/resources/v13_6_cold_start_seed.json
+    command: python scripts/test_lifecycle_resilience.py

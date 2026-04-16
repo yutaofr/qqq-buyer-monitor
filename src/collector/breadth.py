@@ -11,6 +11,8 @@ from pathlib import Path
 
 import yfinance as yf
 
+from src.utils.retry import exponential_backoff
+
 logger = logging.getLogger(__name__)
 
 # Candidate breadth tickers, tried in order.
@@ -36,7 +38,7 @@ def _load_v13_collector_policy() -> dict:
         return {"breadth_sigmoid_scale": 1500.0}
     return dict(payload.get("collector_policy", {}))
 
-
+@exponential_backoff(retries=3)
 def fetch_breadth(as_of: date | None = None) -> dict:
     """
     Fetch NYSE market breadth indicators.
