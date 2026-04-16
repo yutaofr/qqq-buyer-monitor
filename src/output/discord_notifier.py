@@ -78,6 +78,7 @@ def build_discord_payload(result: SignalResult) -> dict:
     )
     price_topology = dict(metadata.get("price_topology", {}) or {})
     forensic_snapshot_path = metadata.get("forensic_snapshot_path")
+    canonical_decision = dict(metadata.get("canonical_decision", {}) or {})
 
     if is_floor_active:
         color = COLOR_STRESS
@@ -130,13 +131,13 @@ def build_discord_payload(result: SignalResult) -> dict:
 
     fields = [
         {
-            "name": f"🔭 Ensemble Implementation Options ({ENGINE_VERSION})",
+            "name": f"🔭 Bayesian Options Before V16 Arbitration ({ENGINE_VERSION})",
             "value": (
                 f"**Verdict:** `{metadata.get('v14_ensemble_verdict', 'NEUTRAL')}`\n"
-                f"1️⃣ **Standard (Official):** `{metadata.get('v14_standard_beta', result.target_beta):.2f}x`\n"
+                f"1️⃣ **Standard (Bayesian):** `{metadata.get('v14_standard_beta', result.target_beta):.2f}x`\n"
                 f"2️⃣ **Protective (S4):** `{metadata.get('v14_s4_protective_beta', 0.5):.2f}x` (0.5 Floor)\n"
                 f"3️⃣ **Aggressive (S5):** `{metadata.get('v14_s5_aggressive_beta', result.target_beta):.2f}x` (1.25 Ceiling)\n"
-                "> 💡 **Choice is up to the User.** Final decision calibrated via Panorama Ensemble."
+                "> Final execution follows the canonical decision source shown in Execution Audit."
             ),
             "inline": False,
         },
@@ -151,6 +152,7 @@ def build_discord_payload(result: SignalResult) -> dict:
                 f"**Stable Regime:** `{result.stable_regime}`\n"
                 f"**Raw Regime:** `{raw_regime}`\n"
                 f"**Bucket:** `{execution_bucket}`\n"
+                f"**Official Source:** `{canonical_decision.get('source', 'bayesian_base')}`\n"
                 f"**Deployment:** `{deployment_state}`\n"
                 f"**Readiness:** `{deployment_readiness:.1%}`\n"
                 f"**Entropy Penalty:** `{result.entropy:.3f}`\n"

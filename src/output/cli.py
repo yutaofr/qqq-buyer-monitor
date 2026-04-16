@@ -44,6 +44,8 @@ def print_signal(
     s_beta = metadata.get("v14_standard_beta", result.target_beta)
     p_beta = metadata.get("v14_s4_protective_beta", 0.5)
     a_beta = metadata.get("v14_s5_aggressive_beta", result.target_beta)
+    canonical_decision = metadata.get("canonical_decision", {})
+    official_source = canonical_decision.get("source")
 
     v_color = _YELLOW
     if verdict == "PROTECTIVE":
@@ -51,13 +53,17 @@ def print_signal(
     if verdict == "AGGRESSIVE":
         v_color = _GREEN
 
-    print(f"\n{c(_BOLD)}{c(_MAGENTA)}=== QQQ PANORAMA ENSEMBLE VERDICT ({ENGINE_VERSION}) ==={r}")
-    print(f"Status:  {c(_BOLD)}{c(v_color)}{verdict}{r}")
+    print(f"\n{c(_BOLD)}{c(_MAGENTA)}=== QQQ CANONICAL EXECUTION VERDICT ({ENGINE_VERSION}) ==={r}")
+    print(f"Bayesian: {c(_BOLD)}{c(v_color)}{verdict}{r}")
     if verdict_label != verdict:
         print(f"Label:   {c(_DIM)}{verdict_label}{r}")
-    print(f"Action:  {c(_CYAN)}Target Beta {s_beta:.2f}x{r} (Standard Choice)")
+    if official_source:
+        print(f"Action:  {c(_CYAN)}Official Beta {result.target_beta:.2f}x{r} ({official_source})")
+    else:
+        print(f"Action:  {c(_CYAN)}Target Beta {s_beta:.2f}x{r} (Standard Choice)")
     print(
-        f"Options: {c(_BOLD)}{c(_WHITE)}[S4 Protective: {p_beta:.2f}x] | [S5 Aggressive: {a_beta:.2f}x]{r}"
+        f"Bayesian Options: {c(_BOLD)}{c(_WHITE)}"
+        f"[S4 Protective: {p_beta:.2f}x] | [S5 Aggressive: {a_beta:.2f}x]{r}"
     )
     print(f"{c(_DIM)}> Info: Beta 0.50 is the absolute physical floor (User Policy).{r}")
     print(f"{c(_BOLD)}---{r}")
@@ -67,6 +73,12 @@ def print_signal(
     print(f"Date:      {result.date}")
     print(f"Price:     ${result.price:.2f}")
     print(f"Target:    beta={result.target_beta:.2f}x | regime={result.stable_regime}")
+    if canonical_decision:
+        print(
+            "Official:  "
+            f"{canonical_decision.get('source', 'bayesian_base')} | "
+            f"{canonical_decision.get('reason', 'canonical arbitration applied')}"
+        )
 
     t = result.target_allocation
     print(

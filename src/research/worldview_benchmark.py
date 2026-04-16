@@ -1,4 +1,10 @@
-"""PIT-safe macro-cycle benchmark built from trailing QQQ price and volume structure."""
+"""PIT-safe macro-cycle benchmark built from trailing QQQ price and volume structure.
+
+Modern `LATE_CYCLE` includes grind-higher tape: price near highs, RSI above 70,
+and fading volume can be a passive-flow regime rather than a direct `BUST`
+precursor. The benchmark keeps that evidence in the late-cycle bucket unless
+trend damage or selloff volume appears.
+"""
 
 from __future__ import annotations
 
@@ -51,6 +57,7 @@ def build_worldview_benchmark(
     volume_long = volume.rolling(60, min_periods=20).mean()
     volume_ratio = (_safe_ratio(volume_short, volume_long) - 1.0).fillna(0.0)
     overextension = (_safe_ratio(close, ma_200) - 1.0).fillna(0.0)
+    rolling_high = close.rolling(252, min_periods=50).max()
 
     trend_up = _positive(_bounded(ma_gap, 0.04))
     trend_down = _positive(_bounded(-ma_gap, 0.04))
@@ -72,6 +79,9 @@ def build_worldview_benchmark(
     gap_improving = _positive(_bounded(ma_gap_momentum, 0.03))
     gap_worsening = _positive(_bounded(-ma_gap_momentum, 0.03))
     overextended = _positive(_bounded(overextension - 0.10, 0.10))
+    near_price_high = _positive(_bounded(_safe_ratio(close, rolling_high) - 0.98, 0.02))
+    daily_rsi_hot = _positive(_bounded(daily_rsi - 70.0, 10.0))
+    grind_higher_pressure = trend_up * volume_dry_up * near_price_high * daily_rsi_hot
     weekly_rsi_change = weekly_rsi.diff(21).fillna(0.0)
     monthly_rsi_change = monthly_rsi.diff(21).fillna(0.0)
     bearish_rsi_divergence = (
@@ -145,6 +155,7 @@ def build_worldview_benchmark(
                 + 0.20 * overextended
                 + 1.10 * volume_dry_up
                 + 0.40 * short_up
+                + 0.75 * grind_higher_pressure
                 + 0.85 * bearish_rsi_divergence
                 + 0.55 * monthly_rollover
                 - 0.60 * trend_down
@@ -290,6 +301,7 @@ def build_worldview_benchmark(
     benchmark["benchmark_rebound_from_trough"] = rebound_from_trough
     benchmark["benchmark_price_volume_divergence"] = divergence
     benchmark["benchmark_volume_ratio"] = volume_ratio
+    benchmark["benchmark_grind_higher_pressure"] = grind_higher_pressure
     benchmark["benchmark_daily_rsi"] = daily_rsi.fillna(50.0)
     benchmark["benchmark_weekly_rsi"] = weekly_rsi.fillna(50.0)
     benchmark["benchmark_monthly_rsi"] = monthly_rsi.fillna(50.0)

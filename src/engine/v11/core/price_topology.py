@@ -361,7 +361,7 @@ def _transition_entropy_softening_weight(
 def topology_likelihood_penalties(
     topology: PriceTopologyState,
     *,
-    floor: float = 0.03,
+    floor: float = 0.30,
     exponent: float = 0.75,
 ) -> dict[str, float]:
     """Convert price-topology conviction into multiplicative likelihood penalties.
@@ -379,6 +379,7 @@ def topology_likelihood_penalties(
     if max_prob <= 0.0:
         return neutral
 
+    floor = max(0.30, float(floor))
     confidence_scale = float(np.clip(0.25 + (0.75 * topology.confidence), 0.0, 1.0))
     repair_veto = _repair_confirmed_penalty_veto(topology)
     leader_bonus = (

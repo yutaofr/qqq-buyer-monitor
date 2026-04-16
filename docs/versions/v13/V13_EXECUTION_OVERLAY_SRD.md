@@ -387,6 +387,10 @@ Interpretation:
 - strong price with weak volume implies weak confirmation
 - washed-out price with improving volume implies repair
 - all volume standardization must use expanding or trailing windows observable at decision time
+- when price is near highs and RSI is above 70, weak volume is treated as a
+  `LATE_CYCLE` / Grind Higher process signal under passive-flow dominance; it is
+  not a standalone `BUST` veto without trend damage, widening stress, or selloff
+  volume
 
 ### 9.4 Official Positioning Stress
 

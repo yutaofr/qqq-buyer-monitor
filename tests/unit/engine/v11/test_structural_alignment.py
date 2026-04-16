@@ -95,9 +95,9 @@ def test_late_stage_confirmed_by_divergence(engine, logical_constraints):
         logical_constraints=logical_constraints,
     )
 
-    # RECOVERY and MID_CYCLE should be heavily dampened
-    assert post_div["RECOVERY"] < 0.1
-    assert post_div["MID_CYCLE"] < 0.1
+    # RECOVERY and MID_CYCLE should be dampened, not mathematically murdered.
+    assert post_div["RECOVERY"] <= 0.15
+    assert post_div["MID_CYCLE"] <= 0.15
     # BUST or LATE_CYCLE should dominate
     assert post_div["BUST"] > post_div["RECOVERY"]
     assert post_div["LATE_CYCLE"] > post_div["MID_CYCLE"]
@@ -121,7 +121,7 @@ def test_liquidity_shock_forces_bust(engine, logical_constraints):
 
     # BUST should be the dominant regime
     assert post_shock["BUST"] == max(post_shock.values())
-    assert post_shock["MID_CYCLE"] < 0.05
+    assert post_shock["MID_CYCLE"] < 0.20
 
 
 def test_repair_confirmed_release_softens_death_cross_recovery_veto(engine, logical_constraints):

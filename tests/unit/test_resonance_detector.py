@@ -53,7 +53,7 @@ def test_late_cycle_takeover_triggers_sell_qld(detector):
     assert result["reason_code"] == "LATE_CYCLE_OVERWHELM"
 
 
-def test_left_tail_risk_spike_triggers_sell_qld(detector):
+def test_left_tail_risk_warning_without_extreme_spike_does_not_sell_qld(detector):
     result = detector.evaluate(
         posteriors={"MID_CYCLE": 0.41, "LATE_CYCLE": 0.23, "BUST": 0.18, "RECOVERY": 0.18},
         dynamics={},
@@ -63,6 +63,21 @@ def test_left_tail_risk_spike_triggers_sell_qld(detector):
         sidecar_prob=0.04,
         previous_effective_entropy=0.49,
         risk_context={"tractor_prev": 0.04, "sidecar_prev": 0.03},
+    )
+    assert result["action"] == "CAUTION"
+    assert result["reason_code"] == "LEFT_TAIL_RISK_ELEVATED"
+
+
+def test_extreme_left_tail_risk_spike_triggers_sell_qld(detector):
+    result = detector.evaluate(
+        posteriors={"MID_CYCLE": 0.41, "LATE_CYCLE": 0.23, "BUST": 0.18, "RECOVERY": 0.18},
+        dynamics={},
+        effective_entropy=0.52,
+        high_entropy_streak=0,
+        tractor_prob=0.29,
+        sidecar_prob=0.18,
+        previous_effective_entropy=0.49,
+        risk_context={"tractor_prev": 0.09, "sidecar_prev": 0.05},
     )
     assert result["action"] == "SELL_QLD"
     assert result["reason_code"] == "LEFT_TAIL_RISK_SPIKE"

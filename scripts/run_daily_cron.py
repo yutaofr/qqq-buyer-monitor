@@ -177,7 +177,7 @@ def generate_and_send_report(latest_log, latest_date, latest_row, prev_weight):
         report_lines.append(msg)
 
     log_print("\n" + "=" * 65)
-    log_print(f" 🌀 QQQ流动性循环监测系统 - 每日实务判定 ({pd.to_datetime(latest_date).date()})")
+    log_print(f" 🌀 QQQ V16拓扑循环监测系统 - 拓扑候选判定 ({pd.to_datetime(latest_date).date()})")
     log_print("=" * 65)
 
     log_print("\n[物理引擎传感器底噪]")
@@ -195,13 +195,14 @@ def generate_and_send_report(latest_log, latest_date, latest_row, prev_weight):
     else:
         log_print(" 🟢 巡航模式: 未触发熔断与大锁，贝叶斯判定享有完全杠杆调度权。")
 
-    log_print("\n[🎯 最终系统仓位分配]")
+    log_print("\n[🎯 V16拓扑候选仓位]")
     log_print(f" • [QLD] TQQQ/两倍杠杆: {qld_alloc * 100:.1f}%")
     log_print(f" • [QQQ] 纳指基础持仓:   {qqq_alloc * 100:.1f}%")
     log_print(f" • [USD] 纯美元现金:     {cash_alloc * 100:.1f}%")
 
-    log_print("\n⚡ QLD 买卖操作指示:")
+    log_print("\n⚡ QLD 候选操作指示:")
     log_print(f"   >> {action_msg}")
+    log_print("   >> 最终执行以主程序 canonical_decision / status.json 为准。")
     log_print("=" * 65 + "\n")
 
     # Send to Discord if webhook is configured

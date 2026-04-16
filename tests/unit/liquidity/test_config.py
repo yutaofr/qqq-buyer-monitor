@@ -88,6 +88,14 @@ class TestLoadConfig:
         assert config["price_loader"]["base_delay_seconds"] == 1.0
         assert config["price_loader"]["jitter_seconds"] == 0.25
 
+    def test_regime_vol_guard_release_alpha(self):
+        """Vol guard should release stale stress faster without changing the stress cap."""
+        config = load_config()
+        guard = config["regime_vol_guard"]
+        assert guard["quantile"] == 0.95
+        assert guard["stress_max_leverage"] == 0.50
+        assert guard["floor_alpha_down"] == 0.12
+
     def test_regime_severity_defaults(self):
         """Regime severity is configured but disabled by default for baseline parity."""
         config = load_config()

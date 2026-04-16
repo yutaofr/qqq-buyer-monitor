@@ -57,9 +57,14 @@ class ResonanceDetector:
             else 0.0
         )
 
-        risk_spike = tractor_prob >= 0.15 or sidecar_prob >= 0.10
+        risk_elevated = tractor_prob >= 0.15 or sidecar_prob >= 0.10
+        risk_spike = (
+            tractor_prob >= 0.25
+            or sidecar_prob >= 0.16
+            or (combined_risk >= 0.35 and risk_delta >= 0.08)
+        )
         risk_rebound = (
-            previous_combined_risk <= 0.10 and combined_risk >= 0.16 and risk_delta >= 0.08
+            previous_combined_risk <= 0.12 and combined_risk >= 0.30 and risk_delta >= 0.12
         )
         late_overwhelm = late_prob >= 0.45 and late_delta > 0.03 and (late_prob - mid_prob) >= 0.12
         entropy_fog = (
@@ -108,6 +113,14 @@ class ResonanceDetector:
                 reason_code="LATE_CYCLE_OVERWHELM",
                 reason="Late-cycle probability is swallowing mid-cycle leadership.",
                 prompt="黃線開始蠶食藍線，週期進入降槓桿區，應把 QLD 切回 QQQ。",
+            )
+        if risk_elevated:
+            return self._signal(
+                action="CAUTION",
+                confidence=max(tractor_prob, sidecar_prob, combined_risk),
+                reason_code="LEFT_TAIL_RISK_ELEVATED",
+                reason="Left-tail risk telemetry is elevated but below binary sell authority.",
+                prompt="左尾風險升高但未達極值，僅作連續降權參考，不觸發 QLD 硬賣出。",
             )
 
         # 3. Update Sequential Memory (Timers) for Recovery Signals

@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>V16 Glassbox 透視儀</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@500;800&display=swap');
+        :root { --emerald: #10b981; --blue: #3b82f6; --red: #ef4444; --yellow: #f59e0b; --bg: #020617; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg); color: #f8fafc; }
+        .glass { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(80px); border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: 0 40px 100px -20px rgba(0, 0, 0, 1); }
+        .card { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 1.5rem; transition: all 0.3s; }
+        
+        /* Slider styling */
+        input[type=range] { -webkit-appearance: none; background: transparent; width: 100%; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #fff; cursor: pointer; margin-top: -6px; box-shadow: 0 0 10px rgba(255,255,255,0.5); }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: rgba(255,255,255,0.2); border-radius: 2px; }
+        
+        .jump-btn { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 999px; padding: 0.5rem 1rem; font-size: 0.75rem; font-weight: 700; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+        .jump-btn:hover { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.3); }
+        
+        .blink-red { animation: blink 1s infinite alternate; }
+        @keyframes blink { from { opacity: 1; text-shadow: 0 0 10px #ef4444, 0 0 20px #ef4444; } to { opacity: 0.3; } }
+        
+        .donut-segment { transition: stroke-dasharray 0.5s ease-out; }
+    </style>
+</head>
+<body class="min-h-screen py-8 px-4 flex justify-center">
+
+<div class="w-full max-w-[800px] glass rounded-[2rem] p-6 relative flex flex-col gap-6">
+
+    <!-- Header & Jump Buttons -->
+    <div class="text-center">
+        <h1 class="text-2xl font-black tracking-tighter mb-4">V16 信任工程：決策 X 光透視儀</h1>
+        <div class="flex flex-wrap justify-center gap-2" id="jump-container">
+            <!-- Populated by JS -->
+        </div>
+    </div>
+
+    <!-- Timeline Slider -->
+    <div class="card p-4 flex flex-col gap-2">
+        <div class="flex justify-between text-xs font-bold text-slate-400">
+            <span id="label-start">2020-01</span>
+            <span id="label-current" class="text-lg text-white">--</span>
+            <span id="label-end">2026-04</span>
+        </div>
+        <input type="range" id="time-slider" min="0" max="100" value="0" aria-label="Timeline">
+    </div>
+
+    <!-- Canvas Charts -->
+    <div class="card p-4 relative" style="height: 300px;">
+        <canvas id="main-chart" class="w-full h-full"></canvas>
+        <div id="chart-cursor-line" class="absolute top-0 bottom-0 w-px bg-white/50 pointer-events-none transition-all hidden z-10" style="left: 0;"></div>
+    </div>
+
+    <!-- Sensors Panel -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        
+        <!-- P_cp Radar -->
+        <div class="card p-4 flex flex-col items-center justify-center relative overflow-hidden">
+            <span class="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2 z-10">P_cp 裂變雷達</span>
+            <div class="relative w-16 h-16 flex items-center justify-center z-10">
+                <svg width="64" height="64" class="-rotate-90">
+                    <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="6"/>
+                    <circle id="pcp-ring" cx="32" cy="32" r="28" fill="none" stroke="#ef4444" stroke-width="6" stroke-dasharray="175.9" stroke-dashoffset="175.9" class="transition-all duration-300"/>
+                </svg>
+                <span id="val-pcp" class="absolute font-mono font-bold text-lg">0%</span>
+            </div>
+            <div id="pcp-bg-alert" class="absolute inset-0 bg-red-500/20 opacity-0 transition-opacity pointer-events-none"></div>
+        </div>
+
+        <!-- Entropy -->
+        <div class="card p-4 flex flex-col items-center justify-center">
+            <span class="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2">資訊熵 (H)</span>
+            <span id="val-ent" class="font-mono font-black text-3xl text-blue-400">0.00</span>
+        </div>
+
+        <!-- Vol Guard -->
+        <div class="card p-4 flex flex-col items-center justify-center">
+            <span class="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2">波動率護盾</span>
+            <span id="val-vol" class="font-mono font-black text-3xl text-emerald-400">1.0x</span>
+        </div>
+
+        <!-- Macro Lock -->
+        <div class="card p-4 flex flex-col items-center justify-center">
+            <span class="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2">物理大鎖</span>
+            <span id="val-lock" class="font-black text-xl px-3 py-1 rounded border">OFF</span>
+        </div>
+        
+    </div>
+
+    <!-- Allocation & Verdict -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Allocation Donut -->
+        <div class="card p-4 flex items-center gap-4">
+            <div class="relative w-24 h-24">
+                <svg width="96" height="96" class="-rotate-90">
+                    <!-- Cash -->
+                    <circle cx="48" cy="48" r="40" fill="none" stroke="#334155" stroke-width="12" />
+                    <!-- QQQ -->
+                    <circle id="alloc-qqq" cx="48" cy="48" r="40" fill="none" class="donut-segment" stroke="#3b82f6" stroke-width="12" stroke-dasharray="251.2" stroke-dashoffset="251.2"/>
+                    <!-- QLD -->
+                    <circle id="alloc-qld" cx="48" cy="48" r="40" fill="none" class="donut-segment" stroke="#10b981" stroke-width="12" stroke-dasharray="251.2" stroke-dashoffset="251.2"/>
+                </svg>
+            </div>
+            <div class="flex flex-col gap-1 text-sm font-bold font-mono text-slate-300">
+                <div class="flex items-center gap-2"><div class="w-3 h-3 bg-emerald-500 rounded"></div> QLD: <span id="lbl-qld">0%</span></div>
+                <div class="flex items-center gap-2"><div class="w-3 h-3 bg-blue-500 rounded"></div> QQQ: <span id="lbl-qqq">0%</span></div>
+                <div class="flex items-center gap-2"><div class="w-3 h-3 bg-slate-600 rounded"></div> CSH: <span id="lbl-csh">100%</span></div>
+            </div>
+        </div>
+
+        <!-- Story telling / Explanation -->
+        <div class="card p-4 bg-slate-900 border-dashed border-2 border-slate-700 font-mono text-sm leading-relaxed whitespace-pre-wrap flex items-center text-slate-300" id="val-desc">
+            <!-- JS populated -->
+        </div>
+    </div>
+</div>
+
+<script>
+    let traceData = null;
+    const canvas = document.getElementById('main-chart');
+    const ctx = canvas.getContext('2d');
+    let width = 0; let height = 0;
+
+    let currentIndex = 0;
+
+    async function loadData() {
+        try {
+            const res = await fetch('./glassbox_trace.json');
+            traceData = await res.json();
+            initUI();
+            drawChart();
+            updateDashboard(0);
+        } catch (e) {
+            document.getElementById('val-desc').innerText = "Loading error: " + e.message;
+        }
+    }
+
+    function initUI() {
+        const slider = document.getElementById('time-slider');
+        slider.max = traceData.trace.length - 1;
+
+        document.getElementById('label-start').innerText = traceData.meta.data_range[0];
+        document.getElementById('label-end').innerText = traceData.meta.data_range[1];
+
+        slider.addEventListener('input', (e) => {
+            currentIndex = parseInt(e.target.value);
+            updateDashboard(currentIndex);
+        });
+
+        // Populate jump buttons
+        const jc = document.getElementById('jump-container');
+        traceData.events.forEach(ev => {
+            const btn = document.createElement('button');
+            btn.className = 'jump-btn';
+            btn.innerText = ev.label;
+            btn.onclick = () => {
+                // Find index closest to ev.date_range[0]
+                let idx = traceData.trace.findIndex(t => t.d >= ev.date_range[0]);
+                if (idx < 0) idx = 0;
+                slider.value = idx;
+                currentIndex = idx;
+                updateDashboard(idx);
+            };
+            jc.appendChild(btn);
+        });
+
+        const resize = () => {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            // Account for padding
+            width = rect.width - 32;
+            height = rect.height - 32;
+            canvas.width = width * window.devicePixelRatio;
+            canvas.height = height * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+            drawChart();
+            updateDashboard(currentIndex); // re-draw cursor
+        };
+        window.addEventListener('resize', resize);
+        resize();
+    }
+
+    function updateDashboard(idx) {
+        const d = traceData.trace[idx];
+        document.getElementById('label-current').innerText = d.d;
+
+        // P_cp Radar
+        const pcpCircIdx = 175.9 * (1 - d.pcp);
+        document.getElementById('pcp-ring').style.strokeDashoffset = pcpCircIdx;
+        document.getElementById('val-pcp').innerText = (d.pcp * 100).toFixed(0) + '%';
+        const pcpAlert = document.getElementById('pcp-bg-alert');
+        const pcpVal = document.getElementById('val-pcp');
+        if (d.pcp > 0.8) {
+            pcpVal.classList.add('blink-red');
+            pcpVal.classList.replace('text-white', 'text-red-500');
+            pcpAlert.style.opacity = 1;
+        } else {
+            pcpVal.classList.remove('blink-red');
+            pcpVal.classList.replace('text-red-500', 'text-white');
+            pcpAlert.style.opacity = 0;
+        }
+
+        // Entropy & Vol
+        document.getElementById('val-ent').innerText = d.ent.toFixed(2);
+        document.getElementById('val-vol').innerText = d.vol.toFixed(1) + 'x';
+        document.getElementById('val-vol').className = `font-mono font-black text-3xl ${d.vol < 1.1 ? 'text-red-400' : 'text-emerald-400'}`;
+
+        // Lock
+        const elLock = document.getElementById('val-lock');
+        elLock.innerText = d.lock ? "ON" : "OFF";
+        elLock.className = `font-black text-xl px-3 py-1 rounded border flex items-center gap-2 ${d.lock ? 'border-red-500/50 bg-red-500/10 text-red-500' : 'border-slate-500/50 bg-slate-800 text-slate-400'}`;
+
+        // Allocation Donut
+        const allocQqq = document.getElementById('alloc-qqq');
+        const allocQld = document.getElementById('alloc-qld');
+        
+        // Read true physical weight generated by allocator.py
+        let wQld = Math.round((d.weight || 0) * 100);
+        let wQqq = 100 - wQld; 
+        if (d.lock && wQld > 0) { wQqq = 100; wQld = 0; } // Fallback safety logic
+        let wCsh = 0;
+        
+        // Dash offset calculation: 2 * pi * 40 = 251.2
+        const crc = 251.2;
+        allocQld.style.strokeDashoffset = crc - (wQld / 100) * crc;
+        
+        // QQQ stacked after QLD
+        const offsetQqq = (wQld / 100) * crc; 
+        const lenQqq = (wQqq / 100) * crc;
+        // SVG circle stroke dasharray: [dash_length, gap_length]
+        // to make it start at an offset we use strokeDashoffset = -offset
+        allocQqq.style.strokeDasharray = `${lenQqq} ${crc}`;
+        allocQqq.style.strokeDashoffset = -offsetQqq;
+
+        document.getElementById('lbl-qld').innerText = wQld + '%';
+        document.getElementById('lbl-qqq').innerText = wQqq + '%';
+        document.getElementById('lbl-csh').innerText = wCsh + '%';
+
+        // Translation Engine (V16 3-Gates)
+        let narration = "";
+        const isTrendLocked = d.lock;
+        const isRelativeLocked = d.sigma2 > d.roll;
+        const ABSOLUTE_PRIOR = 1.0; 
+        const isExempted = d.sigma2 < ABSOLUTE_PRIOR;
+
+        if (isTrendLocked) {
+           narration += `🔴 物理大鎖已啟動 (價格 $${d.c.toFixed(2)} 低於年線 $${d.sma.toFixed(2)})。\n`;
+           narration += `无论波动率如何，趋势大锁具有最高否决权。系统拒绝启动杠杆。`;
+        } else if (isRelativeLocked && !isExempted) {
+           narration += `⚠️ 相对波动率超限：当前波动率 (${d.sigma2.toFixed(2)}) 大于历史滚动门槛 (${d.roll.toFixed(2)})，并且高于绝对先验底噪 (${ABSOLUTE_PRIOR.toFixed(2)})。\n`;
+           narration += `🚨 环境结构遭到真实破坏。Vol Guard 启动，强制锁定杠杆至 1.0x，引擎剥夺 QLD 分配权。`;
+        } else if (isRelativeLocked && isExempted) {
+           narration += `🛡️ 【V16 底噪豁免生效！】当前波动率 (${d.sigma2.toFixed(2)}) 虽出发被毒化的历史门限 (${d.roll.toFixed(2)})，但核实仍处于物理绝对安全区 (<= ${ABSOLUTE_PRIOR.toFixed(2)})。\n`;
+           narration += `🚀 系统保住了多头的杠杆收益，维持 QLD 启动，成功免疫“牛市无杠杆”病症。`;
+        } else {
+            if (d.pcp > 0.8) {
+                narration += `🚨 P_cp 裂变雷达高位预警 (${(d.pcp*100).toFixed(0)}%)。\n`;
+            } else if (d.beta >= 1.5) {
+                narration += `🟢 拓扑安全。P_cp 靜默。引擎開啟 QLD 推土機，執行满载上涨趋势。`;
+            } else if (d.beta > 0.5 && !d.lock) {
+                narration += `🟡 处于结构震荡或回调周期，信息熵升至 ${d.ent.toFixed(2)}。引擎采取保守防御节奏。`;
+            } else {
+                narration += `🧊 系统保持防御状态。`;
+            }
+        }
+        document.getElementById('val-desc').innerText = narration;
+
+        // Draw cursor line
+        const x = (idx / (traceData.trace.length - 1)) * width;
+        const cl = document.getElementById('chart-cursor-line');
+        cl.style.left = (16 + x) + 'px'; // +16 for padding
+        cl.style.display = 'block';
+
+        drawChart();
+    }
+
+    function drawChart() {
+        if (!traceData || width === 0) return;
+        ctx.clearRect(0, 0, width, height);
+
+        const data = traceData.trace;
+        const len = data.length;
+        
+        const minP = Math.min(...data.map(d => Math.min(d.c, d.sma))) * 0.95;
+        const maxP = Math.max(...data.map(d => Math.max(d.c, d.sma))) * 1.05;
+        const rangeP = maxP - minP;
+
+        // Draw Probabilities Background (Area)
+        const midC = 'rgba(16, 185, 129, 0.15)';
+        const lateC = 'rgba(245, 158, 11, 0.15)';
+        const bustC = 'rgba(239, 68, 68, 0.15)';
+        
+        for (let i = 0; i < len - 1; i++) {
+            const x1 = (i / (len - 1)) * width;
+            const x2 = ((i+1) / (len - 1)) * width;
+            const d1 = data[i]; const d2 = data[i+1];
+            
+            // Just draw the dominant regime as background bar
+            const dom1 = d1.pb.indexOf(Math.max(...d1.pb));
+            let color = dom1 === 0 ? midC : dom1 === 1 ? lateC : dom1 === 2 ? bustC : 'rgba(59, 130, 246, 0.15)';
+            
+            ctx.fillStyle = color;
+            ctx.fillRect(x1, 0, x2-x1+1, height);
+        }
+
+        // Draw SMA
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        data.forEach((d, i) => {
+            const x = (i / (len - 1)) * width;
+            const y = height - ((d.sma - minP) / rangeP) * height;
+            if (i===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Draw Close Price
+        ctx.beginPath();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        data.forEach((d, i) => {
+            const x = (i / (len - 1)) * width;
+            const y = height - ((d.c - minP) / rangeP) * height;
+            if (i===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+
+        // Draw Beta on bottom 15%
+        const betaH = height * 0.15;
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(16, 185, 129, 0.8)';
+        ctx.lineWidth = 1.5;
+        data.forEach((d, i) => {
+            const x = (i / (len - 1)) * width;
+            // Beta ranges 0.5 to 2.0 approx
+            const bnorm = Math.max(0, Math.min(2.0, d.beta)) / 2.0;
+            const y = height - (bnorm * betaH);
+            if (i===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+
+        // Draw Lock overlay shading when c < sma
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
+        data.forEach((d, i) => {
+            if (d.lock && i % 4 === 0) { // sparse draw for performance
+                const x = (i / (len - 1)) * width;
+                const y = height - ((d.c - minP) / rangeP) * height;
+                ctx.beginPath();
+                ctx.arc(x, y, 2, 0, Math.PI*2);
+                ctx.fill();
+            }
+        });
+
+        // Draw cursor dot if selected
+        if (traceData && width > 0) {
+            const idx = currentIndex;
+            const d = traceData.trace[idx];
+            const x = (idx / (len - 1)) * width;
+            const yC = height - ((d.c - minP) / rangeP) * height;
+            
+            ctx.beginPath();
+            ctx.fillStyle = '#fff';
+            ctx.arc(x, yC, 4, 0, Math.PI*2);
+            ctx.fill();
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+    }
+
+    loadData();
+</script>
+</body>
+</html>
