@@ -167,6 +167,14 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         deployment_state_key = str(
             metadata.get("deployment_state_key", deployment_state.replace("DEPLOY_", ""))
         )
+        canonical_decision = metadata.get("canonical_decision", {})
+        official_reference_path = (
+            canonical_decision.get("official_reference_path", {})
+            if isinstance(canonical_decision, dict)
+            else {}
+        )
+        if float(official_reference_path.get("qld_pct", 0.0) or 0.0) > 0.0:
+            execution_bucket = "QLD"
 
         payload = {
             "meta": {
@@ -221,6 +229,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "probability_dynamics": metadata.get("probability_dynamics", {}),
                 "price_topology": metadata.get("price_topology", {}),
                 "forensic_snapshot_path": metadata.get("forensic_snapshot_path"),
+                "canonical_decision": canonical_decision,
                 "reference_path": {
                     "qqq_pct": result.target_allocation.target_qqq_pct,
                     "qld_pct": result.target_allocation.target_qld_pct,
@@ -243,6 +252,7 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                 "bayesian_diagnostics": metadata.get("v13_4_diagnostics", {}),
                 "price_topology": metadata.get("price_topology", {}),
                 "qld_permission": metadata.get("signal", {}).get("qld_permission", {}),
+                "canonical_decision": canonical_decision,
             },
             "diagnostics": {
                 "tractor": {

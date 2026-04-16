@@ -302,7 +302,7 @@ def build_pit_aligned_panel(
 
     # ━━━ Step 8: NaN safety gate ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     _assert_no_nan(panel[[
-        "QQQ_ret", "QLD_ret",
+        "QQQ_ret", "QLD_ret", "QQQ_price", "QQQ_sma200",
         "_BATCH_ED_ACCEL", "_BATCH_SPREAD_ANOMALY",
         "_BATCH_FISHER_RHO", "_BATCH_LAMBDA_MACRO",
     ]], start_date, end_date)

@@ -17,7 +17,7 @@ def main():
     logger.info("Initializing pure structural physics audit...")
     config = load_config()
 
-    panel, constituent_rets = build_pit_aligned_panel("2005-01-01", "2026-04-16", config=config)
+    panel, constituent_rets = build_pit_aligned_panel("2005-01-01", "2026-04-15", config=config)
     rets_matrix = constituent_rets.to_numpy(dtype=float)
 
     pipeline = LiquidityPipeline(config, burn_in=252)
@@ -32,13 +32,15 @@ def main():
             "rrp": float(row["RRPONTSYD"]),
             "tga": float(row["WTREGEN"]),
             "sofr": float(row["SOFR"]),
+            "qqq_price": float(row["QQQ_price"]) if pd.notna(row.get("QQQ_price")) else 0.0,
+            "qqq_sma200": float(row["QQQ_sma200"]) if pd.notna(row.get("QQQ_sma200")) else 0.0,
             "constituent_returns": rets_matrix[i, :]
         }
 
         weight, log = pipeline.step(timestamp=date, raw_obs=obs)
 
-        # Only log telemetry after 2022 begins, optimizing output noise
-        if date >= pd.Timestamp("2022-01-01"):
+        # Only log telemetry after 2020 begins, optimizing output noise
+        if date >= pd.Timestamp("2020-01-01"):
             # The burn-in guard is long past, so pipeline is active
             if log["state"] != "active":
                 continue
@@ -54,7 +56,12 @@ def main():
                 "spread_signal": x_t[1],
                 "fisher_rho_signal": x_t[2],
                 "lambda_macro": log["lambda_macro"],
-                "s_t": log["s_t"]
+                "s_t": log["s_t"],
+                "sigma2_spread": log.get("regime_sigma2_spread", 0.0),
+                "roll_threshold": pipeline._alloc._vol_guard.threshold if pipeline._alloc._vol_guard else 0.0,
+                "momentum_lockout": log.get("momentum_lockout", False),
+                "qqq_price": float(row.get("QQQ_price", 0.0)),
+                "qqq_sma200": float(row.get("QQQ_sma200", 0.0))
             })
 
     # Convert to DataFrame for analytics
@@ -81,8 +88,8 @@ def main():
         logger.info(f"Max P_cp: {rotation_window['P_cp'].max():.4f}")
         logger.info(f"Min Weight: {rotation_window['weight'].min():.4f}")
 
-    df.to_csv("structural_audit_2022_present.csv")
-    logger.info("Telemetry dumped to structural_audit_2022_present.csv")
+    df.to_csv("structural_audit_2020_present.csv")
+    logger.info("Telemetry dumped to structural_audit_2020_present.csv")
 
 if __name__ == "__main__":
     main()

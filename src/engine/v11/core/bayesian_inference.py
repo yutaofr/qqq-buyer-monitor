@@ -204,6 +204,23 @@ class BayesianInferenceEngine:
                 * float((regime_penalties or {}).get(regime, 1.0))
                 for regime in self.regimes
             }
+            raw_combined_penalties = dict(combined_penalties)
+            protection_threshold = float(
+                (weight_registry or {}).get("evidence_protection_threshold", 0.50)
+            )
+            evidence_penalty_floor = float(
+                (weight_registry or {}).get("evidence_penalty_floor", 0.25)
+            )
+            evidence_protected_regimes: list[str] = []
+            for regime in self.regimes:
+                if float(raw_evidence_dist.get(regime, 0.0)) > protection_threshold:
+                    protected = max(
+                        float(combined_penalties.get(regime, 1.0)),
+                        evidence_penalty_floor,
+                    )
+                    if protected > float(combined_penalties.get(regime, 1.0)):
+                        evidence_protected_regimes.append(regime)
+                    combined_penalties[regime] = protected
 
             unnorm_post = {
                 k: runtime.get(k, 0.0)
@@ -231,6 +248,8 @@ class BayesianInferenceEngine:
                 "level_contributions": level_contributions,
                 "was_uniform": is_uniform,
                 "penalties_applied": combined_penalties,
+                "raw_combined_penalties": raw_combined_penalties,
+                "evidence_protected_regimes": evidence_protected_regimes,
                 "logical_penalties": penalties,
                 "regime_penalties": dict(regime_penalties or {}),
             }

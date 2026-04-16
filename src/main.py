@@ -16,8 +16,10 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pandas as pd
+import requests
 
 from src.constants import ENGINE_VERSION
+from src.engine.canonical_arbitration import apply_v16_topology_arbitration
 from src.models import SignalResult, TargetAllocationState
 from src.store.cloud_manager import CloudPersistenceBridge
 
@@ -34,6 +36,7 @@ RECOVERY_HMM_SHADOW_COMPARISON_PATH = Path("artifacts/recovery_hmm_shadow/mainli
 RECOVERY_HMM_SHADOW_LINEAGE_PATH = Path(
     "artifacts/recovery_hmm_shadow/mainline/source_lineage.json"
 )
+V16_TOPOLOGY_STATE_URL = "https://blob.vercel-storage.com?prefix=qqq_engine_state"
 
 
 def _is_degraded_source(source: str | None) -> bool:
@@ -48,6 +51,40 @@ def _compose_derived_source(metric_name: str, *upstream_sources: str | None) -> 
     if any(_is_degraded_source(source) for source in normalized):
         return f"proxy:derived:{metric_name}[{'|'.join(normalized)}]"
     return f"derived:{metric_name}[{'|'.join(normalized)}]"
+
+
+def _load_v16_topology_state() -> dict | None:
+    """Load the latest V16 liquidity topology state for canonical arbitration."""
+    local_path = os.environ.get("V16_TOPOLOGY_STATE_PATH")
+    if local_path:
+        path = Path(local_path)
+        if path.exists():
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except Exception as exc:
+                logger.warning("Failed to read V16 topology state from %s: %s", path, exc)
+
+    token = os.environ.get("VERCEL_BLOB_READ_WRITE_TOKEN")
+    if not token:
+        return None
+
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        res = requests.get(V16_TOPOLOGY_STATE_URL, headers=headers, timeout=10)
+        res.raise_for_status()
+        blobs = res.json().get("blobs", [])
+        if not blobs:
+            return None
+        latest_blob = max(blobs, key=lambda item: item.get("uploadedAt", ""))
+        url = latest_blob.get("downloadUrl") or latest_blob.get("url")
+        if not url:
+            return None
+        state_res = requests.get(url, timeout=10)
+        state_res.raise_for_status()
+        return state_res.json()
+    except Exception as exc:
+        logger.warning("Failed to load V16 topology state for arbitration: %s", exc)
+        return None
 
 
 def _materialize_prior_state(
@@ -762,6 +799,7 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     result.metadata["v14_calm_eligible"] = bool(ensemble["calm_eligible"])
     result.metadata["v14_shadow_mode"] = True
     result.metadata["recovery_hmm_shadow"] = _load_recovery_hmm_shadow_diagnostics()
+    result = apply_v16_topology_arbitration(result, _load_v16_topology_state())
 
     web_json_path = "src/web/public/status.json"
     history_json_path = "src/web/public/history.json"

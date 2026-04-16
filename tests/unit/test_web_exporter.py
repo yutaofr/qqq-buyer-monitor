@@ -69,6 +69,10 @@ def _v11_result() -> SignalResult:
                     },
                 }
             },
+            "canonical_decision": {
+                "source": "v16_topology",
+                "reason": "V16 topology process is clean.",
+            },
         },
     )
 
@@ -104,9 +108,11 @@ def test_export_web_snapshot_v11_contract(tmp_path, monkeypatch):
     assert payload["signal"]["deployment_overlay_multiplier"] == 1.04
     assert payload["signal"]["price_topology"]["regime"] == "LATE_CYCLE"
     assert payload["signal"]["qld_permission"]["entry_mode"] == "LEFT_SIDE_PROBE"
+    assert payload["signal"]["canonical_decision"]["source"] == "v16_topology"
     assert payload["signal"]["forensic_snapshot_path"].endswith(".json")
     assert payload["evidence"]["feature_values"]["vix"] == 20.0
     assert payload["evidence"]["execution_overlay"]["positive_score"] == 0.22
+    assert payload["evidence"]["canonical_decision"]["reason"] == "V16 topology process is clean."
     assert payload["evidence"]["bayesian_diagnostics"]["penalties_applied"]["MID_CYCLE"] == 0.4
     assert (
         payload["evidence"]["qld_permission"]["regime_specific_override"]["clusters"][
@@ -160,6 +166,45 @@ def test_export_web_snapshot_preserves_dual_surface_semantics(tmp_path, monkeypa
     assert payload["signal"]["deployment_state"] == "DEPLOY_SLOW"
     assert payload["signal"]["deployment_state_key"] == "SLOW"
     assert payload["signal"]["execution_bucket"] == "QQQ"
+
+
+def test_export_web_snapshot_uses_canonical_bucket_over_behavioral_guard(tmp_path, monkeypatch):
+    result = SignalResult(
+        date=date(2026, 4, 16),
+        price=637.91,
+        target_beta=1.599,
+        probabilities={"LATE_CYCLE": 0.52, "BUST": 0.44, "RECOVERY": 0.04},
+        priors={},
+        entropy=0.58,
+        stable_regime="LATE_CYCLE",
+        target_allocation=TargetAllocationState(0.0, 0.401, 0.599, 1.599),
+        logic_trace=[
+            {"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QQQ"}}
+        ],
+        explanation="canonical bucket",
+        metadata={
+            "execution_bucket": "QLD",
+            "canonical_decision": {
+                "source": "v16_topology",
+                "official_reference_path": {"qld_pct": 0.599, "qqq_pct": 0.401, "cash_pct": 0.0},
+            },
+        },
+    )
+    output_path = tmp_path / "status.json"
+
+    monkeypatch.setattr(MarketCursor, "get_market_state", lambda self, now: "FROZEN")
+    monkeypatch.setattr(
+        MarketCursor,
+        "get_expires_at_utc",
+        lambda self, now: datetime(2026, 4, 17, 17, 30, tzinfo=UTC),
+    )
+
+    ok = export_web_snapshot(result, output_path=output_path)
+
+    assert ok is True
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["signal"]["execution_bucket"] == "QLD"
+    assert payload["signal"]["reference_path"]["qld_pct"] == 0.599
 
 
 def test_export_web_snapshot_collapses_legacy_capitulation_into_recovery(tmp_path, monkeypatch):

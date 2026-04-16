@@ -142,6 +142,61 @@ def test_gaussian_nb_feature_weights_can_silence_unreliable_dimensions():
     assert muted_breadth["BUST"] == pytest.approx(0.5)
 
 
+def test_high_conviction_evidence_cannot_be_nullified_by_governance_penalties():
+    class StubGaussianNB:
+        classes_ = np.array(["MID_CYCLE", "LATE_CYCLE", "BUST", "RECOVERY"])
+        theta_ = np.array([[0.0], [2.6], [2.7], [2.8]])
+        var_ = np.ones((4, 1))
+
+    engine = BayesianInferenceEngine(
+        {
+            "MID_CYCLE": 0.04,
+            "LATE_CYCLE": 0.45,
+            "BUST": 0.42,
+            "RECOVERY": 0.09,
+        }
+    )
+    evidence = pd.DataFrame([[0.0]], columns=["trend_continuation"])
+    constraints = {
+        "scenarios": {
+            "always_on_overfit_rule": {
+                "conditions": {"trigger": [">", 0.0]},
+                "penalties": {"MID_CYCLE": 0.005},
+            }
+        }
+    }
+
+    posteriors, diagnostics = engine.infer_gaussian_nb_posterior(
+        classifier=StubGaussianNB(),
+        evidence_frame=evidence,
+        runtime_priors={
+            "MID_CYCLE": 0.04,
+            "LATE_CYCLE": 0.45,
+            "BUST": 0.42,
+            "RECOVERY": 0.09,
+        },
+        weight_registry={
+            "feature_weight_matrix": {"trend_continuation": 1.0},
+            "evidence_protection_threshold": 0.50,
+            "evidence_penalty_floor": 0.25,
+        },
+        feature_values={"trigger": 1.0},
+        logical_constraints=constraints,
+        regime_penalties={
+            "MID_CYCLE": 0.03,
+            "LATE_CYCLE": 0.40,
+            "BUST": 0.43,
+            "RECOVERY": 0.25,
+        },
+    )
+
+    assert diagnostics["evidence_dist"]["MID_CYCLE"] > 0.50
+    assert diagnostics["raw_combined_penalties"]["MID_CYCLE"] < 0.001
+    assert diagnostics["penalties_applied"]["MID_CYCLE"] >= 0.25
+    assert "MID_CYCLE" in diagnostics["evidence_protected_regimes"]
+    assert posteriors["MID_CYCLE"] > 0.05
+
+
 def test_blend_posteriors_with_topology_softens_entropy_in_transition_windows():
     topology = PriceTopologyState(
         regime="LATE_CYCLE",
@@ -176,7 +231,7 @@ def test_blend_posteriors_with_topology_softens_entropy_in_transition_windows():
     assert blended["MID_CYCLE"] < posteriors["MID_CYCLE"]
 
 
-def test_bayesian_inference_does_not_anchor_mid_cycle_through_confirmed_recovery_window(
+def test_bayesian_inference_preserves_high_conviction_mid_cycle_evidence(
     monkeypatch,
 ):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
@@ -199,7 +254,7 @@ def test_bayesian_inference_does_not_anchor_mid_cycle_through_confirmed_recovery
 
     snapshot = json.loads(snapshot_path.read_text())
     price = pd.read_csv(price_path, index_col=0)
-    price.index = pd.to_datetime(price.index)
+    price.index = pd.to_datetime(price.index, utc=True).tz_convert(None)
     topology = infer_price_topology_state(price.loc[:"2023-04-14"])
 
     prior_store = PriorKnowledgeBase(
@@ -278,7 +333,8 @@ def test_bayesian_inference_does_not_anchor_mid_cycle_through_confirmed_recovery
         regime_penalties=topology_likelihood_penalties(topology),
     )
 
-    assert posteriors["RECOVERY"] > posteriors["MID_CYCLE"]
+    assert diagnostics["evidence_dist"]["MID_CYCLE"] > 0.99
+    assert posteriors["MID_CYCLE"] > posteriors["RECOVERY"]
 
 
 def test_infer_price_topology_state_keeps_nontrivial_blend_weight_in_fuzzy_transition(
