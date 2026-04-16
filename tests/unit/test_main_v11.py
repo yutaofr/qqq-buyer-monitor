@@ -582,7 +582,15 @@ def test_run_v11_pipeline_uses_monday_observation_date_with_friday_price_during_
 
     class _Conductor:
         def __init__(self, *args, **kwargs):
-            pass
+            self.prior_book = type(
+                "PriorBookMock",
+                (),
+                {
+                    "last_observation_date": None,
+                    "execution_state": {},
+                    "update_execution_state": lambda self, **kw: None,
+                },
+            )()
 
         def daily_run(self, raw_row, baseline_result=None):
             captured["raw_row"] = raw_row.copy()
