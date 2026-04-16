@@ -18,9 +18,11 @@ jobs:
         uses: docker/setup-buildx-action@v3
         
       - name: Create .env file from Secrets
-        # 将从 GitHub Secrets 中读取 Discord Webhook URL 并传递给容器环境
+        # 从 GitHub Secrets 中读取变量并存入 .env 供应给 Docker
         run: |
-          echo "DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }}" >> .env
+          echo "FRED_API_KEY=${{ secrets.FRED_API_KEY }}" >> .env
+          echo "ALERT_WEBHOOK_URL=${{ secrets.ALERT_WEBHOOK_URL }}" >> .env
+          echo "VERCEL_BLOB_READ_WRITE_TOKEN=${{ secrets.VERCEL_BLOB_READ_WRITE_TOKEN }}" >> .env
           
       - name: Execute Daily Monitor via Docker
         # 强制使用 Docker 环境保持底层物理隔离
