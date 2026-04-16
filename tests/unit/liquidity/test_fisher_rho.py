@@ -5,7 +5,6 @@ SRD v1.2 Section 3.1 d3: Fisher(rho) feature.
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from src.liquidity.signal.fisher_rho import compute_fisher_rho
 

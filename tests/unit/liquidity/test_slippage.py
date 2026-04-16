@@ -4,9 +4,8 @@ SRD 6.2: Slippage = s0 + s1 × σ̂ / σ_normal
 """
 
 import numpy as np
-import pytest
 
-from src.liquidity.backtest.slippage import compute_slippage, compute_sigma_hat
+from src.liquidity.backtest.slippage import compute_sigma_hat, compute_slippage
 
 
 class TestComputeSlippage:

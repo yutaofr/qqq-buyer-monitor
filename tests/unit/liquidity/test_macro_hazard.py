@@ -5,7 +5,6 @@ SRD v1.2: lambda_macro synthesis pipeline — 4-step, fully testable independent
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from src.liquidity.signal.macro_hazard import (
     composite_stress,

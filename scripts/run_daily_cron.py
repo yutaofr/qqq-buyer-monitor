@@ -7,19 +7,17 @@ run_daily_cron.py
 最后用中文输出极其明确的持仓状态与 QLD 买卖信号。
 """
 
-import sys
-import os
-import json
 import logging
+import os
+import sys
 import warnings
-import requests
 from datetime import datetime, timedelta
 
 import pandas as pd
-import numpy as np
+import requests
 
-from src.liquidity.data.panel_builder import build_pit_aligned_panel
 from src.liquidity.config import load_config
+from src.liquidity.data.panel_builder import build_pit_aligned_panel
 from src.liquidity.engine.pipeline import LiquidityPipeline
 
 # 屏蔽第三方库的烦人警告
@@ -43,7 +41,7 @@ def fetch_state():
                 # Sort by uploadedAt descending
                 latest_blob = max(blobs, key=lambda x: x["uploadedAt"])
                 url = latest_blob["url"]
-                
+
                 # Download the actual JSON file
                 state_res = requests.get(url)
                 if state_res.status_code == 200:
@@ -74,7 +72,7 @@ def main():
     # 1. 下载前一天的记忆快照，防御 FRED 回溯修订 (PIT 断点续传)
     print("正在连接 Vercel 寻址并唤醒前置量子阵列状态...")
     cloud_state = fetch_state()
-    
+
     if cloud_state:
         pipeline.load_state(cloud_state["engine_state"])
         last_date = pd.to_datetime(cloud_state["last_timestamp"])
@@ -85,25 +83,25 @@ def main():
         start_date = (datetime.now() - timedelta(days=365 * 3)).strftime("%Y-%m-%d")
 
     end_date = datetime.now().strftime("%Y-%m-%d")
-    
+
     if start_date >= end_date:
         print(f"✅ 今日 ({end_date}) 的观测数据此前已被吸收，无需重复计算。")
         sys.exit(0)
-        
+
     print(f"正在拉取实盘市场数据 [{start_date} 到 {end_date}]...")
-    
+
     try:
         panel, c_rets = build_pit_aligned_panel(start_date, end_date, config=config)
     except Exception as e:
         print(f"\n[错误] 数据拉取或构建失败: {e}")
         sys.exit(1)
-        
+
     if panel.empty:
         print("\n[错误] 获取到的数据面板为空，请检查网络或 API。")
         sys.exit(1)
 
     rets_matrix = c_rets.to_numpy(dtype=float)
-    
+
     prev_weight = 0.0
     latest_log = {}
     latest_date = None
@@ -111,7 +109,7 @@ def main():
 
     # 3. 极速推进事件流
     for i, (date, row) in enumerate(panel.iterrows()):
-        
+
         # 记录前一天的 QLD 权重，用于判断当天的买卖动作
         if i == len(panel) - 1:
             prev_weight = pipeline._alloc.get_weight()
@@ -126,7 +124,7 @@ def main():
             "qqq_price": float(row.get("QQQ_price", 0.0)),
             "qqq_sma200": float(row.get("QQQ_sma200", 0.0)),
         }
-        
+
         weight, log = pipeline.step(timestamp=date, raw_obs=obs)
         latest_log = log
         latest_date = date
@@ -144,10 +142,10 @@ def main():
     qld_alloc = latest_log.get("qld", 0.0)
     qqq_alloc = latest_log.get("qqq", 0.0)
     cash_alloc = latest_log.get("cash", 0.0)
-    
+
     circuit_triggered = latest_log.get("circuit_breaker", False)
     momentum_lockout = latest_log.get("momentum_lockout", False)
-    
+
     p_cp = latest_log.get("p_cp", 0.0)
     vol_cap = latest_log.get("vol_guard_cap", 2.0)
     qqq_price = latest_row.get("QQQ_price", 0.0)
@@ -156,13 +154,13 @@ def main():
 
     # 判定交易动作
     action_msg = "⚪️ 维持现状 (Hold)"
-    
+
     if circuit_triggered:
         action_msg = "🚨 紧急清仓！底层宏观断裂，全量转为 CASH"
     elif momentum_lockout and prev_weight > 0.0:
         action_msg = "⚠️ 触发趋势大锁 (价格跌破年线)！强制去杠杆，卖出 QLD 退守 QQQ"
     elif current_weight > prev_weight:
-        action_msg = f"🟢 买入指令！开始增加 QLD 杠杆头寸 (波动率与趋势确认安全)"
+        action_msg = "🟢 买入指令！开始增加 QLD 杠杆头寸 (波动率与趋势确认安全)"
     elif current_weight < prev_weight:
         if current_weight == 0.0:
             action_msg = "🔴 降仓指令！宏观不确定性增加，完全清空 QLD 退回 QQQ"
@@ -172,7 +170,7 @@ def main():
         action_msg = "🔵 继续持有 QLD (满载杠杆运行中)"
     elif current_weight == 0.0 and cash_alloc == 0.0:
         action_msg = "🛡️ 继续持有 QQQ (底部摩擦中，暂不解封杠杆)"
-        
+
     report_lines = []
     def log(msg=""):
         print(msg)
@@ -181,7 +179,7 @@ def main():
     log("\n" + "=" * 65)
     log(f" 🌀 QQQ流动性循环监测系统 - 每日实盘判定 ({latest_date.date()})")
     log("=" * 65)
-    
+
     log("\n[物理引擎传感器底噪]")
     log(f" 👉 综合裂变概率 (P_cp) : {p_cp*100:.2f}%")
     log(f" 👉 平滑压力指数 (S_t)  : {s_t:.3f} (阈值 0.7 触发清仓)")
@@ -202,7 +200,7 @@ def main():
     log(f" • [QQQ] 纳指基础持仓:   {qqq_alloc * 100:.1f}%")
     log(f" • [USD] 纯美元现金:     {cash_alloc * 100:.1f}%")
 
-    log(f"\n⚡ QLD 买卖操作指示:")
+    log("\n⚡ QLD 买卖操作指示:")
     log(f"   >> {action_msg}")
     log("=" * 65 + "\n")
 

@@ -16,11 +16,11 @@ from __future__ import annotations
 
 from src.liquidity.control.aema import update_aema
 from src.liquidity.control.leverage_map import compute_allocation, compute_leverage
+from src.liquidity.control.regime_vol_guard import RegimeVolatilityFloor
 from src.liquidity.engine.regime_severity import (
     load_regime_severity_thresholds,
     normalize_regime_severity,
 )
-from src.liquidity.control.regime_vol_guard import RegimeVolatilityFloor
 
 
 class Allocator:
@@ -81,7 +81,7 @@ class Allocator:
                 abs_floor = b0 / (a0 - 1.0) if a0 > 1.0 else 0.0
             except ZeroDivisionError:
                 abs_floor = 0.0
-            
+
             self._vol_guard = RegimeVolatilityFloor(
                 window=vol_guard_cfg.get("window", 252),
                 quantile=vol_guard_cfg.get("quantile", 0.95),
@@ -221,7 +221,7 @@ class Allocator:
     def current_leverage(self) -> float:
         """Get the current requested target leverage L_target."""
         return getattr(self, "_l_current", 0.0)
-        
+
     def dump_state(self) -> dict:
         state = {
             "s_cp_t": self._s_cp_t,
@@ -234,7 +234,7 @@ class Allocator:
         if self._vol_guard_enabled:
             state["vol_guard"] = self._vol_guard.dump_state()
         return state
-        
+
     def load_state(self, state_dict: dict) -> None:
         self._s_cp_t = state_dict["s_cp_t"]
         self._s_level_t = state_dict["s_level_t"]
@@ -277,21 +277,21 @@ class Allocator:
         if delta < -self._delta_down:
             # De-lever: immediate full execution (protection priority)
             return l_target
-            
+
         if delta > 0:
-            # Mathematics for AEMA compatibility: use a relative remaining gap 
+            # Mathematics for AEMA compatibility: use a relative remaining gap
             # instead of absolute delta so Zeno's paradox won't trap the recovery.
             # We use dynamic ceiling (1.0 for defense phase, 2.0 for aggro phase)
             ceiling = float(np.ceil(l_target))
             if ceiling < 1.0:
                 ceiling = 1.0
-                
+
             relative_gap = delta / (ceiling - self._l_current + 1e-6)
-            
+
             if relative_gap > self._delta_up:
                 # Re-lever: gradual recovery (conservative)
                 return self._l_current + self._recovery_coeff * delta
-                
+
         # Inside deadband: no adjustment
         return self._l_current
 

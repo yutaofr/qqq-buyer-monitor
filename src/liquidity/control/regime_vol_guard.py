@@ -25,9 +25,9 @@ SRD reference: Architecture extension after Story 6.2 (Forgetting Factor).
 
 from __future__ import annotations
 
-from collections import deque
 import base64
 import io
+from collections import deque
 
 import numpy as np
 
@@ -145,7 +145,7 @@ class RegimeVolatilityFloor:
             "raw_cap": self._raw_cap,
             "threshold": self._threshold,
         }
-        
+
     def load_state(self, state_dict: dict) -> None:
         self._smoothed_cap = state_dict["smoothed_cap"]
         self._raw_cap = state_dict["raw_cap"]

@@ -15,7 +15,6 @@ import pytest
 
 from src.liquidity.engine.nig import predictive_logpdf, update_nig
 
-
 # ─────────────────────────────────────────────────────────────
 # Fixtures: shared prior and test shapes
 # ─────────────────────────────────────────────────────────────
@@ -103,7 +102,7 @@ class TestKappaLinearGrowth:
         kappa_0 = 5.0
         stats = make_prior(kappa_0=kappa_0)
         x_t = np.zeros(D)
-        for k in range(1, 6):
+        for _ in range(1, 6):
             stats = update_nig(stats, x_t)
         # After 5 updates, kappa = kappa_0 + 5
         np.testing.assert_allclose(

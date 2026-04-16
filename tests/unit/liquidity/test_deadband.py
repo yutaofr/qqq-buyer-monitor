@@ -16,8 +16,7 @@ SRD v1.2 Section 4.3:
         recovery_coeff=0.15 (conservative: re-entry needs s < exit - 0.15*delta_up)
 """
 
-import pytest
-from src.liquidity.control.deadband import DeadbandState, update_deadband, DeadbandSignal
+from src.liquidity.control.deadband import DeadbandSignal, DeadbandState, update_deadband
 
 
 class TestDeadbandSignalEnum:

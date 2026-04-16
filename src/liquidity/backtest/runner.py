@@ -18,13 +18,10 @@ The runner owns no side effects beyond building the results dict.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from src.liquidity.backtest.attribution import compute_attribution
 from src.liquidity.backtest.nav import NavAccumulator
-from src.liquidity.control.allocator import Allocator
-from src.liquidity.engine.bocpd import BOCPDEngine
 
 # Column names expected in the panel DataFrame
 _REQUIRED_COLS = {
@@ -94,9 +91,9 @@ def run_backtest(
             "qqq_price": float(row.get("QQQ_price", 0.0)),
             "qqq_sma200": float(row.get("QQQ_sma200", 0.0))
         }
-        
+
         weight, log = pipeline.step(timestamp=date, raw_obs=obs)
-        
+
         # 2. Add structural variables for diagnostics
         log.update(
             date=date,
@@ -144,7 +141,7 @@ def _validate_panel(panel: pd.DataFrame) -> None:
     missing = _REQUIRED_COLS - set(panel.columns)
     if missing:
         raise ValueError(f"Panel missing required columns: {missing}")
-        
+
     nan_count = panel[["QQQ_ret", "QLD_ret"]].isna().sum().sum()
     if nan_count > 0:
         raise ValueError(

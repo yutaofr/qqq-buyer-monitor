@@ -15,7 +15,6 @@ import pytest
 from src.liquidity.config import load_config
 from src.liquidity.engine.bocpd import BOCPDEngine
 
-
 D = 3
 
 
@@ -141,7 +140,7 @@ class TestSC4_ExactNIGAfterShock:
     def test_kappa_at_r1(self, config, engine_post_shock):
         state = engine_post_shock.get_state()
         lam = config["forgetting"]["lambda"]
-        kappa_0, x = 5.0, 4.0
+        kappa_0 = 5.0
         kappa_decayed = lam * kappa_0
         expected_kappa = kappa_decayed + 1.0   # 5.9
         np.testing.assert_allclose(

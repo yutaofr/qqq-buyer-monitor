@@ -35,7 +35,7 @@ def _build_synthetic_panel(n_days: int = N_DAYS) -> tuple[pd.DataFrame, pd.DataF
         QLD return:     +0.08% per day (2× QQQ, deterministic)
     """
     idx = pd.bdate_range("2005-01-03", periods=n_days)
-    
+
     panel = pd.DataFrame(
         {
             "VIXCLS":         15.0,
@@ -48,14 +48,14 @@ def _build_synthetic_panel(n_days: int = N_DAYS) -> tuple[pd.DataFrame, pd.DataF
         },
         index=idx,
     )
-    
+
     # 50 uncorrelated stocks -> ED will be small and stable -> ed_accel ~ 0
     np.random.seed(42)  # Deterministic test
     constituent_rets = pd.DataFrame(
         np.random.normal(0.0, 0.01, (n_days, 50)),
         index=idx
     )
-    
+
     return panel, constituent_rets
 
 

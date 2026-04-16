@@ -11,7 +11,7 @@ alpha_down=0.08 → slow decay (half-life ≈ 8.3 steps)
 import numpy as np
 import pytest
 
-from src.liquidity.control.aema import update_aema, run_aema_series
+from src.liquidity.control.aema import run_aema_series, update_aema
 
 
 class TestUpdateAEMA:
