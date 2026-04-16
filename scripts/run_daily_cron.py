@@ -35,9 +35,19 @@ def fetch_state():
         return None
     headers = {"Authorization": f"Bearer {VERCEL_TOKEN}"}
     try:
-        res = requests.get(STATE_URL, headers=headers)
+        # List blobs to find the latest state file URL
+        res = requests.get("https://blob.vercel-storage.com?prefix=qqq_engine_state", headers=headers)
         if res.status_code == 200:
-            return res.json()
+            blobs = res.json().get("blobs", [])
+            if blobs:
+                # Sort by uploadedAt descending
+                latest_blob = max(blobs, key=lambda x: x["uploadedAt"])
+                url = latest_blob["url"]
+                
+                # Download the actual JSON file
+                state_res = requests.get(url)
+                if state_res.status_code == 200:
+                    return state_res.json()
     except Exception as e:
         print(f"[警告] 无法拉取云端状态: {e}")
     return None
