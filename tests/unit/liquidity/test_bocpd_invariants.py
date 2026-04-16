@@ -180,6 +180,115 @@ class TestReturnValue:
             assert 0.0 <= p_cp <= 1.0, f"p_cp={p_cp} out of [0,1]"
 
 
+class TestRegimeDiagnostics:
+    """BOCPD must expose regime water-level diagnostics separately from p_cp."""
+
+    def test_last_regime_diagnostics_available_after_update(self, engine):
+        engine.update(np.array([0.0, 3.0, 0.0]), lambda_macro=0.01)
+
+        diag = engine.last_regime_diagnostics
+
+        required = {
+            "dominant_run_length",
+            "dominant_run_prob",
+            "regime_sigma2_ed",
+            "regime_sigma2_spread",
+            "regime_sigma2_fisher",
+            "regime_severity_base",
+            "regime_resonance_pr",
+            "regime_resonance_multiplier",
+            "regime_v_ed",
+            "regime_v_spread",
+            "regime_v_fisher",
+            "regime_v_capped_ed",
+            "regime_v_capped_spread",
+            "regime_v_capped_fisher",
+            "regime_severity",
+        }
+        assert required <= set(diag)
+        assert diag["dominant_run_length"] >= 0
+        assert 0.0 <= diag["dominant_run_prob"] <= 1.0
+        assert 0.0 <= diag["regime_severity"] < 1.0
+
+    def test_dimension_caps_limit_single_dimension_contribution(self, config):
+        config = {
+            **config,
+            "regime_severity": {
+                **config["regime_severity"],
+                "weights": {"ed_accel": 0.0, "spread_anomaly": 1.0, "fisher_rho": 0.0},
+                "dimension_caps": {
+                    "ed_accel": 1.0,
+                    "spread_anomaly": 0.5,
+                    "fisher_rho": 1.0,
+                },
+            },
+        }
+        engine = BOCPDEngine(config)
+        state = engine.get_state()
+        state.run_length_probs[:] = 0.0
+        state.run_length_probs[10] = 1.0
+        state.suff_stats[10, 1, 3] = state.suff_stats[10, 1, 3] * 1_000.0
+        engine.set_state(state)
+
+        diag = engine.last_regime_diagnostics
+
+        assert diag["regime_v_spread"] > 0.5
+        assert diag["regime_v_capped_spread"] == pytest.approx(0.5)
+        assert diag["regime_severity_base"] == pytest.approx(1.0 - np.exp(-0.5))
+        assert diag["regime_resonance_pr"] == pytest.approx(1.0)
+        assert diag["regime_resonance_multiplier"] == pytest.approx(1.0 / 3.0)
+        assert diag["regime_severity"] == pytest.approx((1.0 - np.exp(-0.5)) / 3.0)
+
+    def test_resonance_pr_is_computed_from_unweighted_dimension_intensity(self, config):
+        config = {
+            **config,
+            "regime_severity": {
+                **config["regime_severity"],
+                "weights": {"ed_accel": 0.10, "spread_anomaly": 0.80, "fisher_rho": 0.10},
+                "dimension_caps": {
+                    "ed_accel": 1.0,
+                    "spread_anomaly": 1.0,
+                    "fisher_rho": 1.0,
+                },
+                "resonance_gamma": 1.0,
+            },
+        }
+        engine = BOCPDEngine(config)
+        state = engine.get_state()
+        state.run_length_probs[:] = 0.0
+        state.run_length_probs[10] = 1.0
+        state.suff_stats[10, :, 3] = state.suff_stats[10, :, 3] * np.exp(0.5)
+        engine.set_state(state)
+
+        diag = engine.last_regime_diagnostics
+
+        assert diag["regime_resonance_pr"] == pytest.approx(3.0)
+        assert diag["regime_resonance_multiplier"] == pytest.approx(1.0)
+        assert diag["regime_severity"] == pytest.approx(diag["regime_severity_base"])
+
+    def test_resonance_pr_continuously_penalizes_isolated_spike(self, config):
+        config = {
+            **config,
+            "regime_severity": {
+                **config["regime_severity"],
+                "weights": {"ed_accel": 0.0, "spread_anomaly": 1.0, "fisher_rho": 0.0},
+                "resonance_gamma": 2.0,
+            },
+        }
+        engine = BOCPDEngine(config)
+        state = engine.get_state()
+        state.run_length_probs[:] = 0.0
+        state.run_length_probs[10] = 1.0
+        state.suff_stats[10, 1, 3] = state.suff_stats[10, 1, 3] * np.exp(1.0)
+        engine.set_state(state)
+
+        diag = engine.last_regime_diagnostics
+
+        assert diag["regime_resonance_pr"] == pytest.approx(1.0)
+        assert diag["regime_resonance_multiplier"] == pytest.approx((1.0 / 3.0) ** 2)
+        assert diag["regime_severity"] == pytest.approx(diag["regime_severity_base"] / 9.0)
+
+
 class TestStateSerialisation:
     """get_state / set_state round-trip."""
 

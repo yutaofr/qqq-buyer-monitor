@@ -92,7 +92,20 @@ class TestRunBacktestLog:
 
     def test_log_has_required_columns(self, backtest_result):
         log = backtest_result["log"]
-        required = {"weight", "s_t", "p_cp", "days_held"}
+        required = {
+            "weight",
+            "s_t",
+            "s_cp_t",
+            "s_level_t",
+            "p_cp",
+            "regime_severity",
+            "regime_severity_base",
+            "regime_resonance_pr",
+            "regime_resonance_multiplier",
+            "dominant_run_length",
+            "dominant_run_prob",
+            "days_held",
+        }
         missing = required - set(log.columns)
         assert not missing, f"Log missing columns: {missing}"
 

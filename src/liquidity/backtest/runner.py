@@ -83,6 +83,8 @@ def run_backtest(
 
         # Step 1+2: BOCPD update
         p_cp = bocpd.update(x_t, lambda_macro)
+        regime_diag = bocpd.last_regime_diagnostics
+        regime_severity = float(regime_diag["regime_severity"])
 
         if i < burn_in:
             # Burn-in: engine warms up, allocator stays in QQQ
@@ -96,7 +98,11 @@ def run_backtest(
             continue
 
         # Post burn-in: full control chain
-        weight, alloc_log = alloc.step(p_cp, lambda_macro)
+        weight, alloc_log = alloc.step(
+            p_cp,
+            lambda_macro,
+            regime_severity_raw=regime_severity,
+        )
 
         # Step 4: NAV update with SRD 6.2 dynamic slippage
         nav_acc.step(
@@ -112,6 +118,20 @@ def run_backtest(
             "weight":          weight,
             "p_cp":            p_cp,
             "s_t":             alloc_log["s_t"],
+            "s_cp_t":          alloc_log["s_cp_t"],
+            "s_level_t":       alloc_log["s_level_t"],
+            "regime_severity": regime_severity,
+            "regime_severity_base": regime_diag["regime_severity_base"],
+            "regime_resonance_pr": regime_diag["regime_resonance_pr"],
+            "regime_resonance_multiplier": regime_diag["regime_resonance_multiplier"],
+            "regime_severity_norm": alloc_log["regime_severity_norm"],
+            "regime_severity_floor": alloc_log["regime_severity_floor"],
+            "regime_severity_ceil": alloc_log["regime_severity_ceil"],
+            "dominant_run_length": regime_diag["dominant_run_length"],
+            "dominant_run_prob": regime_diag["dominant_run_prob"],
+            "regime_sigma2_ed": regime_diag["regime_sigma2_ed"],
+            "regime_sigma2_spread": regime_diag["regime_sigma2_spread"],
+            "regime_sigma2_fisher": regime_diag["regime_sigma2_fisher"],
             "signal":          alloc_log["signal"],
             "days_held":       alloc_log["days_held"],
             "circuit_breaker": alloc_log["circuit_breaker"],
@@ -120,6 +140,10 @@ def run_backtest(
             "qld":             alloc_log["qld"],
             "qqq":             alloc_log["qqq"],
             "cash":            alloc_log["cash"],
+            "tau_t":           bocpd.last_tau,
+            "lambda_macro":    lambda_macro,
+            "ll_spread_actual": bocpd.last_LL_spread_actual,
+            "ll_spread_base":  bocpd.last_LL_spread_base,
         })
         post_burn_idx.append(date)
         prev_weight = weight

@@ -34,6 +34,16 @@ def make_prior(mu_0=0.0, kappa_0=5.0, alpha_0=2.5, beta_0=1.5) -> np.ndarray:
     return stats
 
 
+def make_prior_row(mu_0=0.0, kappa_0=5.0, alpha_0=2.5, beta_0=1.5) -> np.ndarray:
+    """Build a single (D, 4) prior row for anchored-decay tests."""
+    row = np.empty((D, 4), dtype=np.float64)
+    row[:, 0] = mu_0
+    row[:, 1] = kappa_0
+    row[:, 2] = alpha_0
+    row[:, 3] = beta_0
+    return row
+
+
 # ─────────────────────────────────────────────────────────────
 # P0-level: structural invariants (INV-6)
 # ─────────────────────────────────────────────────────────────
@@ -218,6 +228,189 @@ class TestNIGUpdateNonzeroPreviousMu:
         new_stats = update_nig(stats, x_t)
         # deviation = (5-3)^2 = 4, so beta must increase
         assert np.all(new_stats[:, :, 3] > 2.0)
+
+
+class TestAnchoredDecayClosedForm:
+    """Closed-form and asymptotic contracts for prior-anchored decay."""
+
+    def test_kappa_alpha_match_closed_form(self):
+        lam = 0.98
+        kappa_0 = 5.0
+        alpha_0 = 2.5
+        prior_row = make_prior_row(kappa_0=kappa_0, alpha_0=alpha_0)
+        stats = make_prior(kappa_0=kappa_0, alpha_0=alpha_0)
+        x_t = np.zeros(D)
+
+        for step in range(1, 201):
+            stats = update_nig(
+                stats,
+                x_t,
+                forgetting_lambda=lam,
+                prior_stats=prior_row,
+            )
+            expected_kappa = kappa_0 + (1.0 - lam**step) / (1.0 - lam)
+            expected_alpha = alpha_0 + 0.5 * (1.0 - lam**step) / (1.0 - lam)
+            np.testing.assert_allclose(stats[:, :, 1], expected_kappa, atol=1e-10)
+            np.testing.assert_allclose(stats[:, :, 2], expected_alpha, atol=1e-10)
+
+    def test_kappa_alpha_are_monotone_and_bounded_by_asymptote(self):
+        lam = 0.97
+        prior_row = make_prior_row()
+        stats = make_prior()
+        x_t = np.zeros(D)
+
+        kappa_inf = prior_row[0, 1] + 1.0 / (1.0 - lam)
+        alpha_inf = prior_row[0, 2] + 0.5 / (1.0 - lam)
+        kappa_path = []
+        alpha_path = []
+
+        for _ in range(120):
+            stats = update_nig(
+                stats,
+                x_t,
+                forgetting_lambda=lam,
+                prior_stats=prior_row,
+            )
+            kappa_path.append(float(stats[0, 0, 1]))
+            alpha_path.append(float(stats[0, 0, 2]))
+
+        assert np.all(np.diff(kappa_path) > 0.0)
+        assert np.all(np.diff(alpha_path) > 0.0)
+        assert np.all(np.array(kappa_path) < kappa_inf)
+        assert np.all(np.array(alpha_path) < alpha_inf)
+
+    def test_gap_contracts_by_lambda(self):
+        lam = 0.96
+        prior_row = make_prior_row()
+        stats = make_prior()
+        x_t = np.zeros(D)
+
+        kappa_inf = prior_row[0, 1] + 1.0 / (1.0 - lam)
+        alpha_inf = prior_row[0, 2] + 0.5 / (1.0 - lam)
+        kappa_gaps = []
+        alpha_gaps = []
+
+        for _ in range(80):
+            stats = update_nig(
+                stats,
+                x_t,
+                forgetting_lambda=lam,
+                prior_stats=prior_row,
+            )
+            kappa_gaps.append(kappa_inf - float(stats[0, 0, 1]))
+            alpha_gaps.append(alpha_inf - float(stats[0, 0, 2]))
+
+        np.testing.assert_allclose(
+            np.array(kappa_gaps[1:]),
+            lam * np.array(kappa_gaps[:-1]),
+            atol=1e-10,
+        )
+        np.testing.assert_allclose(
+            np.array(alpha_gaps[1:]),
+            lam * np.array(alpha_gaps[:-1]),
+            atol=1e-10,
+        )
+
+    def test_fixed_point_is_independent_of_initial_state(self):
+        lam = 0.98
+        prior_row = make_prior_row()
+        prior_stats = np.broadcast_to(prior_row, (N, D, 4)).copy()
+        extreme_stats = make_prior(mu_0=7.0, kappa_0=300.0, alpha_0=100.0, beta_0=40.0)
+        x_t = np.full(D, 2.0)
+
+        for _ in range(800):
+            prior_stats = update_nig(
+                prior_stats,
+                x_t,
+                forgetting_lambda=lam,
+                prior_stats=prior_row,
+            )
+            extreme_stats = update_nig(
+                extreme_stats,
+                x_t,
+                forgetting_lambda=lam,
+                prior_stats=prior_row,
+            )
+
+        np.testing.assert_allclose(
+            prior_stats[:, :, 1],
+            extreme_stats[:, :, 1],
+            atol=5e-5,
+        )
+        np.testing.assert_allclose(
+            prior_stats[:, :, 2],
+            extreme_stats[:, :, 2],
+            atol=5e-5,
+        )
+
+    def test_kappa_alpha_limits_do_not_depend_on_constant_observation(self):
+        lam = 0.95
+        prior_row = make_prior_row()
+        x_values = [0.0, 3.0, -5.0]
+        final_pairs = []
+
+        for x_scalar in x_values:
+            stats = make_prior()
+            x_t = np.full(D, x_scalar)
+            for _ in range(200):
+                stats = update_nig(
+                    stats,
+                    x_t,
+                    forgetting_lambda=lam,
+                    prior_stats=prior_row,
+                )
+            final_pairs.append((float(stats[0, 0, 1]), float(stats[0, 0, 2])))
+
+        first = np.array(final_pairs[0])
+        for pair in final_pairs[1:]:
+            np.testing.assert_allclose(np.array(pair), first, atol=1e-10)
+
+    def test_epsilon_convergence_bound_for_kappa(self):
+        lam = 0.98
+        eps = 1e-2
+        prior_row = make_prior_row()
+        stats = make_prior()
+        x_t = np.zeros(D)
+        kappa_inf = prior_row[0, 1] + 1.0 / (1.0 - lam)
+        t_star = int(np.ceil(np.log(eps * (1.0 - lam)) / np.log(lam)))
+
+        for _ in range(t_star):
+            stats = update_nig(
+                stats,
+                x_t,
+                forgetting_lambda=lam,
+                prior_stats=prior_row,
+            )
+
+        gap = abs(kappa_inf - float(stats[0, 0, 1]))
+        assert gap <= eps
+
+
+class TestAnchoredDecayMuConvergence:
+    """Mu converges to the anchored fixed point, not raw c, when λ < 1."""
+
+    @pytest.mark.parametrize("lam", [0.95, 0.98, 0.995])
+    def test_mu_error_shrinks_and_enters_anchored_tolerance_band(self, lam):
+        c = 4.0
+        mu_0 = 0.0
+        kappa_0 = 5.0
+        prior_row = make_prior_row(mu_0=mu_0, kappa_0=kappa_0)
+        stats = make_prior(mu_0=mu_0, kappa_0=kappa_0)
+        x_t = np.full(D, c)
+        errors = []
+        mu_inf = (kappa_0 * mu_0 + c / (1.0 - lam)) / (kappa_0 + 1.0 / (1.0 - lam))
+
+        for _ in range(1200):
+            stats = update_nig(
+                stats,
+                x_t,
+                forgetting_lambda=lam,
+                prior_stats=prior_row,
+            )
+            errors.append(abs(mu_inf - float(stats[0, 0, 0])))
+
+        assert np.all(np.diff(errors) <= 1e-12)
+        assert errors[-1] <= 5e-3
 
 
 # ─────────────────────────────────────────────────────────────

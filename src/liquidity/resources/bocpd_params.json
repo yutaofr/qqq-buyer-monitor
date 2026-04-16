@@ -32,6 +32,23 @@
     "s1_bps": 2,
     "sigma_normal": 0.18
   },
+  "price_loader": {
+    "chunk_size": 5,
+    "max_retries": 3,
+    "base_delay_seconds": 1.0,
+    "jitter_seconds": 0.25
+  },
+  "ed_signal": {
+    "window": 60,
+    "median_window": 10,
+    "min_coverage": 0.9,
+    "min_names": 20
+  },
+  "proxy_universe": {
+    "top_n": 50,
+    "min_listing_days": 63,
+    "liquidity_lookback": 60
+  },
   "macro_hazard": {
     "lambda_floor": 0.002,
     "lambda_ceil": 0.016,
@@ -41,6 +58,46 @@
       "rrp": 0.25,
       "tga": 0.25,
       "fra_ois": 0.25
+    }
+  },
+  "overdrive": {
+    "tau_base": 10.0,
+    "gamma": 0.5,
+    "tau_floor": 2.0
+  },
+  "forgetting": {
+    "lambda": 1.0
+  },
+  "regime_severity": {
+    "enabled": false,
+    "aggregation": "posterior_mixture_variance",
+    "combine": "max",
+    "alpha_up": 0.25,
+    "alpha_down": 0.03,
+    "floor_method": "prior_predictive_null",
+    "floor_quantile": 0.90,
+    "floor_mc_paths": 200,
+    "floor_mc_steps": 756,
+    "floor_warmup": 252,
+    "floor_seed": 1337,
+    "ceil_method": "variance_inflation_scenario",
+    "ceil_multipliers": {
+      "ed_accel": 2.0,
+      "spread_anomaly": 4.0,
+      "fisher_rho": 2.0
+    },
+    "dimension_caps": {
+      "ed_accel": 1.0986122886681098,
+      "spread_anomaly": 1.3862943611198906,
+      "fisher_rho": 1.0986122886681098
+    },
+    "resonance_method": "participation_ratio",
+    "resonance_gamma": 1.0,
+    "threshold_resource": "regime_severity_thresholds.json",
+    "weights": {
+      "ed_accel": 0.35,
+      "spread_anomaly": 0.45,
+      "fisher_rho": 0.20
     }
   }
 }

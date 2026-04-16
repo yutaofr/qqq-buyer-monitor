@@ -56,6 +56,14 @@ class BOCPDEngine:
     One instance per backtest segment. Segments must NOT share state
     (SRD 7.1). Construct a new instance for each structural segment.
 
+    Causal Overdrive (v1.3):
+        τ_t = max(τ_floor, τ_base × (1 − γ × z(λ_macro)))
+        where z(λ) = clamp((λ − λ_floor) / (λ_ceil − λ_floor), 0, 1)
+
+        τ is computed BEFORE x_t arrives, using only λ_macro (which
+        depends on x_{1:t-1}). This preserves Adams & MacKay causality:
+        the predictive distribution shape is locked before observation.
+
     Args:
         config: parameter dict loaded from bocpd_params.json.
     """
@@ -76,8 +84,31 @@ class BOCPDEngine:
             kappa=self._kappa_hz,
         )
 
+        # Causal Overdrive parameters
+        od_cfg = config.get("overdrive", {})
+        self._tau_base:  float = od_cfg.get("tau_base", 1.0)
+        self._gamma:     float = od_cfg.get("gamma", 0.0)
+        self._tau_floor:  float = od_cfg.get("tau_floor", 2.0)
+        self._forgetting_lambda: float = config.get("forgetting", {}).get("lambda", 1.0)
+
+        # Lambda bounds for z(λ) normalization
+        m_cfg = config.get("macro_hazard", {})
+        self._lambda_floor: float = m_cfg.get("lambda_floor", 0.002)
+        self._lambda_ceil:  float = m_cfg.get("lambda_ceil", 0.016)
+
         # Build (D, 4) prior matrix from config
         self._prior: np.ndarray = self._build_prior()
+        self._severity_weights: np.ndarray = self._build_severity_weights()
+        self._severity_caps: np.ndarray = self._build_severity_caps()
+        self._severity_resonance_method: str = (
+            config.get("regime_severity", {}).get("resonance_method", "participation_ratio")
+        )
+        self._severity_resonance_gamma: float = float(
+            config.get("regime_severity", {}).get("resonance_gamma", 1.0)
+        )
+        if self._severity_resonance_gamma < 0.0:
+            raise ValueError("regime_severity.resonance_gamma must be non-negative.")
+        self._prior_sigma2: np.ndarray = self._predictive_sigma2(self._prior)
 
         # Initialise state
         self._probs, self._stats, self._t = self._initial_state()
@@ -85,6 +116,29 @@ class BOCPDEngine:
     # ─────────────────────────────────────────────────────────
     # Public API
     # ─────────────────────────────────────────────────────────
+
+    def _compute_tau(self, lambda_macro: float) -> float:
+        """Compute causal τ_t from macro hazard rate.
+
+        Strictly causal: λ_macro depends only on x_{1:t-1}.
+        The predictive distribution P(x_t | r, τ_t) is locked before x_t.
+
+        Returns:
+            tau_t: float > 0, clamped to [tau_floor, tau_base].
+        """
+        if self._gamma == 0.0:
+            return self._tau_base
+
+        denom = self._lambda_ceil - self._lambda_floor
+        if denom <= 0:
+            return self._tau_base
+
+        z = np.clip(
+            (lambda_macro - self._lambda_floor) / denom,
+            0.0, 1.0,
+        )
+        tau_raw = self._tau_base * (1.0 - self._gamma * z)
+        return max(self._tau_floor, tau_raw)
 
     def update(self, x_t: np.ndarray, lambda_macro: float) -> float:
         """Run one step of the five-step BOCPD loop.
@@ -96,8 +150,19 @@ class BOCPDEngine:
         Returns:
             p_cp_raw: float in [0, 1] — raw changepoint probability.
         """
-        # Step 1: predictive log-density → convert to linear scale
-        log_pred = predictive_logpdf(self._stats, x_t)    # (N,)
+        # Step 0: Compute causal τ_t (BEFORE seeing x_t's influence on likelihood)
+        tau_t = self._compute_tau(lambda_macro)
+
+        # Step 1: predictive log-density with temperature scaling
+        log_pred, log_comp = predictive_logpdf(self._stats, x_t, tau=tau_t, return_components=True)
+        
+        # Diagnostic: compute baseline likelihood to measure tau's effect
+        _, log_comp_base = predictive_logpdf(self._stats, x_t, tau=self._tau_base, return_components=True)
+        # We record the likelihood of the highest-probability regime (most confident prior)
+        best_r = np.argmax(self._probs)
+        self._last_LL_spread_actual = float(log_comp[best_r, 1])  # 1 = SPREAD_ANOMALY
+        self._last_LL_spread_base = float(log_comp_base[best_r, 1])
+
         # Numerically stable exponentiation: subtract max before exp
         log_pred_stable = log_pred - log_pred.max()
         pred = np.exp(log_pred_stable)                     # (N,) in (0, 1]
@@ -126,14 +191,41 @@ class BOCPDEngine:
         # r=0: always fresh prior (brand-new regime hypothesis)
         new_stats[0, :, :] = self._prior                        # INV-4
         # r=1..R_MAX: absorb x_t into the previous (r-1) stats (right-shift)
-        new_stats[1:, :, :] = update_nig(self._stats[:-1, :, :], x_t)
+        new_stats[1:, :, :] = update_nig(
+            self._stats[:-1, :, :],
+            x_t,
+            forgetting_lambda=self._forgetting_lambda,
+            prior_stats=self._prior,
+        )
+
+        # Store tau_t for diagnostic access
+        self._last_tau = tau_t
 
         # Commit new state
         self._probs = new_probs
         self._stats = new_stats
         self._t += 1
+        self._last_regime_diagnostics = self._compute_regime_diagnostics()
 
         return float(new_probs[0])  # p_cp_raw
+
+    @property
+    def last_tau(self) -> float:
+        """Last computed τ_t (for diagnostic logging)."""
+        return getattr(self, "_last_tau", self._tau_base)
+
+    @property
+    def last_LL_spread_actual(self) -> float:
+        return getattr(self, "_last_LL_spread_actual", 0.0)
+
+    @property
+    def last_LL_spread_base(self) -> float:
+        return getattr(self, "_last_LL_spread_base", 0.0)
+
+    @property
+    def last_regime_diagnostics(self) -> dict:
+        """Diagnostics describing current regime water level, separate from p_cp."""
+        return getattr(self, "_last_regime_diagnostics", self._compute_regime_diagnostics()).copy()
 
     def get_state(self) -> BOCPDState:
         """Return a deep-copy snapshot of the current engine state."""
@@ -166,6 +258,119 @@ class BOCPDEngine:
             for k in dim_keys
         ], dtype=np.float64)    # (D, 4)
         return prior
+
+    def _build_severity_weights(self) -> np.ndarray:
+        """Return normalized severity weights in observation-dimension order."""
+        cfg = self._config.get("regime_severity", {})
+        weights = cfg.get("weights", {})
+        raw = np.array(
+            [
+                weights.get("ed_accel", 1.0 / self._D),
+                weights.get("spread_anomaly", 1.0 / self._D),
+                weights.get("fisher_rho", 1.0 / self._D),
+            ],
+            dtype=np.float64,
+        )
+        total = raw.sum()
+        if total <= 0.0:
+            return np.full(self._D, 1.0 / self._D, dtype=np.float64)
+        return raw / total
+
+    def _build_severity_caps(self) -> np.ndarray:
+        """Return per-dimension log-variance caps in observation-dimension order."""
+        cfg = self._config.get("regime_severity", {})
+        caps = cfg.get("dimension_caps", {})
+        raw = np.array(
+            [
+                caps.get("ed_accel", np.inf),
+                caps.get("spread_anomaly", np.inf),
+                caps.get("fisher_rho", np.inf),
+            ],
+            dtype=np.float64,
+        )
+        if np.any(raw < 0.0):
+            raise ValueError("regime_severity.dimension_caps must be non-negative.")
+        return raw
+
+    def _compute_resonance(self, capped_log_ratio: np.ndarray) -> tuple[float, float]:
+        """Return continuous cross-dimension resonance PR and multiplier.
+
+        Severity amplitude is still computed with physical weights. PR is computed
+        on de-weighted, cap-standardized stress so it measures breadth rather than
+        the configured explanatory power of each dimension.
+        """
+        if self._severity_resonance_method in {"none", None}:
+            return float(self._D), 1.0
+        if self._severity_resonance_method != "participation_ratio":
+            raise ValueError(
+                f"Unsupported regime_severity.resonance_method="
+                f"{self._severity_resonance_method!r}"
+            )
+
+        finite_positive_caps = np.isfinite(self._severity_caps) & (self._severity_caps > 0.0)
+        resonance_input = np.zeros_like(capped_log_ratio, dtype=np.float64)
+        resonance_input[finite_positive_caps] = (
+            capped_log_ratio[finite_positive_caps] / self._severity_caps[finite_positive_caps]
+        )
+        resonance_input[~finite_positive_caps] = capped_log_ratio[~finite_positive_caps]
+        resonance_input = np.maximum(resonance_input, 0.0)
+
+        total = float(np.sum(resonance_input))
+        if total <= 0.0:
+            return float(self._D), 1.0
+        denom = float(np.sum(resonance_input * resonance_input))
+        if denom <= 0.0:
+            return float(self._D), 1.0
+
+        pr = float(np.clip((total * total) / denom, 1.0, float(self._D)))
+        multiplier = float((pr / float(self._D)) ** self._severity_resonance_gamma)
+        return pr, multiplier
+
+    @staticmethod
+    def _predictive_sigma2(stats: np.ndarray) -> np.ndarray:
+        """NIG Student-t predictive variance scale per run-length and dimension."""
+        kappa = stats[..., 1]
+        alpha = stats[..., 2]
+        beta = stats[..., 3]
+        return beta * (kappa + 1.0) / (alpha * kappa)
+
+    def _compute_regime_diagnostics(self) -> dict:
+        """Compute posterior-mixture regime severity from NIG predictive scales."""
+        probs = self._probs
+        stats = self._stats
+        dominant_r = int(np.argmax(probs))
+        dominant_prob = float(probs[dominant_r])
+
+        sigma2_all = self._predictive_sigma2(stats)
+        sigma2_mix = np.sum(probs[:, np.newaxis] * sigma2_all, axis=0)
+        log_ratio = np.log(np.maximum(sigma2_mix, 1e-300) / self._prior_sigma2)
+        positive_log_ratio = np.maximum(log_ratio, 0.0)
+        capped_log_ratio = np.minimum(positive_log_ratio, self._severity_caps)
+        severity_base = 1.0 - np.exp(-float(np.dot(self._severity_weights, capped_log_ratio)))
+        resonance_pr, resonance_multiplier = self._compute_resonance(capped_log_ratio)
+        severity = severity_base * resonance_multiplier
+
+        sigma2_dom = sigma2_all[dominant_r]
+        return {
+            "dominant_run_length": dominant_r,
+            "dominant_run_prob": dominant_prob,
+            "regime_sigma2_ed": float(sigma2_dom[0]),
+            "regime_sigma2_spread": float(sigma2_dom[1]),
+            "regime_sigma2_fisher": float(sigma2_dom[2]),
+            "regime_sigma2_mix_ed": float(sigma2_mix[0]),
+            "regime_sigma2_mix_spread": float(sigma2_mix[1]),
+            "regime_sigma2_mix_fisher": float(sigma2_mix[2]),
+            "regime_severity_base": float(np.clip(severity_base, 0.0, 1.0 - 1e-12)),
+            "regime_resonance_pr": resonance_pr,
+            "regime_resonance_multiplier": resonance_multiplier,
+            "regime_v_ed": float(positive_log_ratio[0]),
+            "regime_v_spread": float(positive_log_ratio[1]),
+            "regime_v_fisher": float(positive_log_ratio[2]),
+            "regime_v_capped_ed": float(capped_log_ratio[0]),
+            "regime_v_capped_spread": float(capped_log_ratio[1]),
+            "regime_v_capped_fisher": float(capped_log_ratio[2]),
+            "regime_severity": float(np.clip(severity, 0.0, 1.0 - 1e-12)),
+        }
 
     def _initial_state(self) -> tuple[np.ndarray, np.ndarray, int]:
         """Construct fresh initial state: all mass at r=0, all rows = prior."""

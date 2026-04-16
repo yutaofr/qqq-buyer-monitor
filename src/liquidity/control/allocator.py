@@ -16,6 +16,10 @@ from __future__ import annotations
 
 from src.liquidity.control.aema import update_aema
 from src.liquidity.control.leverage_map import compute_allocation, compute_leverage
+from src.liquidity.engine.regime_severity import (
+    load_regime_severity_thresholds,
+    normalize_regime_severity,
+)
 
 
 class Allocator:
@@ -33,6 +37,7 @@ class Allocator:
         deadband_cfg = config["deadband"]
         hold_cfg     = config["hold_period"]
         map_cfg      = config["mapping"]
+        severity_cfg = config.get("regime_severity", {})
 
         # AEMA params
         self._alpha_up        = aema_cfg["alpha_up"]
@@ -52,7 +57,21 @@ class Allocator:
         self._sigma_stress    = map_cfg["sigma_stress"]
         self._sigma_target    = map_cfg["sigma_target"]
 
+        # Regime water-level risk, kept orthogonal to changepoint probability.
+        self._severity_enabled = severity_cfg.get("enabled", False)
+        self._severity_alpha_up = severity_cfg.get("alpha_up", self._alpha_up)
+        self._severity_alpha_down = severity_cfg.get("alpha_down", self._alpha_down)
+        self._severity_combine = severity_cfg.get("combine", "max")
+        self._severity_floor = 0.0
+        self._severity_ceil = 1.0
+        if self._severity_enabled:
+            thresholds = load_regime_severity_thresholds(config)
+            self._severity_floor = float(thresholds["floor"])
+            self._severity_ceil = float(thresholds["ceil"])
+
         # ── Mutable state ──────────────────────────────────────
+        self._s_cp_t: float        = 0.0
+        self._s_level_t: float     = 0.0
         self._s_t: float           = 0.0
         self._l_current: float     = 0.0    # current effective leverage
         self._days_in_qld: int     = 0      # days with L >= 1 (QLD position)
@@ -66,6 +85,7 @@ class Allocator:
         self,
         p_cp_raw: float,
         lambda_macro: float,
+        regime_severity_raw: float = 0.0,
     ) -> tuple[float, dict]:
         """Execute one step of the full continuous control chain.
 
@@ -78,11 +98,32 @@ class Allocator:
             target_weight: QLD weight ∈ [0, 1] from the Allocation.
             log_dict: diagnostic fields for backtest attribution.
         """
-        # Step 1: AEMA smoothing (with circuit breaker bypass)
-        self._s_t = update_aema(
-            self._s_t, p_cp_raw, self._alpha_up, self._alpha_down,
+        # Step 1: AEMA smoothing (with circuit breaker bypass) for p_cp.
+        self._s_cp_t = update_aema(
+            self._s_cp_t, p_cp_raw, self._alpha_up, self._alpha_down,
             circuit_breaker=self._circuit_breaker,
         )
+        regime_severity_norm = 0.0
+        if self._severity_enabled:
+            regime_severity_norm = normalize_regime_severity(
+                regime_severity_raw,
+                floor=self._severity_floor,
+                ceil=self._severity_ceil,
+            )
+            self._s_level_t = update_aema(
+                self._s_level_t,
+                regime_severity_norm,
+                self._severity_alpha_up,
+                self._severity_alpha_down,
+                circuit_breaker=self._circuit_breaker,
+            )
+        else:
+            self._s_level_t = 0.0
+
+        if self._severity_combine == "max":
+            self._s_t = max(self._s_cp_t, self._s_level_t)
+        else:
+            raise ValueError(f"Unsupported regime_severity.combine={self._severity_combine!r}")
 
         # Step 2: Leverage mapping (SRD 4.2)
         l_target = compute_leverage(
@@ -115,6 +156,12 @@ class Allocator:
 
         log = {
             "s_t":             self._s_t,
+            "s_cp_t":          self._s_cp_t,
+            "s_level_t":       self._s_level_t,
+            "regime_severity_raw": regime_severity_raw,
+            "regime_severity_norm": regime_severity_norm,
+            "regime_severity_floor": self._severity_floor,
+            "regime_severity_ceil": self._severity_ceil,
             "l_target":        l_target,
             "l_actual":        l_actual,
             "l_final":         l_final,
@@ -136,6 +183,8 @@ class Allocator:
         """Return a snapshot of the current allocator state."""
         return {
             "s_t":         self._s_t,
+            "s_cp_t":      self._s_cp_t,
+            "s_level_t":   self._s_level_t,
             "l_current":   self._l_current,
             "in_qld":      self._l_current >= 1.0,
             "days_held":   self._days_in_qld,

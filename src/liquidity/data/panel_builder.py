@@ -21,7 +21,10 @@ import pandas as pd
 from src.liquidity.config import load_config
 from src.liquidity.data.fred_loader import load_fred_series
 from src.liquidity.data.pit_aligner import PIT_RULES, _assert_no_nan, apply_pit_offset
-from src.liquidity.data.price_loader import load_constituent_returns, load_ohlc
+from src.liquidity.data.price_loader import (
+    load_constituent_returns_with_diagnostics,
+    load_ohlc,
+)
 from src.liquidity.data.trading_calendar import (
     MAX_LOOKBACK,
     build_trading_calendar,
@@ -58,7 +61,7 @@ def build_pit_aligned_panel(
     start_date: str,
     end_date: str,
     config: dict | None = None,
-    top_n_constituents: int = 50,
+    top_n_constituents: int | None = None,
 ) -> pd.DataFrame:
     """Build a complete PiT-aligned panel with zero NaN.
 
@@ -75,7 +78,7 @@ def build_pit_aligned_panel(
         start_date:          Backtest start (YYYY-MM-DD). Panel begins here.
         end_date:            Backtest end (YYYY-MM-DD). Panel ends here.
         config:              Parameter dict. If None, loads from bocpd_params.json.
-        top_n_constituents:  Number of NDX constituents for ED computation.
+        top_n_constituents:  Optional override for proxy-universe top_n.
 
     Returns:
         pd.DataFrame with DatetimeIndex ∈ [start_date, end_date], columns:
@@ -94,6 +97,11 @@ def build_pit_aligned_panel(
         config = load_config()
 
     macro_cfg = config["macro_hazard"]
+    price_cfg = config["price_loader"]
+    ed_cfg = config["ed_signal"]
+    universe_cfg = config["proxy_universe"]
+    if top_n_constituents is None:
+        top_n_constituents = universe_cfg["top_n"]
 
     # ━━━ Step 1: Trading calendar ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     logger.info("Building trading calendar from yfinance QQQ...")
@@ -135,12 +143,35 @@ def build_pit_aligned_panel(
 
     # 3b: Price data
     logger.info("Fetching OHLC: QQQ, QLD, TLT")
-    ohlc = load_ohlc(["QQQ", "QLD", "TLT"], padded_start_str, end_date)
+    ohlc = load_ohlc(
+        ["QQQ", "QLD", "TLT"],
+        padded_start_str,
+        end_date,
+        chunk_size=price_cfg["chunk_size"],
+        max_retries=price_cfg["max_retries"],
+        base_delay_seconds=price_cfg["base_delay_seconds"],
+        jitter_seconds=price_cfg["jitter_seconds"],
+    )
 
     logger.info("Fetching NDX constituent returns (top %d)", top_n_constituents)
-    constituent_rets = load_constituent_returns(
+    constituent_rets, constituent_diag = load_constituent_returns_with_diagnostics(
         padded_start_str, end_date,
+        top_n=top_n_constituents,
+        min_listing_days=universe_cfg["min_listing_days"],
+        liquidity_lookback=universe_cfg["liquidity_lookback"],
+        chunk_size=price_cfg["chunk_size"],
+        max_retries=price_cfg["max_retries"],
+        base_delay_seconds=price_cfg["base_delay_seconds"],
+        jitter_seconds=price_cfg["jitter_seconds"],
     )
+    failed_tickers = constituent_diag["failed_tickers"]
+    if failed_tickers:
+        logger.warning(
+            "Constituent loader degraded: %d/%d tickers failed (%s)",
+            len(failed_tickers),
+            len(constituent_diag["requested_tickers"]),
+            ", ".join(failed_tickers[:10]),
+        )
 
     # ━━━ Step 4: Per-series PiT alignment ━━━━━━━━━━━━━━━━━━━━
     # Each series gets its own PiT offset + fill, then reindexed
@@ -175,9 +206,19 @@ def build_pit_aligned_panel(
     # ━━━ Step 5: Signal feature computation (on full padded panel) ━━━
     # 5a: ED acceleration
     logger.info("Computing ED acceleration...")
-    ed_series = compute_ed(constituent_rets, window=60)
-    ed_accel = compute_ed_accel(ed_series, median_window=10)
-    aligned["ED_ACCEL"] = ed_accel.reindex(full_calendar).ffill().fillna(0.0)
+    ed_series = compute_ed(
+        constituent_rets,
+        window=ed_cfg["window"],
+        min_coverage=ed_cfg["min_coverage"],
+        min_names=ed_cfg["min_names"],
+    )
+    ed_accel = compute_ed_accel(ed_series, median_window=ed_cfg["median_window"])
+    ed_valid_names = constituent_diag["valid_names"].reindex(full_calendar).fillna(0).astype(int)
+    ed_accel_aligned = ed_accel.reindex(full_calendar)
+    ed_is_degraded = ed_accel_aligned.isna() | (ed_valid_names < ed_cfg["min_names"])
+    aligned["ED_VALID_NAMES"] = ed_valid_names
+    aligned["ED_IS_DEGRADED"] = ed_is_degraded
+    aligned["ED_ACCEL"] = ed_accel_aligned.ffill().fillna(0.0)
 
     # 5b: Spread anomaly (VIX Z-score)
     logger.info("Computing spread anomaly...")
@@ -188,9 +229,11 @@ def build_pit_aligned_panel(
     # 5c: Fisher(ρ) — correlation between ED and spread
     logger.info("Computing Fisher(ρ)...")
     fisher = compute_fisher_rho(
-        aligned["ED_ACCEL"], aligned["SPREAD_ANOMALY"], window=20,
+        ed_accel_aligned, aligned["SPREAD_ANOMALY"], window=20,
     )
-    aligned["FISHER_RHO"] = fisher.reindex(full_calendar).ffill().fillna(0.0)
+    fisher_is_degraded = fisher.isna() | ed_is_degraded
+    aligned["FISHER_IS_DEGRADED"] = fisher_is_degraded
+    aligned["FISHER_RHO"] = fisher.ffill().fillna(0.0)
 
     # 5d: Macro hazard rate (λ_macro)
     logger.info("Computing macro hazard rate...")
@@ -218,6 +261,7 @@ def build_pit_aligned_panel(
     output_cols = [
         "QQQ_ret", "QLD_ret",
         "ED_ACCEL", "SPREAD_ANOMALY", "FISHER_RHO", "LAMBDA_MACRO",
+        "ED_VALID_NAMES", "ED_IS_DEGRADED", "FISHER_IS_DEGRADED",
     ]
     padded_panel = pd.DataFrame(
         {col: aligned[col] for col in output_cols},
@@ -226,10 +270,28 @@ def build_pit_aligned_panel(
 
     # ━━━ Step 7: Trim to [start_date, end_date] ━━━━━━━━━━━━━━
     panel = padded_panel.loc[start_date:end_date].copy()
+    panel.attrs["constituent_loader"] = {
+        "requested_tickers": constituent_diag["requested_tickers"],
+        "loaded_tickers": constituent_diag["loaded_tickers"],
+        "failed_tickers": failed_tickers,
+    }
     logger.info(
         "Panel shape: %s (padded: %s → trimmed: %s)",
         panel.shape, len(padded_panel), len(panel),
     )
+    if panel["ED_IS_DEGRADED"].any():
+        degraded_ratio = float(panel["ED_IS_DEGRADED"].mean())
+        logger.warning(
+            "ED degraded on %.1f%% of rows; median valid_names=%.1f, min valid_names=%d",
+            degraded_ratio * 100.0,
+            float(panel["ED_VALID_NAMES"].median()),
+            int(panel["ED_VALID_NAMES"].min()),
+        )
+    if panel["FISHER_IS_DEGRADED"].any():
+        logger.warning(
+            "Fisher degraded on %.1f%% of rows",
+            float(panel["FISHER_IS_DEGRADED"].mean()) * 100.0,
+        )
 
     # ━━━ Step 8: NaN safety gate ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     _assert_no_nan(panel, start_date, end_date)

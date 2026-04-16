@@ -80,6 +80,38 @@ class TestComputeED:
         valid = ed.dropna()
         assert (valid >= 0.0).all() and (valid <= 1.0 + 1e-9).all()
 
+    def test_window_drops_low_coverage_columns_but_keeps_valid_names(self):
+        """Columns with <90% non-NaN coverage must be excluded per window."""
+        n_days = 80
+        window = 60
+        base = np.linspace(-0.02, 0.02, n_days)
+        returns = pd.DataFrame(
+            np.tile(base.reshape(-1, 1), (1, 5)),
+            index=pd.bdate_range("2010-01-04", periods=n_days),
+        )
+        # 5 missing points in a 60-day window => coverage = 55/60 < 90%
+        returns.iloc[20:25, 0] = np.nan
+        returns.iloc[20:25, 1] = np.nan
+
+        ed = compute_ed(returns, window=window, min_coverage=0.9, min_names=3)
+
+        # Remaining three identical valid names form a rank-1 covariance -> ED = 1
+        assert ed.iloc[-1] == pytest.approx(1.0, abs=1e-6)
+
+    def test_window_returns_nan_when_valid_names_fall_below_min_names(self):
+        """If surviving columns are fewer than min_names, ED must be NaN."""
+        n_days = 80
+        window = 60
+        returns = make_returns(n_days, 5, value=0.01)
+        # Leave only two fully covered columns alive in the trailing window
+        returns.iloc[20:25, 0] = np.nan
+        returns.iloc[20:25, 1] = np.nan
+        returns.iloc[20:25, 2] = np.nan
+
+        ed = compute_ed(returns, window=window, min_coverage=0.9, min_names=3)
+
+        assert np.isnan(ed.iloc[-1])
+
 
 class TestComputeEDAccel:
     """Unit tests for the ED acceleration (rolling median diff)."""

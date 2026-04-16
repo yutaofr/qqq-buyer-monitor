@@ -203,6 +203,31 @@ def lehman_diagnostics(result: dict, panel: pd.DataFrame) -> dict:
             (nav_trough - nav_peak) / nav_peak if nav_peak > 0 else 0.0
         )
 
+    # ── Diagnostic 8: Causal Overdrive LL Gain ──────────────────
+    if "ll_spread_actual" in window_log.columns:
+        ll_actual = window_log["ll_spread_actual"]
+        ll_base   = window_log["ll_spread_base"]
+        tau_t     = window_log["tau_t"]
+        
+        # Max signal amplification (peak log-likelihood difference)
+        ll_diff = ll_actual - ll_base
+        max_diff_idx = ll_diff.idxmin() if not ll_diff.empty else None # More negative means heavier penalty without overdrive, so actual should be higher (less negative)
+        # Actually actual should be closer to 0 than base. So diff > 0. Max pos diff.
+        max_diff_idx = ll_diff.idxmax() if not ll_diff.empty else None
+        
+        findings["overdrive_peak_tau_t"] = float(tau_t.min()) # Min tau = max sensitivity
+        
+        # Lehman week specific
+        lehman_w_actual = ll_actual.loc["2008-09-15":"2008-09-19"]
+        lehman_w_base   = ll_base.loc["2008-09-15":"2008-09-19"]
+        lehman_w_tau    = tau_t.loc["2008-09-15":"2008-09-19"]
+        
+        if not lehman_w_actual.empty:
+            findings["ll_spread_lehman_wk_base"] = float(lehman_w_base.mean())
+            findings["ll_spread_lehman_wk_actual"] = float(lehman_w_actual.mean())
+            findings["ll_spread_lehman_wk_gain"] = float((lehman_w_actual - lehman_w_base).mean())
+            findings["tau_t_lehman_wk_avg"] = float(lehman_w_tau.mean())
+
     return findings
 
 
