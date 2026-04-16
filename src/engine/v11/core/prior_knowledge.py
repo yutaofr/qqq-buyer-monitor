@@ -21,6 +21,11 @@ from src.regime_topology import (
 logger = logging.getLogger(__name__)
 
 
+class StateCorruptionError(RuntimeError):
+    """Raised when the persistent state is malformed or unreadable."""
+    pass
+
+
 class PriorKnowledgeBase:
     """
     Deterministically manages and persists regime priors and transition memory.
@@ -62,31 +67,25 @@ class PriorKnowledgeBase:
                 self._save()
             return
 
-        if not resolved_regimes:
-            raise ValueError("PriorKnowledgeBase requires regimes or an existing storage file.")
-
-        self.regimes = resolved_regimes
-        self.counts = {regime: self.pseudo_count for regime in self.regimes}
-        self.transition_counts = {
-            regime: {target: self.pseudo_count for target in self.regimes}
-            for regime in self.regimes
-        }
-        self.last_posterior: dict[str, float] | None = None
-        self.last_observation_date: str | None = None
-        self.execution_state: dict[str, float | str | int | bool | None] = (
-            self._bootstrap_execution_state(
-                bootstrap_regimes=bootstrap_regimes,
-                fallback_regimes=self.regimes,
-            )
+        # V16.2 INDUSTRIAL HARDENING: Kill Silent Cold Start Fallback
+        # We no longer allow the engine to "bootstrap" from scratch in production.
+        # A valid prior_state file (materialized from seed) must be present.
+        raise FileNotFoundError(
+            f"CRITICAL: 缺失历史先验基准文件 ({self.storage_path})，拒绝盲目冷启动！"
+            "生产环境必须使用已通过审计的先验种子 (v13_6_ex_hydrated_prior.json) 进行初始化。"
         )
-        self.bootstrap_fingerprint = expected_bootstrap_fingerprint
-
-        if bootstrap_regimes is not None:
-            self._bootstrap_from_regimes(bootstrap_regimes)
-        self._save()
 
     def current_priors(self) -> dict[str, float]:
-        return self._normalize(self.counts)
+        priors = self._normalize(self.counts)
+        self._verify_prior_sum(priors)
+        return priors
+
+    def _verify_prior_sum(self, priors: dict[str, float], epsilon: float = 1e-6) -> None:
+        """Strict sum verification (1.0 +/- epsilon) to prevent hydrated corruption."""
+        total = sum(priors.values())
+        if abs(total - 1.0) > epsilon:
+            logger.error("CRITICAL: Bayesian prior sum failure: total=%.6f", total)
+            raise ValueError(f"Bayesian prior sum failure: total={total}")
 
     def runtime_priors(
         self,
@@ -602,6 +601,9 @@ class PriorKnowledgeBase:
             "effective_entropy": 0.0,
             "resonance_risk_ready_days": 99,
             "resonance_waterfall_ready_days": 99,
+            "vol_guard_cap": 2.0,
+            "aema_water_level": 0.0,
+            "lifecycle_status": "NONE",  # Options: NONE, IN_PROGRESS, SUCCESS
         }
 
     def _save(self) -> None:
@@ -619,35 +621,60 @@ class PriorKnowledgeBase:
             "bootstrap_fingerprint": self.bootstrap_fingerprint,
         }
         serialized = json.dumps(payload, indent=2, sort_keys=True)
-        temp_path = self.storage_path.with_suffix(f"{self.storage_path.suffix}.{os.getpid()}.tmp")
-        temp_path.write_text(serialized)
-        os.replace(temp_path, self.storage_path)
-
-    def _load_payload(self) -> tuple[dict[str, object], bool]:
-        raw_text = self.storage_path.read_text()
+        temp_path = self.storage_path.with_suffix(f".{os.getpid()}.tmp")
+        
+        # INDUSTRIAL ATOMIC WRITE PROTOCOL (Database Grade)
         try:
-            payload = json.loads(raw_text)
-            recovered = False
-        except json.JSONDecodeError as exc:
-            payload, recovered = self._recover_first_json_object(raw_text)
-            if not recovered:
-                raise
-            logger.warning(
-                "Recovered truncated/concatenated prior state from %s after JSON decode failure: %s",
-                self.storage_path,
-                exc,
-            )
-        if not isinstance(payload, dict):
-            raise ValueError("PriorKnowledgeBase payload must be a JSON object.")
-        return payload, recovered
+            # 1. Write to temporary file
+            with open(temp_path, "w", encoding="utf-8") as f:
+                f.write(serialized)
+                f.flush()
+                os.fsync(f.fileno())  # Physical flush of file data
+                
+            # 2. Atomic rename (swaps dentry in RAM)
+            os.replace(temp_path, self.storage_path)
+            
+            # 3. Fsync PARENT DIRECTORY to ensure the entry update is persisted
+            # This prevents file loss in the event of a hard reset (power failure)
+            # following the directory update but before the OS flushes its journal.
+            if hasattr(os, 'open') and hasattr(os, 'fsync'):
+                dir_fd = os.open(str(self.storage_path.parent), os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+                    
+        except Exception as e:
+            logger.error("Atomic write failed for %s: %s", self.storage_path, e)
+            raise
+        finally:
+            # Cleanup dangling temp files to prevent "Ghost File Leak"
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except Exception:
+                    pass
+    def _load_payload(self) -> tuple[dict[str, object], bool]:
+        """Loads the JSON payload. If corrupted, raises StateCorruptionError to trigger cold start."""
+        try:
+            raw_text = self.storage_path.read_text()
+            if not raw_text.strip():
+                raise ValueError("Prior state file is empty.")
 
-    @staticmethod
-    def _recover_first_json_object(raw_text: str) -> tuple[dict[str, object], bool]:
-        decoder = json.JSONDecoder()
-        stripped = raw_text.lstrip()
-        payload, end = decoder.raw_decode(stripped)
-        trailing = stripped[end:].strip()
-        return payload, bool(trailing)
+            payload = json.loads(raw_text)
+            return payload, False
+        except (json.JSONDecodeError, ValueError, FileNotFoundError) as exc:
+            if isinstance(exc, FileNotFoundError):
+                raise
+
+            logger.error("重大警告：本地缓存文件损坏 (Reason: %s)。状态救赎模式已禁用。生命周期引擎将强制冷启动。", exc)
+            if self.storage_path.exists():
+                try:
+                    self.storage_path.unlink()
+                except Exception as unlink_exc:
+                    logger.warning("无法删除损坏的文件: %s", unlink_exc)
+            raise StateCorruptionError(f"Prior state corruption detected: {exc}") from exc
+
 
     @staticmethod
     def _normalize(weights: dict[str, float]) -> dict[str, float]:

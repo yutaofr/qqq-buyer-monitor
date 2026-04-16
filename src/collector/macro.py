@@ -10,6 +10,7 @@ import pandas as pd
 import requests
 
 from src.collector.treasury import fetch_treasury_yields
+from src.utils.retry import exponential_backoff
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ FRED_CSV_URL = (
 )
 
 
+@exponential_backoff(retries=3, base_delay=2.0)
 def fetch_fred_api(
     series_id: str,
     timeout: int = 15,
@@ -46,52 +48,45 @@ def fetch_fred_api(
     if realtime_end is not None:
         query["realtime_end"] = realtime_end
     url = f"https://api.stlouisfed.org/fred/series/observations?{urlencode(query)}"
-    retries = 1
-    for attempt in range(retries + 1):
-        try:
-            logger.debug("Fetching FRED %s via API...", series_id)
-            response = requests.get(url, timeout=timeout)
-            if getattr(response, "status_code", 200) >= 500:
-                raise RuntimeError(f"http {response.status_code}")
+
+    try:
+        logger.debug("Fetching FRED %s via API...", series_id)
+        response = requests.get(url, timeout=timeout)
+        if getattr(response, "status_code", 200) >= 400:
+            # 429 and 5xx are retryable via decorator if they raise exceptions
+            # Raise for status to trigger the retry mechanism
             response.raise_for_status()
-            data = response.json()
-
-            observations = data.get("observations", [])
-            if not observations:
-                return None
-
-            df = pd.DataFrame(observations)
-            df = df.rename(columns={"date": "observation_date", "value": series_id})
-            df["observation_date"] = pd.to_datetime(
-                df["observation_date"], errors="coerce"
-            ).dt.normalize()
-            for column in ("realtime_start", "realtime_end"):
-                if column in df.columns:
-                    df[column] = pd.to_datetime(df[column], errors="coerce").dt.normalize()
-            df[series_id] = pd.to_numeric(df[series_id], errors="coerce")
-            df = df.dropna(subset=["observation_date", series_id])
-            columns = ["observation_date", series_id]
-            if "realtime_start" in df.columns:
-                columns.insert(1, "realtime_start")
-            if "realtime_end" in df.columns:
-                columns.insert(len(columns), "realtime_end")
-            return df[columns]
-        except Exception as exc:
-            retryable = attempt < retries and (
-                isinstance(exc, requests.RequestException)
-                or any(
-                    code in str(exc)
-                    for code in ("http 429", "http 500", "http 502", "http 503", "http 504")
-                )
-            )
-            if retryable:
-                time.sleep(0.25 * (attempt + 1))
-                continue
-            err_msg = str(exc)
-            if api_key:
-                err_msg = err_msg.replace(api_key, "***")
-            logger.warning("FRED API fetch failed for %s: %s", series_id, err_msg)
+        
+        data = response.json()
+        observations = data.get("observations", [])
+        if not observations:
             return None
+
+        df = pd.DataFrame(observations)
+        df = df.rename(columns={"date": "observation_date", "value": series_id})
+        df["observation_date"] = pd.to_datetime(
+            df["observation_date"], errors="coerce"
+        ).dt.normalize()
+        for column in ("realtime_start", "realtime_end"):
+            if column in df.columns:
+                df[column] = pd.to_datetime(df[column], errors="coerce").dt.normalize()
+        df[series_id] = pd.to_numeric(df[series_id], errors="coerce")
+        df = df.dropna(subset=["observation_date", series_id])
+        columns = ["observation_date", series_id]
+        if "realtime_start" in df.columns:
+            columns.insert(1, "realtime_start")
+        if "realtime_end" in df.columns:
+            columns.insert(len(columns), "realtime_end")
+        return df[columns]
+    except Exception as exc:
+        err_msg = str(exc)
+        if api_key:
+            err_msg = err_msg.replace(api_key, "***")
+        logger.warning("FRED API fetch failed for %s: %s", series_id, err_msg)
+        # Re-raise to trigger decorator if it's a transient error
+        if isinstance(exc, (requests.RequestException, RuntimeError)):
+             raise
+        return None
 
 
 def fetch_fred_data(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
@@ -177,7 +172,8 @@ def _fetch_fred_csv_via_curl(url: str, timeout: int) -> pd.DataFrame | None:
         return None
 
 
-def fetch_fred_csv(series_id: str, timeout: int = 15, retries: int = 3) -> pd.DataFrame | None:
+@exponential_backoff(retries=3, base_delay=2.0)
+def fetch_fred_csv(series_id: str, timeout: int = 15) -> pd.DataFrame | None:
     """Helper to fetch FRED CSV data with timeout and retries."""
     url = FRED_CSV_URL.format(series_id)
     # Using a very standard browser user agent
@@ -190,39 +186,27 @@ def fetch_fred_csv(series_id: str, timeout: int = 15, retries: int = 3) -> pd.Da
         "Upgrade-Insecure-Requests": "1",
     }
 
-    for attempt in range(retries + 1):
-        try:
-            logger.debug("Fetching FRED %s (attempt %d)...", series_id, attempt + 1)
-            response = requests.get(url, timeout=timeout, headers=headers)
-            response.raise_for_status()
-            frame = pd.read_csv(io.StringIO(response.text), na_values=".")
-            date_column = next((c for c in ("DATE", "date", "Date") if c in frame.columns), None)
-            if date_column is not None:
-                frame = frame.rename(columns={date_column: "observation_date"})
-            if "observation_date" in frame.columns and series_id in frame.columns:
-                frame["observation_date"] = pd.to_datetime(
-                    frame["observation_date"], errors="coerce"
-                ).dt.normalize()
-                frame[series_id] = pd.to_numeric(frame[series_id], errors="coerce")
-                frame = frame.dropna(subset=["observation_date", series_id])
-            return frame
-        except Exception as exc:
-            curl_frame = _fetch_fred_csv_via_curl(url, timeout)
-            if curl_frame is not None:
-                return curl_frame
-            if attempt < retries:
-                logger.debug(
-                    "FRED %s fetch attempt %d failed: %s. Retrying in 2s...",
-                    series_id,
-                    attempt + 1,
-                    exc,
-                )
-                time.sleep(2)  # Shorter wait between retries
-            else:
-                logger.warning(
-                    "Failed to fetch FRED %s after %d retries: %s", series_id, retries + 1, exc
-                )
-    return None
+    try:
+        logger.debug("Fetching FRED %s CSV...", series_id)
+        response = requests.get(url, timeout=timeout, headers=headers)
+        response.raise_for_status()
+        frame = pd.read_csv(io.StringIO(response.text), na_values=".")
+        date_column = next((c for c in ("DATE", "date", "Date") if c in frame.columns), None)
+        if date_column is not None:
+            frame = frame.rename(columns={date_column: "observation_date"})
+        if "observation_date" in frame.columns and series_id in frame.columns:
+            frame["observation_date"] = pd.to_datetime(
+                frame["observation_date"], errors="coerce"
+            ).dt.normalize()
+            frame[series_id] = pd.to_numeric(frame[series_id], errors="coerce")
+            frame = frame.dropna(subset=["observation_date", series_id])
+        return frame
+    except Exception as exc:
+        curl_frame = _fetch_fred_csv_via_curl(url, timeout)
+        if curl_frame is not None:
+            return curl_frame
+        logger.warning("Failed to fetch FRED %s CSV: %s", series_id, exc)
+        raise
 
 
 def fetch_chicago_fed_nfci() -> float | None:
