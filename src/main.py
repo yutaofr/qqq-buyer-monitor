@@ -488,11 +488,23 @@ def _persist_and_export_web_artifacts(
     web_json_path: str,
     history_json_path: str,
 ) -> None:
+    import logging
     from src.output.web_exporter import export_history_json, export_web_snapshot
-    from src.store.db import save_signal
+    from src.store.db import save_signal, load_history
+    from src.store.history_backfill import run_db_backfill
+
+    logger = logging.getLogger(__name__)
 
     save_signal(result)
     _upsert_v11_macro_feedback(raw_row, "data/macro_historical_dump.csv")
+
+    # SRE AUTO-REPAIR: If history is less than 2, visualizer fails. Backfill!
+    # Because we just saved 'result', length could be exactly 1 on a fresh DB.
+    if len(load_history(2)) < 2:
+        logger.warning("Cold start condition detected: DB has < 2 records. Starting auto-repair...")
+        if run_db_backfill(limit=150):
+            # Guarantee the live result overlaps exactly at T0
+            save_signal(result)
 
     status_ok = export_web_snapshot(result, output_path=web_json_path)
     history_ok = export_history_json(output_path=history_json_path)
