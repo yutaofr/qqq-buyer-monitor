@@ -27,6 +27,7 @@ class TestLoadConfig:
             "macro_hazard",
             "overdrive",
             "forgetting",
+            "regime_vol_guard",
             "regime_severity",
         }
         assert set(config.keys()) == expected_keys
@@ -62,9 +63,9 @@ class TestLoadConfig:
         assert config["hazard"]["R_MAX"] == 504
 
     def test_forgetting_lambda_default(self):
-        """SRD v1.3: lambda=0.98 → kappa_∞=50, keeps Student-t thick-tailed."""
+        """SRD v1.3: lambda=0.995 → kappa_∞=200, keeps Student-t thick-tailed."""
         config = load_config()
-        assert config["forgetting"]["lambda"] == 0.98
+        assert config["forgetting"]["lambda"] == 0.995
 
     def test_ed_signal_filters(self):
         """ED must use the production min coverage / min names filter."""

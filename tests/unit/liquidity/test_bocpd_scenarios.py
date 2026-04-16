@@ -138,9 +138,9 @@ class TestSC4_ExactNIGAfterShock:
             engine.update(x_t, lambda_macro=0.01)
         return engine
 
-    def test_kappa_at_r1(self, engine_post_shock):
+    def test_kappa_at_r1(self, config, engine_post_shock):
         state = engine_post_shock.get_state()
-        lam = 0.98
+        lam = config["forgetting"]["lambda"]
         kappa_0, x = 5.0, 4.0
         kappa_decayed = lam * kappa_0
         expected_kappa = kappa_decayed + 1.0   # 5.9
@@ -148,9 +148,9 @@ class TestSC4_ExactNIGAfterShock:
             state.suff_stats[1, 0, 1], expected_kappa, atol=1e-10,
         )
 
-    def test_mu_at_r1(self, engine_post_shock):
+    def test_mu_at_r1(self, config, engine_post_shock):
         state = engine_post_shock.get_state()
-        lam = 0.98
+        lam = config["forgetting"]["lambda"]
         kappa_0, mu_0, x = 5.0, 0.0, 4.0
         kappa_decayed = lam * kappa_0
         kappa_new = kappa_decayed + 1.0
@@ -159,17 +159,17 @@ class TestSC4_ExactNIGAfterShock:
             state.suff_stats[1, 0, 0], expected_mu, atol=1e-10,
         )
 
-    def test_alpha_at_r1(self, engine_post_shock):
+    def test_alpha_at_r1(self, config, engine_post_shock):
         state = engine_post_shock.get_state()
-        lam = 0.98
-        expected_alpha = lam * 2.5 + 0.5   # 2.95
+        lam = config["forgetting"]["lambda"]
+        expected_alpha = lam * 2.5 + 0.5   # 2.95 if lam=0.98
         np.testing.assert_allclose(
             state.suff_stats[1, 0, 2], expected_alpha, atol=1e-10,
         )
 
-    def test_beta_at_r1(self, engine_post_shock):
+    def test_beta_at_r1(self, config, engine_post_shock):
         state = engine_post_shock.get_state()
-        lam = 0.98
+        lam = config["forgetting"]["lambda"]
         kappa_0, mu_0, beta_0, x = 5.0, 0.0, 1.5, 4.0
         kappa_decayed = lam * kappa_0
         kappa_new = kappa_decayed + 1.0

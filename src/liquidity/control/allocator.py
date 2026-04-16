@@ -20,6 +20,7 @@ from src.liquidity.engine.regime_severity import (
     load_regime_severity_thresholds,
     normalize_regime_severity,
 )
+from src.liquidity.control.regime_vol_guard import RegimeVolatilityFloor
 
 
 class Allocator:
@@ -69,6 +70,21 @@ class Allocator:
             self._severity_floor = float(thresholds["floor"])
             self._severity_ceil = float(thresholds["ceil"])
 
+        # Volatility Guard (Zero-order level detector for crisis depth)
+        vol_guard_cfg = config.get("regime_vol_guard", {})
+        self._vol_guard_enabled = vol_guard_cfg.get("enabled", False)
+        if self._vol_guard_enabled:
+            self._vol_guard = RegimeVolatilityFloor(
+                window=vol_guard_cfg.get("window", 252),
+                quantile=vol_guard_cfg.get("quantile", 0.95),
+                stress_max_leverage=vol_guard_cfg.get("stress_max_leverage", 0.50),
+                min_obs=vol_guard_cfg.get("min_obs", 63),
+                floor_alpha_down=vol_guard_cfg.get("floor_alpha_down", 0.02),
+            )
+        else:
+            self._vol_guard = None
+
+
         # ── Mutable state ──────────────────────────────────────
         self._s_cp_t: float        = 0.0
         self._s_level_t: float     = 0.0
@@ -86,6 +102,7 @@ class Allocator:
         p_cp_raw: float,
         lambda_macro: float,
         regime_severity_raw: float = 0.0,
+        regime_sigma2_spread: float | None = None,
     ) -> tuple[float, dict]:
         """Execute one step of the full continuous control chain.
 
@@ -130,6 +147,11 @@ class Allocator:
             self._s_t, self._sigma_calm, self._sigma_stress, self._sigma_target,
         )
 
+        vol_guard_cap = 1.0
+        if self._vol_guard_enabled and regime_sigma2_spread is not None:
+            vol_guard_cap = self._vol_guard.update(regime_sigma2_spread)
+            l_target = min(l_target, vol_guard_cap)
+
         # Step 3: Circuit breaker check
         circuit_triggered = self._s_t >= self._circuit_breaker
 
@@ -162,6 +184,7 @@ class Allocator:
             "regime_severity_norm": regime_severity_norm,
             "regime_severity_floor": self._severity_floor,
             "regime_severity_ceil": self._severity_ceil,
+            "vol_guard_cap":   vol_guard_cap,
             "l_target":        l_target,
             "l_actual":        l_actual,
             "l_final":         l_final,

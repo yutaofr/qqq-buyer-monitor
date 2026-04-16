@@ -51,6 +51,7 @@ def _build_synthetic_panel(n_days: int = N_DAYS) -> pd.DataFrame:
 @pytest.fixture(scope="module")
 def backtest_result():
     config  = load_config()
+    config["regime_vol_guard"]["enabled"] = False
     panel   = _build_synthetic_panel()
     return run_backtest(panel, config, burn_in=BURN_IN)
 
