@@ -11,9 +11,9 @@ def verify():
     print("=== SRD-v13.4 Final Verification ===")
 
     # 1. Load the hydrated prior
-    hydrated_prior_path = Path("data/v13_6_ex_hydrated_prior.json")
+    hydrated_prior_path = Path("src/engine/v11/resources/v13_6_ex_hydrated_prior.json")
     if not hydrated_prior_path.exists():
-        hydrated_prior_path = Path("data/v13_hydrated_prior.json")
+        hydrated_prior_path = Path("data/v13_6_ex_hydrated_prior.json")
     macro_path = "data/macro_historical_dump.csv"
 
     conductor = V11Conductor(
