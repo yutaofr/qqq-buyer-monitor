@@ -4,13 +4,14 @@ All tests use mocked yfinance — no network calls.
 The trading calendar is the source of truth for the Lookback Padding architecture.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
 import pytest
-from unittest.mock import patch, MagicMock
 
 from src.liquidity.data.trading_calendar import (
-    MAX_LOOKBACK,
     CALENDAR_BUFFER,
+    MAX_LOOKBACK,
     build_trading_calendar,
     compute_padded_start,
 )

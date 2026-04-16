@@ -12,9 +12,9 @@ without mocking yfinance.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 import random
 import time
+from pathlib import Path
 
 import pandas as pd
 import yfinance as yf

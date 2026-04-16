@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
-from typing import Dict, Any, Tuple
 
-from src.liquidity.engine.bocpd import BOCPDEngine
 from src.liquidity.control.allocator import Allocator
+from src.liquidity.engine.bocpd import BOCPDEngine
 
 
 class StaleTickError(Exception):
@@ -15,9 +13,9 @@ class StaleTickError(Exception):
 
 class LiquidityPipeline:
     """State Machine Pipeline grouping Feature Extractor, BOCPD, and Allocator.
-    
+
     Exposes a true streaming API `step(raw_obs)` which completely handles
-    raw data ingestion, incremental PCA, indicator rolling, burn-in state tracking, 
+    raw data ingestion, incremental PCA, indicator rolling, burn-in state tracking,
     and outputs the final target QLD weight along with a structured diagnostic log.
     """
 
@@ -39,7 +37,7 @@ class LiquidityPipeline:
             "burn_in_count": self._burn_in_count,
             "last_timestamp_iso": self._last_timestamp.isoformat() if self._last_timestamp else None,
         }
-        
+
     def load_state(self, state_dict: dict) -> None:
         """Restore mathematical continuity across a network process restart."""
         self.extractor.load_state(state_dict["extractor"])
@@ -49,12 +47,12 @@ class LiquidityPipeline:
         iso_str = state_dict.get("last_timestamp_iso")
         self._last_timestamp = pd.Timestamp(iso_str) if iso_str else None
 
-    def step(self, timestamp: pd.Timestamp, raw_obs: dict) -> Tuple[float, dict]:
+    def step(self, timestamp: pd.Timestamp, raw_obs: dict) -> tuple[float, dict]:
         """Process one tick of raw market observations with monotonicity guarantee."""
         if self._last_timestamp is not None and timestamp <= self._last_timestamp:
             raise StaleTickError(f"Monotonicity breach: {timestamp} <= {self._last_timestamp}")
         self._last_timestamp = timestamp
-        
+
         x_t, lambda_macro = self.extractor.step(raw_obs)
         # BOCPD natively marginalizes NaN dimensions securely now.
         p_cp = self._bocpd.update(x_t, lambda_macro)
@@ -79,7 +77,7 @@ class LiquidityPipeline:
             qqq_price=raw_obs.get("qqq_price"),
             qqq_sma200=raw_obs.get("qqq_sma200"),
         )
-        
+
         # 4. Amalgamate diagnostic log to match existing runner API verbatim
         log = {
             "state":           "active",
@@ -116,5 +114,5 @@ class LiquidityPipeline:
             "ll_spread_base":  self._bocpd.last_LL_spread_base,
             "x_t":             x_t,
         }
-        
+
         return weight, log

@@ -23,7 +23,6 @@ import json
 import logging
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from src.liquidity.backtest.runner import run_backtest
@@ -116,7 +115,6 @@ def audit_execution(result: dict, panel: pd.DataFrame) -> dict:
     w_start, w_end = LEHMAN_WINDOW
     wlog  = log.loc[w_start:w_end]
     wnav  = nav.loc[w_start:w_end]
-    wpan  = panel.loc[w_start:w_end]
 
     report: dict = {}
 
@@ -145,12 +143,12 @@ def audit_execution(result: dict, panel: pd.DataFrame) -> dict:
     report["s_t_min_date"]          = str(s_t.idxmin().date())
 
     # ── 1C: Leverage response ─────────────────────────────────────────────
-    l = wlog["l_final"]
-    report["leverage_pre_lehman"]   = float(l.loc[w_start:"2008-09-14"].mean())
-    report["leverage_lehman_week"]  = float(l.loc["2008-09-15":"2008-09-19"].mean())
-    report["leverage_post_lehman"]  = float(l.loc["2008-09-22":"2008-10-31"].mean())
-    report["leverage_min"]          = float(l.min())
-    report["leverage_min_date"]     = str(l.idxmin().date())
+    lev = wlog["l_final"]
+    report["leverage_pre_lehman"]   = float(lev.loc[w_start:"2008-09-14"].mean())
+    report["leverage_lehman_week"]  = float(lev.loc["2008-09-15":"2008-09-19"].mean())
+    report["leverage_post_lehman"]  = float(lev.loc["2008-09-22":"2008-10-31"].mean())
+    report["leverage_min"]          = float(lev.min())
+    report["leverage_min_date"]     = str(lev.idxmin().date())
 
     # ── 1D: Circuit breaker activations ───────────────────────────────────
     cb = wlog["circuit_breaker"]

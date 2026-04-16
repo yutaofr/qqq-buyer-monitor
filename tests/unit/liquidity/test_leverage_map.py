@@ -13,7 +13,6 @@ import numpy as np
 import pytest
 
 from src.liquidity.control.leverage_map import (
-    Allocation,
     compute_allocation,
     compute_leverage,
 )
@@ -24,19 +23,19 @@ class TestComputeLeverage:
 
     def test_zero_stress_full_leverage(self):
         """P̄ = 0 → σ̂ = 0.18 → L = 1.0 × 0.36/0.18 = 2.0."""
-        l = compute_leverage(s_t=0.0)
-        np.testing.assert_allclose(l, 2.0, atol=1e-10)
+        lev = compute_leverage(s_t=0.0)
+        np.testing.assert_allclose(lev, 2.0, atol=1e-10)
 
     def test_full_stress_zero_leverage(self):
         """P̄ = 1 → participation = 0 → L = 0.0."""
-        l = compute_leverage(s_t=1.0)
-        np.testing.assert_allclose(l, 0.0, atol=1e-10)
+        lev = compute_leverage(s_t=1.0)
+        np.testing.assert_allclose(lev, 0.0, atol=1e-10)
 
     def test_half_stress_analytic(self):
         """P̄ = 0.5 → σ̂ = 0.315 → L = 0.5 × 0.36/0.315 ≈ 0.5714."""
-        l = compute_leverage(s_t=0.5)
+        lev = compute_leverage(s_t=0.5)
         expected = 0.5 * 0.36 / 0.315
-        np.testing.assert_allclose(l, expected, atol=1e-6)
+        np.testing.assert_allclose(lev, expected, atol=1e-6)
 
     def test_leverage_monotone_decreasing(self):
         """Higher stress → lower leverage (monotonically)."""
@@ -50,15 +49,15 @@ class TestComputeLeverage:
 
     def test_leverage_clamped_at_2(self):
         """L never exceeds 2.0 even with extreme params."""
-        l = compute_leverage(
+        lev = compute_leverage(
             s_t=0.0, sigma_calm=0.10, sigma_stress=0.50, sigma_target=0.50
         )
-        assert l <= 2.0
+        assert lev <= 2.0
 
     def test_leverage_clamped_at_0(self):
         """L never goes below 0.0."""
-        l = compute_leverage(s_t=1.0)
-        assert l >= 0.0
+        lev = compute_leverage(s_t=1.0)
+        assert lev >= 0.0
 
     def test_custom_params(self):
         """Verify custom sigma params are used, not hardcoded."""
@@ -138,20 +137,20 @@ class TestLeverageAllocationEndToEnd:
 
     def test_calm_market_enters_qld(self):
         """s_t≈0 → L≈2.0 → full QLD."""
-        l = compute_leverage(0.01)
-        a = compute_allocation(l)
+        lev = compute_leverage(0.01)
+        a = compute_allocation(lev)
         assert a.qld > 0.95, f"Expected near-full QLD, got QLD={a.qld:.3f}"
 
     def test_moderate_stress_qqq_dominant(self):
         """s_t=0.5 → L≈0.57 → QQQ + Cash, no QLD."""
-        l = compute_leverage(0.5)
-        a = compute_allocation(l)
+        lev = compute_leverage(0.5)
+        a = compute_allocation(lev)
         assert a.qld == 0.0
         assert a.qqq > 0
         assert a.cash > 0
 
     def test_extreme_stress_full_cash(self):
         """s_t=1.0 → L=0 → 100% Cash."""
-        l = compute_leverage(1.0)
-        a = compute_allocation(l)
+        lev = compute_leverage(1.0)
+        a = compute_allocation(lev)
         np.testing.assert_allclose(a.cash, 1.0, atol=1e-10)

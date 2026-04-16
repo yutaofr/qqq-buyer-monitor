@@ -5,7 +5,6 @@ SRD v1.2 Section 3.1 d2: buy-sell spread anomaly (VIX proxy).
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from src.liquidity.signal.spread_anomaly import compute_spread_anomaly
 

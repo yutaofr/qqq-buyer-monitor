@@ -11,8 +11,8 @@ qld_weight ∈ [0, 1]: QLD allocation from three-way split.
 import numpy as np
 import pytest
 
-from src.liquidity.control.allocator import Allocator
 from src.liquidity.config import load_config
+from src.liquidity.control.allocator import Allocator
 
 
 @pytest.fixture()

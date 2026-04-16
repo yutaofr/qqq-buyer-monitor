@@ -276,7 +276,7 @@ def build_pit_aligned_panel(
     # ━━━ Step 7: Trim to [start_date, end_date] ━━━━━━━━━━━━━━
     panel = padded_panel.loc[start_date:end_date].copy()
     constituents = constituent_rets.loc[start_date:end_date].copy()
-    
+
     panel.attrs["constituent_loader"] = {
         "requested_tickers": constituent_diag["requested_tickers"],
         "loaded_tickers": constituent_diag["loaded_tickers"],
@@ -303,7 +303,7 @@ def build_pit_aligned_panel(
     # ━━━ Step 8: NaN safety gate ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     _assert_no_nan(panel[[
         "QQQ_ret", "QLD_ret",
-        "_BATCH_ED_ACCEL", "_BATCH_SPREAD_ANOMALY", 
+        "_BATCH_ED_ACCEL", "_BATCH_SPREAD_ANOMALY",
         "_BATCH_FISHER_RHO", "_BATCH_LAMBDA_MACRO",
     ]], start_date, end_date)
 

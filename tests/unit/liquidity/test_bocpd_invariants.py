@@ -13,7 +13,6 @@ import pytest
 from src.liquidity.config import load_config
 from src.liquidity.engine.bocpd import BOCPDEngine
 
-
 N = 505   # R_MAX + 1
 D = 3     # observation dimensions
 
@@ -108,7 +107,7 @@ class TestINV4_PriorLock:
         priors = config["nig_priors"]
         # Build expected prior for each dimension
         dim_keys = ["ed_accel", "spread_anomaly", "fisher_rho"]
-        expected_priors = np.array([
+        _expected_priors = np.array([
             [priors[k]["mu_0"], priors[k]["kappa_0"],
              priors[k]["alpha_0"], priors[k]["beta_0"]]
             for k in dim_keys

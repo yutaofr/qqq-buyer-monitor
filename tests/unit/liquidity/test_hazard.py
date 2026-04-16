@@ -9,7 +9,6 @@ import pytest
 
 from src.liquidity.engine.hazard import compute_hazard, precompute_g_r
 
-
 # ─────────────────────────────────────────────────────────────
 # g(r) tests
 # ─────────────────────────────────────────────────────────────

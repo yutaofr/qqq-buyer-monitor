@@ -17,7 +17,6 @@ Usage:
 
 from __future__ import annotations
 
-import copy
 import logging
 
 import numpy as np
@@ -118,7 +117,7 @@ def main():
 
     # Run both engines in parallel
     records = []
-    for i, (date, row) in enumerate(panel.iterrows()):
+    for _i, (date, row) in enumerate(panel.iterrows()):
         x_3d = np.array([
             row["ED_ACCEL"],
             row["SPREAD_ANOMALY"],

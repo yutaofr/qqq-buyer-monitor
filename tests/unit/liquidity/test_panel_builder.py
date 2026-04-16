@@ -9,12 +9,11 @@ NO network calls, NO API keys required.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pytest
-
 
 # ─── Synthetic data factories ───────────────────────────────────
 

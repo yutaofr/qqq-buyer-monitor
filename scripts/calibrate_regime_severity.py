@@ -15,7 +15,6 @@ from pathlib import Path
 from src.liquidity.config import load_config
 from src.liquidity.engine.regime_severity import calibrate_regime_severity_thresholds
 
-
 DEFAULT_OUTPUT = Path("src/liquidity/resources/regime_severity_thresholds.json")
 
 

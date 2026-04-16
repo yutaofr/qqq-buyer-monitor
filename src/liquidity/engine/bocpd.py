@@ -26,9 +26,9 @@ Five-step update loop (SRD 8.2):
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import base64
 import io
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -157,7 +157,7 @@ class BOCPDEngine:
 
         # Step 1: predictive log-density with temperature scaling
         log_pred, log_comp = predictive_logpdf(self._stats, x_t, tau=tau_t, return_components=True)
-        
+
         # Diagnostic: compute baseline likelihood to measure tau's effect
         _, log_comp_base = predictive_logpdf(self._stats, x_t, tau=self._tau_base, return_components=True)
         # We record the likelihood of the highest-probability regime (most confident prior)
@@ -241,7 +241,7 @@ class BOCPDEngine:
         self._probs = state.run_length_probs.copy()
         self._stats = state.suff_stats.copy()
         self._t = state.t
-        
+
     def dump_state(self) -> dict:
         """Binary persistence of state limits matrix size explosion over time."""
         buf = io.BytesIO()
@@ -254,7 +254,7 @@ class BOCPDEngine:
             "b64_arrays": base64.b64encode(buf.getvalue()).decode("utf-8"),
             "t": self._t
         }
-        
+
     def load_state(self, state_dict: dict) -> None:
         """Resume exact memory layout from binary dump."""
         self._t = state_dict["t"]

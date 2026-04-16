@@ -10,10 +10,8 @@ SRD v1.2 Section 4.5:
     the minimum hold when signal = EXIT_QLD with days_held < 63.
 """
 
-import pytest
-from src.liquidity.control.hold_period import HoldPeriodGuard
 from src.liquidity.control.deadband import DeadbandSignal
-
+from src.liquidity.control.hold_period import HoldPeriodGuard
 
 MIN_HOLD = 63
 
