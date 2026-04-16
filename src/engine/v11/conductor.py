@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 from sklearn.naive_bayes import GaussianNB
 
+from src.constants import MIN_BURN_IN_DAYS
+
 from src.engine.v11.core.bayesian_inference import BayesianInferenceEngine
 from src.engine.v11.core.data_quality import (
     assess_data_quality,
@@ -286,9 +288,9 @@ class V11Conductor:
         price_df = pd.read_csv(path, index_col=0)
         
         # V16.2 INDUSTRIAL HARDENING: Enforce Real History Volume
-        if len(price_df) < 1000:
+        if len(price_df) < MIN_BURN_IN_DAYS:
             raise RuntimeError(
-                f"数据源被截断或拉取失败 (Current: {len(price_df)} rows, Required: 1000). "
+                f"数据源被截断或拉取失败 (Current: {len(price_df)} rows, Required: {MIN_BURN_IN_DAYS}). "
                 "拒绝启动以防止 Burn-in 能量注入不足导致的状态漂移。"
             )
 

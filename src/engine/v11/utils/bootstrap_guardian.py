@@ -7,6 +7,7 @@ import pandas as pd
 from pandas.tseries.holiday import AbstractHolidayCalendar, GoodFriday, USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
 
+from src.constants import MIN_STRUCTURAL_WINDOW_DAYS
 from src.engine.v11.utils.bootstrap_models import (
     BootstrapAuditReport,
     BootstrapRepairResult,
@@ -41,9 +42,9 @@ class BootstrapGuardian:
         start_date = end_date - timedelta(days=2000)
         self.business_days = self._build_business_days(start_date=start_date, end_date=end_date)
         self.business_day_set = set(self.business_days)
-        # Keep only the last 1260 business days
-        if len(self.business_days) > 1260:
-            self.business_days = self.business_days[-1260:]
+        # Standardize on MIN_STRUCTURAL_WINDOW_DAYS (1260) for structural factor stability
+        if len(self.business_days) > MIN_STRUCTURAL_WINDOW_DAYS:
+            self.business_days = self.business_days[-MIN_STRUCTURAL_WINDOW_DAYS:]
             self.business_day_set = set(self.business_days)
 
     def _now_utc(self) -> datetime:

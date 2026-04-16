@@ -7,6 +7,7 @@ from datetime import date, timedelta
 
 import yfinance as yf
 
+from src.constants import LOOKBACK_BUFFER_FACTOR, MIN_STRUCTURAL_WINDOW_DAYS
 from src.utils.retry import exponential_backoff
 
 logger = logging.getLogger(__name__)
@@ -32,9 +33,11 @@ def fetch_price_data(ticker: str = "QQQ", as_of: date | None = None) -> dict:
     target_date = as_of or date.today()
     query_end = target_date + timedelta(days=1)
 
-    # Need at least 2 years of history for v6.0 indicators (POC, Variance Ratio, Z-Scores)
-    # 2 years = ~500 trading days
-    start = target_date - timedelta(days=735)
+    # V16.4 SRE Hardening: Ensure we satisfy MIN_STRUCTURAL_WINDOW_DAYS (1260) for Z-Scores.
+    # Formula: REQUIRED_TRADING_DAYS * (Natural Days / Trading Days) * Buffer
+    # Buffer (1.25) handles holidays, long weekends, and occasional data gaps.
+    lookback_days = int(MIN_STRUCTURAL_WINDOW_DAYS * (365 / 252) * LOOKBACK_BUFFER_FACTOR)
+    start = target_date - timedelta(days=lookback_days)
 
     ticker_obj = yf.Ticker(ticker)
     hist = ticker_obj.history(start=start.isoformat(), end=query_end.isoformat())

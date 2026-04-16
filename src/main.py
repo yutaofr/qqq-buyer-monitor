@@ -12,6 +12,10 @@ import json
 import logging
 import os
 import shutil
+import signal
+import sys
+import time
+import traceback
 from datetime import date, datetime, timezone
 import datetime as dt
 UTC = timezone.utc
@@ -20,7 +24,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-from src.constants import ENGINE_VERSION
+from src.constants import ENGINE_VERSION, SENTINEL_FILE_PATH
 from src.engine.canonical_arbitration import apply_v16_topology_arbitration
 from src.models import SignalResult, TargetAllocationState
 from src.store.cloud_manager import CloudPersistenceBridge
@@ -87,6 +91,45 @@ def _load_v16_topology_state() -> dict | None:
     except Exception as exc:
         logger.warning("Failed to load V16 topology state for arbitration: %s", exc)
         return None
+
+
+def enter_zombie_mode(reason: str, exc_info: Exception | None = None) -> None:
+    """
+    SRE Defensive Loop (Zombie Mode):
+    Writes a tombstone file and enters an infinite sleep loop to prevent
+    process exit, while preserving the environment for debugging.
+    """
+    sentinel = Path(SENTINEL_FILE_PATH)
+    if not sentinel.exists():
+        try:
+            sentinel.parent.mkdir(parents=True, exist_ok=True)
+            with open(sentinel, "w", encoding="utf-8") as f:
+                f.write(f"FATAL BOOTSTRAP FAILURE at {datetime.now(UTC).isoformat()}\n")
+                f.write(f"Reason: {reason}\n")
+                f.write("-" * 40 + "\n")
+                if exc_info:
+                    f.write("".join(traceback.format_exception(type(exc_info), exc_info, exc_info.__traceback__)))
+                else:
+                    # Fallback to current context (works if called within 'except' block)
+                    f.write(traceback.format_exc())
+        except Exception as e:
+            logger.error("Failed to write sentinel file: %s", e)
+
+    # Minimalist signal handler for container graceful stop
+    def handle_sigterm(signum, frame):
+        logger.info("Zombie Mode: Received SIGTERM. SRE has reclaimed the container. Exiting.")
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, handle_sigterm)
+
+    logger.critical("🚨 FATAL: BOOTSTRAP DEADLOCKED. Awaiting manual forensic inspection...")
+    logger.critical("Reason: %s", reason)
+    logger.critical("Process is now in ZOMBIE MODE (Main thread sleep loop). PID %d remains alive.", os.getpid())
+    logger.critical("Delete %s to re-enable cold start on next run.", SENTINEL_FILE_PATH)
+
+    while True:
+        logger.info("ZOMBIE MODE ACTIVE. forensic debug window open...")
+        time.sleep(60)
 
 
 def _materialize_prior_state(
@@ -764,142 +807,163 @@ def run_v11_pipeline(args: argparse.Namespace) -> None:
     # 4. Bayesian Execution (v11) with Hardened Lifecycle
     from src.engine.v11.core.prior_knowledge import StateCorruptionError
     
+    # 4. Bayesian Execution (v11) with Hardened Lifecycle
+    from src.engine.v11.core.prior_knowledge import StateCorruptionError
+    
     # Industrial Guard: Physical Lock File to prevent concurrent execution collisions
     lock_file = Path(prior_file_path).with_suffix(".lock")
     if lock_file.exists():
-        # Check if the lock is stale (optional, but good practice)
         logger.warning("发现残留锁文件 %s。如果是程序非正常退出，请手动删除。正在执行强行锁定...", lock_file)
         
     try:
         lock_file.touch(exist_ok=False)
+        
+        runtime_observation_date_str = pd.Timestamp(runtime_observation_date).date().isoformat()
+        
+        try:
+            conductor = V11Conductor(prior_state_path=prior_file_path)
+
+            # Atomic Idempotency Guard: Date + SUCCESS status bit
+            last_date = conductor.prior_book.last_observation_date
+            last_status = conductor.prior_book.execution_state.get("lifecycle_status", "NONE")
+            
+            if last_date == runtime_observation_date_str and last_status == "SUCCESS":
+                logger.info(
+                    "Idempotency Protection Active: Date %s already status SUCCESS. Skipping.",
+                    runtime_observation_date_str,
+                )
+                return
+
+            # V16.1: Mark start of run to prevent 'Dirty Reruns'
+            conductor.prior_book.update_execution_state(lifecycle_status="IN_PROGRESS")
+            
+            if last_date:
+                logger.info("检测到历史状态 (Last: %s, Status: %s)，执行暖启动。", last_date, last_status)
+            else:
+                logger.info("未检测到历史状态，执行冷启动。")
+
+            runtime = conductor.daily_run(raw_row, baseline_result=baseline_result)
+
+        except (StateCorruptionError, Exception) as exc:
+            # We explicitly catch StateCorruptionError to log the exact failure
+            logger.error("缓存损坏或不可恢复，强制执行冷启动 (Recovery Triggered: %s)", exc)
+            
+            # Fallback to Cold Start: Wipe corrupted state and re-materialize from seed
+            if Path(prior_file_path).exists():
+                try:
+                    Path(prior_file_path).unlink()
+                except Exception:
+                    pass
+                    
+            _materialize_prior_state(prior_file_path, prior_seed_path)
+
+            # Industrial Circuit Breaker: If second attempt fails, enter Zombie Mode
+            try:
+                conductor = V11Conductor(prior_state_path=prior_file_path)
+                conductor.prior_book.update_execution_state(lifecycle_status="IN_PROGRESS")
+                runtime = conductor.daily_run(raw_row, baseline_result=baseline_result)
+            except Exception as persistent_exc:
+                # IMPORTANT: Zombie mode is infinite loop, so it won't reach 'finally'
+                # but it should preserve the lock so no other process messes with it.
+                enter_zombie_mode(f"Persistent Bootstrap Failure: {persistent_exc}", exc_info=persistent_exc)
+
+        # 4. Shadow Mode Diagnostics (Reference Only)
+        # Both Tractor and Sidecar results will be stored in metadata.
+        # PROHIBITION: No modification of runtime['target_beta'] as per v14.3 role.
+        runtime["mud_tractor_diagnostics"] = baseline_result
+
+        # 5. Full Panorama Aggregator (v14.8) - Ensemble Coordination
+        # Synthesizes all 4 pipelines for user implementation options
+        ensemble = FullPanoramaAggregator.aggregate(runtime, baseline_result)
+
+        result = _build_v11_signal_result(runtime, price=float(price_data["price"]))
+
+        # Add baseline metadata to SignalResult for diagnostic reference
+        result.metadata["v14_baseline_prob"] = float(
+            baseline_result.get("tractor", {}).get("prob", 0.0)
+        )
+        result.metadata["v14_sidecar_prob"] = float(baseline_result.get("sidecar", {}).get("prob", 0.0))
+        result.metadata["v14_baseline_status"] = str(
+            baseline_result.get("tractor", {}).get("status", "unknown")
+        )
+        result.metadata["v14_sidecar_status"] = str(
+            baseline_result.get("sidecar", {}).get("status", "unknown")
+        )
+        result.metadata["v14_baseline_active"] = False  # Shadow Mode remains
+
+        # Inject Ensemble Suggestions
+        result.metadata["v14_ensemble_verdict"] = ensemble["ensemble_verdict"]
+        result.metadata["v14_ensemble_verdict_label"] = ensemble["ensemble_verdict_label"]
+        result.metadata["v14_s4_protective_beta"] = ensemble["s4_protective_beta"]
+        result.metadata["v14_s5_aggressive_beta"] = ensemble["s5_aggressive_beta"]
+        result.metadata["v14_standard_beta"] = ensemble["standard_beta"]
+        result.metadata["v14_tractor_valid"] = bool(ensemble["tractor_valid"])
+        result.metadata["v14_sidecar_valid"] = bool(ensemble["sidecar_valid"])
+        result.metadata["v14_calm_eligible"] = bool(ensemble["calm_eligible"])
+        result.metadata["v14_shadow_mode"] = True
+        result.metadata["recovery_hmm_shadow"] = _load_recovery_hmm_shadow_diagnostics()
+        result = apply_v16_topology_arbitration(result, _load_v16_topology_state())
+
+        web_json_path = "src/web/public/status.json"
+        history_json_path = "src/web/public/history.json"
+
+        if args.json:
+            print(to_json(result))
+        else:
+            print_signal(result, use_color=not args.no_color)
+
+        # 2. Notify Discord if explicitly requested
+        if args.notify_discord:
+            webhook_url = os.environ.get("ALERT_WEBHOOK_URL")
+            if not webhook_url:
+                logger.warning("ALERT_WEBHOOK_URL not set; skipping Discord notification.")
+            else:
+                from src.output.discord_notifier import send_discord_signal
+
+                ok = send_discord_signal(result, webhook_url)
+                if ok:
+                    logger.info("Discord signal notification sent successfully.")
+                else:
+                    logger.error("Failed to send Discord signal notification.")
+
+        if not args.no_save:
+            _persist_and_export_web_artifacts(
+                result=result,
+                raw_row=raw_row,
+                cloud=cloud,
+                sync_files=sync_files,
+                web_json_path=web_json_path,
+                history_json_path=history_json_path,
+            )
+            logger.info("v11 signal persisted and cloud state synchronized.")
+            
+            # V16.1: Seal the run as SUCCESS
+            conductor.prior_book.update_execution_state(lifecycle_status="SUCCESS")
+            logger.info("生命周期状态封闭为 SUCCESS。")
+        else:
+            from src.output.web_exporter import export_history_json, export_web_snapshot
+
+            export_web_snapshot(result, output_path=web_json_path)
+            export_history_json(output_path=history_json_path)
+
     except FileExistsError:
         logger.error("重大冲突：检测到另一个进程正在运行 (Lock file: %s)。程序退出以保护状态原子性。", lock_file)
         return
-
-    runtime_observation_date_str = pd.Timestamp(runtime_observation_date).date().isoformat()
-    
-    try:
-        conductor = V11Conductor(prior_state_path=prior_file_path)
-
-        # Atomic Idempotency Guard: Date + SUCCESS status bit
-        last_date = conductor.prior_book.last_observation_date
-        last_status = conductor.prior_book.execution_state.get("lifecycle_status", "NONE")
-        
-        if last_date == runtime_observation_date_str and last_status == "SUCCESS":
-            logger.info(
-                "Idempotency Protection Active: Date %s already status SUCCESS. Skipping.",
-                runtime_observation_date_str,
-            )
-            return
-
-        # V16.1: Mark start of run to prevent 'Dirty Reruns'
-        conductor.prior_book.update_execution_state(lifecycle_status="IN_PROGRESS")
-        
-        if last_date:
-            logger.info("检测到历史状态 (Last: %s, Status: %s)，执行暖启动。", last_date, last_status)
-        else:
-            logger.info("未检测到历史状态，执行冷启动。")
-
-        runtime = conductor.daily_run(raw_row, baseline_result=baseline_result)
-
-    except (StateCorruptionError, Exception) as exc:
-        # We explicitly catch StateCorruptionError to log the exact failure
-        logger.error("缓存损坏或不可恢复，强制执行冷启动 (Recovery Triggered: %s)", exc)
-        
-        # Fallback to Cold Start: Wipe corrupted state and re-materialize from seed
-        if Path(prior_file_path).exists():
+    finally:
+        # Atomic lock release for industrial hygiene
+        if lock_file.exists():
             try:
-                Path(prior_file_path).unlink()
-            except Exception:
-                pass
-                
-        _materialize_prior_state(prior_file_path, prior_seed_path)
-
-        conductor = V11Conductor(prior_state_path=prior_file_path)
-        conductor.prior_book.update_execution_state(lifecycle_status="IN_PROGRESS")
-        runtime = conductor.daily_run(raw_row, baseline_result=baseline_result)
-
-    # 4. Shadow Mode Diagnostics (Reference Only)
-    # Both Tractor and Sidecar results will be stored in metadata.
-    # PROHIBITION: No modification of runtime['target_beta'] as per v14.3 role.
-    runtime["mud_tractor_diagnostics"] = baseline_result
-
-    # 5. Full Panorama Aggregator (v14.8) - Ensemble Coordination
-    # Synthesizes all 4 pipelines for user implementation options
-    ensemble = FullPanoramaAggregator.aggregate(runtime, baseline_result)
-
-    result = _build_v11_signal_result(runtime, price=float(price_data["price"]))
-
-    # Add baseline metadata to SignalResult for diagnostic reference
-    result.metadata["v14_baseline_prob"] = float(
-        baseline_result.get("tractor", {}).get("prob", 0.0)
-    )
-    result.metadata["v14_sidecar_prob"] = float(baseline_result.get("sidecar", {}).get("prob", 0.0))
-    result.metadata["v14_baseline_status"] = str(
-        baseline_result.get("tractor", {}).get("status", "unknown")
-    )
-    result.metadata["v14_sidecar_status"] = str(
-        baseline_result.get("sidecar", {}).get("status", "unknown")
-    )
-    result.metadata["v14_baseline_active"] = False  # Shadow Mode remains
-
-    # Inject Ensemble Suggestions
-    result.metadata["v14_ensemble_verdict"] = ensemble["ensemble_verdict"]
-    result.metadata["v14_ensemble_verdict_label"] = ensemble["ensemble_verdict_label"]
-    result.metadata["v14_s4_protective_beta"] = ensemble["s4_protective_beta"]
-    result.metadata["v14_s5_aggressive_beta"] = ensemble["s5_aggressive_beta"]
-    result.metadata["v14_standard_beta"] = ensemble["standard_beta"]
-    result.metadata["v14_tractor_valid"] = bool(ensemble["tractor_valid"])
-    result.metadata["v14_sidecar_valid"] = bool(ensemble["sidecar_valid"])
-    result.metadata["v14_calm_eligible"] = bool(ensemble["calm_eligible"])
-    result.metadata["v14_shadow_mode"] = True
-    result.metadata["recovery_hmm_shadow"] = _load_recovery_hmm_shadow_diagnostics()
-    result = apply_v16_topology_arbitration(result, _load_v16_topology_state())
-
-    web_json_path = "src/web/public/status.json"
-    history_json_path = "src/web/public/history.json"
-
-    if args.json:
-        print(to_json(result))
-    else:
-        print_signal(result, use_color=not args.no_color)
-
-    # 2. Notify Discord if explicitly requested
-    if args.notify_discord:
-        webhook_url = os.environ.get("ALERT_WEBHOOK_URL")
-        if not webhook_url:
-            logger.warning("ALERT_WEBHOOK_URL not set; skipping Discord notification.")
-        else:
-            from src.output.discord_notifier import send_discord_signal
-
-            ok = send_discord_signal(result, webhook_url)
-            if ok:
-                logger.info("Discord signal notification sent successfully.")
-            else:
-                logger.error("Failed to send Discord signal notification.")
-
-    if not args.no_save:
-        _persist_and_export_web_artifacts(
-            result=result,
-            raw_row=raw_row,
-            cloud=cloud,
-            sync_files=sync_files,
-            web_json_path=web_json_path,
-            history_json_path=history_json_path,
-        )
-        logger.info("v11 signal persisted and cloud state synchronized.")
-        
-        # V16.1: Seal the run as SUCCESS
-        conductor.prior_book.update_execution_state(lifecycle_status="SUCCESS")
-        logger.info("生命周期状态封闭为 SUCCESS。")
-    else:
-        from src.output.web_exporter import export_history_json, export_web_snapshot
-
-        export_web_snapshot(result, output_path=web_json_path)
-        export_history_json(output_path=history_json_path)
+                lock_file.unlink()
+                logger.info("Lock file %s released.", lock_file)
+            except Exception as e:
+                logger.error("Failed to release lock file %s: %s", lock_file, e)
 
 
 def main(argv: list[str] | None = None) -> None:
+    # Pre-flight SRE Check: Identify existing death scene before doing anything
+    if Path(SENTINEL_FILE_PATH).exists():
+        enter_zombie_mode("Pre-flight check: Existing .bootstrap_deadletter found.")
+
     parser = argparse.ArgumentParser(
         description="QQQ Monitor Entry Point (v11 Bayesian Convergence)"
     )
