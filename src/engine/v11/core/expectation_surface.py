@@ -8,7 +8,7 @@ from src.models.deployment import DeploymentState, deployment_multiplier_for_sta
 from src.regime_topology import canonicalize_regime_name
 
 BETA_FLOOR: Final[float] = 0.5
-BETA_CEILING: Final[float] = 1.2
+BETA_CEILING: Final[float] = 2.0
 DEFAULT_REFERENCE_CAPITAL: Final[float] = 100_000.0
 DEPLOYMENT_NOTIONAL_UNIT: Final[float] = 0.01
 
