@@ -20,7 +20,7 @@ def deployment_multiplier_for_state(state: str | DeploymentState) -> float:
     if "FAST" in s:
         return 2.0
     if "BASE" in s:
-        return 1.0
+        return 2.0
     if "SLOW" in s:
         return 0.5
     if "PAUSE" in s:

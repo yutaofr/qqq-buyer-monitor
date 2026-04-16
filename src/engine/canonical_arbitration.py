@@ -176,18 +176,25 @@ def apply_v16_topology_arbitration(
             v16_snapshot=snapshot,
         )
 
-    metadata = deepcopy(result.metadata or {})
-    metadata["canonical_decision"] = {
-        "source": "bayesian_base",
-        "reason": "V16 topology was stale, non-bullish, or blocked by Bayesian BUST dominance.",
-        "official_target_beta": result.target_beta,
-        "official_reference_path": {
-            "qld_pct": result.target_allocation.target_qld_pct,
-            "qqq_pct": result.target_allocation.target_qqq_pct,
-            "cash_pct": result.target_allocation.target_cash_pct,
-        },
-        "v16_topology": snapshot,
-    }
-    logic_trace = list(result.logic_trace or [])
-    logic_trace.append({"step": "canonical_arbitration", "result": metadata["canonical_decision"]})
-    return replace(result, logic_trace=logic_trace, metadata=metadata)
+    bayesian_beta = min(result.target_beta, vol_cap) if is_fresh else result.target_beta
+    source = "bayesian_base" if bayesian_beta == result.target_beta else "bayesian_base_vol_capped"
+    reason = "V16 topology was stale, non-bullish, or blocked by Bayesian BUST dominance." if source == "bayesian_base" else "Bayesian base clamped by V16 Vol Guard."
+    
+    if bayesian_beta > 1.0:
+        b_qld = bayesian_beta - 1.0
+        b_qqq = 2.0 - bayesian_beta
+        b_cash = 0.0
+    else:
+        b_qld = 0.0
+        b_qqq = bayesian_beta
+        b_cash = 1.0 - bayesian_beta
+
+    return _with_official_allocation(
+        result,
+        qld=b_qld,
+        qqq=b_qqq,
+        cash=b_cash,
+        source=source,
+        reason=reason,
+        v16_snapshot=snapshot,
+    )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 BASE_WEIGHTS = {
     "RECOVERY": 1.0,
-    "MID_CYCLE": 1.0,
+    "MID_CYCLE": 2.0,
     "LATE_CYCLE": 0.5,
     "BUST": 0.3,
 }

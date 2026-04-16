@@ -29,7 +29,7 @@ class KellyDeploymentPolicy:
         self.kelly_scale = kelly_scale
         self.erp_weight = erp_weight
         self.regime_sharpes = regime_sharpes or {
-            "MID_CYCLE": 1.0,
+            "MID_CYCLE": 2.0,
             "LATE_CYCLE": 0.2,
             "BUST": -0.8,
             "RECOVERY": 1.2,
