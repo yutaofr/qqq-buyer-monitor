@@ -205,7 +205,7 @@ def main():
     log("=" * 65 + "\n")
 
     # Send to Discord if webhook is configured
-    discord_url = os.environ.get("DISCORD_WEBHOOK_URL")
+    discord_url = os.environ.get("ALERT_WEBHOOK_URL")
     if discord_url:
         payload = {
             "content": f"```text\n{chr(10).join(report_lines)}\n```"
