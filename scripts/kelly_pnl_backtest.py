@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 
 from scripts.kelly_ab_comparison import _compute_all_variant_decisions, _load_trace
-from src.models.deployment import deployment_multiplier_for_state
 
 
 def _compute_pnl_curve(

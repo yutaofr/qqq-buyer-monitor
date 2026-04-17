@@ -138,7 +138,6 @@ def phase1_coma_audit(exec_path: Path) -> None:
             c = year_regime[year].get(regime, 0)
             pct = c / yr_total * 100 if yr_total else 0
             cells.append(f"{c:4d} ({pct:4.0f}%)")
-        avg_beta = sum(year_beta[year]) / len(year_beta[year]) if year_beta[year] else 0
         print(f"  │ {year} │ {cells[0]:12s} │ {cells[1]:12s} │ {cells[2]:12s} │ {cells[3]:13s} │")
     print("  └──────┴──────────────┴──────────────┴──────────────┴───────────────┘")
 
@@ -196,7 +195,6 @@ def phase2_feature_death_toll(forensic_path: Path) -> None:
                 continue
 
             total_days += 1
-            date = record.get("date", "?")
 
             # Extract field-level quality from quality_audit
             qa = record.get("quality_audit", {})
