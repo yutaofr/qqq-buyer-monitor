@@ -91,7 +91,7 @@ def test_feature_reliability_weights_zero_out_missing_raw_features(snapshot):
     assert weights["liquidity_252d"] == 1.0
 
 
-def test_feature_reliability_weights_preserve_finite_tail_recovery_derivatives():
+def test_feature_reliability_weights_do_not_apply_tail_recovery_quality_floors():
     latest_raw = pd.Series(
         {
             "credit_spread_bps": 410.0,
@@ -116,8 +116,42 @@ def test_feature_reliability_weights_preserve_finite_tail_recovery_derivatives()
         },
     )
 
-    assert weights["credit_acceleration"] == 0.25
-    assert weights["liquidity_velocity"] == 0.25
+    assert weights["credit_acceleration"] == 0.0
+    assert weights["liquidity_velocity"] == 0.0
+
+
+def test_feature_reliability_weights_preserve_finite_valid_derivatives_without_spatial_gating():
+    latest_raw = pd.Series(
+        {
+            "pmi_proxy_manemp": 12684.0,
+            "job_openings": 5894.0,
+            "liquidity_roc_pct_4w": -15.48,
+        }
+    )
+    latest_vector = pd.DataFrame(
+        [
+            {
+                "pmi_momentum": -2.8,
+                "labor_slack": -4.1,
+                "liquidity_velocity": -2.6,
+            }
+        ]
+    )
+
+    weights = feature_reliability_weights(
+        latest_vector=latest_vector,
+        latest_raw=latest_raw,
+        field_quality={"net_liquidity": 0.5},
+        seeder_config={
+            "pmi_momentum": {"src": "pmi_proxy_manemp"},
+            "labor_slack": {"src": "job_openings"},
+            "liquidity_velocity": {"src": "liquidity_roc_pct_4w"},
+        },
+    )
+
+    assert weights["pmi_momentum"] == 1.0
+    assert weights["labor_slack"] == 1.0
+    assert weights["liquidity_velocity"] == 0.5
 
 
 def test_detect_source_switch_flags_build_version_change(snapshot):
