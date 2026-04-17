@@ -659,12 +659,12 @@ def run_v11_audit(
         return summary
 
     if use_canonical_pipeline:
-        from src.engine.v11.conductor import V11Conductor
         from src.engine.telemetry_observer import (
             InMemoryTelemetrySink,
             TelemetryObservedEngine,
             V16TelemetrySidecar,
         )
+        from src.engine.v11.conductor import V11Conductor
 
         probability_rows: list[dict[str, Any]] = []
         execution_rows: list[dict[str, Any]] = []
