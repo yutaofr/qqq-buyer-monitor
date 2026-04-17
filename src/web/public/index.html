@@ -308,6 +308,17 @@
                 </div>
 
                 <details class="group space-y-6">
+                    <summary class="list-none outline-none cursor-pointer flex flex-col justify-center items-center gap-2 mb-4 hover:bg-white/5 py-3 px-6 rounded-3xl border border-transparent hover:border-white/10 transition-all duration-300 active:scale-95 w-max mx-auto text-center">
+                        <div class="flex items-center gap-2">
+                            <p id="ui-manifold-label" class="text-[11px] font-black uppercase tracking-widest text-emerald-400 group-hover:text-emerald-300 transition-colors">V16 流形健康度指標</p>
+                            <svg class="w-3.5 h-3.5 text-emerald-500 opacity-60 group-hover:opacity-100 group-open:rotate-180 transition-all duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                        <p id="ui-manifold-note" class="text-[10px] font-bold text-slate-500/80 leading-relaxed text-center max-w-[280px]">用於監測底層物理異常與推斷溫度控制，確保不被壞數據污染。</p>
+                    </summary>
+                    <div id="manifold-container" class="feature-grid px-2 sm:px-4"></div>
+                </details>
+
+                <details class="group space-y-6">
                     <summary class="list-none outline-none cursor-pointer flex justify-center items-center gap-2 mb-4 hover:bg-white/5 py-2 px-6 rounded-full border border-transparent hover:border-white/10 transition-all duration-300 active:scale-95 w-max mx-auto text-center">
                         <p id="ui-execution-overlay-label" class="text-[11px] font-black uppercase tracking-widest text-white/60 group-hover:text-white/90 transition-colors">執行疊加層</p>
                         <svg class="w-3.5 h-3.5 text-slate-500 opacity-60 group-hover:opacity-100 group-open:rotate-180 transition-all duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
@@ -758,6 +769,29 @@
             `).join('');
         }
 
+        function renderManifold(manifold) {
+            const container = document.getElementById('manifold-container');
+            container.innerHTML = '';
+            const data = manifold || {};
+            const entries = [
+                ['INFERENCE TAU (溫度)', data.inference_tau],
+                ['MAHALANOBIS (偏移度)', data.mahalanobis_dist],
+                ['DEAD FEATURES', data.dead_features_count]
+            ];
+            const chips = entries.map(([key, value]) => `
+                <div class="feature-chip">
+                    <p class="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">${escapeHtml(key)}</p>
+                    <p class="text-base sm:text-lg font-black text-white mt-2 break-all">${escapeHtml(formatScalar(value))}</p>
+                </div>
+            `).join('');
+            
+            const deadList = data.dead_features && data.dead_features.length > 0
+                ? `<div class="col-span-full mt-2 pt-2 border-t border-white/5"><p class="text-[9px] text-rose-400 font-bold mb-1 uppercase tracking-widest">陣亡特徵清單</p><p class="text-[10px] text-white/70 font-mono tracking-tighter">${escapeHtml(data.dead_features.join(', '))}</p></div>`
+                : '';
+                
+            container.innerHTML = chips + deadList;
+        }
+
         function summarizeQldPermission(qld) {
             const reasonCode = String(qld.reason_code || '');
             const forcedBucket = String(qld.forced_bucket || '');
@@ -1000,6 +1034,8 @@
 
             renderDistribution('prob-container', data.signal.probabilities, currentLang === 'en' ? 'No posterior distribution' : '暫無後驗分佈', data.signal.probability_dynamics);
             renderDistribution('prior-container', data.signal.priors, currentLang === 'en' ? 'No runtime prior' : '當前未透傳運行時先驗');
+            renderManifold(data.diagnostics && data.diagnostics.v16_manifold);
+            
             const enrichedFeatureValues = {
                 ...(data.evidence.feature_values || {}),
                 price_topology_regime: data.signal.price_topology && data.signal.price_topology.regime,

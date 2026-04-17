@@ -661,8 +661,8 @@ class V11Conductor:
             # v14.4 BAYESIAN OVERDRIVE: Out-of-distribution detection
             # Capture extreme market states (Crash/Bubble) and increase model responsiveness.
             ood_threshold = float(active_registry.get("mahalanobis_ood_threshold", 4.0))
-            is_overdrive = self.mahalanobis_guard.is_outlier(
-                latest_vector.iloc[0].values, threshold=ood_threshold
+            is_overdrive, mahalanobis_dist = self.mahalanobis_guard.is_outlier(
+                latest_vector.iloc[0].values, threshold=ood_threshold, return_distance=True
             )
             tau_factor = float(active_registry.get("overdrive_tau_factor", 0.5))
 
@@ -682,6 +682,7 @@ class V11Conductor:
                 logical_constraints=self.logical_constraints,
                 regime_penalties=regime_penalties,
             )
+            bayesian_diagnostics["mahalanobis_dist"] = float(mahalanobis_dist)
             if any(np.isnan(list(posteriors.values()))):
                 logger.warning("Bayesian Inference produced NaNs. Falling back to priors.")
                 posteriors = active_priors
