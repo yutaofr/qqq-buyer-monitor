@@ -42,14 +42,14 @@ def main():
 
     print("=" * 72)
     print("  PHASE 3: REALITY ACCEPTANCE TEST — 2026-04-17")
-    print("  tau = {:.1f} (UNTOUCHED) | var_smoothing = 0.001 (UNTOUCHED)".format(tau))
+    print(f"  tau = {tau:.1f} (UNTOUCHED) | var_smoothing = 0.001 (UNTOUCHED)")
     print("=" * 72)
     print()
     print("  Dead features (quality <= 0, physically isolated):")
     for f in dead:
         print(f"    × {f:26s}  z = {fv[f]:+.4f}  (ANNIHILATED)")
     print()
-    print("  Alive features ({} dimensions):".format(len(alive)))
+    print(f"  Alive features ({len(alive)} dimensions):")
     for f in alive:
         qw = quality_weights.get(f, 1.0)
         print(f"    ✓ {f:26s}  z = {fv[f]:+.4f}  q = {qw:.2f}")
@@ -235,9 +235,9 @@ def main():
     print()
 
     winner = max(posterior, key=posterior.get)
-    print(f"  ┌─────────────────────────────────────────────────┐")
+    print("  ┌─────────────────────────────────────────────────┐")
     print(f"  │  DOMINANT REGIME: {winner:12s} ({posterior[winner]*100:.1f}%)              │")
-    print(f"  └─────────────────────────────────────────────────┘")
+    print("  └─────────────────────────────────────────────────┘")
 
     if winner == "LATE_CYCLE":
         print()
@@ -253,10 +253,10 @@ def main():
         print(f"      → 单特征 log-lh 差: {contributions['MID_CYCLE']['liquidity_252d']:.2f} vs {contributions['LATE_CYCLE']['liquidity_252d']:.2f}")
         print()
         print(f"    • qqq_ma_ratio: z={fv['qqq_ma_ratio']:+.3f}")
-        print(f"      SMA50/SMA200 gap = -5.1%, approaching death cross territory.")
+        print("      SMA50/SMA200 gap = -5.1%, approaching death cross territory.")
         print()
         print(f"    • erp_absolute: z={fv['erp_absolute']:+.3f}")
-        print(f"      Equity risk premium compressed → valuation extended.")
+        print("      Equity risk premium compressed → valuation extended.")
         print()
         print("  CONCLUSION:")
         print("  The stale liquidity_velocity was a penalty amplifier, not the root cause.")
