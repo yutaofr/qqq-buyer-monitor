@@ -664,6 +664,8 @@ def run_v11_audit(
         snapshot_dir = Path(artifact_dir) / "mainline_snapshots"
         if prior_state_path.exists():
             prior_state_path.unlink()
+        import shutil
+        shutil.copy("data/v13_6_ex_hydrated_prior.json", prior_state_path)
 
         print(
             f"Walk-forward Audit: Replaying {len(test)} windows through V11Conductor black-box..."

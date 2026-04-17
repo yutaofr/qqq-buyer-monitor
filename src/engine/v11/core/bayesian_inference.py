@@ -166,6 +166,12 @@ class BayesianInferenceEngine:
                     [(feature_quality_weights or {}).get(f_name, 1.0) for f_name in feature_names]
                 )
 
+                # PHASE 1: TRUE FEATURE PHYSICAL ISOLATION
+                # Features with quality <= 0 are dead dimensions. Their log-likelihood
+                # is annihilated at the source to prevent any numerical leakage.
+                dead_mask = (q_weights > 0.0).astype(float)
+                feature_log_lh = feature_log_lh * dead_mask
+
                 # v14.5 FORENSIC FIX: Apply Likelihood Floor BEFORE Tau-scaling
                 # This prevents the anchor from dominating real evidence during Overdrive (Low Tau).
                 raw_sum_lh = np.sum(effective_weights * feature_log_lh * q_weights)
@@ -198,6 +204,7 @@ class BayesianInferenceEngine:
                     feature_values,
                     logical_constraints,
                     runtime_priors=runtime,
+                    feature_quality_weights=feature_quality_weights,
                 )
             combined_penalties = {
                 regime: float(penalties.get(regime, 1.0))
@@ -264,10 +271,12 @@ class BayesianInferenceEngine:
         feature_values: dict[str, float],
         constraints: dict[str, Any],
         runtime_priors: dict[str, float] | None = None,
+        feature_quality_weights: dict[str, float] | None = None,
     ) -> dict[str, float]:
         """Evaluates external logical constraints JSON against current macro features."""
         penalties = {r: 1.0 for r in self.regimes}
         scenarios = constraints.get("scenarios", {})
+        quality = feature_quality_weights or {}
 
         for name, scenario in scenarios.items():
             conditions = scenario.get("conditions", {})
@@ -278,6 +287,12 @@ class BayesianInferenceEngine:
                 if factor.endswith("_abs"):
                     val_key = factor[:-4]
                     use_abs = True
+
+                # PHASE 1: DEAD FEATURE GATE — features with quality <= 0
+                # are physically absent. Constraints referencing them cannot fire.
+                if float(quality.get(val_key, 1.0)) <= 0.0:
+                    match = False
+                    break
 
                 # Handle LIST format: ["operator", threshold] or ["or", {...}, {...}]
                 if not isinstance(cond_expr, list) or len(cond_expr) < 2:
@@ -293,6 +308,9 @@ class BayesianInferenceEngine:
                     for sub_cond in cond_expr[1:]:
                         for sub_f, sub_e in sub_cond.items():
                             if not isinstance(sub_e, list) or len(sub_e) < 2:
+                                continue
+                            # PHASE 1: Skip dead-feature sub-conditions
+                            if float(quality.get(sub_f, 1.0)) <= 0.0:
                                 continue
                             if self._check_condition(
                                 feature_values.get(sub_f, 0.0), sub_e[0], sub_e[1]
@@ -327,6 +345,7 @@ class BayesianInferenceEngine:
             penalties=penalties,
             feature_values=feature_values,
             runtime_priors=runtime_priors,
+            feature_quality_weights=feature_quality_weights,
         )
         return penalties
 
@@ -336,6 +355,7 @@ class BayesianInferenceEngine:
         penalties: dict[str, float],
         feature_values: dict[str, float],
         runtime_priors: dict[str, float] | None,
+        feature_quality_weights: dict[str, float] | None = None,
     ) -> dict[str, float]:
         """Allow limited RECOVERY mass when repair is confirmed and crash stress is absent."""
         if not penalties or not runtime_priors:
@@ -347,10 +367,18 @@ class BayesianInferenceEngine:
         }:
             return penalties
 
-        liquidity_velocity = float(feature_values.get("liquidity_velocity", 0.0) or 0.0)
-        move_21d = abs(float(feature_values.get("move_21d", 0.0) or 0.0))
-        spread_21d = abs(float(feature_values.get("spread_21d", 0.0) or 0.0))
-        credit_acceleration = float(feature_values.get("credit_acceleration", 0.0) or 0.0)
+        quality = feature_quality_weights or {}
+
+        def _gated(key: str, default: float = 0.0) -> float:
+            """Return feature value only if quality > 0; otherwise neutral default."""
+            if float(quality.get(key, 1.0)) <= 0.0:
+                return default
+            return float(feature_values.get(key, default) or default)
+
+        liquidity_velocity = _gated("liquidity_velocity", 0.0)
+        move_21d = abs(_gated("move_21d", 0.0))
+        spread_21d = abs(_gated("spread_21d", 0.0))
+        credit_acceleration = _gated("credit_acceleration", 0.0)
 
         if (
             liquidity_velocity <= -2.0
