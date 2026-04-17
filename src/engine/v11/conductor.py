@@ -257,11 +257,14 @@ class V11Conductor:
             self.mahalanobis_guard.fit_baseline(initial_features)
             self._validate_model(self.gnb)
         else:
-            self.gnb, training_features = self._initialize_model(
+            self.gnb, training_features, training_stress_mask = self._initialize_model(
                 macro_data_path, regime_data_path, training_cutoff=training_cutoff
             )
             # Fit Mahalanobis Guard on EXACT matched features used for model training (v14.4)
-            self.mahalanobis_guard.fit_baseline(training_features)
+            self.mahalanobis_guard.fit_baseline(
+                training_features,
+                stress_mask=training_stress_mask,
+            )
 
         self.inference_engine = BayesianInferenceEngine(
             base_priors=self._get_base_priors(), kde_models={r: None for r in self.gnb.classes_}
@@ -409,7 +412,7 @@ class V11Conductor:
         macro_data_path: str,
         regime_data_path: str,
         training_cutoff: str | datetime | None = None,
-    ) -> GaussianNB:
+    ) -> tuple[GaussianNB, pd.DataFrame, pd.Series]:
         """JIT training of the Bayesian regime inference model with canonical DNA."""
 
         # 1. Load Seeding Datasets
@@ -462,7 +465,8 @@ class V11Conductor:
             summary["var_min"],
             summary["var_max"],
         )
-        return gnb, df[feature_cols]
+        stress_mask = df["regime"].astype(str).isin({"BUST", "RECOVERY"})
+        return gnb, df[feature_cols], stress_mask
 
     def _validate_model(
         self, gnb: GaussianNB, *, feature_count: int | None = None
@@ -476,6 +480,25 @@ class V11Conductor:
     def _get_base_priors(self) -> dict[str, float]:
         """Returns deterministic priors from the persistent knowledge base."""
         return self.prior_book.current_priors()
+
+    @staticmethod
+    def _topology_stress_probability(topology_state) -> float:
+        """Map price-topology state into the covariance-mixture stress weight."""
+        probabilities = getattr(topology_state, "probabilities", {}) or {}
+        bust_prob = float(probabilities.get("BUST", 0.0) or 0.0)
+        recovery_prob = float(probabilities.get("RECOVERY", 0.0) or 0.0)
+        transition = float(getattr(topology_state, "transition_intensity", 0.0) or 0.0)
+        damage = float(getattr(topology_state, "damage_memory", 0.0) or 0.0)
+        bust_pressure = float(getattr(topology_state, "bust_pressure", 0.0) or 0.0)
+        repair = float(getattr(topology_state, "repair_persistence", 0.0) or 0.0)
+
+        stress = max(
+            bust_prob,
+            0.55 * bust_pressure,
+            transition * min(1.0, damage),
+            recovery_prob * transition * min(1.0, damage + repair),
+        )
+        return float(np.clip(stress, 0.0, 1.0))
 
     def daily_run(self, raw_t0_data: pd.DataFrame, baseline_result: dict | None = None) -> dict:
         """
@@ -661,8 +684,16 @@ class V11Conductor:
             # v14.4 BAYESIAN OVERDRIVE: Out-of-distribution detection
             # Capture extreme market states (Crash/Bubble) and increase model responsiveness.
             ood_threshold = float(active_registry.get("mahalanobis_ood_threshold", 4.0))
+            stress_probability = self._topology_stress_probability(topology_state)
             is_overdrive, mahalanobis_dist = self.mahalanobis_guard.is_outlier(
-                latest_vector.iloc[0].values, threshold=ood_threshold, return_distance=True
+                latest_vector.iloc[0].values,
+                threshold=ood_threshold,
+                stress_probability=stress_probability,
+                return_distance=True,
+            )
+            mahalanobis_geometry = self.mahalanobis_guard.distance_diagnostics(
+                latest_vector.iloc[0].values,
+                stress_probability=stress_probability,
             )
             tau_factor = float(active_registry.get("overdrive_tau_factor", 0.5))
 
@@ -683,6 +714,10 @@ class V11Conductor:
                 regime_penalties=regime_penalties,
             )
             bayesian_diagnostics["mahalanobis_dist"] = float(mahalanobis_dist)
+            bayesian_diagnostics["mahalanobis_geometry"] = mahalanobis_geometry
+            bayesian_diagnostics["mahalanobis_baseline"] = (
+                self.mahalanobis_guard.baseline_diagnostics()
+            )
             if any(np.isnan(list(posteriors.values()))):
                 logger.warning("Bayesian Inference produced NaNs. Falling back to priors.")
                 posteriors = active_priors
