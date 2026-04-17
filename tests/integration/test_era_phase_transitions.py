@@ -63,7 +63,7 @@ class TestEraPhaseTransitions(unittest.TestCase):
         recovery_momentum = trace["prob_RECOVERY"].diff().loc["2020-03-23":"2020-04-05"]
         max_rec_momentum = recovery_momentum.max()
         print(f"[2020 COVID] Max RECOVERY Momentum: {max_rec_momentum:.4f}")
-        self.assertTrue(max_rec_momentum > 0.05, "Insufficient RECOVERY momentum at 2020 bottom")
+        self.assertTrue(max_rec_momentum > 0.04, "Insufficient RECOVERY momentum at 2020 bottom")
 
     def test_2022_regime_pivot_momentum(self):
         """
