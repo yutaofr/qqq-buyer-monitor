@@ -332,6 +332,16 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                     metadata.get("v14_shadow_mode", not metadata.get("v14_baseline_active", False))
                 ),
                 "recovery_hmm_shadow": metadata.get("recovery_hmm_shadow", {}),
+                "v16_manifold": {
+                    "inference_tau": metadata.get("v13_4_diagnostics", {}).get("tau_applied", 10.0),
+                    "mahalanobis_dist": metadata.get("v13_4_diagnostics", {}).get(
+                        "mahalanobis_dist", 0.0
+                    ),
+                    "dead_features_count": len(
+                        metadata.get("v13_4_diagnostics", {}).get("dead_features", [])
+                    ),
+                    "dead_features": metadata.get("v13_4_diagnostics", {}).get("dead_features", []),
+                },
             },
         }
         path = Path(output_path) if output_path else Path("src/web/public/status.json")

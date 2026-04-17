@@ -259,6 +259,9 @@ class BayesianInferenceEngine:
                 "evidence_protected_regimes": evidence_protected_regimes,
                 "logical_penalties": penalties,
                 "regime_penalties": dict(regime_penalties or {}),
+                "dead_features": [
+                    f for f in feature_names if (feature_quality_weights or {}).get(f, 1.0) <= 0.0
+                ],
             }
             return posteriors, diagnostics
 
