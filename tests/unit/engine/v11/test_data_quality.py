@@ -91,6 +91,35 @@ def test_feature_reliability_weights_zero_out_missing_raw_features(snapshot):
     assert weights["liquidity_252d"] == 1.0
 
 
+def test_feature_reliability_weights_preserve_finite_tail_recovery_derivatives():
+    latest_raw = pd.Series(
+        {
+            "credit_spread_bps": 410.0,
+            "liquidity_roc_pct_4w": -0.08,
+        }
+    )
+    latest_vector = pd.DataFrame(
+        [
+            {
+                "credit_acceleration": 1.4,
+                "liquidity_velocity": -2.3,
+            }
+        ]
+    )
+    weights = feature_reliability_weights(
+        latest_vector=latest_vector,
+        latest_raw=latest_raw,
+        field_quality={"credit_spread": 0.0, "net_liquidity": 0.0},
+        seeder_config={
+            "credit_acceleration": {"src": "credit_spread_bps"},
+            "liquidity_velocity": {"src": "liquidity_roc_pct_4w"},
+        },
+    )
+
+    assert weights["credit_acceleration"] == 0.25
+    assert weights["liquidity_velocity"] == 0.25
+
+
 def test_detect_source_switch_flags_build_version_change(snapshot):
     latest_raw = pd.Series(snapshot["raw_t0_data"][0])
     previous_raw = latest_raw.copy()

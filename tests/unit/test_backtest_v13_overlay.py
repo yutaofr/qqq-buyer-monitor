@@ -234,7 +234,11 @@ def test_run_v11_audit_threads_cached_baseline_trace_into_daily_run(tmp_path, mo
                     "posterior_blend_weight": 0.25,
                     "beta_anchor_weight": 0.35,
                 },
-                "v13_4_diagnostics": {"penalties_applied": {}},
+                "v13_4_diagnostics": {
+                    "penalties_applied": {},
+                    "mahalanobis_dist": 3.25,
+                    "dead_features": ["liquidity_velocity"],
+                },
                 "deployment": {
                     "deployment_state": "DEPLOY_BASE",
                     "deployment_multiplier": 1.0,
@@ -274,6 +278,13 @@ def test_run_v11_audit_threads_cached_baseline_trace_into_daily_run(tmp_path, mo
     assert all(result is not None for result in captured)
     assert all("tractor" in result for result in captured)
     assert all("sidecar" in result for result in captured)
+    telemetry_trace = pd.read_csv(artifact_dir / "v16_telemetry.csv")
+    assert set(["date", "mahalanobis_dist", "dead_features_count", "dead_features"]).issubset(
+        telemetry_trace.columns
+    )
+    assert telemetry_trace["mahalanobis_dist"].iloc[0] == pytest.approx(3.25)
+    assert telemetry_trace["dead_features_count"].iloc[0] == 1
+    assert "liquidity_velocity" in str(telemetry_trace["dead_features"].iloc[0])
 
 
 def test_acceptance_mode_fails_on_missing_price_cache():

@@ -1,6 +1,9 @@
 import numpy as np
 import pandas as pd
 
+_TAIL_RECOVERY_FEATURE_QUALITY_FLOOR = 0.25
+_TAIL_RECOVERY_FEATURES = {"credit_acceleration", "liquidity_velocity"}
+
 
 def apply_data_quality_penalty(*, posterior_entropy: float, quality_score: float) -> float:
     """Calculates effective entropy by penalizing low data quality."""
@@ -178,6 +181,7 @@ def feature_reliability_weights(
     source_to_field = {
         "credit_spread_bps": "credit_spread",
         "net_liquidity_usd_bn": "net_liquidity",
+        "liquidity_roc_pct_4w": "net_liquidity",
         "real_yield_10y_pct": "real_yield",
         "treasury_vol_21d": "treasury_vol",
         "copper_gold_ratio": "copper_gold",
@@ -197,6 +201,9 @@ def feature_reliability_weights(
             continue
 
         field_name = source_to_field.get(str(src))
-        weights[str(feature_name)] = float(np.clip(field_quality.get(field_name, 1.0), 0.0, 1.0))
+        quality = float(np.clip(field_quality.get(field_name, 1.0), 0.0, 1.0))
+        if str(feature_name) in _TAIL_RECOVERY_FEATURES:
+            quality = max(quality, _TAIL_RECOVERY_FEATURE_QUALITY_FLOOR)
+        weights[str(feature_name)] = quality
 
     return weights
