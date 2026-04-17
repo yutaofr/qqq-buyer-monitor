@@ -25,9 +25,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.engine.v11.conductor import V11Conductor, _v12_quality_field_specs
-from src.engine.v11.core.data_quality import assess_data_quality, feature_reliability_weights
-
+from src.engine.v11.conductor import V11Conductor, _v12_quality_field_specs  # noqa: E402
+from src.engine.v11.core.data_quality import (  # noqa: E402
+    assess_data_quality,
+    feature_reliability_weights,
+)
 
 INCIDENT_FEATURES = ("pmi_momentum", "labor_slack", "liquidity_velocity")
 DEFAULT_DATES = (
@@ -175,7 +177,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         training_frame = _numeric_training_frame(conductor)
         cov = _regularized_cov(training_frame)
         with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
-            inv_cov = np.linalg.pinv(cov)
+            inv_cov = np.linalg.pinv(cov)  # noqa: F841
         feature_names = list(training_frame.columns)
         threshold = float(conductor.v13_4_registry.get("mahalanobis_ood_threshold", 4.0))
 
@@ -217,8 +219,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 *,
                 stress_probability: float = 0.0,
             ) -> bool | tuple[bool, float]:
-                captured_guard_vector["x"] = np.asarray(current_vector, dtype=float)
-                return original_is_outlier(
+                captured_guard_vector["x"] = np.asarray(current_vector, dtype=float)  # noqa: B023
+                return original_is_outlier(  # noqa: B023
                     current_vector,
                     threshold=threshold,
                     stress_probability=stress_probability,

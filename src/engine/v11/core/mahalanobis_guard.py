@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
-import warnings
 from scipy.spatial.distance import mahalanobis
 
 try:
-    from sklearn.covariance import LedoitWolf, OAS
+    from sklearn.covariance import OAS, LedoitWolf
 except Exception:  # pragma: no cover - sklearn is a runtime dependency in this project.
     LedoitWolf = None
     OAS = None
