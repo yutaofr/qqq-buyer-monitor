@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  engine-prod:
+    image: qqq-monitor:prod
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cycle_engine_sovereign
+    restart: "no"
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - ./artifacts:/app/artifacts
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - QQQ_DB_PATH=/app/data/signals.db
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    command: python -m src.main

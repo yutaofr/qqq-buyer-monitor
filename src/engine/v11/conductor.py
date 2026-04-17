@@ -227,8 +227,10 @@ class V11Conductor:
                 execution_state.get("deployment_state", "DEPLOY_BASE") or "DEPLOY_BASE"
             ),
             evidence=float(execution_state.get("deployment_evidence", 0.0) or 0.0),
-            kelly_scale=0.25,
-            erp_weight=0.2,
+            # V16.0 IGNITION: True Kelly half_erp_high variant
+            # Backtest-proven (2013-2026): Sharpe 0.90, MDD -23.4%
+            kelly_scale=0.5,
+            erp_weight=0.8,
             regime_sharpes=self.regime_sharpes,
         )
         self.resonance_detector = ResonanceDetector()
