@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -94,6 +96,13 @@ def test_process_audit_entropy_falls_back_when_quality_audit_is_missing():
 
     assert backtest_module._resolve_process_entropy(runtime) == pytest.approx(0.31)
     assert backtest_module._resolve_execution_entropy(runtime) == pytest.approx(0.31)
+
+
+def test_resolve_prior_seed_path_uses_tracked_resource():
+    seed_path = backtest_module._resolve_prior_seed_path()
+
+    assert seed_path == Path("src/engine/v11/resources/v13_6_ex_hydrated_prior.json")
+    assert seed_path.exists()
 
 
 def test_run_v11_audit_rejects_model_config_overrides(tmp_path, monkeypatch):

@@ -40,6 +40,19 @@ from src.research.worldview_benchmark import build_worldview_benchmark
 logger = logging.getLogger(__name__)
 
 START_DATE = "1999-03-10"
+TRACKED_PRIOR_SEED_PATH = Path("src/engine/v11/resources/v13_6_ex_hydrated_prior.json")
+LEGACY_PRIOR_SEED_PATH = Path("data/v13_6_ex_hydrated_prior.json")
+
+
+def _resolve_prior_seed_path() -> Path:
+    if TRACKED_PRIOR_SEED_PATH.exists():
+        return TRACKED_PRIOR_SEED_PATH
+    if LEGACY_PRIOR_SEED_PATH.exists():
+        return LEGACY_PRIOR_SEED_PATH
+    raise FileNotFoundError(
+        "Warm-start prior seed missing. Expected tracked seed at "
+        f"{TRACKED_PRIOR_SEED_PATH} or legacy data seed at {LEGACY_PRIOR_SEED_PATH}."
+    )
 
 
 def _resolve_process_entropy(runtime: dict[str, Any]) -> float:
@@ -680,7 +693,8 @@ def run_v11_audit(
         if prior_state_path.exists():
             prior_state_path.unlink()
         import shutil
-        shutil.copy("data/v13_6_ex_hydrated_prior.json", prior_state_path)
+
+        shutil.copy(_resolve_prior_seed_path(), prior_state_path)
 
         print(
             f"Walk-forward Audit: Replaying {len(test)} windows through V11Conductor black-box..."
