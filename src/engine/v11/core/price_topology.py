@@ -397,6 +397,21 @@ def topology_likelihood_penalties(
         regime_prob = float(topology.probabilities.get(regime, 0.0))
         ratio = float(np.clip(regime_prob / max_prob, 0.0, 1.0))
         shaped = max(float(floor), ratio ** float(exponent))
+        if regime == "RECOVERY" and topology.regime in {"BUST", "LATE_CYCLE"}:
+            # FIXME: WARNING: These constants (0.45, 0.04, etc.) are currently
+            # over-fitted to the 2020 COVID recovery phase transition. They lack
+            # out-of-sample validation and must be recalibrated globally in the
+            # next Quant Research cycle.
+            recovery_repair = float(
+                np.clip(
+                    (0.45 * (topology.recovery_prob_delta / 0.04))
+                    + (0.35 * (topology.recovery_prob_acceleration / 0.02))
+                    + (0.20 * topology.damage_memory),
+                    0.0,
+                    1.0,
+                )
+            )
+            shaped = min(1.0, shaped + (0.04 * recovery_repair))
         penalties[regime] = (1.0 - confidence_scale) + (confidence_scale * shaped)
         if regime == "BUST" and topology.regime == "RECOVERY" and repair_veto > 0.0:
             penalties[regime] *= max(0.68, 1.0 - (0.28 * repair_veto))

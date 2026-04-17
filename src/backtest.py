@@ -641,6 +641,13 @@ def run_v11_audit(
                 "\n".join(json.dumps(row, ensure_ascii=False) for row in forensic_rows) + "\n",
                 encoding="utf-8",
             )
+        if telemetry_rows:
+            telemetry_df = pd.DataFrame(telemetry_rows).sort_values("date")
+            telemetry_df.to_csv(save_dir / "v16_telemetry.csv", index=False)
+            (save_dir / "v16_telemetry.jsonl").write_text(
+                "\n".join(json.dumps(row, ensure_ascii=False) for row in telemetry_rows) + "\n",
+                encoding="utf-8",
+            )
         if bool(experiment.get("save_plots", True)):
             save_v11_fidelity_figure(
                 execution_df, summary, [save_dir / "v12_target_beta_fidelity.png"]
@@ -653,10 +660,18 @@ def run_v11_audit(
 
     if use_canonical_pipeline:
         from src.engine.v11.conductor import V11Conductor
+        from src.engine.telemetry_observer import (
+            InMemoryTelemetrySink,
+            TelemetryObservedEngine,
+            V16TelemetrySidecar,
+        )
 
         probability_rows: list[dict[str, Any]] = []
         execution_rows: list[dict[str, Any]] = []
         forensic_rows: list[dict[str, Any]] = []
+        telemetry_sink = InMemoryTelemetrySink()
+        telemetry_rows = telemetry_sink.rows
+        telemetry_sidecar = V16TelemetrySidecar(sink=telemetry_sink)
         training_class_counts: list[dict[str, Any]] = []
         runtime_state_dir = Path(artifact_dir) / "runtime_state"
         runtime_state_dir.mkdir(parents=True, exist_ok=True)
@@ -697,7 +712,11 @@ def run_v11_audit(
                 baseline_trace,
                 observation_date=dt,
             )
-            runtime = conductor.daily_run(t0_data, baseline_result=baseline_result)
+            observed_engine = TelemetryObservedEngine(
+                engine=conductor,
+                observers=[telemetry_sidecar],
+            )
+            runtime = observed_engine.daily_run(t0_data, baseline_result=baseline_result)
             class_count = getattr(getattr(conductor, "gnb", None), "classes_", None)
             if class_count is None:
                 class_count_value = len(ordered_regimes)
