@@ -15,12 +15,15 @@ from src.models.deployment import deployment_multiplier_for_state
 
 def _compute_pnl_curve(
     trace: pd.DataFrame,
-    multiplier_col: str,
-    base_daily_deploy: float = 0.01,
-    transaction_cost: float = 0.0005,
+    beta_col: str,
+    transaction_cost: float = 0.0010,
 ) -> pd.Series:
     """
     模拟净值曲线。
+
+    使用 target_beta 作为仓位暴露比例：
+      strategy_return_t = beta_{t-1} * qqq_return_t
+      （T日收盘后决定的仓位，吃T+1日的收益）
     """
     n = len(trace)
     navs = np.ones(n, dtype=float)
@@ -28,43 +31,43 @@ def _compute_pnl_curve(
         return pd.Series([], dtype=float)
 
     closes = trace["close"].values
-    multipliers = trace[multiplier_col].values
+    betas = trace[beta_col].values
 
     current_nav = 1.0
     prev_close = closes[0]
-    prev_multiplier = multipliers[0]
+    prev_beta = betas[0]
 
     for i in range(1, n):
         close_t = closes[i]
-        mult_t = multipliers[i]
+        beta_t_minus_1 = prev_beta  # yesterday's signal drives today's exposure
 
         daily_return = 0.0
-        # If not NaN, we can calculate return against previous valid close
         if not np.isnan(close_t) and not np.isnan(prev_close) and prev_close > 0.0:
             daily_return = close_t / prev_close - 1.0
 
-        deployed_fraction = max(0.0, min(1.0, base_daily_deploy * mult_t))
-        pnl_contribution = deployed_fraction * daily_return
+        # Full capital deployed at beta exposure
+        exposure = max(0.0, min(2.0, beta_t_minus_1))  # cap at 2x leverage
+        pnl_contribution = exposure * daily_return
 
+        # Transaction cost only on rebalance (beta change > 5%)
         cost_t = 0.0
-        if mult_t != prev_multiplier:
-            cost_t = transaction_cost
+        if abs(betas[i] - prev_beta) > 0.05:
+            cost_t = transaction_cost * abs(betas[i] - prev_beta)
 
         current_nav = current_nav * (1.0 + pnl_contribution - cost_t)
         current_nav = max(0.0, current_nav)
         navs[i] = current_nav
 
-        # update previous valid states
         if not np.isnan(close_t):
             prev_close = close_t
-        prev_multiplier = mult_t
+        prev_beta = betas[i]
 
     return pd.Series(navs, index=trace.index)
 
 
 def _compute_performance_metrics(
     nav_series: pd.Series,
-    risk_free_rate: float = 0.045,
+    risk_free_rate: float = 0.02,
 ) -> dict:
     """
     从净值序列计算量化性能指标。
@@ -157,25 +160,30 @@ def main(argv=None):
     target_kellies = ["half_erp_low", "half_erp_mid", "half_erp_high"]
     variants = target_kellies + ["pseudo_kelly"]
 
+    # All variants use target_beta as the direct exposure signal.
+    # The only column that matters for PnL is the beta (position sizing),
+    # not the deployment_multiplier (pacing envelope).
+    # For pseudo_kelly, use the engine's target_beta directly.
+    # For true kelly variants, we approximate beta from kelly_fraction.
     for vid in target_kellies:
-        state_col = f"{vid}_state"
-        mult_col = f"{vid}_multiplier"
-        trace[mult_col] = trace[state_col].apply(lambda s: deployment_multiplier_for_state(s))
+        frac_col = f"{vid}_fraction"
+        # Kelly fraction -> beta: fraction is [0,1], map to beta [0.5, 1.2]
+        trace[f"{vid}_beta"] = 0.5 + trace[frac_col].clip(0, 1) * 0.7
 
     metrics_all = {}
     pnl_curves = {}
 
     for v in variants:
         if v == "pseudo_kelly":
-            multiplier_col = "deployment_multiplier"
+            beta_col = "target_beta"
         else:
-            multiplier_col = f"{v}_multiplier"
+            beta_col = f"{v}_beta"
 
         nav_series = _compute_pnl_curve(
-            trace, multiplier_col, base_daily_deploy=0.01, transaction_cost=0.0005
+            trace, beta_col, transaction_cost=0.0010
         )
         pnl_curves[v] = nav_series
-        metrics_all[v] = _compute_performance_metrics(nav_series, risk_free_rate=0.045)
+        metrics_all[v] = _compute_performance_metrics(nav_series, risk_free_rate=0.02)
 
     pnl_curves_df = pd.DataFrame(pnl_curves)
     output_dir = Path(args.output_dir)

@@ -587,6 +587,6 @@ def test_conductor_instantiates_kelly_deployment_policy_with_correct_args(tmp_pa
 
     spy.assert_called_once()
     kwargs = spy.call_args[1]
-    assert kwargs.get("kelly_scale") == 0.25
-    assert kwargs.get("erp_weight") == 0.2
+    assert kwargs.get("kelly_scale") == 0.5
+    assert kwargs.get("erp_weight") == 0.8
     assert "regime_sharpes" in kwargs
