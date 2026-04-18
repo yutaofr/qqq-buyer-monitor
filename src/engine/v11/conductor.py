@@ -39,6 +39,7 @@ from src.engine.v11.signal.kelly_deployment_policy import KellyDeploymentPolicy
 from src.engine.v11.signal.qld_permission import QLDPermissionEvaluator
 from src.engine.v11.signal.regime_stabilizer import RegimeStabilizer
 from src.engine.v11.signal.resonance_detector import ResonanceDetector
+from src.engine.v11.stress import StressPosteriorEngine
 from src.engine.v13.execution_overlay import ExecutionOverlayEngine
 from src.regime_dynamics import compute_probability_dynamics
 from src.regime_topology import (
@@ -78,6 +79,7 @@ class V11Conductor:
         snapshot_dir: str = "artifacts/v12_runtime_snapshots",
         price_history_path: str = "data/qqq_history_cache.csv",
         initial_model: GaussianNB | None = None,
+        stress_posterior_mode: str = "component_logistic",
         overlay_mode: str | None = None,
         overlay_suppress_collinear: bool = True,
         qld_permission_toggles: dict[str, bool] | None = None,
@@ -173,6 +175,7 @@ class V11Conductor:
 
         self.entropy_ctrl = EntropyController()
         self.mahalanobis_guard = MahalanobisGuard()
+        self.stress_posterior = StressPosteriorEngine(mode=stress_posterior_mode)
 
         bootstrap_history = self.regime_history
         if self.training_cutoff is not None:
@@ -684,7 +687,19 @@ class V11Conductor:
             # v14.4 BAYESIAN OVERDRIVE: Out-of-distribution detection
             # Capture extreme market states (Crash/Bubble) and increase model responsiveness.
             ood_threshold = float(active_registry.get("mahalanobis_ood_threshold", 4.0))
-            stress_probability = self._topology_stress_probability(topology_state)
+            stress_feature_history = features.join(diagnostics, how="left", rsuffix="_diagnostic")
+            stress_feature_history = stress_feature_history.join(
+                context_df.reindex(stress_feature_history.index),
+                how="left",
+                rsuffix="_raw",
+            )
+            stress_posterior_result = self.stress_posterior.score(
+                topology_state=topology_state,
+                latest_vector=latest_vector.iloc[0].values,
+                mahalanobis_guard=self.mahalanobis_guard,
+                feature_history=stress_feature_history,
+            )
+            stress_probability = stress_posterior_result.pi_stress_calibrated
             is_overdrive, mahalanobis_dist = self.mahalanobis_guard.is_outlier(
                 latest_vector.iloc[0].values,
                 threshold=ood_threshold,
@@ -718,6 +733,14 @@ class V11Conductor:
             bayesian_diagnostics["mahalanobis_baseline"] = (
                 self.mahalanobis_guard.baseline_diagnostics()
             )
+            bayesian_diagnostics["stress_posterior"] = {
+                "mode": stress_posterior_result.mode,
+                "components": stress_posterior_result.components,
+                "pi_stress_raw": stress_posterior_result.pi_stress_raw,
+                "pi_stress_calibrated": stress_posterior_result.pi_stress_calibrated,
+                "attribution": stress_posterior_result.attribution,
+                "component_diagnostics": stress_posterior_result.component_diagnostics,
+            }
             if any(np.isnan(list(posteriors.values()))):
                 logger.warning("Bayesian Inference produced NaNs. Falling back to priors.")
                 posteriors = active_priors
