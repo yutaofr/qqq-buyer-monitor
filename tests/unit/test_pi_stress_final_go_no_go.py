@@ -3,12 +3,19 @@ from __future__ import annotations
 import json
 
 from scripts.pi_stress_final_go_no_go import PiStressFinalGoNoGo
+from tests.unit.pi_stress_test_fixtures import (
+    make_pi_stress_registry_json,
+    make_pi_stress_trace_csv,
+)
 
 
 def test_final_go_no_go_writes_binary_decision_and_red_flag_gate(tmp_path):
+    trace_path = make_pi_stress_trace_csv(tmp_path)
+    registry_path = make_pi_stress_registry_json(tmp_path, trace_path)
+
     result = PiStressFinalGoNoGo(
-        registry_path="artifacts/pi_stress_phase2a_fresh_eval/experiment_registry.json",
-        trace_path="artifacts/pi_stress_phase2a_fresh_trace/regime_process_trace.csv",
+        registry_path=registry_path,
+        trace_path=trace_path,
         output_dir=tmp_path / "artifacts",
         report_dir=tmp_path / "reports",
     ).write()
