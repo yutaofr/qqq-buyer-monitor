@@ -33,7 +33,7 @@ class DeploymentPolicySpec:
         )
 
     @classmethod
-    def legacy_fixed_0_50(cls) -> "DeploymentPolicySpec":
+    def legacy_fixed_0_50(cls) -> DeploymentPolicySpec:
         return cls(
             mode="legacy_fixed_0_50",
             primary_threshold=0.50,
@@ -49,7 +49,7 @@ class DeploymentPolicySpec:
         cls,
         *,
         threshold: float = 0.35,
-    ) -> "DeploymentPolicySpec":
+    ) -> DeploymentPolicySpec:
         return cls(
             mode="calibrated_fixed_threshold",
             primary_threshold=float(threshold),
@@ -61,7 +61,7 @@ class DeploymentPolicySpec:
         )
 
     @classmethod
-    def threshold_policy_with_hysteresis(cls) -> "DeploymentPolicySpec":
+    def threshold_policy_with_hysteresis(cls) -> DeploymentPolicySpec:
         return cls(
             mode="threshold_policy_with_hysteresis",
             primary_threshold=0.25,
