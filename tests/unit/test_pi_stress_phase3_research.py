@@ -3,11 +3,14 @@ from __future__ import annotations
 import json
 
 from scripts.pi_stress_phase3_research import PiStressPhase3Research
+from tests.unit.pi_stress_test_fixtures import make_pi_stress_trace_csv
 
 
 def test_phase3_research_writes_required_artifacts_and_research_verdict(tmp_path):
+    trace_path = make_pi_stress_trace_csv(tmp_path)
+
     result = PiStressPhase3Research(
-        trace_path="artifacts/pi_stress_phase2a_fresh_trace/regime_process_trace.csv",
+        trace_path=trace_path,
         output_dir=tmp_path / "artifacts" / "pi_stress_phase3",
         report_dir=tmp_path / "reports",
     ).write()
