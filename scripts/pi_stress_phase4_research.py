@@ -12,15 +12,18 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.pi_stress_phase3_research import PiStressPhase3Research
-from src.engine.v11.stress_phase4 import Phase4HierarchicalChallenger, Phase4Stage1Model, Phase4Stage2Model
-from src.engine.v11.stress_phase4.signals import (
+from scripts.pi_stress_phase3_research import PiStressPhase3Research  # noqa: E402
+from src.engine.v11.stress_phase4 import (  # noqa: E402
+    Phase4HierarchicalChallenger,
+    Phase4Stage1Model,
+    Phase4Stage2Model,
+)
+from src.engine.v11.stress_phase4.signals import (  # noqa: E402
     build_credit_liquidity_state,
     build_cross_asset_divergence_state,
     build_cross_sectional_stress_state,
     build_vol_surface_state,
 )
-
 
 ALLOWED_PHASE4_VERDICTS = {
     "READY_FOR_PHASE_5_GOVERNED_PREDEPLOYMENT_RESEARCH",
@@ -101,7 +104,6 @@ class PiStressPhase4Research(PiStressPhase3Research):
         labels = self._label_array(taxonomy)
         drawdown = self._col(frame, "phase3_drawdown")
         bust = self._col(frame, "benchmark_prob_BUST")
-        recovery = self._col(frame, "benchmark_prob_RECOVERY")
         transition = self._col(frame, "benchmark_transition_intensity")
         macro = self._col(frame, "S_macro_anom")
         ordinary_structural = (((drawdown <= -0.10) & (drawdown >= -0.15)) | ((bust >= 0.18) & (labels == "ordinary_correction"))).to_numpy(bool)

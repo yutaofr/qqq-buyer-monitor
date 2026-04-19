@@ -27,7 +27,7 @@ class StressCalibrator:
         self.model = None
         self.fit_metadata: dict[str, object] = {"fit_rows": 0, "method": self.method}
 
-    def fit(self, scores, labels, sample_weight=None) -> "StressCalibrator":
+    def fit(self, scores, labels, sample_weight=None) -> StressCalibrator:
         x = _as_score_array(scores)
         y = np.asarray(labels, dtype=int).reshape(-1)
         if len(x) != len(y):

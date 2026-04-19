@@ -10,6 +10,11 @@ from pathlib import Path
 import pandas as pd
 import pytz
 
+from scripts.final_product_patch import (
+    FinalProductPatch,
+    append_forward_oos_log_entry,
+    build_runtime_dashboard_payload,
+)
 from src.constants import ENGINE_VERSION
 from src.models import SignalResult
 from src.regime_topology import (
@@ -227,6 +232,8 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
         if float(official_reference_path.get("qld_pct", 0.0) or 0.0) > 0.0:
             execution_bucket = "QLD"
 
+        dashboard_payload = build_runtime_dashboard_payload(result)
+
         payload = {
             "meta": {
                 "version": ENGINE_VERSION,
@@ -295,6 +302,11 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                     },
                 ),
                 "qld_permission": metadata.get("signal", {}).get("qld_permission", {}),
+                "relapse_pressure": dashboard_payload["relapse_pressure"]["level"],
+                "transition_urgency": dashboard_payload["transition_urgency"],
+                "action_relevance_band": dashboard_payload["action_band"],
+                "boundary_flag": bool(dashboard_payload["export_fields"]["boundary_flag"]),
+                "rationale_summary": dashboard_payload["export_fields"]["rationale_summary"],
             },
             "evidence": {
                 "logic_trace": result.logic_trace,
@@ -343,17 +355,21 @@ def export_web_snapshot(result: SignalResult, output_path: str | Path | None = N
                     "dead_features": metadata.get("v13_4_diagnostics", {}).get("dead_features", []),
                 },
             },
+            "dashboard": dashboard_payload,
         }
         path = Path(output_path) if output_path else Path("src/web/public/status.json")
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
 
-        # Update telemetry CSV for dashboard
-        update_telemetry_csv(result)
-
-        # Trigger history export if using default output path
-        if not output_path:
+        if output_path is None:
+            append_forward_oos_log_entry(
+                FinalProductPatch(root=Path(__file__).resolve().parents[2]).build_monitoring_entry_from_dashboard(
+                    dashboard_payload
+                ),
+                Path("artifacts/final_product/forward_oos_monitoring_log.jsonl"),
+            )
+            update_telemetry_csv(result)
             export_history_json()
 
         return True

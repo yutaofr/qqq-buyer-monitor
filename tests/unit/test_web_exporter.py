@@ -395,3 +395,49 @@ def test_export_web_snapshot_includes_kelly_fraction(tmp_path, monkeypatch):
     assert export_web_snapshot(result, output_path=output_path) is True
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["signal"]["kelly_fraction"] == 0.42
+
+
+def test_export_web_snapshot_includes_probability_dashboard_payload(tmp_path, monkeypatch):
+    result = SignalResult(
+        date=date(2026, 4, 14),
+        price=548.0,
+        target_beta=0.72,
+        probabilities={"MID_CYCLE": 0.20, "LATE_CYCLE": 0.62, "RECOVERY": 0.10, "BUST": 0.08},
+        priors={"MID_CYCLE": 0.25, "LATE_CYCLE": 0.25, "RECOVERY": 0.25, "BUST": 0.25},
+        entropy=0.61,
+        stable_regime="LATE_CYCLE",
+        target_allocation=TargetAllocationState(0.28, 0.72, 0.0, 0.72),
+        logic_trace=[
+            {"step": "behavioral_guard", "result": {"lock_active": False, "target_bucket": "QQQ"}}
+        ],
+        explanation="probability dashboard payload",
+        metadata={
+            "feature_values": {
+                "hazard_score": 0.39,
+                "stress_score": 0.34,
+                "breadth_proxy": 0.42,
+                "volatility_percentile": 0.74,
+                "gap_ret": -0.012,
+            }
+        },
+    )
+    output_path = tmp_path / "status.json"
+
+    monkeypatch.setattr(MarketCursor, "get_market_state", lambda self, now: "FROZEN")
+    monkeypatch.setattr(
+        MarketCursor,
+        "get_expires_at_utc",
+        lambda self, now: datetime(2026, 4, 15, 17, 30, tzinfo=UTC),
+    )
+
+    assert export_web_snapshot(result, output_path=output_path) is True
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert "dashboard" in payload
+    assert payload["dashboard"]["summary"]["current_stage"] == "LATE_CYCLE"
+    assert "stage_distribution" in payload["dashboard"]
+    assert "transition_urgency" in payload["dashboard"]
+    assert "action_band" in payload["dashboard"]
+    assert "evidence_panel" in payload["dashboard"]
+    assert "boundary_warning" in payload["dashboard"]
+    assert payload["dashboard"]["product_scope"]["auto_beta_control_restored"] is False

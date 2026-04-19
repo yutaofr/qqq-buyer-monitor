@@ -13,8 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from experiments.pi_stress_repair_runner import PiStressRepairRunner
-
+from experiments.pi_stress_repair_runner import PiStressRepairRunner  # noqa: E402
 
 ALLOWED_VERDICTS = {
     "PROMISING_FOR_PHASE_4",

@@ -12,7 +12,6 @@ from experiments.pi_stress_repair_runner import PiStressRepairRunner
 from src.engine.v11.stress.models.stress_calibrator import StressCalibrator
 from src.engine.v11.stress.models.threshold_policy import ThresholdPolicyEvaluator
 
-
 THRESHOLDS = [0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50]
 FINAL_THRESHOLD = 0.35
 FINAL_CALIBRATOR = "platt"
@@ -310,7 +309,6 @@ class PiStressFinalGoNoGo:
         base_all = baseline["metrics"]["all"]
         base_sep = baseline["metrics"]["separation"]
         posterior = final["posterior"]
-        final_curve = {f"{row['threshold']:.2f}": row for row in final["threshold_curve"]}
         windows = final["windows"]
         legacy_windows = legacy["windows"]
         h1 = windows["prolonged_stress_2022_h1"]["thresholds"]["0.35"]

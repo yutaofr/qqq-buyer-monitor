@@ -1,1290 +1,730 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title id="ui-page-title">QQQ 氣象觀測站 - 機率目標係數儀表板</title>
-    <script>
-        window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
-    </script>
-    <script defer src="/_vercel/insights/script.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Post-Close Cycle Stage Probability Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@500;800&display=swap');
-        :root { --emerald: #10b981; --blue: #3b82f6; --red: #ef4444; --purple: #a855f7; --bg: #020617; }
-        details > summary::-webkit-details-marker { display: none; }
-        summary:focus { outline: none; }
-        details[open] summary ~ * { animation: details-sweep 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        @keyframes details-sweep {
-            0% { opacity: 0; transform: translateY(-8px); filter: blur(4px); }
-            100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+        :root {
+            --ink: #10212b;
+            --muted: #5c6b73;
+            --paper: #f4efe5;
+            --paper-2: #fffaf0;
+            --line: rgba(16, 33, 43, 0.12);
+            --expansion: #226f54;
+            --late-cycle: #b85c38;
+            --stress: #8f2d2d;
+            --recovery: #2364aa;
+            --boundary: #7056a3;
+            --warning: #a13d2d;
+            --shadow: 0 24px 60px rgba(16, 33, 43, 0.12);
         }
-        body { font-family: 'Inter', sans-serif; background-color: var(--bg); color: #f8fafc; -webkit-font-smoothing: antialiased; }
-        .state-active { background: radial-gradient(circle at 50% 10%, rgba(16, 185, 129, 0.25), var(--bg) 70%); }
-        .state-locked { background: radial-gradient(circle at 50% 10%, rgba(239, 68, 68, 0.25), var(--bg) 70%); }
-        .state-frozen { background: radial-gradient(circle at 50% 10%, rgba(168, 85, 247, 0.25), var(--bg) 70%); }
-        .state-stale { filter: grayscale(1); opacity: 0.6; }
-        .glass { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(80px) saturate(250%); border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: 0 40px 100px -20px rgba(0, 0, 0, 1), inset 0 1px 1px rgba(255,255,255,0.1); }
-        .factor-card { background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); transition: all 0.4s; }
-        .node-active { color: var(--emerald); text-shadow: 0 0 40px rgba(16, 185, 129, 0.6); }
-        #insights-panel { max-height: 0; overflow: hidden; opacity: 0; transition: all 1s cubic-bezier(0.16, 1, 0.3, 1); }
-        #insights-panel.open { max-height: 6000px; opacity: 1; margin-top: 3rem; }
-        
-        .text-ghost { opacity: 0.2; transition: all 0.8s; filter: blur(0.5px); }
-        .prob-bar { height: 8px; border-radius: 6px; transition: width 1.8s cubic-bezier(0.34, 1.56, 0.64, 1); }
-        .overclock { background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444, #10b981); animation: flow 3s linear infinite; background-size: 300% 100%; }
 
-        .evidence-card { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 1.8rem; padding: 2rem; text-align: left; transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1); margin-bottom: 1.5rem; position: relative; overflow: hidden; }
-        .evidence-card:hover { border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.05); transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0,0,0,0.3); }
-        .evidence-card::before { content: ""; position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: var(--emerald); opacity: 0.3; }
-        .evidence-json { background: rgba(0, 0, 0, 0.4); border-radius: 1.2rem; padding: 1.2rem; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #94a3b8; overflow-x: auto; border: 1px solid rgba(255,255,255,0.06); margin-top: 1.5rem; }
-        
-        .flip-card { background-color: transparent; width: 100%; height: 380px; perspective: 1500px; margin-bottom: 2rem; }
-        @media (max-width: 640px) { .flip-card { height: 350px; } }
-        .flip-card-inner { position: relative; width: 100%; height: 100%; text-align: left; transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1); transform-style: preserve-3d; cursor: pointer; }
-        .flip-card.flipped .flip-card-inner { transform: rotateY(180deg); }
-        .flip-card-front, .flip-card-back { position: absolute; width: 100%; height: 100%; -webkit-backface-visibility: hidden; backface-visibility: hidden; border-radius: 2.5rem; overflow: hidden; }
-        .flip-card-back { transform: rotateY(180deg); }
-        .beta-flip-card { background-color: transparent; width: 100%; height: 210px; perspective: 1000px; margin-top: 1rem; position: relative; }
-        .beta-flip-card-inner { position: relative; width: 100%; height: 100%; text-align: center; transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1); transform-style: preserve-3d; cursor: pointer; }
-        .beta-flip-card.flipped .beta-flip-card-inner { transform: rotateY(180deg); }
-        .beta-flip-card-front, .beta-flip-card-back { position: absolute; width: 100%; height: 100%; -webkit-backface-visibility: hidden; backface-visibility: hidden; border-radius: 1.5rem; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translateZ(0.1px); }
-        .beta-flip-card-back { transform: rotateY(180deg); background: rgba(255, 255, 255, 0.02); }
-        
-        @keyframes resonance-pulse-buy { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
-        @keyframes resonance-pulse-sell { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
-        .resonance-buy { border: 2px solid var(--emerald) !important; animation: resonance-pulse-buy 2s infinite; background: rgba(16, 185, 129, 0.1) !important; }
-        .resonance-sell { border: 2px solid var(--red) !important; animation: resonance-pulse-sell 1.5s infinite; background: rgba(239, 68, 68, 0.1) !important; }
-        
-        @keyframes flow { 0% { background-position: 100% 0; } 100% { background-position: 0% 0; } }
-        
-        @keyframes wave { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-        .kelly-wave { animation: wave 8s linear infinite; transform-origin: bottom center; }
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "IBM Plex Sans", sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(35, 100, 170, 0.12), transparent 28%),
+                radial-gradient(circle at top right, rgba(184, 92, 56, 0.10), transparent 24%),
+                linear-gradient(180deg, #f8f2e9 0%, #efe8dd 100%);
+        }
+
+        .page {
+            max-width: 1180px;
+            margin: 0 auto;
+            padding: 32px 20px 48px;
+        }
+
+        .masthead {
+            display: grid;
+            gap: 18px;
+            padding: 28px;
+            border: 1px solid var(--line);
+            background: rgba(255, 250, 240, 0.88);
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(18px);
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            font-family: "IBM Plex Mono", monospace;
+            font-size: 12px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .eyebrow::before {
+            content: "";
+            width: 12px;
+            height: 12px;
+            border-radius: 999px;
+            background: linear-gradient(135deg, var(--ink), rgba(16, 33, 43, 0.35));
+        }
+
+        h1 {
+            margin: 0;
+            font-family: "Fraunces", serif;
+            font-size: clamp(2.3rem, 4.2vw, 4.4rem);
+            line-height: 0.96;
+            letter-spacing: -0.04em;
+            max-width: 13ch;
+        }
+
+        .subhead {
+            margin: 0;
+            max-width: 58ch;
+            color: var(--muted);
+            font-size: 1rem;
+            line-height: 1.7;
+        }
+
+        .meta-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .meta-chip {
+            padding: 9px 12px;
+            border: 1px solid var(--line);
+            font-family: "IBM Plex Mono", monospace;
+            font-size: 12px;
+            background: rgba(255, 255, 255, 0.55);
+        }
+
+        .grid {
+            display: grid;
+            gap: 18px;
+            margin-top: 20px;
+        }
+
+        .hero-grid {
+            grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
+        }
+
+        .split-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .panel {
+            border: 1px solid var(--line);
+            background: rgba(255, 250, 240, 0.82);
+            box-shadow: var(--shadow);
+            padding: 22px;
+        }
+
+        .panel-title {
+            margin: 0 0 16px;
+            font-family: "IBM Plex Mono", monospace;
+            font-size: 12px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .stage-name {
+            margin: 0 0 8px;
+            font-family: "Fraunces", serif;
+            font-size: clamp(2rem, 3vw, 3.2rem);
+            line-height: 0.95;
+        }
+
+        .hero-copy {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.7;
+        }
+
+        .stat-strip {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+            margin-top: 16px;
+        }
+
+        .stat {
+            padding: 12px 0 0;
+            border-top: 1px solid var(--line);
+        }
+
+        .stat-label {
+            margin: 0 0 8px;
+            font-family: "IBM Plex Mono", monospace;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--muted);
+        }
+
+        .stat-value {
+            margin: 0;
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        .distribution-list,
+        .evidence-list,
+        .rule-list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .distribution-row {
+            display: grid;
+            grid-template-columns: minmax(100px, 160px) minmax(0, 1fr) 72px;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .distribution-label {
+            font-family: "IBM Plex Mono", monospace;
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .distribution-track {
+            position: relative;
+            height: 12px;
+            border-radius: 999px;
+            background: rgba(16, 33, 43, 0.08);
+            overflow: hidden;
+        }
+
+        .distribution-bar {
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: 0;
+            border-radius: inherit;
+            transition: width 500ms ease;
+        }
+
+        .distribution-value {
+            font-family: "IBM Plex Mono", monospace;
+            font-size: 12px;
+            text-align: right;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 7px 10px;
+            border: 1px solid var(--line);
+            font-family: "IBM Plex Mono", monospace;
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            background: rgba(255, 255, 255, 0.55);
+        }
+
+        .evidence-item {
+            display: grid;
+            gap: 6px;
+            padding: 12px 14px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.44);
+        }
+
+        .evidence-kicker {
+            margin: 0;
+            font-family: "IBM Plex Mono", monospace;
+            font-size: 11px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+        }
+
+        .evidence-body {
+            margin: 0;
+            line-height: 1.6;
+        }
+
+        .boundary-banner {
+            min-height: 120px;
+            padding: 18px;
+            border: 1px solid var(--line);
+            background: linear-gradient(135deg, rgba(161, 61, 45, 0.12), rgba(112, 86, 163, 0.08));
+        }
+
+        .boundary-banner.inactive {
+            background: rgba(255, 255, 255, 0.44);
+        }
+
+        .boundary-status {
+            margin: 0 0 12px;
+            font-family: "IBM Plex Mono", monospace;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+        }
+
+        .boundary-copy {
+            margin: 0;
+            line-height: 1.7;
+        }
+
+        .footer-note {
+            margin-top: 20px;
+            padding: 18px 22px;
+            border: 1px solid var(--line);
+            background: rgba(16, 33, 43, 0.92);
+            color: #f8f4eb;
+        }
+
+        .context-banner {
+            padding: 16px 18px;
+            border: 1px solid rgba(161, 61, 45, 0.24);
+            background: linear-gradient(135deg, rgba(161, 61, 45, 0.12), rgba(35, 100, 170, 0.08));
+            box-shadow: var(--shadow);
+        }
+
+        .context-banner.hidden {
+            display: none;
+        }
+
+        .context-banner strong {
+            display: block;
+            margin-bottom: 8px;
+            font-family: "IBM Plex Mono", monospace;
+            font-size: 12px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .softened-stage {
+            opacity: 0.74;
+        }
+
+        .sub-copy {
+            margin: 10px 0 0;
+            color: var(--muted);
+            line-height: 1.7;
+        }
+
+        .reading-list {
+            display: grid;
+            gap: 10px;
+            margin: 0;
+            padding-left: 18px;
+            line-height: 1.7;
+        }
+
+        .footer-note p {
+            margin: 0;
+            line-height: 1.8;
+        }
+
+        .empty-state {
+            padding: 30px;
+            border: 1px dashed rgba(16, 33, 43, 0.28);
+            color: var(--muted);
+            text-align: center;
+        }
+
+        @media (max-width: 980px) {
+            .hero-grid,
+            .split-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .distribution-row {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
-<body id="body" class="min-h-screen flex flex-col items-center justify-start py-6 sm:py-16 px-4 bg-[#020617] text-slate-200 overflow-x-hidden">
-    <div class="w-full max-w-[460px] mx-auto glass rounded-[2.5rem] sm:rounded-[4rem] px-5 sm:px-10 pt-8 sm:pt-10 pb-12 sm:pb-16 relative mb-12 shadow-[0_50px_100px_-20px_rgba(0,0,0,1)] transition-all duration-700">
-        <!-- Top Status Bar -->
-        <div class="absolute top-8 sm:top-12 left-0 right-0 px-8 sm:px-12 flex justify-between items-center">
-            <div class="flex items-center space-x-2">
-                <div id="indicator" class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.5)]"></div>
-                <span id="market-label" class="text-[10px] sm:text-[11px] font-black opacity-60 uppercase tracking-widest">--</span>
-                <span id="replay-badge" class="hidden bg-amber-500/20 text-amber-500 text-[9px] font-black px-2 py-0.5 rounded-full border border-amber-500/30 uppercase tracking-tighter">REPLAY</span>
+<body>
+    <main class="page" id="dashboard-shell">
+        <section class="masthead">
+            <div class="eyebrow">Probability Dashboard, Not Auto-Trading</div>
+            <h1>Daily Post-Close Cycle Stage Probability Dashboard</h1>
+            <p class="subhead">
+                A bounded daily read for discretionary cycle-stage review after the close.
+                It is not an auto-trading engine, and it does not restore automatic beta control.
+            </p>
+            <div class="meta-row">
+                <div class="meta-chip">Observation: <span id="observation-date">--</span></div>
+                <div class="meta-chip">Generated: <span id="generated-at">--</span></div>
+                <div class="meta-chip">Source: <span id="data-source">--</span></div>
             </div>
-                <div class="flex space-x-2 text-[10px] font-black uppercase tracking-widest opacity-40">
-                    <span onclick="setLanguage('en')" id="lang-en" class="lang-toggle">EN</span>
-                    <span>/</span>
-                    <span onclick="setLanguage('zh-TW')" id="lang-tw" class="lang-toggle active">繁中</span>
-                </div>
-        </div>
+        </section>
 
-        <div class="mt-12 sm:mt-14 mb-8 sm:mb-10 text-center">
-            <h1 id="ui-title" class="text-3xl sm:text-4xl font-black tracking-tighter text-white">趨勢氣象站</h1>
-        </div>
+        <section class="grid hero-grid">
+            <article class="panel">
+                <p class="panel-title">Current Read</p>
+                <h2 class="stage-name" id="current-stage">Loading</h2>
+                <p class="badge" id="current-stage-badge">--</p>
+                <p class="hero-copy" id="secondary-stage">Secondary stage: --</p>
+                <p class="hero-copy" id="short-rationale">Waiting for post-close payload.</p>
+                <div class="stat-strip">
+                    <div class="stat">
+                        <p class="stat-label">Stage Confidence</p>
+                        <p class="stat-value" id="stage-confidence">--</p>
+                    </div>
+                    <div class="stat">
+                        <p class="stat-label">Confidence Margin</p>
+                        <p class="stat-value" id="confidence-margin">--</p>
+                    </div>
+                </div>
+            </article>
+            <article class="panel" id="urgency-panel">
+                <p class="panel-title">Transition Urgency</p>
+                <p class="badge" id="urgency-badge">--</p>
+                <div class="stat-strip">
+                    <div class="stat">
+                        <p class="stat-label">Stability</p>
+                        <p class="stat-value" id="stability-label">--</p>
+                    </div>
+                    <div class="stat">
+                        <p class="stat-label">Entropy</p>
+                        <p class="stat-value" id="entropy-value">--</p>
+                    </div>
+                </div>
+            </article>
+            <article class="panel" id="action-band-panel">
+                <p class="panel-title">Action Band</p>
+                <p class="badge" id="action-band-badge">--</p>
+                <div class="stat-strip">
+                    <div class="stat">
+                        <p class="stat-label">Top Probability</p>
+                        <p class="stat-value" id="top-probability">--</p>
+                    </div>
+                    <div class="stat">
+                        <p class="stat-label">Top Margin</p>
+                        <p class="stat-value" id="top-margin">--</p>
+                    </div>
+                </div>
+            </article>
+        </section>
 
-        <!-- Main State Section -->
-        <!-- Flippable Posterior Probability Card -->
-        <div class="flip-card mb-10 sm:mb-12" id="prob-card-flippable">
-            <div class="flip-card-inner" onclick="this.parentElement.classList.toggle('flipped')">
-                <!-- Front: Current Probabilities -->
-                <div class="flip-card-front factor-card p-6 sm:p-8 bg-white/[0.03] border border-white/5">
-                    <p id="ui-posterior-label" class="text-[11px] text-center font-black uppercase opacity-50 text-slate-500 tracking-widest mb-6 border-b border-white/5 pb-2">最後驗分佈 / Posterior</p>
-                    <div id="prob-container" class="space-y-4 px-2 sm:px-4"></div>
-                    <div class="absolute bottom-6 left-0 right-0 text-center">
-                        <span id="ui-flip-hint-front" class="text-[9px] font-black text-slate-600 uppercase tracking-widest animate-pulse">點擊切換 6 個月趨勢</span>
-                    </div>
-                </div>
-                
-                <!-- Back: 6-month Stacked Area Chart -->
-                <div class="flip-card-back factor-card p-6 sm:p-8 bg-white/[0.04] border border-white/10 shadow-[0_0_30px_rgba(0,0,0,0.5)]">
-                    <p id="ui-history-label" class="text-[11px] text-center font-black uppercase opacity-60 text-emerald-400 tracking-widest mb-6">6 個月體制演變（實證）</p>
-                    <div id="history-chart-container" class="w-full h-48 sm:h-56 relative flex items-center justify-center">
-                        <svg id="history-svg" class="w-full h-full overflow-visible" preserveAspectRatio="none">
-                            <defs>
-                                <linearGradient id="grad-mid" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#10b981" stop-opacity="0.8"/><stop offset="100%" stop-color="#10b981" stop-opacity="0.2"/></linearGradient>
-                                <linearGradient id="grad-late" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f59e0b" stop-opacity="0.8"/><stop offset="100%" stop-color="#f59e0b" stop-opacity="0.2"/></linearGradient>
-                                <linearGradient id="grad-bust" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f43f5e" stop-opacity="0.8"/><stop offset="100%" stop-color="#f43f5e" stop-opacity="0.2"/></linearGradient>
-                                <linearGradient id="grad-recovery" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3b82f6" stop-opacity="0.8"/><stop offset="100%" stop-color="#3b82f6" stop-opacity="0.2"/></linearGradient>
-                            </defs>
-                            <g id="chart-layers"></g>
-                        </svg>
-                        <!-- Hover info (optional) -->
-                    </div>
-                    <div class="mt-8 flex justify-between px-2">
-                        <div class="flex flex-col">
-                            <span class="text-[8px] font-black text-slate-500 uppercase">Start</span>
-                            <span id="chart-start-date" class="text-[10px] font-bold text-slate-400">--</span>
-                        </div>
-                        <div class="flex flex-col text-right">
-                            <span class="text-[8px] font-black text-slate-500 uppercase">Latest</span>
-                            <span id="chart-end-date" class="text-[10px] font-bold text-slate-400">--</span>
-                        </div>
-                    </div>
-                    <div class="absolute bottom-6 left-0 right-0 text-center">
-                        <span id="ui-flip-hint-back" class="text-[9px] font-black text-slate-600 uppercase tracking-widest grayscale opacity-50">點击返回實時分佈</span>
-                    </div>
-                </div>
+        <section class="grid">
+            <div class="context-banner hidden" id="recovery-caution-banner">
+                <strong>Recovery Caution</strong>
+                <p class="boundary-copy" id="recovery-caution-text">
+                    Recovery signal present, but caution text has not loaded yet.
+                </p>
             </div>
-        </div>
+        </section>
 
-        <div class="space-y-4 sm:space-y-5 text-center mb-10 sm:mb-12">
-            
-            <div class="grid grid-cols-2 gap-4 sm:gap-5">
-                <div class="factor-card p-5 sm:p-6 rounded-[1.8rem] sm:rounded-[2.5rem] flex flex-col items-start bg-white/[0.03]">
-                    <p id="ui-entropy-label" class="text-[10px] font-black text-slate-500 uppercase mb-2">資訊熵</p>
-                    <p id="entropy" class="text-2xl sm:text-3xl font-black text-emerald-400/90">--</p>
+        <section class="grid split-grid">
+            <article class="panel" id="relapse-pressure-panel">
+                <p class="panel-title">Relapse Pressure</p>
+                <p class="badge" id="relapse-pressure-level">--</p>
+                <p class="sub-copy" id="relapse-pressure-copy">
+                    Recovery signals should be read together with relapse pressure.
+                </p>
+            </article>
+            <article class="panel" id="late-cycle-transition-panel">
+                <p class="panel-title">Late-Cycle Transition Read</p>
+                <p class="badge" id="late-cycle-badge">--</p>
+                <p class="stat-value" id="late-cycle-direction">--</p>
+                <p class="sub-copy" id="late-cycle-copy">
+                    Diffuse late-cycle states should be treated as transition zones, not hard conclusions.
+                </p>
+            </article>
+        </section>
+
+        <section class="grid">
+            <article class="panel">
+                <p class="panel-title">Stage Distribution</p>
+                <div class="distribution-list" id="stage-distribution"></div>
+            </article>
+        </section>
+
+        <section class="grid split-grid">
+            <article class="panel">
+                <p class="panel-title">Evidence Panel</p>
+                <div class="evidence-list" id="evidence-panel"></div>
+            </article>
+            <article class="panel">
+                <p class="panel-title">Boundary Warning</p>
+                <div class="boundary-banner inactive" id="boundary-warning">
+                    <p class="boundary-status" id="boundary-status">Waiting for data</p>
+                    <p class="boundary-copy" id="boundary-copy">
+                        Boundary warnings are not ordinary stage calls.
+                    </p>
                 </div>
-                <div class="factor-card p-5 sm:p-6 rounded-[1.8rem] sm:rounded-[2.5rem] flex flex-col items-start bg-white/[0.03] relative overflow-hidden group hover:border-white/10 transition-all">
-                    <!-- Integrated Kelly Water Level -->
-                    <div id="kelly-water-level" class="absolute bottom-0 left-0 w-[200%] h-0 transition-all duration-[3000ms] ease-[cubic-bezier(0.16,1,0.3,1)] kelly-wave bg-gradient-to-r from-emerald-500/10 via-blue-500/10 to-emerald-500/10 pointer-events-none z-0"></div>
-                    
-                    <div class="relative z-10 w-full">
-                        <div class="flex justify-between items-start mb-2">
-                            <p id="ui-deploy-label" class="text-[10px] font-black text-slate-500 uppercase tracking-widest">佈局節奏</p>
-                            <p id="kelly-fraction-value" class="text-[10px] font-black text-slate-400 font-mono">--</p>
-                        </div>
-                        <p id="deploy" class="text-xl sm:text-2xl font-black transition-colors duration-1000">--</p>
-                        <div class="flex justify-between items-center mt-2">
-                            <p id="deploy-readiness" class="text-[11px] font-bold text-slate-400">--</p>
-                            <p id="kelly-fraction-hint" class="text-[8px] font-black text-slate-500 uppercase tracking-tighter opacity-0 group-hover:opacity-100 transition-opacity">--</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            </article>
+        </section>
 
-        </div>
+        <section class="grid split-grid">
+            <article class="panel">
+                <p class="panel-title">What To Expect</p>
+                <ul class="rule-list" id="expectation-list"></ul>
+            </article>
+            <article class="panel">
+                <p class="panel-title">Limits</p>
+                <ul class="rule-list" id="limits-list"></ul>
+            </article>
+        </section>
 
-        <!-- NEW: Unified Panorama Ensemble & Execution Panel -->
-        <div id="panorama-panel" class="factor-card p-6 sm:p-8 rounded-[2.5rem] mb-8 border-2 border-white/5 bg-gradient-to-br from-white/[0.08] to-transparent relative overflow-hidden transition-all duration-1000">
-            <div id="panorama-glow" class="absolute -top-24 -right-24 w-48 h-48 rounded-full blur-[80px] opacity-20"></div>
-            
+        <section class="grid split-grid">
+            <article class="panel">
+                <p class="panel-title">60-Second Read</p>
+                <ol class="reading-list" id="reading-guide"></ol>
+            </article>
+            <article class="panel" id="monitoring-note">
+                <p class="panel-title">Forward Validation</p>
+                <p class="sub-copy">
+                    True OOS evidence starts now. Forward daily logging begins from deployment and is the only honest path to future out-of-sample validation.
+                </p>
+            </article>
+        </section>
 
-            <div class="flex flex-col items-center text-center space-y-4 relative z-10">
-                <!-- Verdict Section -->
-                <p id="ui-panorama-label" class="text-[11px] font-black uppercase text-slate-500 tracking-widest">全景診斷裁決</p>
-                <div class="flex items-center space-x-3">
-                    <div id="verdict-icon" class="w-3 h-3 rounded-full animate-pulse"></div>
-                    <p id="verdict-text" class="text-3xl font-black tracking-tighter text-white uppercase">--</p>
-                </div>
-                
-                <div class="grid grid-cols-3 gap-2 w-full pt-2">
-                    <div class="bg-white/5 rounded-2xl p-3 flex flex-col items-center border border-white/5">
-                        <span id="ui-standard-label" class="text-[9px] font-black text-slate-500 uppercase mb-1">標配</span>
-                        <span id="opt-standard" class="text-sm font-black text-white">--</span>
-                    </div>
-                    <div id="opt-protective-card" class="bg-white/5 rounded-2xl p-3 flex flex-col items-center border border-white/5">
-                        <span id="ui-protective-label" class="text-[9px] font-black text-slate-500 uppercase mb-1">防禦</span>
-                        <span id="opt-protective" class="text-sm font-black text-white">--</span>
-                    </div>
-                    <div id="opt-aggressive-card" class="bg-white/5 rounded-2xl p-3 flex flex-col items-center border border-white/5">
-                        <span id="ui-aggressive-label" class="text-[9px] font-black text-slate-500 uppercase mb-1">積極</span>
-                        <span id="opt-aggressive" class="text-sm font-black text-white">--</span>
-                    </div>
-                </div>
-
-                <!-- Execution Target (Beta Flip Card) -->
-                <div class="beta-flip-card">
-                    <div class="beta-flip-card-inner" onclick="this.parentElement.classList.toggle('flipped')">
-                        <!-- FRONT: Main Beta Display -->
-                        <div class="beta-flip-card-front flex flex-col items-center">
-                            <p id="ui-beta-rec" class="text-[11px] font-black uppercase text-emerald-400/80 mb-2">最終執行目標</p>
-                            <div class="flex items-end justify-center space-x-4 mb-4">
-                                <p id="exposure" class="text-6xl font-black text-white leading-none">--</p>
-                                <div class="text-right pb-1">
-                                    <p id="ui-confidence" class="text-[9px] font-bold text-slate-500 uppercase">信心度</p>
-                                    <p id="ui-model-type" class="text-[9px] font-black text-white bg-emerald-500/20 px-2 py-0.5 rounded">機率推斷</p>
-                                </div>
-                            </div>
-                            
-                            <div class="w-full h-3 bg-white/5 rounded-full overflow-hidden mb-2 p-0.5 border border-white/5">
-                                <div id="exposure-bar" class="h-full rounded-full transition-all duration-2000 ease-out" style="width: 0%"></div>
-                            </div>
-                            <p class="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em] mt-2 opacity-50">點擊查看計算細節</p>
-                        </div>
-
-                        <!-- BACK: Metrics Grid -->
-                        <div class="beta-flip-card-back p-4">
-                            <div class="grid grid-cols-2 gap-x-8 gap-y-3 w-full text-[10px] font-black text-slate-500">
-                                <div class="flex justify-between border-b border-white/5 pb-1">
-                                    <span id="ui-ceiling">上限</span>
-                                    <span id="beta-ceiling" class="text-slate-200">--</span>
-                                </div>
-                                <div class="flex justify-between border-b border-white/5 pb-1">
-                                    <span id="ui-raw">原始</span>
-                                    <span id="raw-beta" class="text-emerald-500/80">--</span>
-                                </div>
-                                <div class="flex justify-between border-b border-white/5 pb-1">
-                                    <span id="ui-protected">受保護</span>
-                                    <span id="protected-beta" class="text-slate-200">--</span>
-                                </div>
-                                <div class="flex justify-between border-b border-white/5 pb-1">
-                                    <span id="ui-overlay">疊加層</span>
-                                    <span id="overlay-beta" class="text-slate-200">--</span>
-                                </div>
-                                <div class="flex justify-between border-b border-white/5 pb-1">
-                                    <span id="ui-beta-mult">倉位縮放</span>
-                                    <span id="beta-overlay-multiplier" class="text-emerald-400/80">--</span>
-                                </div>
-                                <div class="flex justify-between border-b border-white/5 pb-1">
-                                    <span id="ui-pace-mult">節奏縮放</span>
-                                    <span id="deployment-overlay-multiplier" class="text-emerald-400/80">--</span>
-                                </div>
-                            </div>
-                            <p class="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em] mt-6 opacity-50">點擊返回主視圖</p>
-                        </div>
-                    </div>
-                </div>
-
-                    <div class="w-full mt-5 pt-3 border-t border-white/5 bg-gradient-to-b from-rose-500/5 to-transparent rounded-b-2xl p-3 border border-rose-500/10">
-                        <p id="ui-tail-risk-label" class="text-[9px] font-black uppercase text-rose-500 mb-3 text-center tracking-widest flex items-center justify-center drop-shadow-[0_0_8px_rgba(244,63,94,0.6)]">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="mr-1.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                            左尾風險機率
-                        </p>
-                        <div class="flex justify-around items-center w-full relative">
-                            <!-- Tractor (Anchor) -->
-                            <div class="flex flex-col items-center gap-1.5 group" title="拖拉機 (Tractor) 左尾風險">
-                                <div class="w-8 h-8 rounded-full bg-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.4)] border border-rose-500/40 flex items-center justify-center text-rose-400 group-hover:bg-rose-500/30 transition-all">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="22" x2="12" y2="8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/></svg>
-                                </div>
-                                <span id="diag-tractor" class="text-[12px] font-bold text-rose-300 font-mono tracking-tighter drop-shadow-[0_0_5px_rgba(244,63,94,0.8)]">--</span>
-                            </div>
-                            
-                            <!-- Mode (Center) -->
-                            <div class="flex flex-col items-center justify-center px-4 z-10 bg-[#0f172a] rounded-full border border-white/5 py-1 shadow-lg">
-                                <span id="ui-mode-label" class="text-[7px] font-black text-rose-500/50 uppercase mb-0.5">聯動協議</span>
-                                <span id="overlay-mode" class="text-[9px] font-black text-rose-200 uppercase tracking-widest drop-shadow-[0_0_5px_rgba(255,255,255,0.4)]">--</span>
-                            </div>
-
-                            <!-- Sidecar (Zap) -->
-                            <div class="flex flex-col items-center gap-1.5 group" title="掛車 (Sidecar) 左尾風險">
-                                <div class="w-8 h-8 rounded-full bg-orange-500/20 shadow-[0_0_15px_rgba(249,115,22,0.4)] border border-orange-500/40 flex items-center justify-center text-orange-400 group-hover:bg-orange-500/30 transition-all">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                                </div>
-                                <span id="diag-sidecar" class="text-[12px] font-bold text-orange-300 font-mono tracking-tighter drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]">--</span>
-                            </div>
-
-                            <!-- Decorative line -->
-                            <div class="absolute top-4 left-[20%] right-[20%] h-px bg-gradient-to-r from-rose-500/0 via-rose-500/20 to-orange-500/0 -z-10"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Resonance Signal (Moved & Shrunk) -->
-                <div id="resonance-radar" class="mt-3 py-1.5 px-4 rounded-xl flex items-center justify-between border border-white/5 bg-white/5 transition-all duration-500 opacity-60">
-                    <div class="flex items-center space-x-2">
-                        <div id="resonance-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></div>
-                        <span id="ui-resonance-label" class="text-[8px] font-black uppercase text-slate-500 tracking-widest leading-none">共振信號層</span>
-                    </div>
-                    <div class="text-right leading-tight">
-                        <p id="resonance-action" class="text-[10px] font-black text-white italic">--</p>
-                        <p id="resonance-reason" class="text-[7px] font-bold text-slate-500 uppercase">--</p>
-                    </div>
-            </div> <!-- Close flex-col (179) -->
-        </div> <!-- Close #panorama-panel (175) -->
-
-        <!-- Actions -->
-        <div class="grid grid-cols-2 gap-3 sm:gap-4 mb-4">
-            <button id="ui-btn-insights" onclick="toggleInsights()" class="bg-white/5 flex items-center justify-center py-4 sm:py-5 rounded-2xl sm:rounded-3xl text-[11px] font-black uppercase text-white hover:bg-white/10 transition-all active:scale-95">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="mr-2 opacity-70"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                邏輯詳情
-            </button>
-            <a id="ui-btn-docs" href="https://github.com/yutaofr/qqq-buyer-monitor/wiki/%E9%80%BB%E8%BE%91%E7%94%9F%E5%AD%98%EF%BC%9AQQQ-%E5%86%B3%E7%AD%96%E7%B3%BB%E7%BB%9F%E7%9A%84%E5%91%A8%E6%9C%9F%E5%93%B2%E5%AD%A6%E4%B8%8E%E5%8F%AF%E8%A7%86%E5%8C%96%E6%8C%87%E6%8C%A5%E6%89%8B%E5%86%8C" target="_blank" class="bg-white/5 flex items-center justify-center py-4 sm:py-5 rounded-2xl sm:rounded-3xl text-[11px] font-black uppercase text-white no-underline hover:bg-white/10 transition-all active:scale-95">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="mr-2 opacity-70"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                說明文件
-            </a>
-        </div>
-
-        <!-- Insights Panel -->
-        <div id="insights-panel">
-            <div class="space-y-12 sm:space-y-16 py-8 sm:py-10 border-t border-white/10 text-center">
-                <div class="space-y-8 px-4">
-                    <p id="ui-prior-label" class="text-[11px] font-black uppercase opacity-40 tracking-widest border-b border-white/5 pb-2">運行時先驗分析 / Runtime Priors</p>
-                    <div id="prior-container" class="space-y-4 px-2 sm:px-6"></div>
-                </div>
-                <div class="w-full max-w-2xl mx-auto px-4 mt-8">
-                    <div id="logic-trace-container">
-                        <!-- Evidence vectors materialize here -->
-                    </div>
-                </div>
-
-                <details class="group space-y-6">
-                    <summary class="list-none outline-none cursor-pointer flex flex-col justify-center items-center gap-2 mb-4 hover:bg-white/5 py-3 px-6 rounded-3xl border border-transparent hover:border-white/10 transition-all duration-300 active:scale-95 w-max mx-auto text-center">
-                        <div class="flex items-center gap-2">
-                            <p id="ui-manifold-label" class="text-[11px] font-black uppercase tracking-widest text-emerald-400 group-hover:text-emerald-300 transition-colors">V16 流形健康度指標</p>
-                            <svg class="w-3.5 h-3.5 text-emerald-500 opacity-60 group-hover:opacity-100 group-open:rotate-180 transition-all duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
-                        </div>
-                        <p id="ui-manifold-note" class="text-[10px] font-bold text-slate-500/80 leading-relaxed text-center max-w-[280px]">用於監測底層物理異常與推斷溫度控制，確保不被壞數據污染。</p>
-                    </summary>
-                    <div id="manifold-container" class="feature-grid px-2 sm:px-4"></div>
-                </details>
-
-                <details class="group space-y-6">
-                    <summary class="list-none outline-none cursor-pointer flex justify-center items-center gap-2 mb-4 hover:bg-white/5 py-2 px-6 rounded-full border border-transparent hover:border-white/10 transition-all duration-300 active:scale-95 w-max mx-auto text-center">
-                        <p id="ui-execution-overlay-label" class="text-[11px] font-black uppercase tracking-widest text-white/60 group-hover:text-white/90 transition-colors">執行疊加層</p>
-                        <svg class="w-3.5 h-3.5 text-slate-500 opacity-60 group-hover:opacity-100 group-open:rotate-180 transition-all duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
-                    </summary>
-                    <div id="execution-overlay-container" class="feature-grid px-2 sm:px-4"></div>
-                </details>
-
-                <details class="group space-y-6">
-                    <summary class="list-none outline-none cursor-pointer flex flex-col justify-center items-center gap-2 mb-4 hover:bg-white/5 py-3 px-6 rounded-3xl border border-transparent hover:border-white/10 transition-all duration-300 active:scale-95 w-max mx-auto text-center">
-                        <div class="flex items-center gap-2">
-                            <p id="ui-qld-permission-label" class="text-[11px] font-black uppercase tracking-widest text-white/60 group-hover:text-white/90 transition-colors">QLD 技術權限狀態</p>
-                            <svg class="w-3.5 h-3.5 text-slate-500 opacity-60 group-hover:opacity-100 group-open:rotate-180 transition-all duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
-                        </div>
-                        <p id="ui-qld-permission-note" class="text-[10px] font-bold text-slate-500/80 leading-relaxed text-center max-w-[280px]">以下內容僅反映系統技術狀態與共振信號，不構成投資建議，最終以 QLD 權限層為準。</p>
-                    </summary>
-                    <div id="qld-permission-container" class="feature-grid px-2 sm:px-4"></div>
-                </details>
-
-                <details class="group space-y-6">
-                    <summary class="list-none outline-none cursor-pointer flex justify-center items-center gap-2 mb-4 hover:bg-white/5 py-2 px-6 rounded-full border border-transparent hover:border-white/10 transition-all duration-300 active:scale-95 w-max mx-auto text-center">
-                        <p id="ui-feature-values-label" class="text-[11px] font-black uppercase tracking-widest text-white/60 group-hover:text-white/90 transition-colors">特徵數值明細</p>
-                        <svg class="w-3.5 h-3.5 text-slate-500 opacity-60 group-hover:opacity-100 group-open:rotate-180 transition-all duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
-                    </summary>
-                    <div id="feature-values-container" class="feature-grid px-2 sm:px-4"></div>
-                </details>
-
-                <details class="group space-y-6 pb-20">
-                    <summary class="list-none outline-none cursor-pointer flex justify-center items-center gap-2 mb-4 hover:bg-white/5 py-2 px-6 rounded-full border border-transparent hover:border-white/10 transition-all duration-300 active:scale-95 w-max mx-auto text-center">
-                        <p id="ui-logic-trace-label" class="text-[11px] font-black uppercase tracking-widest text-white/60 group-hover:text-white/90 transition-colors">邏輯歷史溯源 / Archive</p>
-                        <svg class="w-3.5 h-3.5 text-slate-500 opacity-60 group-hover:opacity-100 group-open:rotate-180 transition-all duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
-                    </summary>
-                    <div id="logic-archive-container" class="space-y-3 px-2 sm:px-4 opacity-50"></div>
-                </details>
-            </div> <!-- Close insights-inner (316) -->
-        </div> <!-- Close #insights-panel expander (315) -->
-
-    <!-- Integrated Global Footer (INSIDE Card, Independent of Expander) -->
-    <div class="mt-12 pt-8 border-t border-white/5 space-y-6 pb-2">
-        <div class="flex flex-col items-center space-y-4">
-            <div class="flex items-center space-x-2.5 opacity-30">
-                <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
-                <span class="text-[9px] font-black text-emerald-400 uppercase tracking-[0.4em]">Bayesian Core Integrity</span>
-            </div>
-            
-            <div class="flex flex-wrap justify-center gap-x-5 gap-y-2.5 px-2">
-                <div class="flex flex-col items-center">
-                    <span class="text-[8px] font-black uppercase tracking-widest text-slate-600">Version</span>
-                    <span id="engine-version" class="text-[10px] text-slate-300 font-mono">--</span>
-                </div>
-                <div class="flex flex-col items-center">
-                    <span class="text-[8px] font-black uppercase tracking-widest text-slate-600">Anchor</span>
-                    <span id="hydration-anchor" class="text-[10px] text-slate-300 font-mono">2018-01-01</span>
-                </div>
-                <div class="flex flex-col items-center">
-                    <span class="text-[8px] font-black uppercase tracking-widest text-slate-600">Updated</span>
-                    <span id="calc-at" class="text-[10px] text-emerald-500 font-mono">--</span>
-                </div>
-                <div class="flex flex-col items-center">
-                    <span class="text-[8px] font-black uppercase tracking-widest text-slate-600">Status</span>
-                    <span id="data-source" class="text-[10px] text-blue-400 font-bold uppercase tracking-tight">--</span>
-                </div>
-            </div>
-        </div>
-        
-        <div class="opacity-15">
-            <p class="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em] italic text-center">© 2026 QQQ Entropy Monitor / ULTIMA v14.4</p>
-        </div>
-    </div>
-</div> <!-- Final close for main .glass container (95) -->
-</body>
-</html>
+        <section class="footer-note">
+            <p>
+                Do not infer automatic leverage. Boundary warnings are not ordinary stage calls.
+                This surface is a probability dashboard for once-per-day discretionary review. True OOS evidence starts now.
+            </p>
+        </section>
+    </main>
 
     <script>
-        // Environment & Data Source Configuration
         const DATA_SOURCES = {
-            prod: 'https://rtmr1b9ayzxiugfu.public.blob.vercel-storage.com/prod/status.json',
-            local: './status.json'
+            prod: "https://rtmr1b9ayzxiugfu.public.blob.vercel-storage.com/prod/status.json",
+            local: "./status.json"
         };
 
-        function getStagingSourceUrl(branch, filename = 'status.json') {
+        function getStagingSourceUrl(branch, filename = "status.json") {
             if (!branch) return null;
-            const safeBranch = String(branch).replace(/\//g, '_').replace(/ /g, '_');
+            const safeBranch = String(branch).replace(/\//g, "_").replace(/ /g, "_");
             return `https://rtmr1b9ayzxiugfu.public.blob.vercel-storage.com/staging/${safeBranch}/${filename}`;
         }
 
-        function getDataSourceUrl(filename = 'status.json') {
+        function getDataSourceUrl(filename = "status.json") {
             const params = new URLSearchParams(window.location.search);
             const source = params.get('source');
-            if (source) return source.replace('status.json', filename);
+            if (source) return source.replace("status.json", filename);
 
             const env = params.get('env');
             const branch = params.get('branch');
-            if (env === 'staging' || env === 'dev' || env === 'preview') {
+            if (env === "staging" || env === "dev" || env === "preview") {
                 const stagingUrl = getStagingSourceUrl(branch, filename);
                 if (stagingUrl) return stagingUrl;
-                return DATA_SOURCES.local.replace('status.json', filename);
+                return DATA_SOURCES.local.replace("status.json", filename);
             }
-            if (env && DATA_SOURCES[env]) return DATA_SOURCES[env].replace('status.json', filename);
+            if (env && DATA_SOURCES[env]) return DATA_SOURCES[env].replace("status.json", filename);
 
-            // Auto-detect local development
-            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                return DATA_SOURCES.local.replace('status.json', filename);
+            if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+                return DATA_SOURCES.local.replace("status.json", filename);
             }
 
-            return DATA_SOURCES.prod.replace('status.json', filename);
+            return DATA_SOURCES.prod.replace("status.json", filename);
         }
 
-        const TRANSLATIONS = {
-            'en': {
-                'ui-page-title': 'QQQ Barometer - Probabilistic Dashboard',
-                    'ui-title': 'QQQ Barometer',
-                    'ui-regime-label': 'Posterior Regime',
-                'ui-entropy-label': 'Entropy', 'ui-deploy-label': 'Entry Pacing', 'ui-beta-rec': 'Target Beta',
-                'ui-panorama-label': 'Panorama Ensemble Verdict',
-                'ui-model-type': 'Bayesian',
-                'ui-tractor-label': 'Tractor', 'ui-sidecar-label': 'Sidecar', 'ui-tail-risk-label': 'Left-Tail Risk',
-                'ui-standard-label': 'Standard', 'ui-protective-label': 'Protective', 'ui-aggressive-label': 'Aggressive',
-                'ui-confidence': 'Confidence', 'ui-ceiling': 'Ceiling', 'ui-raw': 'Raw', 'ui-protected': 'Protected',
-                'ui-overlay': 'Overlay', 'ui-beta-mult': 'Beta Mult', 'ui-pace-mult': 'Pace Mult',
-                'ui-mode-label': 'Mode', 'ui-data-status-label': 'Data Status',
-                'ui-btn-insights': 'Logic Details', 'ui-btn-docs': 'Docs',
-                'ui-posterior-label': 'Posterior Probability', 'ui-prior-label': 'Runtime Prior',
-                'ui-kelly-fraction-label': 'Kelly Water Level',
-                'ui-logic-tree-label': 'Logic Tree', 'ui-logic-trace-label': 'Logic Trace',
-                'ui-execution-overlay-label': 'Execution Overlay', 'ui-feature-values-label': 'Feature Values',
-                'ui-engine-label': 'Engine', 'ui-anchor-label': 'Prior Anchor', 'ui-generated-label': 'Generated (UTC)',
-                'ui-qld-permission-label': 'QLD Technical Permission State',
-                'ui-qld-permission-note': 'System technical state only. Not investment advice. Final interpretation follows the QLD permission layer.',
-                'ui-resonance-label': 'Resonance Signal Layer',
-                'ui-history-label': '6-Month Regime Evolution (Empirical)',
-                'ui-flip-hint-front': 'Tap to view 6-month historical trend',
-                'ui-flip-hint-back': 'Tap to return to live distribution',
-                'ui-step': 'Step', 'ui-replay-badge': 'HISTORICAL REPLAY',
-                'status': {
-                    'CLOUD_SYNCED': 'Synced', 'LOCAL_FALLBACK': 'LocalStorage', 'SYNC_ERROR': 'Sync Error'
-                },
-                'tags': {
-                    'crisis': 'Crisis', 'stress': 'Stress', 'neutral': 'Neutral', 'euphoric': 'Euphoric',
-                    'bust': 'Bust', 'recovery': 'Recovery', 'mid': 'Mid', 'late': 'Late',
-                    'cash': 'Cash', 'qqq': 'Pos', 'qld': 'Lev'
-                },
-                'mapping': {
-                    'CRISIS': 'Crisis', 'STRESS': 'Stress', 'NEUTRAL': 'Neutral', 'EUPHORIC': 'Euphoric',
-                    'BUST': 'Bust', 'MID_CYCLE': 'Mid Cycle', 'LATE_CYCLE': 'Late Cycle', 'RECOVERY': 'Recovery',
-                    'CASH': 'Cash', 'QQQ': '1x Pos', 'QLD': '2x Lev',
-                    'ACTIVE': 'LIVE', 'FROZEN': 'OFF-MARKET', 'UNKNOWN': 'UNKNOWN',
-                    'TECHNICAL STATE': 'Technical State', 'SYSTEM NOTE': 'System Note'
-                },
-                'steps': {
-                    'macro_seeding': 'Input / Macro Seeding',
-                    'data_quality': 'Input / Information Quality',
-                    'price_topology': 'Cognition / Price Topology',
-                    'runtime_prior': 'Cognition / Runtime Prior',
-                    'bayesian_core': 'Cognition / Bayesian Core',
-                    'probabilistic_inference': 'Cognition / Bayesian Core',
-                    'entropy_audit': 'Regulation / Entropy Audit',
-                    'entropy_haircut': 'Regulation / Entropy Audit',
-                    'execution_overlay': 'Regulation / Execution Overlay',
-                    'target_beta_mapping': 'Implementation / Continuous Sizing',
-                    'position_sizing': 'Implementation / Continuous Sizing',
-                    'deployment_pacing': 'Implementation / Deployment Pacing',
-                    'deployment_policy': 'Implementation / Deployment Pacing',
-                    'resonance_signal': 'Actuation / Resonance Signal',
-                    'qld_permission': 'Actuation / QLD Permission'
-                }
-            },
-            'zh-TW': {
-                'ui-page-title': 'QQQ 氣象觀測站 - 機率目標係數儀表板',
-                    'ui-title': '趨勢氣象站',
-                    'ui-regime-label': '後驗體制',
-                'ui-entropy-label': '資訊熵', 'ui-deploy-label': '佈局節奏', 'ui-beta-rec': '最終執行目標',
-                'ui-panorama-label': '全景診斷裁決',
-                'ui-model-type': '機率推斷',
-                'ui-tractor-label': '拖拉機', 'ui-sidecar-label': '掛車', 'ui-tail-risk-label': '左尾風險機率',
-                'ui-standard-label': '標配', 'ui-protective-label': '防禦', 'ui-aggressive-label': '積極',
-                'ui-confidence': '信心度', 'ui-ceiling': '上限', 'ui-raw': '原始', 'ui-protected': '受保護',
-                'ui-overlay': '疊加層', 'ui-beta-mult': '倉位縮放倍率', 'ui-pace-mult': '節奏縮放倍率',
-                'ui-mode-label': '模式', 'ui-data-status-label': '數據狀態',
-                'ui-btn-insights': '邏輯詳情', 'ui-btn-docs': '說明文件',
-                'ui-posterior-label': '後驗機率分佈', 'ui-prior-label': '運行時先驗',
-                'ui-kelly-fraction-label': '凱利目標水位尺',
-                'ui-logic-tree-label': '聯動決策樹', 'ui-logic-trace-label': '邏輯下鑽分析',
-                'ui-execution-overlay-label': '執行疊加層', 'ui-feature-values-label': '特徵數值明細',
-                'ui-engine-label': '核心引擎版本', 'ui-anchor-label': '資料血緣回溯', 'ui-generated-label': '更新時間',
-                'ui-qld-permission-label': 'QLD 技術權限狀態',
-                'ui-qld-permission-note': '以下內容僅反映系統技術狀態與共振信號，不構成投資建議，最終以 QLD 權限層為準。',
-                'ui-resonance-label': '戰術共振信號層',
-                'ui-history-label': '6 個月體制演變（實證）',
-                'ui-flip-hint-front': '點擊查看 6 個月歷史趨勢',
-                'ui-flip-hint-back': '點擊返回實時分佈',
-                'ui-step': '第', 'ui-replay-badge': '歷史回放模式',
-                'status': {
-                    'CLOUD_SYNCED': '同步成功', 'LOCAL_FALLBACK': '本地備份', 'SYNC_ERROR': '同步出錯'
-                },
-                'tags': {
-                    'crisis': '危機', 'stress': '壓力', 'neutral': '中性', 'euphoric': '過熱',
-                    'bust': '蕭條', 'recovery': '修復', 'mid': '中期', 'late': '後期',
-                    'cash': '現金', 'qqq': '倉位', 'qld': '槓桿'
-                },
-                'mapping': {
-                    'CRISIS': '危機', 'STRESS': '壓力', 'NEUTRAL': '中性', 'EUPHORIC': '過熱',
-                    'BUST': '蕭條', 'MID_CYCLE': '中期', 'LATE_CYCLE': '後期', 'RECOVERY': '修復',
-                    'CASH': '現金', 'QQQ': '標準倉位', 'QLD': '雙倍槓桿',
-                    'ACTIVE': '實時', 'FROZEN': '休市', 'UNKNOWN': '未知',
-                    'FULL': '全量', 'SHADOW': '影子模式', 'HALF': '半量', 'QUARTER': '四分之一', 'NONE': '關閉',
-                    'FAST': '快速', 'BASE': '標配', 'SLOW': '減速', 'PAUSE': '停步', 'RECOVER': '恢復',
-                    'TRUE': '是', 'FALSE': '否', 'MODE': '模式', 'STATE': '狀態', 'NEGATIVE SCORE': '負向評分',
-                    'POSITIVE SCORE': '正向評分', 'DIAG BETA': '診斷敞口', 'DIAG PACE': '診斷節奏', 'FALLBACK': '觸發回退',
-                    'BREAKEVEN': '盈虧平衡', 'COPPER GOLD': '銅金比', 'NET LIQUIDITY': '淨流動性',
-                    'GLOBAL BETA': '全球系統風險', 'VIX TERM STRUCTURE': '波動率結構', 'MOMENTUM': '動量因子',
-                    'DEPLOY_BASE': '標準佈局', 'BUCKET_HOLD': '持倉不變', 'TARGET_BUCKET': '目標倉位', 'LOCK_ACTIVE': '鎖定生效',
-                    'TECHNICAL STATE': '技術狀態', 'SYSTEM NOTE': '系統說明'
-                },
-                'steps': {
-                    'macro_seeding': '感知層 / 宏觀特徵衍生',
-                    'data_quality': '感知層 / 數據品質審計',
-                    'price_topology': '認知層 / 價格拓撲錨定',
-                    'runtime_prior': '認知層 / 動態先驗引力',
-                    'bayesian_core': '認知層 / 貝葉斯共識推斷',
-                    'entropy_audit': '規管層 / 資訊熵風險懲罰',
-                    'execution_overlay': '規管層 / 執行疊加細節',
-                    'target_beta_mapping': '執行層 / 連續倉位對照',
-                    'deployment_policy': '執行層 / 凱利佈局節奏',
-                    'resonance_signal': '決斷層 / 戰術共振信號',
-                    'qld_permission': '決斷層 / QLD 物理權限'
-                }
-            }
-        };
-
-        let currentLang = 'zh-TW';
-        let lastData = null;
-
-        function setLanguage(lang) {
-            currentLang = lang;
-            document.documentElement.lang = lang === 'zh-TW' ? 'zh-TW' : 'en';
-            document.getElementById('lang-en').classList.toggle('active', lang === 'en');
-            document.getElementById('lang-tw').classList.toggle('active', lang === 'zh-TW');
-            
-            // Update static UI text
-            const t = TRANSLATIONS[lang];
-            for (const [id, text] of Object.entries(t)) {
-                if (typeof text === 'string') {
-                    const el = document.getElementById(id);
-                    if (el) {
-                        if (id === 'ui-page-title') {
-                            document.title = text;
-                        } else if (id.startsWith('ui-btn-')) {
-                            // Keep SVG icon if exists
-                            const svg = el.querySelector('svg');
-                            el.innerHTML = svg ? svg.outerHTML + ' ' + text : text;
-                        } else {
-                            el.textContent = text;
-                        }
-                    }
-                }
-            }
-            
-            // Update tags & steps
-            for (const [key, text] of Object.entries(t.tags)) {
-                const el = document.querySelector(`.ui-tag-${key}`);
-                if (el) el.textContent = text;
-            }
-            for (const [key, text] of Object.entries(t.steps)) {
-                const el = document.querySelector(`.ui-step-${key}`);
-                if (el) el.textContent = text;
-            }
-
-            if (lastData) renderDashboard(lastData);
+        function formatPercent(value) {
+            return `${(Number(value || 0) * 100).toFixed(1)}%`;
         }
 
-        const REGIME_COLORS = {
-            'MID_CYCLE': 'bg-blue-500', 'LATE_CYCLE': 'bg-yellow-500', 'BUST': 'bg-red-500', 'RECOVERY': 'bg-emerald-500'
-        };
-        const REGIME_TEXT_COLORS = {
-            'MID_CYCLE': 'text-blue-400', 'LATE_CYCLE': 'text-yellow-400', 'BUST': 'text-red-400', 'RECOVERY': 'text-emerald-400'
-        };
-        const DEPLOY_COLORS = {
-            'FAST': 'text-emerald-400', 'BASE': 'text-blue-400', 'SLOW': 'text-yellow-400', 'PAUSE': 'text-red-400', 'RECOVER': 'text-emerald-300'
-        };
-
-        function extractRegimeKey(value) {
-            const upper = String(value || '').toUpperCase();
-            const keys = Object.keys(TRANSLATIONS['en'].mapping);
-            for (const key of keys) {
-                if (upper.includes(key)) return key;
-            }
-            return '--';
+        function formatNumber(value) {
+            return Number(value || 0).toFixed(2);
         }
 
-        function escapeHtml(value) {
-            return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        }
-
-        function formatScalar(value) {
-            const mapping = TRANSLATIONS[currentLang].mapping;
-            if (typeof value === 'boolean') return mapping[String(value).toUpperCase()] || String(value);
-            if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
-            const strVal = String(value || '');
-            if (mapping[strVal.toUpperCase()]) return mapping[strVal.toUpperCase()];
-            return strVal;
-        }
-
-        function summarizeResult(result) {
-            if (result == null) return currentLang === 'en' ? 'No Output' : '無輸出';
-            if (typeof result !== 'object') return formatScalar(result);
-            const mapping = TRANSLATIONS[currentLang].mapping;
-            // If it's a result with a status/state, just show the localized state
-            const state =
-                result.overlay_state ||
-                result.deployment_state ||
-                result.target_bucket ||
-                result.execution_regime ||
-                result.posterior_regime ||
-                result.stable_regime;
-            if (state && mapping[state]) return mapping[state];
-            
-            const entries = Object.entries(result);
-            if (!entries.length) return currentLang === 'en' ? 'Empty' : '空對象';
-            // Only show one primary entry if possible to avoid crowding/English
-            const [key, value] = entries[0];
-            return `${humanizeKey(key)}: ${formatScalar(value)}`;
-        }
-
-        function humanizeKey(key) {
-            const mapping = TRANSLATIONS[currentLang].mapping;
-            const upperKey = String(key || '').toUpperCase();
-            if (mapping[upperKey]) return mapping[upperKey];
-            return String(key || '').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
-        }
-
-        function renderLogicTrace(logicTrace, data) {
-            const container = document.getElementById('logic-trace-container');
-            container.innerHTML = '';
-            
-            const FIXED_STEPS = [
-                { id: 'macro_seeding', tier: 'blue' },
-                { id: 'data_quality', tier: 'blue' },
-                { id: 'price_topology', tier: 'emerald' },
-                { id: 'runtime_prior', tier: 'emerald' },
-                { id: 'bayesian_core', tier: 'emerald', alt: 'probabilistic_inference' },
-                { id: 'entropy_audit', tier: 'amber', alt: 'entropy_haircut' },
-                { id: 'execution_overlay', tier: 'amber' },
-                { id: 'target_beta_mapping', tier: 'purple', alt: 'position_sizing' },
-                { id: 'deployment_policy', tier: 'purple', alt: 'deployment_pacing' },
-                { id: 'resonance_signal', tier: 'purple' },
-                { id: 'qld_permission', tier: 'purple' }
-            ];
-
-            const traceMap = {};
-            if (Array.isArray(logicTrace)) {
-                logicTrace.forEach(item => { traceMap[item.step] = item.result; });
-            }
-
-            // Reconstruct the explicit 11 steps
-            const finalSteps = FIXED_STEPS.map(config => {
-                let result = traceMap[config.id] || (config.alt && traceMap[config.alt]);
-                if (!result && data) {
-                    if (config.id === 'price_topology') result = (data.evidence && data.evidence.price_topology) || (data.signal && data.signal.price_topology);
-                    else if (config.id === 'bayesian_core') result = (data.evidence && data.evidence.bayesian_diagnostics) || (data.signal && data.signal.probabilities);
-                    else if (config.id === 'execution_overlay') result = data.evidence && data.evidence.execution_overlay;
-                    else if (config.id === 'resonance_signal') result = data.signal && data.signal.resonance;
-                    else if (config.id === 'qld_permission') result = (data.evidence && data.evidence.qld_permission) || { fallback: "Follow QQQ base." };
-                    else if (config.id === 'macro_seeding') result = "Derivation verified";
-                    else if (config.id === 'data_quality') result = "Quality controls passed";
-                    else if (config.id === 'runtime_prior') result = (data.signal && data.signal.priors) || "No prior drift";
-                    else if (config.id === 'entropy_audit') result = { entropy: data.signal && data.signal.entropy };
-                    else if (config.id === 'target_beta_mapping') result = { target_beta: data.signal && data.signal.target_beta };
-                    else if (config.id === 'deployment_policy') result = { deployment: data.signal && data.signal.deployment_state };
-                }
-                return { step: config.id, tier: config.tier, result: result || "N/A" };
-            });
-
-            finalSteps.forEach((entry, index) => {
-                const stepKey = entry.step;
-                const tier = entry.tier;
-                const tierColors = {
-                    'blue': { text: 'text-blue-400/90', border: 'border-blue-500/30' },
-                    'emerald': { text: 'text-emerald-400/90', border: 'border-emerald-500/30' },
-                    'amber': { text: 'text-amber-400/90', border: 'border-amber-500/30' },
-                    'purple': { text: 'text-purple-400/90', border: 'border-purple-500/30' }
-                };
-                const colors = tierColors[tier];
-                const stepLabel = TRANSLATIONS[currentLang].steps[stepKey] || humanizeKey(stepKey);
-                const stepPrefix = TRANSLATIONS[currentLang]['ui-step'] || 'Step';
-                const stepSuffix = currentLang === 'zh-TW' ? ' 步' : '';
-                const summary = summarizeResult(entry.result);
-                const body = escapeHtml(JSON.stringify(entry.result, null, 2));
-                container.innerHTML += `
-                    <details class="evidence-card group border ${colors.border} rounded-2xl p-6 bg-white/[0.03] transition-all list-none marker:content-none hover:bg-white/[0.06] hover:border-white/10" data-step="${index}">
-                        <summary class="list-none outline-none cursor-pointer flex items-start justify-between gap-4">
-                            <div class="absolute top-0 left-0 w-1 h-full bg-current ${colors.text} opacity-40 group-hover:opacity-100 transition-opacity"></div>
-                            <div>
-                                <p class="text-[10px] font-black uppercase tracking-[0.22em] ${colors.text}">${stepPrefix} ${index + 1}${stepSuffix}</p>
-                                <p class="text-sm sm:text-[15px] font-black text-white mt-1">${escapeHtml(stepLabel)}</p>
-                            </div>
-                            <div class="flex flex-col items-end gap-1" style="max-width: 55%;">
-                                <p class="text-[10px] sm:text-[11px] font-bold text-slate-400 group-hover:text-slate-300 transition-colors text-right leading-relaxed">${escapeHtml(summary)}</p>
-                                <div class="mt-1.5 p-1 rounded-full bg-white/5 group-hover:bg-white/10 transition-colors border border-transparent group-hover:border-white/5">
-                                    <svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-white group-open:rotate-180 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
-                                </div>
-                            </div>
-                        </summary>
-                        <div class="pt-2">
-                            <pre class="evidence-json mt-4 bg-black/40 border-[0.5px] border-white/10 shadow-inner disabled-select">${body}</pre>
-                        </div>
-                    </details>
-                `;
-            });
-        }
-
-        function renderFeatureValues(featureValues) {
-            const container = document.getElementById('feature-values-container');
-            container.innerHTML = '';
-            const entries = Object.entries(featureValues || {});
-            if (!entries.length) {
-                container.innerHTML = `<p class="text-[11px] font-bold text-slate-500 col-span-full">${currentLang === 'en' ? 'No feature values available.' : '當前沒有透傳原始特徵。'}</p>`;
-                return;
-            }
-            entries.sort((a, b) => a[0].localeCompare(b[0]));
-            entries.forEach(([key, value]) => {
-                container.innerHTML += `
-                    <div class="feature-chip">
-                        <p class="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">${escapeHtml(humanizeKey(key))}</p>
-                        <p class="text-base sm:text-lg font-black text-white mt-2 break-all">${escapeHtml(formatScalar(value))}</p>
-                    </div>
-                `;
-            });
-        }
-
-        function renderExecutionOverlay(executionOverlay) {
-            const container = document.getElementById('execution-overlay-container');
-            container.innerHTML = '';
-            const overlay = executionOverlay || {};
-            const entries = [
-                ['MODE', overlay.overlay_mode || '評估中'], 
-                ['STATE', overlay.overlay_state || 'NEUTRAL'], 
-                ['NEGATIVE SCORE', overlay.negative_score], 
-                ['POSITIVE SCORE', overlay.positive_score], 
-                ['DIAG BETA', overlay.diagnostic_beta_overlay_multiplier], 
-                ['DIAG PACE', overlay.diagnostic_deployment_overlay_multiplier], 
-                ['FALLBACK', overlay.neutral_fallback_triggered]
-            ];
-            container.innerHTML = entries.map(([key, value]) => `
-                <div class="feature-chip">
-                    <p class="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">${escapeHtml(humanizeKey(key))}</p>
-                    <p class="text-base sm:text-lg font-black text-white mt-2 break-all">${escapeHtml(formatScalar(value))}</p>
-                </div>
-            `).join('');
-        }
-
-        function renderManifold(manifold) {
-            const container = document.getElementById('manifold-container');
-            container.innerHTML = '';
-            const data = manifold || {};
-            const entries = [
-                ['INFERENCE TAU (溫度)', data.inference_tau],
-                ['MAHALANOBIS (偏移度)', data.mahalanobis_dist],
-                ['DEAD FEATURES', data.dead_features_count]
-            ];
-            const chips = entries.map(([key, value]) => `
-                <div class="feature-chip">
-                    <p class="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">${escapeHtml(key)}</p>
-                    <p class="text-base sm:text-lg font-black text-white mt-2 break-all">${escapeHtml(formatScalar(value))}</p>
-                </div>
-            `).join('');
-            
-            const deadList = data.dead_features && data.dead_features.length > 0
-                ? `<div class="col-span-full mt-2 pt-2 border-t border-white/5"><p class="text-[9px] text-rose-400 font-bold mb-1 uppercase tracking-widest">陣亡特徵清單</p><p class="text-[10px] text-white/70 font-mono tracking-tighter">${escapeHtml(data.dead_features.join(', '))}</p></div>`
-                : '';
-                
-            container.innerHTML = chips + deadList;
-        }
-
-        function summarizeQldPermission(qld) {
-            const reasonCode = String(qld.reason_code || '');
-            const forcedBucket = String(qld.forced_bucket || '');
-            if (forcedBucket === 'QLD') {
-                if (reasonCode === 'LEFT_SIDE_PROBE') {
-                    return currentLang === 'en' ? 'QLD LEFT-SIDE WINDOW OPEN' : 'QLD 左側試探窗口已打開';
-                }
-                if (reasonCode === 'FUNDAMENTAL_OVERRIDE_RELEASE') {
-                    return currentLang === 'en' ? 'QLD RECOVERY WINDOW CONFIRMED' : 'QLD 恢復擴張窗口已確認';
-                }
-                return currentLang === 'en' ? 'QLD TECHNICAL PERMISSION OPEN' : 'QLD 技術權限已打開';
-            }
-            if (forcedBucket === 'QQQ' || reasonCode === 'RESONANCE_SELL_BINDING') {
-                return currentLang === 'en' ? 'QLD TECHNICAL PERMISSION REVOKED' : 'QLD 技術權限已撤回';
-            }
-            if (Boolean(qld.allow_sub1x_qld)) {
-                return currentLang === 'en' ? 'QLD TECHNICAL WINDOW ACTIVE' : 'QLD 技術窗口已激活';
-            }
-            return currentLang === 'en' ? 'QLD PERMISSION UNDER REVIEW' : 'QLD 權限仍在觀察';
-        }
-
-        function summarizeQldPermissionDetail(qld) {
-            const mode = String(qld.entry_mode || '');
-            if (mode === 'LEFT_SIDE_PROBE') {
-                return currentLang === 'en'
-                    ? 'System detected a left-side probe state. This is technical-state output only, not investment advice.'
-                    : '系統檢測到左側試探狀態。此處僅為技術狀態輸出，不構成投資建議。';
-            }
-            if (mode === 'RECOVERY_EXPANSION') {
-                return currentLang === 'en'
-                    ? 'System detected a recovery-expansion state. Final interpretation follows the QLD permission layer.'
-                    : '系統檢測到恢復擴張狀態，最終以 QLD 權限層為準。';
-            }
-            if (String(qld.forced_bucket || '') === 'QQQ') {
-                return currentLang === 'en'
-                    ? 'System revoked QLD exposure and retained the unlevered state.'
-                    : '系統已撤回 QLD 技術暴露，保留非槓桿狀態。';
-            }
-            return currentLang === 'en'
-                ? 'System is scanning technical-state evidence for QLD permission.'
-                : '系統正在掃描 QLD 權限所需的技術狀態證據。';
-        }
-
-        function renderQLDPermission(qldPermission) {
-            const container = document.getElementById('qld-permission-container');
-            container.innerHTML = '';
-            const qld = qldPermission || {};
-            const leftKernel = qld.left_side_kernel || {};
-            const stageOverride = qld.regime_specific_override || {};
-            const clusters = stageOverride.clusters || {};
-            const activeClusters = Object.entries(clusters)
-                .filter(([, value]) => Boolean(value))
-                .map(([key]) => humanizeKey(key))
-                .join(', ');
-            const summaryEntries = [
-                ['TECHNICAL STATE', summarizeQldPermission(qld)],
-                ['SYSTEM NOTE', summarizeQldPermissionDetail(qld)],
-            ];
-            const entries = [
-                ['ENTRY MODE', qld.entry_mode || '--'],
-                ['REASON CODE', qld.reason_code || '--'],
-                ['QLD ALLOWED', qld.qld_allowed],
-                ['SUB1X ALLOWED', qld.allow_sub1x_qld],
-                ['FORCED BUCKET', qld.forced_bucket || '--'],
-                ['REENTRY SIGNAL', qld.relaxed_entry_signal],
-                ['LEFT-SIDE SCORE', leftKernel.score],
-                ['LEFT-SIDE ACTIVE', leftKernel.active],
-                ['STAGE OVERRIDE ACTIVE', stageOverride.active],
-                ['STAGE OVERRIDE SCORE', stageOverride.score],
-                ['ACTIVE CLUSTERS', activeClusters || '--'],
-            ];
-            container.innerHTML = summaryEntries.concat(entries).map(([key, value]) => `
-                <div class="feature-chip">
-                    <p class="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">${escapeHtml(humanizeKey(key))}</p>
-                    <p class="text-base sm:text-lg font-black text-white mt-2 break-all">${escapeHtml(formatScalar(value))}</p>
-                </div>
-            `).join('');
-        }
-
-        function localizeTrend(trend) {
-            if (currentLang === 'en') {
-                return trend || 'FLAT';
-            }
-            if (trend === 'RISING') return '上行';
-            if (trend === 'FALLING') return '下行';
-            return '平稳';
-        }
-
-        function formatMotionTag(dynamics) {
-            if (!dynamics) return '';
-            const delta = Number(dynamics.delta_1d || 0);
-            const accel = Number(dynamics.acceleration_1d || 0);
-            const tone = delta > 0.0005 ? 'text-emerald-400' : (delta < -0.0005 ? 'text-rose-400' : 'text-slate-400');
-            const deltaText = `${delta >= 0 ? '+' : ''}${(delta * 100).toFixed(1)}pp`;
-            const accelText = `${accel >= 0 ? '+' : ''}${(accel * 100).toFixed(1)}pp`;
-            return `
-                <div class="flex justify-between text-[9px] font-bold tracking-[0.16em] uppercase opacity-70">
-                    <span class="${tone}">${escapeHtml(localizeTrend(dynamics.trend))}</span>
-                    <span class="text-slate-400">dP ${escapeHtml(deltaText)} | d2P ${escapeHtml(accelText)}</span>
-                </div>
-            `;
-        }
-
-        function renderDistribution(containerId, distribution, fallbackText, dynamicsMap) {
-            const container = document.getElementById(containerId);
-            if (!container) return;
-            container.innerHTML = '';
-            const order = ['BUST', 'LATE_CYCLE', 'MID_CYCLE', 'RECOVERY'];
-            const entries = Object.entries(distribution || {}).sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
-            if (!entries.length) {
-                container.innerHTML = `<p class="text-[11px] font-bold text-slate-500">${fallbackText}</p>`;
-                return;
-            }
-            entries.forEach(([name, val]) => {
-                const pct = (val * 100).toFixed(1) + '%';
-                const localizedName = TRANSLATIONS[currentLang].mapping[name] || name;
-                const dynamics = dynamicsMap && dynamicsMap[name] ? dynamicsMap[name] : null;
-                
-                let barColorClass = 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]';
-                if (name === 'BUST') barColorClass = 'bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.8)]';
-                else if (name === 'LATE_CYCLE') barColorClass = 'bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.5)]';
-                else if (name === 'MID_CYCLE') barColorClass = 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]';
-                else if (name === 'RECOVERY') barColorClass = 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.6)]';
-                
-                container.innerHTML += `<div class="space-y-1.5"><div class="flex justify-between text-[10px] font-black opacity-50 uppercase tracking-tighter"><span>${localizedName}</span><span class="text-white">${pct}</span></div>${formatMotionTag(dynamics)}<div class="w-full h-2 bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5"><div class="prob-bar ${barColorClass}" style="width: ${pct}"></div></div></div>`;
-            });
-        }
-
-        function toggleInsights() { 
-            const panel = document.getElementById('insights-panel');
-            panel.classList.toggle('open'); 
-        }
-        
-        function renderDashboard(data) {
-            const body = document.getElementById('body');
-            const isLocked = data.signal.lock_active; const mkt = data.meta.market_state;
-            body.className = isLocked ? 'state-locked min-h-screen flex items-center justify-center p-3 sm:p-4' : (mkt === 'ACTIVE' ? 'state-active min-h-screen flex items-center justify-center p-3 sm:p-4' : 'state-frozen min-h-screen flex items-center justify-center p-3 sm:p-4');
-            document.getElementById('indicator').className = `w-2.5 h-2.5 rounded-full ${isLocked ? 'bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.8)]' : (mkt === 'ACTIVE' ? 'bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.8)]' : 'bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.8)]')}`;
-            
-            const posteriorRegimeKey = extractRegimeKey(
-                data.signal.posterior_regime || data.signal.stable_regime || data.signal.regime
-            );
-            const executionRegimeKey = extractRegimeKey(
-                data.signal.execution_regime || data.signal.posterior_regime || data.signal.stable_regime || data.signal.regime
-            );
-            const rawRegimeKey = extractRegimeKey(data.signal.raw_regime || data.signal.regime);
-            const mapping = TRANSLATIONS[currentLang].mapping;
-            
-            const exposureEl = document.getElementById('exposure');
-            exposureEl.textContent = data.signal.target_beta.toFixed(2) + 'x';
-            exposureEl.className = (data.signal.is_floor_active || (data.meta && data.meta.is_floor_active)) ? 'text-6xl sm:text-7xl font-black text-amber-400 leading-none' : 'text-6xl sm:text-7xl font-black text-white leading-none';
-            
-            const ent = data.signal.entropy;
-            document.getElementById('entropy').textContent = ent.toFixed(3);
-            document.getElementById('entropy').className = `text-2xl sm:text-3xl font-black ${ent < 1.0 ? 'text-emerald-400' : (ent < 2.0 ? 'text-amber-400' : 'text-rose-400')}`;
-            const deployStateKey = data.signal.deployment_state_key || (String(data.signal.deployment_state || 'DEPLOY_BASE').replace('DEPLOY_', '')) || 'BASE';
-            document.getElementById('deploy').textContent = String(data.signal.deployment_state || '--').replace('DEPLOY_', '').replace('入場', '').trim();
-            document.getElementById('deploy').className = `text-xl sm:text-2xl font-black ${DEPLOY_COLORS[deployStateKey] || 'text-blue-400'}`;
-            document.getElementById('deploy-readiness').textContent = data.signal.deployment_readiness != null ? (currentLang === 'en' ? `Kelly Readiness ${(data.signal.deployment_readiness * 100).toFixed(1)}%` : `凱利就緒度 ${(data.signal.deployment_readiness * 100).toFixed(1)}%`) : '--';
-            
-            const calcAt = data.meta && data.meta.calculated_at_utc ? data.meta.calculated_at_utc.replace('T',' ').replace('Z','') : '--';
-            document.getElementById('calc-at').textContent = calcAt;
-            document.getElementById('engine-version').textContent = (data.meta && data.meta.version) || 'v--';
-            document.getElementById('hydration-anchor').textContent = (data.signal && data.signal.hydration_anchor) || (data.meta && data.meta.hydration_anchor) || '2018-01-01';
-            document.getElementById('beta-ceiling').textContent = ((data.signal && data.signal.beta_ceiling) || 1.20).toFixed(2) + 'x';
-            const rawPreFloorBeta = data.signal.raw_target_beta_pre_floor || data.signal.raw_target_beta || data.signal.target_beta;
-            document.getElementById('raw-beta').textContent = rawPreFloorBeta.toFixed(2) + 'x';
-            document.getElementById('protected-beta').textContent = (data.signal.protected_beta || data.signal.target_beta).toFixed(2) + 'x';
-            document.getElementById('overlay-beta').textContent = (data.signal.overlay_beta || data.signal.target_beta).toFixed(2) + 'x';
-            document.getElementById('overlay-mode').textContent = mapping[data.signal.overlay_mode] || data.signal.overlay_mode || '評估中';
-            document.getElementById('beta-overlay-multiplier').textContent = (data.signal.beta_overlay_multiplier || 1.0).toFixed(2);
-            document.getElementById('deployment-overlay-multiplier').textContent = (data.signal.deployment_overlay_multiplier || 1.0).toFixed(2);
-            document.getElementById('market-label').textContent = mapping[mkt] || mkt;
-
-            // Kelly Fraction Water Level UI Render
-            const kellyFraction = data.signal.kelly_fraction;
-            const kellyEl = document.getElementById('kelly-fraction-value');
-            const waterEl = document.getElementById('kelly-water-level');
-            const hintEl = document.getElementById('kelly-fraction-hint');
-            
-            if (kellyFraction != null) {
-                const fractionPct = (kellyFraction * 100).toFixed(1);
-                kellyEl.textContent = 'K ' + fractionPct + '%';
-                // Water height ranges from 5% to 100%
-                waterEl.style.height = Math.min(100, Math.max(5, kellyFraction * 100)) + '%';
-                
-                if (kellyFraction >= 0.8) {
-                    waterEl.className = "absolute bottom-0 left-0 w-[200%] transition-all duration-[3000ms] kelly-wave ease-[cubic-bezier(0.16,1,0.3,1)] bg-gradient-to-r from-rose-500/10 via-orange-500/10 to-rose-500/10 pointer-events-none z-0";
-                    hintEl.textContent = currentLang === 'en' ? "Max Kelly" : "滿水凱利";
-                    kellyEl.className = "text-[10px] font-black text-rose-400 font-mono transition-colors";
-                } else if (kellyFraction >= 0.3) {
-                    waterEl.className = "absolute bottom-0 left-0 w-[200%] transition-all duration-[3000ms] kelly-wave ease-[cubic-bezier(0.16,1,0.3,1)] bg-gradient-to-r from-emerald-500/10 via-blue-500/10 to-emerald-500/10 pointer-events-none z-0";
-                    hintEl.textContent = currentLang === 'en' ? "Optimal" : "優化";
-                    kellyEl.className = "text-[10px] font-black text-emerald-400 font-mono transition-colors";
-                } else {
-                    waterEl.className = "absolute bottom-0 left-0 w-[200%] transition-all duration-[3000ms] kelly-wave ease-[cubic-bezier(0.16,1,0.3,1)] bg-gradient-to-r from-blue-500/5 via-slate-500/5 to-blue-500/5 pointer-events-none z-0";
-                    hintEl.textContent = currentLang === 'en' ? "Hold" : "保留";
-                    kellyEl.className = "text-[10px] font-black text-blue-300 font-mono transition-colors";
-                }
-            } else {
-                kellyEl.textContent = 'K --';
-                waterEl.style.height = '0%';
-                hintEl.textContent = 'Shadow';
-                kellyEl.className = "text-[10px] font-black text-slate-600 font-mono";
-            }
-
-            // Replay Detection: If data is more than 3 days old compared to current wall time
-            const replayBadge = document.getElementById('replay-badge');
-            const now = Date.now();
-            const obsStr = data.meta.observation_date || data.meta.calculated_at_utc;
-            const calcTime = new Date(data.meta.calculated_at_utc).getTime();
-            const obsTime = new Date(obsStr).getTime();
-            
-            const isReplay = (now - calcTime) > (3 * 24 * 60 * 60 * 1000) || (now - obsTime) > (3 * 24 * 60 * 60 * 1000);
-            
-            if (isReplay) {
-                replayBadge.textContent = TRANSLATIONS[currentLang]['ui-replay-badge'];
-                replayBadge.classList.remove('hidden');
-            } else {
-                replayBadge.classList.add('hidden');
-            }
-
-            const bar = document.getElementById('exposure-bar'); const beta = data.signal.target_beta;
-            bar.style.width = Math.min(100, beta * 83.33) + '%'; bar.className = beta > 1.0 ? 'h-full overclock' : 'h-full bg-emerald-500';
-            
-            const ref = data.signal.reference_path || {};
-            const bucket = data.signal.execution_bucket || (ref.qld_pct > 0 ? "QLD" : (ref.qqq_pct > 0.1 ? "QQQ" : "CASH"));
-            document.querySelectorAll('.tag').forEach(t => {
-                const key = t.getAttribute('data-key');
-                if (
-                    key === posteriorRegimeKey ||
-                    key === executionRegimeKey ||
-                    key === rawRegimeKey ||
-                    key === bucket ||
-                    (data.signal.probabilities && data.signal.probabilities[key] > 0.4)
-                ) {
-                    t.className = 'tag node-active text-[10px] px-3 py-2 border border-emerald-500/50 rounded-2xl transition-all duration-1000';
-                } else { t.className = 'tag text-ghost text-[10px] px-3 py-2 border border-white/5 rounded-2xl'; }
-            });
-
-            renderDistribution('prob-container', data.signal.probabilities, currentLang === 'en' ? 'No posterior distribution' : '暫無後驗分佈', data.signal.probability_dynamics);
-            renderDistribution('prior-container', data.signal.priors, currentLang === 'en' ? 'No runtime prior' : '當前未透傳運行時先驗');
-            renderManifold(data.diagnostics && data.diagnostics.v16_manifold);
-            
-            const enrichedFeatureValues = {
-                ...(data.evidence.feature_values || {}),
-                price_topology_regime: data.signal.price_topology && data.signal.price_topology.regime,
-                price_topology_confidence: data.signal.price_topology && data.signal.price_topology.confidence,
-                forensic_snapshot_path: data.signal.forensic_snapshot_path || '--'
+        function stageColor(stage) {
+            const colors = {
+                EXPANSION: "var(--expansion)",
+                LATE_CYCLE: "var(--late-cycle)",
+                STRESS: "var(--stress)",
+                RECOVERY: "var(--recovery)",
+                FAST_CASCADE_BOUNDARY: "var(--boundary)"
             };
-            renderFeatureValues(enrichedFeatureValues);
-            renderExecutionOverlay(data.evidence.execution_overlay);
-            renderQLDPermission(data.evidence.qld_permission || data.signal.qld_permission);
-            // The logic trace rendering now reconstructs exactly the 11 original steps
-            renderLogicTrace(data.evidence.logic_trace || [], data);
-
-            // Logic Trace Handled above
-
-            // Panorama Rendering
-            if (data.diagnostics) {
-                const diag = data.diagnostics;
-                const ens = diag.ensemble_options;
-                const vText = document.getElementById('verdict-text');
-                const vIcon = document.getElementById('verdict-icon'); 
-                const vGlow = document.getElementById('panorama-glow');
-                const vCard = document.getElementById('panorama-panel');
-
-                // Clean up verdict text: Remove anything in parentheses if in Chinese mode
-                let verdictLabel = ens.verdict_label || ens.verdict;
-                if (currentLang === 'zh-TW') {
-                    // Mapping for common verdicts to avoid back-end English labels
-                    const VERDICT_MAP = {
-                        'PROTECTIVE': '🚨 防禦保護',
-                        'AGGRESSIVE': '🚀 積極擴張',
-                        'NEUTRAL': '⚖️ 中性平衡'
-                    };
-                    verdictLabel = VERDICT_MAP[ens.verdict] || verdictLabel.split('(')[0].trim();
-                }
-                vText.textContent = verdictLabel;
-                
-                if (ens.verdict === 'PROTECTIVE') {
-                    vIcon.className = 'w-3 h-3 rounded-full animate-pulse bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.8)]';
-                    vGlow.className = 'absolute -top-24 -right-24 w-48 h-48 rounded-full blur-[80px] opacity-30 bg-red-500';
-                    vCard.style.borderColor = 'rgba(239, 68, 68, 0.2)';
-                    document.getElementById('opt-protective-card').style.background = 'rgba(239, 68, 68, 0.15)';
-                    document.getElementById('opt-protective-card').style.borderColor = 'rgba(239, 68, 68, 0.3)';
-                } else if (ens.verdict === 'AGGRESSIVE') {
-                    vIcon.className = 'w-3 h-3 rounded-full animate-pulse bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)]';
-                    vGlow.className = 'absolute -top-24 -right-24 w-48 h-48 rounded-full blur-[80px] opacity-30 bg-emerald-500';
-                    vCard.style.borderColor = 'rgba(16, 185, 129, 0.2)';
-                    document.getElementById('opt-aggressive-card').style.background = 'rgba(16, 185, 129, 0.15)';
-                    document.getElementById('opt-aggressive-card').style.borderColor = 'rgba(16, 185, 129, 0.3)';
-                } else {
-                    vIcon.className = 'w-3 h-3 rounded-full animate-pulse bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.8)]';
-                    vGlow.className = 'absolute -top-24 -right-24 w-48 h-48 rounded-full blur-[80px] opacity-30 bg-blue-500';
-                    vCard.style.borderColor = 'rgba(255, 255, 255, 0.05)';
-                    document.getElementById('opt-protective-card').style.background = 'rgba(255, 255, 255, 0.05)';
-                    document.getElementById('opt-aggressive-card').style.background = 'rgba(255, 255, 255, 0.05)';
-                }
-                
-                document.getElementById('opt-standard').textContent = ens.standard_beta.toFixed(2) + 'x';
-                document.getElementById('opt-protective').textContent = ens.protective_beta.toFixed(2) + 'x';
-                document.getElementById('opt-aggressive').textContent = ens.aggressive_beta.toFixed(2) + 'x';
-                
-                document.getElementById('diag-tractor').textContent = (diag.tractor.prob * 100).toFixed(1) + '%';
-                document.getElementById('diag-sidecar').textContent = (diag.sidecar.prob * 100).toFixed(1) + '%';
-            }
-
-            // Resonance Radar Rendering (Moved & Prescriptive Labels)
-            const resonance = data.signal.resonance || { action: 'HOLD', confidence: 0, reason: 'Scanning...' };
-            const radar = document.getElementById('resonance-radar');
-            const rDot = document.getElementById('resonance-dot');
-            const rAction = document.getElementById('resonance-action');
-            const rReason = document.getElementById('resonance-reason');
-
-            if (resonance.action === 'BUY_QLD') {
-                radar.className = 'mt-3 py-1.5 px-4 rounded-xl flex items-center justify-between border transition-all duration-1000 resonance-buy opacity-100';
-                rDot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]';
-                rAction.className = 'text-[11px] font-black text-emerald-400 tracking-tighter';
-                rAction.textContent = currentLang === 'en' ? 'QLD UPSIDE RESONANCE' : 'QLD 上行共振信號';
-                rReason.textContent = (resonance.prompt || resonance.reason || '--');
-            } else if (resonance.action === 'SELL_QLD') {
-                radar.className = 'mt-3 py-1.5 px-4 rounded-xl flex items-center justify-between border transition-all duration-1000 resonance-sell opacity-100';
-                rDot.className = 'w-1.5 h-1.5 rounded-full bg-red-400 shadow-[0_0_8px_rgba(239,68,68,0.8)]';
-                rAction.className = 'text-[11px] font-black text-red-400 tracking-tighter';
-                rAction.textContent = currentLang === 'en' ? 'QLD RISK-COMPRESSION SIGNAL' : 'QLD 風險收縮信號';
-                rReason.textContent = (resonance.prompt || resonance.reason || '--');
-            } else {
-                radar.className = 'mt-3 py-1.5 px-4 rounded-xl flex items-center justify-between border transition-all duration-1000 resonance-hold opacity-40 grayscale';
-                rDot.className = 'w-1.5 h-1.5 rounded-full bg-slate-500 shadow-none';
-                rAction.className = 'text-[10px] font-bold text-slate-400 tracking-tighter italic';
-                rAction.textContent = currentLang === 'en' ? 'NO NEW RESONANCE SIGNAL' : '暫無新增共振信號';
-                rReason.textContent = currentLang === 'en'
-                    ? `Signal confidence ${(resonance.confidence * 100).toFixed(1)}%`
-                    : `信號信心度 ${(resonance.confidence * 100).toFixed(1)}%`;
-            }
+            return colors[stage] || "var(--ink)";
         }
 
-        async function renderHistoryChart() {
-            try {
-                let history = null;
-                const historyUrl = getDataSourceUrl('history.json');
-                
-                try {
-                    const res = await fetch(historyUrl + '?t=' + Date.now());
-                    if (res.ok) {
-                        history = await res.json();
-                    }
-                } catch (e) {}
+        function setText(id, value) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        }
 
-                // Fallback to local if primary fails and we aren't already targeting local
-                if (!history && historyUrl !== DATA_SOURCES.local.replace('status.json', 'history.json')) {
-                    try {
-                        const localHistoryUrl = DATA_SOURCES.local.replace('status.json', 'history.json');
-                        const res = await fetch(localHistoryUrl + '?t=' + Date.now());
-                        if (res.ok) {
-                            history = await res.json();
-                        }
-                    } catch (e) {}
-                }
+        function renderList(targetId, values) {
+            const el = document.getElementById(targetId);
+            if (!el) return;
+            el.innerHTML = "";
+            values.forEach((value) => {
+                const item = document.createElement("li");
+                item.className = "evidence-item";
+                item.textContent = value;
+                el.appendChild(item);
+            });
+        }
 
-                if (!history || history.length === 0) return;
+        function renderStageDistribution(stageDistribution) {
+            const el = document.getElementById("stage-distribution");
+            if (!el) return;
+            el.innerHTML = "";
+            Object.entries(stageDistribution)
+                .sort((a, b) => b[1] - a[1])
+                .forEach(([stage, value]) => {
+                    const row = document.createElement("div");
+                    row.className = "distribution-row";
 
-                const svg = document.getElementById('history-svg');
-                const g = document.getElementById('chart-layers');
-                const startDateEl = document.getElementById('chart-start-date');
-                const endDateEl = document.getElementById('chart-end-date');
-                
-                startDateEl.textContent = history[0].date;
-                endDateEl.textContent = history[history.length - 1].date;
+                    const label = document.createElement("div");
+                    label.className = "distribution-label";
+                    label.textContent = stage.replaceAll("_", " ");
 
-                if (history.length < 2) {
-                    g.innerHTML = '';
-                    return;
-                }
+                    const track = document.createElement("div");
+                    track.className = "distribution-track";
 
-                const width = 1000; // Fixed viewbox width
-                const height = 500; // Fixed viewbox height
-                svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-                
-                const steps = history.length;
-                const xStep = width / (steps - 1);
-                
-                const regimes = ['RECOVERY', 'MID_CYCLE', 'LATE_CYCLE', 'BUST'];
-                const colors = ['#10b981', '#3b82f6', '#f59e0b', '#f43f5e'];
-                const grads = ['grad-mid', 'grad-recovery', 'grad-late', 'grad-bust'];
-                
-                g.innerHTML = '';
-                
-                let previousBaselines = new Array(steps).fill(height);
-                
-                regimes.forEach((regime, rIdx) => {
-                    let topPoints = [];
-                    let nextBaselines = [];
-                    
-                    for (let i = 0; i < steps; i++) {
-                        const probs = history[i].probabilities;
-                        // Normalize ONLY against the 4 displayed regimes to ensure sum is exactly 1.0
-                        const total = regimes.reduce((sum, r) => sum + (probs[r] || 0), 0) || 1;
-                        const prob = (probs[regime] || 0) / total;
-                        
-                        const y = Math.max(0, Math.min(height, previousBaselines[i] - (prob * height)));
-                        topPoints.push({x: i * xStep, y: y});
-                        nextBaselines.push(y);
-                    }
-                    
-                    // Generate smooth path string
-                    const getLine = (p1, p2) => `${p2.x},${p2.y}`;
-                    const getBezier = (p1, p2, p3, p4) => {
-                        const cp1x = p1.x + (p2.x - p1.x) / 2;
-                        const cp2x = p1.x + (p2.x - p1.x) / 2;
-                        return `C ${cp1x},${p1.y} ${cp2x},${p2.y} ${p2.x},${p2.y}`;
-                    };
-                    
-                    let d = `M 0,${topPoints[0].y}`;
-                    for (let i = 1; i < topPoints.length; i++) {
-                        d += ` ${getBezier(topPoints[i-1], topPoints[i])}`;
-                    }
-                    
-                    // Bottom edge (reverse of previous baseline)
-                    d += ` L ${width},${previousBaselines[steps-1]}`;
-                    for (let i = steps - 2; i >= 0; i--) {
-                        d += ` L ${i * xStep},${previousBaselines[i]}`;
-                    }
-                    d += " Z";
-                    
-                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                    path.setAttribute('d', d);
-                    path.setAttribute('fill', `url(#${grads[rIdx]})`);
-                    
-                    let cls = 'chart-path';
-                    if (regime === 'RECOVERY') cls += ' vitality-layer';
-                    path.setAttribute('class', cls);
-                    
-                    path.setAttribute('stroke', colors[rIdx]);
-                    path.setAttribute('stroke-width', '2');
-                    path.setAttribute('stroke-opacity', '0.8');
-                    path.setAttribute('stroke-linejoin', 'round');
-                    
-                    g.appendChild(path);
-                    previousBaselines = nextBaselines;
+                    const bar = document.createElement("div");
+                    bar.className = "distribution-bar";
+                    bar.style.width = `${Math.max(0, Math.min(100, Number(value) * 100))}%`;
+                    bar.style.background = stageColor(stage);
+                    track.appendChild(bar);
+
+                    const number = document.createElement("div");
+                    number.className = "distribution-value";
+                    number.textContent = formatPercent(value);
+
+                    row.appendChild(label);
+                    row.appendChild(track);
+                    row.appendChild(number);
+                    el.appendChild(row);
                 });
-            } catch (e) {
-                console.error("History chart failed:", e);
+        }
+
+        function renderEvidence(evidencePanel) {
+            const el = document.getElementById("evidence-panel");
+            if (!el) return;
+            el.innerHTML = "";
+            const sections = [
+                ["Hazard", evidencePanel.hazard_percentile_context],
+                ["Breadth", evidencePanel.breadth_health_status],
+                ["Volatility", evidencePanel.volatility_regime_status],
+                ["Stress", evidencePanel.structural_stress_status],
+                ["Repair / Relapse", evidencePanel.repair_relapse_status],
+                ["Boundary", evidencePanel.boundary_pressure_gap_stress]
+            ];
+
+            sections.forEach(([label, payload]) => {
+                const item = document.createElement("div");
+                item.className = "evidence-item";
+                const kicker = document.createElement("p");
+                kicker.className = "evidence-kicker";
+                kicker.textContent = label;
+                const body = document.createElement("p");
+                body.className = "evidence-body";
+                body.textContent = JSON.stringify(payload, null, 0);
+                item.appendChild(kicker);
+                item.appendChild(body);
+                el.appendChild(item);
+            });
+        }
+
+        function renderBoundary(boundaryWarning) {
+            const shell = document.getElementById("boundary-warning");
+            const status = document.getElementById("boundary-status");
+            const copy = document.getElementById("boundary-copy");
+            if (!shell || !status || !copy) return;
+
+            if (boundaryWarning.is_active) {
+                shell.classList.remove("inactive");
+                status.textContent = "FAST_CASCADE_BOUNDARY ACTIVE";
+                copy.textContent = boundaryWarning.warning_text || "Boundary warnings are not ordinary stage calls.";
+            } else {
+                shell.classList.add("inactive");
+                status.textContent = "Boundary Layer Quiet";
+                copy.textContent = "Boundary warnings are not ordinary stage calls.";
             }
         }
 
-        async function updateDashboard() {
-            const body = document.getElementById('body');
-            const sourceLabel = document.getElementById('data-source');
+        function renderRelapsePressure(relapsePressure, recoveryCaution) {
+            setText("relapse-pressure-level", relapsePressure.level || "--");
+            setText("relapse-pressure-copy", relapsePressure.copy || "Relapse pressure is unavailable.");
+
+            const banner = document.getElementById("recovery-caution-banner");
+            const bannerText = document.getElementById("recovery-caution-text");
+            if (!banner || !bannerText) return;
+
+            if (recoveryCaution && recoveryCaution.is_active && recoveryCaution.banner_text) {
+                banner.classList.remove("hidden");
+                bannerText.textContent = recoveryCaution.banner_text;
+            } else {
+                banner.classList.add("hidden");
+            }
+        }
+
+        function renderLateCycleTransition(lateCycleTransition, summary) {
+            setText("late-cycle-badge", lateCycleTransition.badge_text || "Standard stage read");
+            setText("late-cycle-direction", lateCycleTransition.direction_text || "No special late-cycle override");
+            setText(
+                "late-cycle-copy",
+                lateCycleTransition.is_transition_zone
+                    ? "Evidence is mixed. Focus on directional drift, not on a fake hard conclusion."
+                    : "Late-cycle ambiguity is not currently the dominant reading."
+            );
+
+            const currentStage = document.getElementById("current-stage");
+            if (currentStage) {
+                currentStage.classList.toggle(
+                    "softened-stage",
+                    lateCycleTransition.confidence_style === "SOFTENED"
+                );
+            }
+            setText("current-stage-badge", summary.display_badge || "Primary stage");
+        }
+
+        function renderDashboard(dashboard) {
+            setText("observation-date", dashboard.summary.date);
+            setText("current-stage", (dashboard.summary.display_stage || dashboard.summary.current_stage).replaceAll("_", " "));
+            setText("secondary-stage", `Secondary stage: ${dashboard.summary.secondary_stage.replaceAll("_", " ")}`);
+            setText("short-rationale", dashboard.summary.short_rationale);
+            setText("stage-confidence", formatPercent(dashboard.summary.stage_confidence));
+            setText("confidence-margin", formatPercent(dashboard.summary.confidence_margin));
+            setText("urgency-badge", dashboard.transition_urgency);
+            setText("action-band-badge", dashboard.action_band.replaceAll("_", " "));
+            setText("stability-label", dashboard.stage_stability.concentration_label.replaceAll("_", " "));
+            setText("entropy-value", formatNumber(dashboard.stage_stability.normalized_entropy));
+            setText("top-probability", formatPercent(dashboard.stage_stability.top1_probability));
+            setText("top-margin", formatPercent(dashboard.stage_stability.top1_margin));
+
+            document.getElementById("current-stage").style.color = stageColor(dashboard.summary.current_stage);
+
+            renderStageDistribution(dashboard.stage_distribution);
+            renderEvidence(dashboard.evidence_panel);
+            renderBoundary(dashboard.boundary_warning);
+            renderRelapsePressure(dashboard.relapse_pressure || {}, dashboard.recovery_caution || {});
+            renderLateCycleTransition(dashboard.late_cycle_transition || {}, dashboard.summary || {});
+            renderList("expectation-list", dashboard.expectations.what_to_expect || []);
+            renderList("limits-list", dashboard.limits || []);
+            renderList("reading-guide", dashboard.reading_guide || []);
+        }
+
+        async function boot() {
+            const url = getDataSourceUrl("status.json");
+            setText("data-source", url.includes("staging/") ? "staging" : url.includes("status.json") ? "status.json" : url);
             try {
-                let data = null;
-                const primaryUrl = getDataSourceUrl();
-                
-                // Fetch history in parallel
-                renderHistoryChart();
-                
-                try {
-                    const res = await fetch(primaryUrl + '?t=' + Date.now(), { method: 'GET', mode: 'cors', cache: 'no-store' });
-                    if (res.ok) { 
-                        data = await res.json(); 
-                        const isProduction = primaryUrl === DATA_SOURCES.prod;
-                        const isLocal = primaryUrl === DATA_SOURCES.local;
-                        const statusMsg = TRANSLATIONS[currentLang].status.CLOUD_SYNCED;
-                        sourceLabel.textContent = isProduction
-                            ? statusMsg
-                            : (isLocal
-                                ? TRANSLATIONS[currentLang].status.LOCAL_FALLBACK
-                                : (currentLang === 'zh-TW' ? `${statusMsg}（分支）` : `${statusMsg} (Branch)`));
-                        sourceLabel.className = isProduction ? "text-emerald-500" : (isLocal ? "text-orange-500" : "text-blue-400"); 
-                    }
-                } catch (e) {}
-
-                if (!data && primaryUrl !== DATA_SOURCES.local) {
-                    const res = await fetch(DATA_SOURCES.local + '?t=' + Date.now(), { cache: 'no-store' });
-                    if (res.ok) { 
-                        data = await res.json(); 
-                        sourceLabel.textContent = TRANSLATIONS[currentLang].status.LOCAL_FALLBACK; 
-                        sourceLabel.className = "text-orange-500"; 
-                    }
-                }
-
-                if (!data) throw new Error("Offline");
-                lastData = data;
-                body.classList.remove('state-stale');
-                renderDashboard(data);
-            } catch (e) { 
-                console.error(e); 
-                sourceLabel.textContent = TRANSLATIONS[currentLang].status.SYNC_ERROR; 
-                body.className = 'state-stale min-h-screen flex items-center justify-center p-3 sm:p-4'; 
+                const response = await fetch(url, { cache: "no-store" });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                if (!data.dashboard) throw new Error("Missing dashboard payload");
+                setText("generated-at", data.meta?.calculated_at_utc || "--");
+                renderDashboard(data.dashboard);
+            } catch (error) {
+                const shell = document.getElementById("dashboard-shell");
+                if (!shell) return;
+                shell.innerHTML = `
+                    <section class="masthead">
+                        <div class="eyebrow">Probability Dashboard, Not Auto-Trading</div>
+                        <h1>Daily Post-Close Cycle Stage Probability Dashboard</h1>
+                        <div class="empty-state">
+                            Could not load the probability dashboard payload. ${String(error)}
+                        </div>
+                    </section>
+                `;
             }
         }
-        updateDashboard(); setInterval(updateDashboard, 60000);
+
+        boot();
     </script>
 </body>
 </html>
